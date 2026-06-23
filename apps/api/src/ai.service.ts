@@ -2,10 +2,14 @@ import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ShopifyService } from './shopify.service';
 
+type RequestedAttribute = {
+  name: string;
+  value: string;
+};
+
 type SalesSearchCriteria = {
   catalogQuery: string;
-  size: string | null;
-  color: string | null;
+  attributes: RequestedAttribute[];
 };
 
 type CatalogProduct = Awaited<
@@ -20,17 +24,44 @@ type ProductCandidate = {
   variant: CatalogVariant;
 };
 
+type SalesCatalogItem = {
+  productId: string;
+  productTitle: string;
+  productUrl: string;
+  imageUrl: string | null;
+  price: string;
+  matchingVariant: {
+    id: string;
+    title: string;
+    options: Array<{
+      name: string;
+      value: string;
+    }>;
+  };
+};
+
+type SalesCatalogResult = {
+  criteria: SalesSearchCriteria;
+  products: SalesCatalogItem[];
+};
+
 @Injectable()
 export class AiService {
   private client: OpenAI | null = null;
 
   constructor(private readonly shopifyService: ShopifyService) {}
 
-  async answerSalesQuestion(message: string): Promise<string> {
+  async getSalesCatalog(message: string): Promise<SalesCatalogResult> {
     const cleanMessage = message.trim();
 
     if (!cleanMessage) {
-      return 'Cuéntame qué prenda, color, talla o estilo estás buscando.';
+      return {
+        criteria: {
+          catalogQuery: '',
+          attributes: [],
+        },
+        products: [],
+      };
     }
 
     const criteria = await this.extractSearchCriteria(cleanMessage);
@@ -40,9 +71,55 @@ export class AiService {
       10,
     );
 
-    const matches = this.findAvailableMatches(products, criteria);
+    const candidates = this.findCatalogCandidates(products, criteria);
 
-    return this.createSalesReply(cleanMessage, criteria, matches);
+    return {
+      criteria,
+      products: candidates.map(({ product, variant }) => ({
+        productId: product.id,
+        productTitle: product.title,
+        productUrl: product.onlineStoreUrl ?? '',
+        imageUrl: product.featuredImage?.url ?? null,
+        price: variant.price,
+        matchingVariant: {
+          id: variant.id,
+          title: variant.title,
+          options: variant.selectedOptions.map((option) => ({
+            name: option.name,
+            value: option.value,
+          })),
+        },
+      })),
+    };
+  }
+
+  async answerSalesQuestion(message: string): Promise<string> {
+    const catalog = await this.getSalesCatalog(message);
+
+    if (!catalog.products.length) {
+      return 'No encontré opciones que coincidan exactamente. Cuéntame otra característica del producto que buscas.';
+    }
+
+    const options = catalog.products.map((item, index) => {
+      const variantDetails = item.matchingVariant.options
+        .map((option) => `${option.name}: ${option.value}`)
+        .join(' · ');
+
+      return [
+        `${index + 1}. ${item.productTitle}`,
+        this.formatPrice(item.price),
+        variantDetails,
+        item.productUrl,
+      ].join('\n');
+    });
+
+    return [
+      'Encontré estas opciones para ti:',
+      '',
+      options.join('\n\n'),
+      '',
+      'Dime cuál te gustó y te muestro sus opciones disponibles.',
+    ].join('\n');
   }
 
   private async extractSearchCriteria(
@@ -51,13 +128,14 @@ export class AiService {
     const response = await this.getClient().responses.create({
       model: this.getModel(),
       instructions: [
-        'Eres un extractor de criterios para una tienda de moda.',
-        'Entiende errores de escritura, abreviaturas y palabras pegadas.',
-        'No inventes equivalencias de talla ni conviertas números a letras.',
-        'Devuelve exactamente tres líneas, sin explicaciones:',
-        'QUERY: palabras útiles para buscar el producto',
-        'SIZE: valor de talla solicitado o NONE',
-        'COLOR: color solicitado o NONE',
+        'Analiza el mensaje de una persona que busca productos en cualquier comercio.',
+        'Comprende errores de escritura, abreviaturas y palabras pegadas.',
+        'No respondas a la persona.',
+        'No inventes productos, equivalencias, promociones ni atributos.',
+        'Devuelve únicamente un JSON válido con esta estructura:',
+        '{"catalogQuery":"palabras para buscar","attributes":[{"name":"atributo","value":"valor"}]}',
+        'attributes solo debe incluir condiciones que la persona escribió explícitamente.',
+        'Ejemplos de atributos pueden ser talla, color, capacidad, material, medida o cualquier característica solicitada.',
       ].join('\n'),
       input: message,
     });
@@ -65,11 +143,11 @@ export class AiService {
     return this.parseCriteria(response.output_text, message);
   }
 
-  private findAvailableMatches(
+  private findCatalogCandidates(
     products: CatalogProduct[],
     criteria: SalesSearchCriteria,
   ): ProductCandidate[] {
-    const matches: ProductCandidate[] = [];
+    const candidates: ProductCandidate[] = [];
 
     for (const product of products) {
       const matchingVariant = product.variants.edges
@@ -77,153 +155,74 @@ export class AiService {
         .find(
           (variant) =>
             variant.availableForSale &&
-            variant.sellableOnlineQuantity > 0 &&
             this.variantMatchesCriteria(variant, criteria),
         );
 
       if (matchingVariant) {
-        matches.push({
+        candidates.push({
           product,
           variant: matchingVariant,
         });
       }
     }
 
-    return matches.slice(0, 3);
+    return candidates.slice(0, 8);
   }
 
   private variantMatchesCriteria(
     variant: CatalogVariant,
     criteria: SalesSearchCriteria,
   ): boolean {
-    const requestedSize = criteria.size;
-
-    if (
-      requestedSize &&
-      !this.hasMatchingOption(variant, 'size', requestedSize)
-    ) {
-      return false;
-    }
-
-    const requestedColor = criteria.color;
-
-    if (
-      requestedColor &&
-      !this.hasMatchingOption(variant, 'color', requestedColor)
-    ) {
-      return false;
-    }
-
-    return true;
-  }
-
-  private hasMatchingOption(
-    variant: CatalogVariant,
-    type: 'size' | 'color',
-    requestedValue: string,
-  ): boolean {
-    const acceptedOptionNames =
-      type === 'size'
-        ? ['talla', 'tamano', 'size']
-        : ['color', 'colour'];
-
-    return variant.selectedOptions.some((option) => {
-      const optionName = this.normalizeText(option.name);
-
-      const correctOptionType = acceptedOptionNames.some((name) =>
-        optionName.includes(name),
-      );
-
-      return (
-        correctOptionType &&
-        this.sameOptionValue(option.value, requestedValue)
-      );
-    });
-  }
-
-  private async createSalesReply(
-    originalMessage: string,
-    criteria: SalesSearchCriteria,
-    matches: ProductCandidate[],
-  ): Promise<string> {
-    const verifiedOptions = matches.map(({ product, variant }) => ({
-      product_name: product.title,
-      price_cop: Number(variant.price),
-      product_url: product.onlineStoreUrl ?? '',
-      variant_options: variant.selectedOptions.map((option) => ({
-        name: option.name,
-        value: option.value,
-      })),
-    }));
-
-    const response = await this.getClient().responses.create({
-      model: this.getModel(),
-      instructions: [
-        'Eres Daniela, asesora virtual de ventas de ATOGOB.',
-        'Responde en español colombiano, con tono cercano, breve y útil.',
-        'Solo puedes mencionar productos, precios, tallas, colores y enlaces presentes en DATOS_VERIFICADOS.',
-        'No inventes descuentos, promociones, cuotas, envíos, existencias, tiempos, políticas ni referencias.',
-        'Los productos recibidos ya fueron validados por el sistema como disponibles.',
-        'No menciones cantidades de inventario.',
-        'Si DATOS_VERIFICADOS está vacío, indica que no encontraste una opción disponible con los criterios solicitados y pregunta si desea ver otra talla, color o estilo.',
-        'Recomienda máximo tres opciones.',
-        'No hables de Shopify, OpenAI, código, herramientas ni procesos internos.',
-      ].join('\n'),
-      input: JSON.stringify({
-        mensaje_cliente: originalMessage,
-        criterios_entendidos: criteria,
-        DATOS_VERIFICADOS: verifiedOptions,
-      }),
-    });
-
-    const reply = response.output_text.trim();
-
-    if (reply) {
-      return reply;
-    }
-
-    return this.getFallbackReply(criteria, verifiedOptions.length);
+    return criteria.attributes.every((attribute) =>
+      variant.selectedOptions.some((option) =>
+        this.sameOptionValue(option.value, attribute.value),
+      ),
+    );
   }
 
   private parseCriteria(
     outputText: string,
     originalMessage: string,
   ): SalesSearchCriteria {
-    const readLine = (label: string): string | null => {
-      const match = outputText.match(
-        new RegExp(`^${label}:\\s*(.+)$`, 'im'),
-      );
+    const cleanText = outputText
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
 
-      return match?.[1]?.trim() ?? null;
-    };
+    try {
+      const parsed = JSON.parse(cleanText) as Partial<SalesSearchCriteria>;
 
-    const query =
-      this.cleanExtractedValue(readLine('QUERY')) ??
-      originalMessage.slice(0, 80);
+      const catalogQuery =
+        typeof parsed.catalogQuery === 'string' &&
+        parsed.catalogQuery.trim()
+          ? parsed.catalogQuery.trim().slice(0, 100)
+          : originalMessage.slice(0, 100);
 
-    return {
-      catalogQuery: query,
-      size: this.cleanExtractedValue(readLine('SIZE')),
-      color: this.cleanExtractedValue(readLine('COLOR')),
-    };
-  }
+      const attributes = Array.isArray(parsed.attributes)
+        ? parsed.attributes
+            .filter(
+              (attribute): attribute is RequestedAttribute =>
+                typeof attribute?.name === 'string' &&
+                typeof attribute?.value === 'string' &&
+                attribute.name.trim().length > 0 &&
+                attribute.value.trim().length > 0,
+            )
+            .map((attribute) => ({
+              name: attribute.name.trim().slice(0, 50),
+              value: attribute.value.trim().slice(0, 80),
+            }))
+        : [];
 
-  private cleanExtractedValue(value: string | null): string | null {
-    if (!value) {
-      return null;
+      return {
+        catalogQuery,
+        attributes,
+      };
+    } catch {
+      return {
+        catalogQuery: originalMessage.slice(0, 100),
+        attributes: [],
+      };
     }
-
-    const cleanValue = value.trim();
-
-    if (
-      ['NONE', 'NINGUNO', 'NINGUNA', 'N/A', 'NULL', 'NO'].includes(
-        cleanValue.toUpperCase(),
-      )
-    ) {
-      return null;
-    }
-
-    return cleanValue;
   }
 
   private sameOptionValue(firstValue: string, secondValue: string): boolean {
@@ -239,26 +238,16 @@ export class AiService {
       .trim();
   }
 
-  private getFallbackReply(
-    criteria: SalesSearchCriteria,
-    resultCount: number,
-  ): string {
-    if (resultCount > 0) {
-      return 'Encontré opciones disponibles para ti. ¿Quieres que te ayude con otro color, talla o estilo?';
+  private formatPrice(price: string): string {
+    const numericPrice = Number(price);
+
+    if (!Number.isFinite(numericPrice)) {
+      return price;
     }
 
-    const details = [
-      criteria.size ? `talla ${criteria.size}` : '',
-      criteria.color ? `color ${criteria.color}` : '',
-    ]
-      .filter(Boolean)
-      .join(' y ');
-
-    if (details) {
-      return `No encontré una opción disponible con ${details}. ¿Quieres que revise otras alternativas?`;
-    }
-
-    return 'No encontré una opción disponible en este momento. Cuéntame qué prenda, color, talla o estilo buscas.';
+    return `$${numericPrice.toLocaleString('es-CO', {
+      maximumFractionDigits: 0,
+    })}`;
   }
 
   private getClient(): OpenAI {

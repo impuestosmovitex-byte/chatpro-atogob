@@ -50,6 +50,53 @@ export class ShopifyService {
   async getRecentProducts() {
     return this.searchCatalog('', 5);
   }
+      async getCollections(limit = 100) {
+    const data = await this.graphql<{
+      shop: {
+        primaryDomain: {
+          url: string;
+        };
+      };
+      collections: {
+        edges: Array<{
+          node: {
+            id: string;
+            title: string;
+            handle: string;
+          };
+        }>;
+      };
+    }>(
+      `
+        query GetCollections($first: Int!) {
+          shop {
+            primaryDomain {
+              url
+            }
+          }
+          collections(first: $first, sortKey: TITLE) {
+            edges {
+              node {
+                id
+                title
+                handle
+              }
+            }
+          }
+        }
+      `,
+      {
+        first: Math.min(Math.max(limit, 1), 100),
+      },
+    );
+
+    const storeUrl = data.shop.primaryDomain.url.replace(/\/$/, '');
+
+    return data.collections.edges.map(({ node }) => ({
+      ...node,
+      onlineStoreUrl: `${storeUrl}/collections/${node.handle}`,
+    }));
+  }
 
   async searchCatalog(searchText: string, limit = 5) {
     const catalogQuery = ['status:active', searchText.trim()]

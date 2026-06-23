@@ -69,6 +69,27 @@ export class AppController {
     }
   }
 
+  @Get('collections-test')
+  async collectionsTest() {
+    try {
+      const collections = await this.shopifyService.getCollections();
+
+      return {
+        ok: true,
+        count: collections.length,
+        collections,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Error desconocido al consultar colecciones.',
+      };
+    }
+  }
+
   @Get('ai-test')
   async aiTest(@Query('q') q = '') {
     const message = q.trim();
