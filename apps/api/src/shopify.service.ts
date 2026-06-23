@@ -42,7 +42,7 @@ export class ShopifyService {
       };
     }>(`
       {
-        products(first: 5, sortKey: UPDATED_AT, reverse: true) {
+        products(first: 5, query: "status:active", sortKey: UPDATED_AT, reverse: true) {
           edges {
             node {
               id
