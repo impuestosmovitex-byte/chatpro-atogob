@@ -9,11 +9,12 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 
-type ConversationStep = 'main' | 'service';
+type ConversationStep = 'main' | 'service' | 'sales';
 
 @Controller('webhook/whatsapp')
 export class WhatsappWebhookController {
   private readonly conversationSteps = new Map<string, ConversationStep>();
+  private readonly requestedProducts = new Map<string, string>();
 
   @Get()
   verifyWebhook(
@@ -43,7 +44,11 @@ export class WhatsappWebhookController {
     }
 
     const phone = message.from;
-    const text = message.text?.body?.trim().toLowerCase() ?? '';
+    const text = message.text?.body?.trim() ?? '';
+
+    if (!text) {
+      return 'EVENT_RECEIVED';
+    }
 
     const reply = this.buildReply(phone, text);
 
@@ -58,22 +63,30 @@ export class WhatsappWebhookController {
   }
 
   private buildReply(phone: string, text: string) {
+    const cleanText = text.toLowerCase();
     const currentStep = this.conversationSteps.get(phone) ?? 'main';
 
+    if (['hola', 'menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
+      this.conversationSteps.set(phone, 'main');
+      this.requestedProducts.delete(phone);
+
+      return this.mainMenu();
+    }
+
     if (currentStep === 'service') {
-      if (text === '1') {
+      if (cleanText === '1') {
         this.conversationSteps.set(phone, 'main');
 
         return 'Para revisar tu pedido, envíame tu número de pedido o el número de celular con el que realizaste la compra.';
       }
 
-      if (text === '2') {
+      if (cleanText === '2') {
         this.conversationSteps.set(phone, 'main');
 
         return 'Cuéntame qué ocurrió con el producto y te orientaré sobre el proceso de garantía o cambio.';
       }
 
-      if (text === '3') {
+      if (cleanText === '3') {
         this.conversationSteps.set(phone, 'main');
 
         return 'Perfecto. Un asesor de ATOGOB revisará tu caso y continuará la atención contigo.';
@@ -82,16 +95,35 @@ export class WhatsappWebhookController {
       return 'Elige una opción:\n\n1️⃣ Saber de mi pedido\n2️⃣ Garantías y cambios\n3️⃣ Hablar con un asesor';
     }
 
-    if (text === '1' || text.includes('venta')) {
+    if (currentStep === 'sales') {
+      const requestedProduct = this.requestedProducts.get(phone);
+
+      if (!requestedProduct) {
+        this.requestedProducts.set(phone, text);
+
+        return `Perfecto ✨ Busco opciones de ${text}.\n\nDime qué talla, color o estilo prefieres. También puedes enviarme una foto.`;
+      }
+
+      return `Perfecto ✨ Para ${requestedProduct}, dime qué talla, color o estilo prefieres. También puedes enviarme una foto.`;
+    }
+
+    if (cleanText === '1' || cleanText.includes('venta')) {
+      this.conversationSteps.set(phone, 'sales');
+      this.requestedProducts.delete(phone);
+
       return 'Perfecto ✨ ¿Qué producto estás buscando?\n\nPuedes escribirme el nombre, categoría, color o enviarme una foto.';
     }
 
-    if (text === '2' || text.includes('servicio')) {
+    if (cleanText === '2' || cleanText.includes('servicio')) {
       this.conversationSteps.set(phone, 'service');
 
       return 'Claro, elige una opción:\n\n1️⃣ Saber de mi pedido\n2️⃣ Garantías y cambios\n3️⃣ Hablar con un asesor';
     }
 
+    return this.mainMenu();
+  }
+
+  private mainMenu() {
     return 'Hola 👋\n\nSoy Daniela de ATOGOB.\n¿En qué puedo ayudarte?\n\n1️⃣ Ventas\n2️⃣ Servicio al cliente';
   }
 
