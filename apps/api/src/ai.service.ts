@@ -19,6 +19,10 @@ type CatalogProduct = Awaited<
 type CatalogVariant =
   CatalogProduct['variants']['edges'][number]['node'];
 
+type StoreCollection = Awaited<
+  ReturnType<ShopifyService['getCollections']>
+>[number];
+
 type ProductCandidate = {
   product: CatalogProduct;
   variant: CatalogVariant;
@@ -45,11 +49,134 @@ type SalesCatalogResult = {
   products: SalesCatalogItem[];
 };
 
+type CatalogRoute = {
+  kind: 'collection' | 'products';
+  collection: StoreCollection | null;
+};
+
+type CollectionSelection = {
+  mode: 'collection' | 'products';
+  collectionId: string | null;
+};
+
 @Injectable()
 export class AiService {
   private client: OpenAI | null = null;
 
   constructor(private readonly shopifyService: ShopifyService) {}
+
+  async answerSalesQuestion(message: string): Promise<string> {
+    const cleanMessage = message.trim();
+
+    if (!cleanMessage) {
+      return 'Cuéntame qué producto estás buscando.';
+    }
+
+    const route = await this.resolveCatalogRequest(cleanMessage);
+
+    if (route.kind === 'collection' && route.collection) {
+      return [
+        `Te comparto el catálogo de ${route.collection.title}.`,
+        'Revísalo y dime cuál producto te gustó para mostrarte sus opciones disponibles.',
+        route.collection.onlineStoreUrl,
+      ].join('\n\n');
+    }
+
+    const catalog = await this.getSalesCatalog(cleanMessage);
+
+    if (!catalog.products.length) {
+      return 'No encontré opciones que coincidan exactamente. Cuéntame otra característica del producto que buscas.';
+    }
+
+    const options = catalog.products.map((item, index) => {
+      const variantDetails = item.matchingVariant.options
+        .map((option) => `${option.name}: ${option.value}`)
+        .join(' · ');
+
+      return [
+        `${index + 1}. ${item.productTitle}`,
+        this.formatPrice(item.price),
+        variantDetails,
+        item.productUrl,
+      ].join('\n');
+    });
+
+    return [
+      'Encontré estas opciones para ti:',
+      '',
+      options.join('\n\n'),
+      '',
+      'Dime cuál te gustó y te muestro sus opciones disponibles.',
+    ].join('\n');
+  }
+
+  async resolveCatalogRequest(message: string): Promise<CatalogRoute> {
+    const cleanMessage = message.trim();
+
+    if (!cleanMessage) {
+      return {
+        kind: 'products',
+        collection: null,
+      };
+    }
+
+    const collections = await this.shopifyService.getCollections();
+
+    if (!collections.length) {
+      return {
+        kind: 'products',
+        collection: null,
+      };
+    }
+
+    const response = await this.getClient().responses.create({
+      model: this.getModel(),
+      instructions: [
+        'Clasifica el mensaje de una persona que escribe a cualquier comercio.',
+        'Debes decidir si quiere explorar una categoría amplia o si busca un producto específico.',
+        'Usa mode "collection" cuando pida ver, mirar, conocer o explorar una categoría o catálogo completo.',
+        'Usa mode "products" cuando mencione un producto específico, una referencia, características concretas o quiera validar una opción.',
+        'Solo puedes elegir una colección incluida en COLECCIONES_REALES.',
+        'No inventes colecciones, enlaces, productos, promociones ni equivalencias.',
+        'Devuelve únicamente JSON válido con esta estructura:',
+        '{"mode":"collection"|"products","collectionId":"id real o null"}',
+      ].join('\n'),
+      input: JSON.stringify({
+        mensaje_cliente: cleanMessage,
+        COLECCIONES_REALES: collections.map((collection) => ({
+          id: collection.id,
+          title: collection.title,
+          url: collection.onlineStoreUrl,
+        })),
+      }),
+    });
+
+    const selection = this.parseCollectionSelection(response.output_text);
+
+    const selectedCollectionId = selection.collectionId;
+
+    if (selection.mode !== 'collection' || !selectedCollectionId) {
+      return {
+        kind: 'products',
+        collection: null,
+      };
+    }
+
+    const collection =
+      collections.find((item) => item.id === selectedCollectionId) ?? null;
+
+    if (!collection) {
+      return {
+        kind: 'products',
+        collection: null,
+      };
+    }
+
+    return {
+      kind: 'collection',
+      collection,
+    };
+  }
 
   async getSalesCatalog(message: string): Promise<SalesCatalogResult> {
     const cleanMessage = message.trim();
@@ -93,35 +220,6 @@ export class AiService {
     };
   }
 
-  async answerSalesQuestion(message: string): Promise<string> {
-    const catalog = await this.getSalesCatalog(message);
-
-    if (!catalog.products.length) {
-      return 'No encontré opciones que coincidan exactamente. Cuéntame otra característica del producto que buscas.';
-    }
-
-    const options = catalog.products.map((item, index) => {
-      const variantDetails = item.matchingVariant.options
-        .map((option) => `${option.name}: ${option.value}`)
-        .join(' · ');
-
-      return [
-        `${index + 1}. ${item.productTitle}`,
-        this.formatPrice(item.price),
-        variantDetails,
-        item.productUrl,
-      ].join('\n');
-    });
-
-    return [
-      'Encontré estas opciones para ti:',
-      '',
-      options.join('\n\n'),
-      '',
-      'Dime cuál te gustó y te muestro sus opciones disponibles.',
-    ].join('\n');
-  }
-
   private async extractSearchCriteria(
     message: string,
   ): Promise<SalesSearchCriteria> {
@@ -132,10 +230,9 @@ export class AiService {
         'Comprende errores de escritura, abreviaturas y palabras pegadas.',
         'No respondas a la persona.',
         'No inventes productos, equivalencias, promociones ni atributos.',
-        'Devuelve únicamente un JSON válido con esta estructura:',
+        'Devuelve únicamente JSON válido con esta estructura:',
         '{"catalogQuery":"palabras para buscar","attributes":[{"name":"atributo","value":"valor"}]}',
         'attributes solo debe incluir condiciones que la persona escribió explícitamente.',
-        'Ejemplos de atributos pueden ser talla, color, capacidad, material, medida o cualquier característica solicitada.',
       ].join('\n'),
       input: message,
     });
@@ -180,14 +277,40 @@ export class AiService {
     );
   }
 
+  private parseCollectionSelection(outputText: string): CollectionSelection {
+    const cleanText = this.cleanJsonResponse(outputText);
+
+    try {
+      const parsed = JSON.parse(cleanText) as Partial<CollectionSelection>;
+
+      if (
+        parsed.mode === 'collection' &&
+        typeof parsed.collectionId === 'string' &&
+        parsed.collectionId.trim()
+      ) {
+        return {
+          mode: 'collection',
+          collectionId: parsed.collectionId.trim(),
+        };
+      }
+    } catch {
+      return {
+        mode: 'products',
+        collectionId: null,
+      };
+    }
+
+    return {
+      mode: 'products',
+      collectionId: null,
+    };
+  }
+
   private parseCriteria(
     outputText: string,
     originalMessage: string,
   ): SalesSearchCriteria {
-    const cleanText = outputText
-      .trim()
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/i, '');
+    const cleanText = this.cleanJsonResponse(outputText);
 
     try {
       const parsed = JSON.parse(cleanText) as Partial<SalesSearchCriteria>;
@@ -223,6 +346,13 @@ export class AiService {
         attributes: [],
       };
     }
+  }
+
+  private cleanJsonResponse(outputText: string): string {
+    return outputText
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
   }
 
   private sameOptionValue(firstValue: string, secondValue: string): boolean {
