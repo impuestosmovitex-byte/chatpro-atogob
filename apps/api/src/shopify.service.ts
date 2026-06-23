@@ -33,10 +33,7 @@ export class ShopifyService {
                 node: {
                   id: string;
                   title: string;
-                  price: {
-                    amount: string;
-                    currencyCode: string;
-                  };
+                  price: string;
                 };
               }>;
             };
@@ -61,10 +58,7 @@ export class ShopifyService {
                   node {
                     id
                     title
-                    price {
-                      amount
-                      currencyCode
-                    }
+                    price
                   }
                 }
               }
