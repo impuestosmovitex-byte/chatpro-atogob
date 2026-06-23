@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Backend NestJS
+/apps/api/node_modules/
+/apps/api/dist/
