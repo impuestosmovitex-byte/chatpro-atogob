@@ -10,72 +10,87 @@ type ShopifyGraphqlResponse<T> = {
   errors?: Array<{ message: string }>;
 };
 
+type ShopifyProduct = {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  onlineStoreUrl: string | null;
+  featuredImage: {
+    url: string;
+    altText: string | null;
+  } | null;
+  variants: {
+    edges: Array<{
+      node: {
+        id: string;
+        title: string;
+        price: string;
+      };
+    }>;
+  };
+};
+
 @Injectable()
 export class ShopifyService {
   private accessToken: string | null = null;
   private tokenExpiresAt = 0;
 
   async getRecentProducts() {
+    return this.searchCatalog('', 5);
+  }
+
+  async searchCatalog(searchText: string, limit = 5) {
+    const catalogQuery = ['status:active', searchText.trim()]
+      .filter(Boolean)
+      .join(' ');
+
     const data = await this.graphql<{
       products: {
-        edges: Array<{
-          node: {
-            id: string;
-            title: string;
-            handle: string;
-            status: string;
-            featuredImage: {
-              url: string;
-              altText: string | null;
-            } | null;
-            variants: {
-              edges: Array<{
-                node: {
-                  id: string;
-                  title: string;
-                  price: string;
-                };
-              }>;
-            };
-          };
-        }>;
+        edges: Array<{ node: ShopifyProduct }>;
       };
-    }>(`
-      {
-        products(first: 5, query: "status:active", sortKey: UPDATED_AT, reverse: true) {
-          edges {
-            node {
-              id
-              title
-              handle
-              status
-              featuredImage {
-                url
-                altText
-              }
-              variants(first: 3) {
-                edges {
-                  node {
-                    id
-                    title
-                    price
+    }>(
+      `
+        query SearchCatalog($first: Int!, $query: String!) {
+          products(first: $first, query: $query, sortKey: RELEVANCE) {
+            edges {
+              node {
+                id
+                title
+                handle
+                status
+                onlineStoreUrl
+                featuredImage {
+                  url
+                  altText
+                }
+                variants(first: 5) {
+                  edges {
+                    node {
+                      id
+                      title
+                      price
+                    }
                   }
                 }
               }
             }
           }
         }
-      }
-    `);
+      `,
+      {
+        first: Math.min(Math.max(limit, 1), 10),
+        query: catalogQuery,
+      },
+    );
 
-    return data.products.edges.map(({ node }) => node);
+    return data.products.edges
+      .map(({ node }) => node)
+      .filter((product) => product.onlineStoreUrl);
   }
 
   private async getAccessToken() {
-    if (
-      this.accessToken &&
-      Date.now() < this.tokenExpiresAt - 60_000
-    ) {
+    if (this.accessToken && Date.now() < this.tokenExpiresAt - 60_000) {
       return this.accessToken;
     }
 
@@ -112,7 +127,10 @@ export class ShopifyService {
     return this.accessToken;
   }
 
-  private async graphql<T>(query: string): Promise<T> {
+  private async graphql<T>(
+    query: string,
+    variables: Record<string, unknown> = {},
+  ): Promise<T> {
     const shop = this.getRequiredEnv('SHOPIFY_SHOP');
     const apiVersion = process.env.SHOPIFY_API_VERSION ?? '2026-04';
 
@@ -124,7 +142,7 @@ export class ShopifyService {
           'Content-Type': 'application/json',
           'X-Shopify-Access-Token': await this.getAccessToken(),
         },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, variables }),
       },
     );
 
@@ -134,8 +152,7 @@ export class ShopifyService {
       );
     }
 
-    const result =
-      (await response.json()) as ShopifyGraphqlResponse<T>;
+    const result = (await response.json()) as ShopifyGraphqlResponse<T>;
 
     if (result.errors?.length) {
       throw new Error(
