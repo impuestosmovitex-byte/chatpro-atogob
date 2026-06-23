@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ShopifyService } from './shopify.service';
 
 @Controller()
@@ -20,6 +20,37 @@ export class AppController {
 
       return {
         ok: true,
+        count: products.length,
+        products,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Error desconocido al consultar Shopify.',
+      };
+    }
+  }
+
+  @Get('catalog-search')
+  async catalogSearch(@Query('q') q = '') {
+    const search = q.trim();
+
+    if (!search) {
+      return {
+        ok: false,
+        error: 'Envía una búsqueda usando ?q=...',
+      };
+    }
+
+    try {
+      const products = await this.shopifyService.searchCatalog(search);
+
+      return {
+        ok: true,
+        query: search,
         count: products.length,
         products,
       };
