@@ -10,6 +10,21 @@ type ShopifyGraphqlResponse<T> = {
   errors?: Array<{ message: string }>;
 };
 
+type ShopifyVariantOption = {
+  name: string;
+  value: string;
+};
+
+type ShopifyProductVariant = {
+  id: string;
+  title: string;
+  price: string;
+  availableForSale: boolean;
+  inventoryQuantity: number | null;
+  sellableOnlineQuantity: number;
+  selectedOptions: ShopifyVariantOption[];
+};
+
 type ShopifyProduct = {
   id: string;
   title: string;
@@ -22,11 +37,7 @@ type ShopifyProduct = {
   } | null;
   variants: {
     edges: Array<{
-      node: {
-        id: string;
-        title: string;
-        price: string;
-      };
+      node: ShopifyProductVariant;
     }>;
   };
 };
@@ -64,12 +75,19 @@ export class ShopifyService {
                   url
                   altText
                 }
-                variants(first: 5) {
+                variants(first: 100) {
                   edges {
                     node {
                       id
                       title
                       price
+                      availableForSale
+                      inventoryQuantity
+                      sellableOnlineQuantity
+                      selectedOptions {
+                        name
+                        value
+                      }
                     }
                   }
                 }
@@ -85,8 +103,18 @@ export class ShopifyService {
     );
 
     return data.products.edges
-      .map(({ node }) => node)
-      .filter((product) => product.onlineStoreUrl);
+      .map(({ node }) => ({
+        ...node,
+        variants: {
+          edges: node.variants.edges.filter(
+            ({ node: variant }) => variant.availableForSale,
+          ),
+        },
+      }))
+      .filter(
+        (product) =>
+          product.onlineStoreUrl && product.variants.edges.length > 0,
+      );
   }
 
   private async getAccessToken() {
