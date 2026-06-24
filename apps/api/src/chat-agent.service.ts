@@ -36,11 +36,25 @@ export class ChatAgentService {
     session: ConversationSession,
     customerMessage: string,
   ): Promise<string> {
-    const collections = await this.shopifyService.getCollections();
-const contextStatus = this.getContextStatus(profile, session);
+    const currentIntent = await this.classifyCurrentIntent(
+  profile,
+  session,
+  customerMessage,
+);
+
+const activeSession =
+  currentIntent === 'new_catalog_search'
+    ? await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'sales',
+        context: this.clearSelectedProductContext(session.context),
+      })
+    : session;
+
+const collections = await this.shopifyService.getCollections();
+const contextStatus = this.getContextStatus(profile, activeSession);
 
 const history = contextStatus.is_within_context_window
-  ? await this.getRecentMessages(session.id)
+  ? await this.getRecentMessages(activeSession.id)
   : [];
 
     let response = await this.getClient().responses.create({
@@ -84,7 +98,7 @@ const history = contextStatus.is_within_context_window
         const result = await this.executeTool(
           item.name,
           item.arguments,
-          session,
+activeSession,
         );
 
         toolOutputs.push({
@@ -195,6 +209,84 @@ private getContextWindowHours(profile: CompanyProfile): number {
   }
 
   return 168;
+}
+private async classifyCurrentIntent(
+  profile: CompanyProfile,
+  session: ConversationSession,
+  customerMessage: string,
+): Promise<'new_catalog_search' | 'continuation' | 'other'> {
+  const instructions = `
+Clasifica el mensaje actual de una conversación comercial.
+
+Devuelve únicamente JSON válido con esta estructura:
+{"intent":"new_catalog_search"|"continuation"|"other"}
+
+new_catalog_search:
+La persona pide una categoría, producto genérico o categoría con filtros,
+aunque exista un producto anterior.
+Ejemplos:
+- "quiero una blusa negra talla S"
+- "busco pantalón negro talla 8"
+- "muéstrame vestidos"
+
+continuation:
+La persona se refiere claramente al producto anterior.
+Ejemplos:
+- "este"
+- "esa"
+- "la primera"
+- "quiero el que vimos"
+- "sí quiero ese vestido"
+
+other:
+Saludos, preguntas generales, servicio o mensajes que no pertenecen
+a las dos categorías anteriores.
+
+Estas son las instrucciones de la empresa:
+${profile.aiInstructions || 'No hay instrucciones adicionales.'}
+`.trim();
+
+  const response = await this.getClient().responses.create({
+    model: this.getModel(),
+    instructions,
+    input: JSON.stringify({
+      mensaje_actual: customerMessage,
+      producto_anterior: this.readSelectedProduct(session.context),
+    }),
+  });
+
+  const text = response.output_text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '');
+
+  try {
+    const parsed = JSON.parse(text) as { intent?: string };
+
+    if (parsed.intent === 'new_catalog_search') {
+      return 'new_catalog_search';
+    }
+
+    if (parsed.intent === 'continuation') {
+      return 'continuation';
+    }
+  } catch {
+    return 'other';
+  }
+
+  return 'other';
+}
+private clearSelectedProductContext(context: JsonObject): JsonObject {
+  const nextContext = { ...context };
+
+  delete nextContext.selectedProduct;
+  delete nextContext.selectedVariant;
+  delete nextContext.selectedAt;
+  delete nextContext.selectedVariantAt;
+  delete nextContext.purchaseIntent;
+  delete nextContext.purchaseIntentAt;
+
+  return nextContext;
 }
   private getTools(): any[] {
     return [
