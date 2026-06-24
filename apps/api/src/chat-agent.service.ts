@@ -1,3 +1,4 @@
+import { CartService } from './cart.service';
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import {
@@ -26,6 +27,7 @@ export class ChatAgentService {
   private client: OpenAI | null = null;
 
   constructor(
+    private readonly cartService: CartService,
     private readonly shopifyService: ShopifyService,
     private readonly supabaseService: SupabaseService,
     private readonly conversationMemoryService: ConversationMemoryService,
@@ -399,18 +401,49 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
         },
       },
       {
-        type: 'function',
-        name: 'set_purchase_intent',
-        description:
-          'Guarda que la persona quiere comprar el producto o variante seleccionada.',
-        strict: true,
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {},
-          required: [],
-        },
+  type: 'function',
+  name: 'add_selected_variant_to_cart',
+  description:
+    'Agrega al carrito la variante seleccionada con la cantidad confirmada por la cliente. Después de usarla, responde preguntando si desea agregar algo más o ir a pagar.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      quantity: {
+        type: 'integer',
+        minimum: 1,
       },
+    },
+    required: ['quantity'],
+  },
+},
+{
+  type: 'function',
+  name: 'get_cart',
+  description:
+    'Consulta el resumen, cantidades y total actual del carrito.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {},
+    required: [],
+  },
+},
+{
+  type: 'function',
+  name: 'create_checkout_link',
+  description:
+    'Crea el link real de carrito y pago de Shopify con los productos que ya estén agregados.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {},
+    required: [],
+  },
+},
     ];
   }
 
@@ -446,9 +479,20 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
         return this.selectVariant(session, this.readStringArray(args, 'option_values'));
       }
 
-      if (name === 'set_purchase_intent') {
-        return this.setPurchaseIntent(session);
-      }
+      if (name === 'add_selected_variant_to_cart') {
+  return this.cartService.addSelectedVariant(
+    session,
+    this.readInteger(args, 'quantity'),
+  );
+}
+
+if (name === 'get_cart') {
+  return this.cartService.getCart(session);
+}
+
+if (name === 'create_checkout_link') {
+  return this.cartService.createCheckoutLink(session);
+}
 
       return {
         ok: false,
@@ -695,8 +739,9 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
       context: {
         ...session.context,
         selectedVariant: {
-          id: variant.id,
-          title: variant.title,
+  id: variant.id,
+  legacyResourceId: variant.legacyResourceId,
+  title: variant.title,
           price: variant.price,
           options: variant.selectedOptions,
         },
@@ -707,8 +752,9 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
     return {
       ok: true,
       selected_variant: {
-        id: variant.id,
-        title: variant.title,
+  id: variant.id,
+  legacy_resource_id: variant.legacyResourceId,
+  title: variant.title,
         price_cop: variant.price,
         options: variant.selectedOptions,
       },
@@ -867,7 +913,17 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
 
     return value.trim();
   }
+private readInteger(args: JsonObject, key: string): number {
+  const value = args[key];
 
+  if (!Number.isInteger(value) || Number(value) < 1) {
+    throw new Error(
+      `El dato ${key} debe ser un número entero mayor a cero.`,
+    );
+  }
+
+  return Number(value);
+}
   private readStringArray(args: JsonObject, key: string): string[] {
     const value = args[key];
 
