@@ -50,7 +50,8 @@ export class ShopifyService {
   async getRecentProducts() {
     return this.searchCatalog('', 5);
   }
-      async getCollections(limit = 100) {
+
+  async getCollections(limit = 100) {
     const data = await this.graphql<{
       shop: {
         primaryDomain: {
@@ -96,6 +97,84 @@ export class ShopifyService {
       ...node,
       onlineStoreUrl: `${storeUrl}/collections/${node.handle}`,
     }));
+  }
+
+  async getProductFromUrl(value: string) {
+    const handle = this.extractProductHandle(value);
+
+    if (!handle) {
+      return null;
+    }
+
+    return this.getProductByHandle(handle);
+  }
+
+  async getProductByHandle(handle: string) {
+    const cleanHandle = handle.trim().toLowerCase();
+
+    if (!cleanHandle) {
+      return null;
+    }
+
+    const data = await this.graphql<{
+      productByHandle: ShopifyProduct | null;
+    }>(
+      `
+        query ProductByHandle($handle: String!) {
+          productByHandle(handle: $handle) {
+            id
+            title
+            handle
+            status
+            onlineStoreUrl
+            featuredImage {
+              url
+              altText
+            }
+            variants(first: 100) {
+              edges {
+                node {
+                  id
+                  title
+                  price
+                  availableForSale
+                  inventoryQuantity
+                  sellableOnlineQuantity
+                  selectedOptions {
+                    name
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      {
+        handle: cleanHandle,
+      },
+    );
+
+    const product = data.productByHandle;
+
+    if (!product || !product.onlineStoreUrl) {
+      return null;
+    }
+
+    const availableVariants = product.variants.edges.filter(
+      ({ node }) => node.availableForSale,
+    );
+
+    if (!availableVariants.length) {
+      return null;
+    }
+
+    return {
+      ...product,
+      variants: {
+        edges: availableVariants,
+      },
+    };
   }
 
   async searchCatalog(searchText: string, limit = 5) {
@@ -162,6 +241,16 @@ export class ShopifyService {
         (product) =>
           product.onlineStoreUrl && product.variants.edges.length > 0,
       );
+  }
+
+  private extractProductHandle(value: string): string | null {
+    const match = value.trim().match(/\/products\/([^/?#]+)/i);
+
+    if (!match?.[1]) {
+      return null;
+    }
+
+    return decodeURIComponent(match[1]).trim().toLowerCase();
   }
 
   private async getAccessToken() {
