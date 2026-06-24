@@ -8,13 +8,27 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { AiService } from './ai.service';
+import {
+  ConversationMemoryService,
+  type CompanyProfile,
+  type ConversationSession,
+} from './conversation-memory.service';
 
-type ConversationStep = 'main' | 'service' | 'sales';
+type ConversationStage = 'main' | 'service' | 'sales';
+
+type PreparedReply = {
+  reply: string;
+  companyId: string;
+  sessionId: string;
+};
 
 @Controller('webhook/whatsapp')
 export class WhatsappWebhookController {
-  private readonly conversationSteps = new Map<string, ConversationStep>();
-  private readonly requestedProducts = new Map<string, string>();
+  constructor(
+    private readonly aiService: AiService,
+    private readonly conversationMemoryService: ConversationMemoryService,
+  ) {}
 
   @Get()
   verifyWebhook(
@@ -43,88 +57,211 @@ export class WhatsappWebhookController {
       return 'EVENT_RECEIVED';
     }
 
-    const phone = message.from;
+    const phone = message.from?.trim();
     const text = message.text?.body?.trim() ?? '';
 
-    if (!text) {
+    if (!phone || !text) {
       return 'EVENT_RECEIVED';
     }
 
-    const reply = this.buildReply(phone, text);
-
     try {
-      await this.sendTextMessage(phone, reply);
+      const prepared = await this.prepareReply(phone, text);
+
+      await this.sendTextMessage(phone, prepared.reply);
+
+      await this.conversationMemoryService.saveMessage({
+        companyId: prepared.companyId,
+        sessionId: prepared.sessionId,
+        customerPhone: phone,
+        message: prepared.reply,
+        sender: 'assistant',
+        aiResponse: prepared.reply,
+      });
+
       console.log(`Respuesta enviada a ${phone}`);
     } catch (error) {
-      console.error('No se pudo enviar la respuesta:', error);
+      console.error('No se pudo procesar o enviar la respuesta:', error);
+
+      try {
+        await this.sendTextMessage(
+          phone,
+          'Estamos teniendo un inconveniente momentáneo. Por favor intenta nuevamente en unos minutos.',
+        );
+      } catch (sendError) {
+        console.error('No se pudo enviar el mensaje de respaldo:', sendError);
+      }
     }
 
     return 'EVENT_RECEIVED';
   }
 
-  private buildReply(phone: string, text: string) {
-    const cleanText = text.toLowerCase();
-    const currentStep = this.conversationSteps.get(phone) ?? 'main';
+  private async prepareReply(
+    phone: string,
+    text: string,
+  ): Promise<PreparedReply> {
+    const companySlug = this.getCompanySlug();
+
+    const profile =
+      await this.conversationMemoryService.getCompanyProfile(companySlug);
+
+    const session =
+      await this.conversationMemoryService.getOrCreateSession(
+        companySlug,
+        phone,
+      );
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: profile.id,
+      sessionId: session.id,
+      customerPhone: phone,
+      message: text,
+      sender: 'customer',
+    });
+
+    const reply = await this.resolveReply(profile, session, text);
+
+    return {
+      reply,
+      companyId: profile.id,
+      sessionId: session.id,
+    };
+  }
+
+  private async resolveReply(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    text: string,
+  ): Promise<string> {
+    const cleanText = text.toLowerCase().trim();
+    const currentStage = this.getStage(session.stage);
 
     if (['hola', 'menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
-      this.conversationSteps.set(phone, 'main');
-      this.requestedProducts.delete(phone);
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'main',
+        context: {},
+      });
 
-      return this.mainMenu();
+      return this.mainMenu(profile);
     }
 
-    if (currentStep === 'service') {
-      if (cleanText === '1') {
-        this.conversationSteps.set(phone, 'main');
-
-        return 'Para revisar tu pedido, envíame tu número de pedido o el número de celular con el que realizaste la compra.';
-      }
-
-      if (cleanText === '2') {
-        this.conversationSteps.set(phone, 'main');
-
-        return 'Cuéntame qué ocurrió con el producto y te orientaré sobre el proceso de garantía o cambio.';
-      }
-
-      if (cleanText === '3') {
-        this.conversationSteps.set(phone, 'main');
-
-        return 'Perfecto. Un asesor de ATOGOB revisará tu caso y continuará la atención contigo.';
-      }
-
-      return 'Elige una opción:\n\n1️⃣ Saber de mi pedido\n2️⃣ Garantías y cambios\n3️⃣ Hablar con un asesor';
+    if (currentStage === 'service') {
+      return this.resolveServiceReply(session, cleanText);
     }
 
-    if (currentStep === 'sales') {
-      const requestedProduct = this.requestedProducts.get(phone);
+    if (currentStage === 'sales') {
+      const reply = await this.aiService.answerSalesQuestion(text);
 
-      if (!requestedProduct) {
-        this.requestedProducts.set(phone, text);
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'sales',
+        context: {
+          ...session.context,
+          lastCustomerMessage: text,
+          lastSalesReply: reply,
+          lastSalesAt: new Date().toISOString(),
+        },
+      });
 
-        return `Perfecto ✨ Busco opciones de ${text}.\n\nDime qué talla, color o estilo prefieres. También puedes enviarme una foto.`;
-      }
-
-      return `Perfecto ✨ Para ${requestedProduct}, dime qué talla, color o estilo prefieres. También puedes enviarme una foto.`;
+      return reply;
     }
 
     if (cleanText === '1' || cleanText.includes('venta')) {
-      this.conversationSteps.set(phone, 'sales');
-      this.requestedProducts.delete(phone);
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'sales',
+        context: {},
+      });
 
-      return 'Perfecto ✨ ¿Qué producto estás buscando?\n\nPuedes escribirme el nombre, categoría, color o enviarme una foto.';
+      return [
+        'Perfecto.',
+        '¿Qué producto estás buscando?',
+        'Puedes escribirme el nombre, categoría, color, talla o estilo.',
+      ].join('\n\n');
     }
 
     if (cleanText === '2' || cleanText.includes('servicio')) {
-      this.conversationSteps.set(phone, 'service');
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'service',
+        context: {},
+      });
 
-      return 'Claro, elige una opción:\n\n1️⃣ Saber de mi pedido\n2️⃣ Garantías y cambios\n3️⃣ Hablar con un asesor';
+      return this.serviceMenu();
     }
 
-    return this.mainMenu();
+    return this.mainMenu(profile);
   }
 
-  private mainMenu() {
-    return 'Hola 👋\n\nSoy Daniela de ATOGOB.\n¿En qué puedo ayudarte?\n\n1️⃣ Ventas\n2️⃣ Servicio al cliente';
+  private async resolveServiceReply(
+    session: ConversationSession,
+    cleanText: string,
+  ): Promise<string> {
+    if (cleanText === '1') {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'main',
+        context: {},
+      });
+
+      return 'Para revisar tu pedido, envíame tu número de pedido o el número de celular con el que realizaste la compra.';
+    }
+
+    if (cleanText === '2') {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'main',
+        context: {},
+      });
+
+      return 'Cuéntame qué ocurrió con el producto y te orientaré sobre el proceso de garantía o cambio.';
+    }
+
+    if (cleanText === '3') {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'main',
+        context: {},
+      });
+
+      return 'Perfecto. Un asesor revisará tu caso y continuará la atención contigo.';
+    }
+
+    return this.serviceMenu();
+  }
+
+  private mainMenu(profile: CompanyProfile): string {
+    const introduction = profile.assistantName
+      ? `Soy ${profile.assistantName}, asistente virtual de ${profile.name}.`
+      : `Soy el asistente virtual de ${profile.name}.`;
+
+    return [
+      'Hola 👋',
+      introduction,
+      '¿En qué puedo ayudarte?',
+      '1️⃣ Ventas',
+      '2️⃣ Servicio al cliente',
+    ].join('\n\n');
+  }
+
+  private serviceMenu(): string {
+    return [
+      'Claro, elige una opción:',
+      '1️⃣ Saber de mi pedido',
+      '2️⃣ Garantías y cambios',
+      '3️⃣ Hablar con un asesor',
+    ].join('\n\n');
+  }
+
+  private getStage(stage: string): ConversationStage {
+    if (stage === 'sales' || stage === 'service') {
+      return stage;
+    }
+
+    return 'main';
+  }
+
+  private getCompanySlug(): string {
+    const companySlug = process.env.CHATPRO_COMPANY_SLUG?.trim();
+
+    if (!companySlug) {
+      throw new Error('Falta CHATPRO_COMPANY_SLUG en Railway.');
+    }
+
+    return companySlug;
   }
 
   private async sendTextMessage(to: string, body: string) {
@@ -153,8 +290,7 @@ export class WhatsappWebhookController {
     );
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error);
+      throw new Error(await response.text());
     }
   }
 }
