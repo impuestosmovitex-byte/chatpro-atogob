@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { AiService } from './ai.service';
+import { ConversationMemoryService } from './conversation-memory.service';
 import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
 
@@ -9,6 +10,7 @@ export class AppController {
     private readonly shopifyService: ShopifyService,
     private readonly aiService: AiService,
     private readonly supabaseService: SupabaseService,
+    private readonly conversationMemoryService: ConversationMemoryService,
   ) {}
 
   @Get()
@@ -137,7 +139,51 @@ export class AppController {
         error:
           error instanceof Error
             ? error.message
-            : 'Error desconocido al consultar Supabase.',
+            : 'Error desconoccido al consultar Supabase.',
+      };
+    }
+  }
+
+  @Get('memory-test')
+  async memoryTest(
+    @Query('company') company = '',
+    @Query('phone') phone = '',
+  ) {
+    const companySlug = company.trim();
+    const customerPhone = phone.trim();
+
+    if (!companySlug || !customerPhone) {
+      return {
+        ok: false,
+        error: 'Envía company y phone en la URL.',
+      };
+    }
+
+    try {
+      const profile =
+        await this.conversationMemoryService.getCompanyProfile(companySlug);
+
+      const session =
+        await this.conversationMemoryService.getOrCreateSession(
+          companySlug,
+          customerPhone,
+        );
+
+      return {
+        ok: true,
+        company: {
+          slug: profile.slug,
+          name: profile.name,
+        },
+        session,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Error desconocido al crear la sesión.',
       };
     }
   }
