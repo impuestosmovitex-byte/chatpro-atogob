@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { ChatAgentService } from './chat-agent.service';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
@@ -16,6 +17,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     AiService,
     SupabaseService,
     ConversationMemoryService,
+    ChatAgentService,
   ],
 })
 export class AppModule {}
