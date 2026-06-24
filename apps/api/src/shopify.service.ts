@@ -17,6 +17,7 @@ type ShopifyVariantOption = {
 
 type ShopifyProductVariant = {
   id: string;
+  legacyResourceId: string;
   title: string;
   price: string;
   availableForSale: boolean;
@@ -42,10 +43,22 @@ type ShopifyProduct = {
   };
 };
 
+export type ShopifyCartLineInput = {
+  variantLegacyId: string;
+  quantity: number;
+};
+
+export type ShopifyCartLinks = {
+  cartUrl: string;
+  checkoutUrl: string;
+  lines: ShopifyCartLineInput[];
+};
+
 @Injectable()
 export class ShopifyService {
   private accessToken: string | null = null;
   private tokenExpiresAt = 0;
+  private storeUrl: string | null = null;
 
   async getRecentProducts() {
     return this.searchCatalog('', 5);
@@ -91,7 +104,8 @@ export class ShopifyService {
       },
     );
 
-    const storeUrl = data.shop.primaryDomain.url.replace(/\/$/, '');
+    const storeUrl = this.normalizeStoreUrl(data.shop.primaryDomain.url);
+    this.storeUrl = storeUrl;
 
     return data.collections.edges.map(({ node }) => ({
       ...node,
@@ -135,6 +149,7 @@ export class ShopifyService {
               edges {
                 node {
                   id
+                  legacyResourceId
                   title
                   price
                   availableForSale
@@ -205,6 +220,7 @@ export class ShopifyService {
                   edges {
                     node {
                       id
+                      legacyResourceId
                       title
                       price
                       availableForSale
@@ -241,6 +257,90 @@ export class ShopifyService {
         (product) =>
           product.onlineStoreUrl && product.variants.edges.length > 0,
       );
+  }
+
+  async buildCartLinks(
+    lines: ShopifyCartLineInput[],
+  ): Promise<ShopifyCartLinks> {
+    const normalizedLines = this.normalizeCartLines(lines);
+    const storeUrl = await this.getStoreUrl();
+
+    const cartPath = normalizedLines
+      .map((line) => `${line.variantLegacyId}:${line.quantity}`)
+      .join(',');
+
+    return {
+      cartUrl: `${storeUrl}/cart/${cartPath}?storefront=true`,
+      checkoutUrl: `${storeUrl}/cart/${cartPath}`,
+      lines: normalizedLines,
+    };
+  }
+
+  private normalizeCartLines(
+    lines: ShopifyCartLineInput[],
+  ): ShopifyCartLineInput[] {
+    const mergedLines = new Map<string, number>();
+
+    for (const line of lines) {
+      const variantLegacyId = String(line.variantLegacyId ?? '').trim();
+      const quantity = Number(line.quantity);
+
+      if (!/^\d+$/.test(variantLegacyId)) {
+        throw new Error('La variante no tiene un ID válido para el carrito.');
+      }
+
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        throw new Error('La cantidad debe ser un número entero mayor a cero.');
+      }
+
+      mergedLines.set(
+        variantLegacyId,
+        (mergedLines.get(variantLegacyId) ?? 0) + quantity,
+      );
+    }
+
+    if (!mergedLines.size) {
+      throw new Error('No hay productos para agregar al carrito.');
+    }
+
+    return Array.from(mergedLines.entries()).map(
+      ([variantLegacyId, quantity]) => ({
+        variantLegacyId,
+        quantity,
+      }),
+    );
+  }
+
+  private async getStoreUrl() {
+    if (this.storeUrl) {
+      return this.storeUrl;
+    }
+
+    const data = await this.graphql<{
+      shop: {
+        primaryDomain: {
+          url: string;
+        };
+      };
+    }>(
+      `
+        query GetStoreDomain {
+          shop {
+            primaryDomain {
+              url
+            }
+          }
+        }
+      `,
+    );
+
+    this.storeUrl = this.normalizeStoreUrl(data.shop.primaryDomain.url);
+
+    return this.storeUrl;
+  }
+
+  private normalizeStoreUrl(url: string) {
+    return url.trim().replace(/\/$/, '');
   }
 
   private extractProductHandle(value: string): string | null {
