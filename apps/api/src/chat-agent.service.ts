@@ -715,14 +715,89 @@ export class ChatAgentService {
   }
 
   private cleanReply(reply: string): string {
-    const clean = reply.trim();
+  const clean = this.removeInternalBlocks(reply)
+    .replace(/\bto=functions\.[a-z0-9_.-]+\s*/gi, '')
+    .replace(/\bfunctions\.[a-z0-9_.-]+\s*/gi, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 
-    if (clean) {
-      return clean;
+  if (clean) {
+    return clean.slice(0, 1500);
+  }
+
+  return 'Cuéntame qué producto buscas y te ayudo a encontrarlo.';
+}
+
+private removeInternalBlocks(value: string): string {
+  let result = '';
+  let index = 0;
+
+  while (index < value.length) {
+    if (value[index] !== '{') {
+      result += value[index];
+      index += 1;
+      continue;
     }
 
-    return 'Cuéntame qué producto buscas y te ayudo a encontrarlo.';
+    const closingIndex = this.findClosingBrace(value, index);
+
+    if (closingIndex === -1) {
+      result += value[index];
+      index += 1;
+      continue;
+    }
+
+    index = closingIndex + 1;
   }
+
+  return result;
+}
+
+private findClosingBrace(
+  value: string,
+  startIndex: number,
+): number {
+  let depth = 0;
+  let insideString = false;
+  let escaped = false;
+
+  for (let index = startIndex; index < value.length; index += 1) {
+    const character = value[index];
+
+    if (insideString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        insideString = false;
+      }
+
+      continue;
+    }
+
+    if (character === '"') {
+      insideString = true;
+      continue;
+    }
+
+    if (character === '{') {
+      depth += 1;
+      continue;
+    }
+
+    if (character === '}') {
+      depth -= 1;
+
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
 
   private normalizeText(value: string): string {
     return value
