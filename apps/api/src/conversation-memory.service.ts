@@ -18,6 +18,7 @@ export type ConversationSession = {
   customerPhone: string;
   stage: string;
   context: JsonObject;
+  lastMessageAt: string;
 };
 
 type SaveMessageInput = {
@@ -96,7 +97,9 @@ export class ConversationMemoryService {
 
     const { data: existingSession, error: existingError } = await client
       .from('conversation_sessions')
-      .select('id, company_id, customer_phone, stage, context')
+      .select(
+        'id, company_id, customer_phone, stage, context, last_message_at',
+      )
       .eq('company_id', company.id)
       .eq('customer_phone', phone)
       .maybeSingle();
@@ -123,7 +126,9 @@ export class ConversationMemoryService {
         last_message_at: now,
         updated_at: now,
       })
-      .select('id, company_id, customer_phone, stage, context')
+      .select(
+        'id, company_id, customer_phone, stage, context, last_message_at',
+      )
       .single();
 
     if (createError || !createdSession) {
@@ -169,7 +174,9 @@ export class ConversationMemoryService {
       .from('conversation_sessions')
       .update(updateData)
       .eq('id', sessionId)
-      .select('id, company_id, customer_phone, stage, context')
+      .select(
+        'id, company_id, customer_phone, stage, context, last_message_at',
+      )
       .single();
 
     if (error || !data) {
@@ -181,6 +188,25 @@ export class ConversationMemoryService {
     }
 
     return this.toSession(data);
+  }
+
+  async touchSession(sessionId: string): Promise<void> {
+    const now = new Date().toISOString();
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('conversation_sessions')
+      .update({
+        last_message_at: now,
+        updated_at: now,
+      })
+      .eq('id', sessionId);
+
+    if (error) {
+      throw new Error(
+        `No se pudo actualizar la actividad de la sesión: ${error.message}`,
+      );
+    }
   }
 
   async saveMessage(input: SaveMessageInput): Promise<void> {
@@ -209,6 +235,7 @@ export class ConversationMemoryService {
     customer_phone: string;
     stage: string;
     context: unknown;
+    last_message_at: string | null;
   }): ConversationSession {
     return {
       id: session.id,
@@ -216,6 +243,8 @@ export class ConversationMemoryService {
       customerPhone: session.customer_phone,
       stage: session.stage,
       context: this.toJsonObject(session.context),
+      lastMessageAt:
+        session.last_message_at ?? new Date(0).toISOString(),
     };
   }
 

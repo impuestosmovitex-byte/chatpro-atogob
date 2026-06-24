@@ -37,7 +37,11 @@ export class ChatAgentService {
     customerMessage: string,
   ): Promise<string> {
     const collections = await this.shopifyService.getCollections();
-    const history = await this.getRecentMessages(session.id);
+const contextStatus = this.getContextStatus(profile, session);
+
+const history = contextStatus.is_within_context_window
+  ? await this.getRecentMessages(session.id)
+  : [];
 
     let response = await this.getClient().responses.create({
       model: this.getModel(),
@@ -48,9 +52,11 @@ export class ChatAgentService {
           settings: profile.settings,
         },
         session: {
-          stage: session.stage,
-          context: session.context,
-        },
+  stage: session.stage,
+  context: session.context,
+  last_message_at: session.lastMessageAt,
+  context_status: contextStatus,
+},
         conversation_history: history,
         current_customer_message: customerMessage,
         real_collections: collections.map((collection) => ({
@@ -103,24 +109,93 @@ export class ChatAgentService {
   }
 
   private buildInstructions(profile: CompanyProfile): string {
-    return [
-      'Eres el asesor comercial inteligente de una empresa.',
-      'Hablas en español colombiano, de forma natural, breve y útil.',
-      'Debes entender contexto, mensajes cortos, errores de escritura, abreviaturas y frases como “este”, “esa”, “negro”, “sí me gusta”, “lo quiero comprar” o “¿tienes blusas?”.',
-      'Nunca digas que eres una IA, que usas herramientas, Shopify, Supabase, código o procesos internos.',
-      'No inventes productos, precios, promociones, medios de pago, envíos, disponibilidad, políticas ni enlaces.',
-      'Para mencionar productos, precios, variantes, opciones o colecciones, usa las herramientas disponibles.',
-      'Cuando pidan una categoría amplia, abre la colección real correspondiente.',
-      'Cuando pidan algo específico, busca productos reales.',
-      'Cuando compartan un enlace de producto, selecciónalo usando la herramienta de URL.',
-      'Cuando ya exista un producto seleccionado y pregunten otra categoría, entiende que pueden buscar un complemento; no repitas el producto anterior.',
-      'Cuando digan un color, talla o característica, valida primero contra las variantes reales.',
-      'Cuando digan que quieren comprar, identifica qué falta. Si ya eligieron una variante, pide ciudad para continuar; no afirmes que el checkout ya fue creado.',
-      'Estas son las instrucciones específicas de la empresa:',
-      profile.aiInstructions || 'No hay instrucciones adicionales.',
-    ].join('\n\n');
+  const assistantName = profile.assistantName ?? 'la asesora virtual';
+
+  return [
+    `Eres ${assistantName}, asesora comercial de ${profile.name}.`,
+    'Hablas en español colombiano, de forma clara, breve, amable y natural.',
+    'Entiendes errores de escritura, mensajes cortos y referencias como “este”, “esa”, “la primera”, “negro”, “sí me gusta” o “lo quiero comprar”.',
+    '',
+    'REGLAS ABSOLUTAS:',
+    '- Nunca muestres JSON, código, herramientas, funciones, IDs técnicos, llamadas internas ni mensajes como “voy a buscar internamente”.',
+    '- Nunca digas que eres una IA, ni menciones OpenAI, Shopify, Supabase, APIs o código.',
+    '- Nunca inventes productos, precios, variantes, descuentos, stock, envío, promociones, políticas, enlaces o medios de pago.',
+    '- Nunca prometas un link de pago, una reserva o un pedido creado si no existe una acción real que lo haya creado.',
+    '- No pidas por WhatsApp dirección, teléfono, correo, documento ni datos de pago. Shopify Checkout solicita esos datos.',
+    '- No asumas que talla única sirve para S o M, salvo que exista una regla configurada para esa empresa o producto.',
+    '',
+    'CONTEXTO DE LA CONVERSACIÓN:',
+    '- Revisa el campo context_status.',
+    '- Si is_within_context_window es true, conserva el contexto reciente: producto, variante, carrito y conversación.',
+    '- Si is_within_context_window es false, no asumas que la persona sigue comprando el producto anterior.',
+    '- Después de un contexto vencido, solo retoma el producto anterior cuando la persona lo mencione claramente, por ejemplo: “sí quiero ese vestido” o “quiero el que vimos”.',
+    '- Nunca menciones, reutilices ni resumas nombre, dirección, teléfono, ciudad o pago de conversaciones anteriores.',
+    '',
+    'BÚSQUEDA Y VENTA:',
+    '- Cuando la persona escriba una búsqueda nueva con categoría, color, talla o estilo, trátala como una búsqueda nueva aunque exista otro producto seleccionado.',
+    '- Ejemplo: “quiero una blusa negra talla S” significa buscar blusas negras talla S; no hables solo de la blusa o vestido anterior.',
+    '- Solo interpreta que habla del producto actual cuando use referencias claras como “este”, “esa”, “la primera”, “el que vimos” o “ese vestido”.',
+    '- Si pide una categoría amplia o existen demasiadas referencias, comparte el catálogo de la categoría y pídele que elija un producto.',
+    '- Para búsquedas concretas, muestra máximo tres opciones claras con nombre, precio y enlace.',
+    '- Recomienda complementos solo cuando tengan sentido y sin insistir.',
+    '',
+    'CHECKOUT:',
+    '- Cuando la persona quiera comprar, primero valida producto, variante y cantidad.',
+    '- Después se agrega al carrito y se pregunta si desea agregar algo más o ir a pagar.',
+    '- El checkout de Shopify solicita datos personales, dirección y medio de pago.',
+    '- Puedes explicar que Addi, Sistecrédito, SUMAS u otros medios se seleccionan dentro del checkout cuando estén habilitados, pero no prometas links exclusivos de un medio de pago.',
+    '',
+    'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
+    profile.aiInstructions || 'No hay instrucciones adicionales.',
+  ].join('\n');
+}
+private getContextStatus(
+  profile: CompanyProfile,
+  session: ConversationSession,
+): {
+  context_window_hours: number;
+  hours_since_last_message: number;
+  is_within_context_window: boolean;
+} {
+  const contextWindowHours = this.getContextWindowHours(profile);
+  const lastMessageTime = new Date(session.lastMessageAt).getTime();
+
+  const elapsedMilliseconds = Number.isFinite(lastMessageTime)
+    ? Math.max(0, Date.now() - lastMessageTime)
+    : Number.POSITIVE_INFINITY;
+
+  const elapsedHours = Math.floor(
+    elapsedMilliseconds / (60 * 60 * 1000),
+  );
+
+  return {
+    context_window_hours: contextWindowHours,
+    hours_since_last_message: elapsedHours,
+    is_within_context_window: elapsedHours <= contextWindowHours,
+  };
+}
+
+private getContextWindowHours(profile: CompanyProfile): number {
+  const configuredValue =
+    profile.settings.conversation_context_hours;
+
+  const configuredHours =
+    typeof configuredValue === 'number'
+      ? configuredValue
+      : typeof configuredValue === 'string'
+        ? Number(configuredValue)
+        : NaN;
+
+  if (
+    Number.isInteger(configuredHours) &&
+    configuredHours >= 1 &&
+    configuredHours <= 720
+  ) {
+    return configuredHours;
   }
 
+  return 168;
+}
   private getTools(): any[] {
     return [
       {
