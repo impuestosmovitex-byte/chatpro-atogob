@@ -325,7 +325,7 @@ export class CartRecoveryService {
       .update({
         recovery_step: sequence,
         cart_state: isLastRule ? 'closed' : cart.cart_state,
-        last_activity_at: now,
+        last_recovery_sent_at: now,
         updated_at: now,
       })
       .eq('id', cart.id);

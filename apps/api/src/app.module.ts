@@ -1,3 +1,4 @@
+import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AiService } from './ai.service';
@@ -17,6 +18,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
   providers: [
     AppService,
     ShopifyService,
+    ShopifyAbandonedCheckoutSyncService,
     AiService,
     SupabaseService,
     ConversationMemoryService,

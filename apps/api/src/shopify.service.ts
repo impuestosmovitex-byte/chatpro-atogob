@@ -455,6 +455,111 @@ async getOpenAbandonedCheckoutsCount() {
       has_recovery_url: Boolean(node.abandonedCheckoutUrl),
     }));
   }
+    async listOpenAbandonedCheckoutsUpdatedSince(
+    updatedSince: string,
+    limit = 50,
+  ) {
+    const normalizedUpdatedSince = new Date(updatedSince).toISOString();
+    const data = await this.graphql<{
+      abandonedCheckouts: {
+        edges: Array<{
+          node: {
+            id: string;
+            createdAt: string;
+            updatedAt: string;
+            abandonedCheckoutUrl: string;
+            totalPriceSet: {
+              shopMoney: {
+                amount: string;
+                currencyCode: string;
+              };
+            };
+            lineItems: {
+              edges: Array<{
+                node: {
+                  title: string | null;
+                  variantTitle: string | null;
+                  quantity: number;
+                  originalUnitPriceSet: {
+                    shopMoney: {
+                      amount: string;
+                      currencyCode: string;
+                    };
+                  };
+                };
+              }>;
+            };
+          };
+        }>;
+      };
+    }>(
+      `
+        query OpenAbandonedCheckoutsForSync(
+          $first: Int!
+          $query: String!
+        ) {
+          abandonedCheckouts(
+            first: $first
+            query: $query
+            sortKey: CREATED_AT
+            reverse: true
+          ) {
+            edges {
+              node {
+                id
+                createdAt
+                updatedAt
+                abandonedCheckoutUrl
+                totalPriceSet {
+                  shopMoney {
+                    amount
+                    currencyCode
+                  }
+                }
+                lineItems(first: 50) {
+                  edges {
+                    node {
+                      title
+                      variantTitle
+                      quantity
+                      originalUnitPriceSet {
+                        shopMoney {
+                          amount
+                          currencyCode
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      {
+        first: Math.min(Math.max(limit, 1), 50),
+        query: [
+          'status:open',
+          'recovery_state:not_recovered',
+          `updated_at:>='${normalizedUpdatedSince}'`,
+        ].join(' '),
+      },
+    );
+
+    return data.abandonedCheckouts.edges.map(({ node }) => ({
+      externalId: node.id,
+      createdAt: node.createdAt,
+      updatedAt: node.updatedAt,
+      checkoutUrl: node.abandonedCheckoutUrl,
+      total: node.totalPriceSet.shopMoney,
+      lines: node.lineItems.edges.map(({ node: line }) => ({
+        title: line.title,
+        variantTitle: line.variantTitle,
+        quantity: line.quantity,
+        unitPrice: line.originalUnitPriceSet.shopMoney,
+      })),
+    }));
+  }
   private extractProductHandle(value: string): string | null {
     const match = value.trim().match(/\/products\/([^/?#]+)/i);
 

@@ -1,13 +1,15 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Headers, Post, Query } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { ShopifyService } from './shopify.service';
+import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 import { SupabaseService } from './supabase.service';
 
 @Controller()
 export class AppController {
   constructor(
     private readonly shopifyService: ShopifyService,
+    private readonly shopifyAbandonedCheckoutSyncService: ShopifyAbandonedCheckoutSyncService,
     private readonly aiService: AiService,
     private readonly supabaseService: SupabaseService,
     private readonly conversationMemoryService: ConversationMemoryService,
@@ -133,6 +135,87 @@ export class AppController {
           error instanceof Error
             ? error.message
             : 'No se pudieron previsualizar los abandonados de Shopify.',
+      };
+    }
+  }
+  @Post('internal/shopify-abandoned-checkouts/sync')
+  async syncShopifyAbandonedCheckouts(
+    @Headers('x-chatpro-internal-key') providedKey = '',
+    @Query('company') companySlug = '',
+    @Query('since') updatedSince = '',
+    @Query('limit') limit = '3',
+  ) {
+    const expectedKey = process.env.CHATPRO_INTERNAL_SYNC_KEY?.trim();
+
+    if (!expectedKey || providedKey !== expectedKey) {
+      return {
+        ok: false,
+        error: 'No autorizado.',
+      };
+    }
+
+    const cleanCompanySlug = companySlug.trim().toLowerCase();
+    const cleanUpdatedSince = updatedSince.trim();
+    const parsedLimit = Number(limit);
+
+    if (!cleanCompanySlug || !cleanUpdatedSince) {
+      return {
+        ok: false,
+        error: 'Envía company y since.',
+      };
+    }
+
+    if (
+      !Number.isInteger(parsedLimit) ||
+      parsedLimit < 1 ||
+      parsedLimit > 50
+    ) {
+      return {
+        ok: false,
+        error: 'limit debe ser un entero entre 1 y 50.',
+      };
+    }
+
+    try {
+      const { data: company, error: companyError } =
+        await this.supabaseService
+          .getClient()
+          .from('companies')
+          .select('id')
+          .eq('slug', cleanCompanySlug)
+          .maybeSingle();
+
+      if (companyError) {
+        throw new Error(
+          `No se pudo consultar la empresa: ${companyError.message}`,
+        );
+      }
+
+      if (!company) {
+        return {
+          ok: false,
+          error: 'Empresa no encontrada.',
+        };
+      }
+
+      const result =
+        await this.shopifyAbandonedCheckoutSyncService.syncCompany(
+          company.id,
+          cleanUpdatedSince,
+          parsedLimit,
+        );
+
+      return {
+        ok: true,
+        result,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'No se pudo sincronizar Shopify.',
       };
     }
   }
