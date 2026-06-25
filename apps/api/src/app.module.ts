@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AiService } from './ai.service';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { CartRecoveryService } from './cart-recovery.service';
 import { CartService } from './cart.service';
 import { ChatAgentService } from './chat-agent.service';
 import { ConversationMemoryService } from './conversation-memory.service';
@@ -10,7 +12,7 @@ import { SupabaseService } from './supabase.service';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 
 @Module({
-  imports: [],
+  imports: [ScheduleModule.forRoot()],
   controllers: [AppController, WhatsappWebhookController],
   providers: [
     AppService,
@@ -20,6 +22,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     ConversationMemoryService,
     CartService,
     ChatAgentService,
+    CartRecoveryService,
   ],
 })
 export class AppModule {}

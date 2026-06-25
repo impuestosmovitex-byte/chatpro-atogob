@@ -87,6 +87,12 @@ export class CartService {
         quantity,
       });
     }
+    const links = await this.shopifyService.buildCartLinks(
+  cart.map((line) => ({
+    variantLegacyId: line.variantLegacyId,
+    quantity: line.quantity,
+  })),
+);
 
     const updatedSession =
       await this.conversationMemoryService.updateSession(session.id, {
@@ -94,15 +100,24 @@ export class CartService {
         context: {
           ...session.context,
           cart,
-          lastCartUpdatedAt: new Date().toISOString(),
+lastCartUrl: links.cartUrl,
+lastCheckoutUrl: links.checkoutUrl,
+lastCartUpdatedAt: new Date().toISOString(),
         },
       });
 
-    await this.syncRecoveryCart(updatedSession, cart, 'active', null);
+    await this.syncRecoveryCart(
+  updatedSession,
+  cart,
+  'active',
+  links.checkoutUrl,
+);
 
     return {
       ok: true,
       cart: this.cartSummary(cart),
+      cart_url: links.cartUrl,
+checkout_url: links.checkoutUrl,
     };
   }
 
