@@ -94,6 +94,28 @@ export class AppController {
     }
   }
 
+  @Get('shopify-abandoned-checkouts-test')
+  async shopifyAbandonedCheckoutsTest() {
+    try {
+      const result =
+        await this.shopifyService.getOpenAbandonedCheckoutsCount();
+
+      return {
+        ok: true,
+        open_abandoned_checkouts: result.count,
+        precision: result.precision,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'No se pudieron consultar los abandonados de Shopify.',
+      };
+    }
+  }
+
   @Get('ai-test')
   async aiTest(@Query('q') q = '') {
     const message = q.trim();
@@ -139,7 +161,7 @@ export class AppController {
         error:
           error instanceof Error
             ? error.message
-            : 'Error desconoccido al consultar Supabase.',
+            : 'Error desconocido al consultar Supabase.',
       };
     }
   }

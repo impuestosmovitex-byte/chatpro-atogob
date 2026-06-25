@@ -342,7 +342,28 @@ export class ShopifyService {
   private normalizeStoreUrl(url: string) {
     return url.trim().replace(/\/$/, '');
   }
+async getOpenAbandonedCheckoutsCount() {
+  const data = await this.graphql<{
+    abandonedCheckoutsCount: {
+      count: number;
+      precision: string;
+    };
+  }>(
+    `
+      query OpenAbandonedCheckoutsCount($query: String!) {
+        abandonedCheckoutsCount(query: $query) {
+          count
+          precision
+        }
+      }
+    `,
+    {
+      query: 'status:open recovery_state:not_recovered',
+    },
+  );
 
+  return data.abandonedCheckoutsCount;
+}
   private extractProductHandle(value: string): string | null {
     const match = value.trim().match(/\/products\/([^/?#]+)/i);
 
