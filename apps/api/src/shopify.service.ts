@@ -372,6 +372,12 @@ async getOpenAbandonedCheckoutsCount() {
             createdAt: string;
             updatedAt: string;
             abandonedCheckoutUrl: string;
+            shippingAddress: {
+  phone: string | null;
+} | null;
+billingAddress: {
+  phone: string | null;
+} | null;
             totalPriceSet: {
               shopMoney: {
                 amount: string;
@@ -410,6 +416,12 @@ async getOpenAbandonedCheckoutsCount() {
                 createdAt
                 updatedAt
                 abandonedCheckoutUrl
+                                shippingAddress {
+                  phone
+                }
+                billingAddress {
+                  phone
+                }
                 totalPriceSet {
                   shopMoney {
                     amount
@@ -453,6 +465,9 @@ async getOpenAbandonedCheckoutsCount() {
         unit_price: line.originalUnitPriceSet.shopMoney,
       })),
       has_recovery_url: Boolean(node.abandonedCheckoutUrl),
+            has_phone: Boolean(
+        node.shippingAddress?.phone || node.billingAddress?.phone,
+      ),
     }));
   }
     async listOpenAbandonedCheckoutsUpdatedSince(
