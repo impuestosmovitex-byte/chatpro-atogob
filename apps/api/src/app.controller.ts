@@ -115,6 +115,27 @@ export class AppController {
       };
     }
   }
+  @Get('shopify-abandoned-checkouts-preview')
+  async shopifyAbandonedCheckoutsPreview() {
+    try {
+      const abandonedCheckouts =
+        await this.shopifyService.getOpenAbandonedCheckoutsPreview();
+
+      return {
+        ok: true,
+        count: abandonedCheckouts.length,
+        abandoned_checkouts: abandonedCheckouts,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'No se pudieron previsualizar los abandonados de Shopify.',
+      };
+    }
+  }
 
   @Get('ai-test')
   async aiTest(@Query('q') q = '') {
