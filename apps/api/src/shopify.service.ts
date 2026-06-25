@@ -402,7 +402,7 @@ async getOpenAbandonedCheckoutsCount() {
           abandonedCheckouts(
             first: $first
             query: $query
-            sortKey: UPDATED_AT
+            sortKey: CREATED_AT
             reverse: true
           ) {
             edges {
