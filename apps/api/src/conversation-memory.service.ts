@@ -228,7 +228,119 @@ export class ConversationMemoryService {
       throw new Error(`No se pudo guardar el mensaje: ${error.message}`);
     }
   }
+  async getCompanyProfileById(
+    companyId: string,
+  ): Promise<CompanyProfile> {
+    const id = companyId.trim();
 
+    if (!id) {
+      throw new Error('Falta el identificador de la empresa.');
+    }
+
+    const client = this.supabaseService.getClient();
+
+    const { data: company, error: companyError } = await client
+      .from('companies')
+      .select('id, slug, name, status')
+      .eq('id', id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (companyError) {
+      throw new Error(
+        `No se pudo consultar la empresa: ${companyError.message}`,
+      );
+    }
+
+    if (!company) {
+      throw new Error('No existe una empresa activa con ese identificador.');
+    }
+
+    const { data: companySettings, error: settingsError } = await client
+      .from('company_settings')
+      .select('assistant_name, ai_instructions, settings')
+      .eq('company_id', company.id)
+      .maybeSingle();
+
+    if (settingsError) {
+      throw new Error(
+        `No se pudo consultar la configuración: ${settingsError.message}`,
+      );
+    }
+
+    return {
+      id: company.id,
+      slug: company.slug,
+      name: company.name,
+      assistantName: companySettings?.assistant_name ?? null,
+      aiInstructions: companySettings?.ai_instructions ?? '',
+      settings: this.toJsonObject(companySettings?.settings),
+    };
+  }
+
+  async getOrCreateSessionByCompanyId(
+    companyId: string,
+    customerPhone: string,
+  ): Promise<ConversationSession> {
+    const id = companyId.trim();
+    const phone = customerPhone.trim();
+
+    if (!id) {
+      throw new Error('Falta el identificador de la empresa.');
+    }
+
+    if (!phone) {
+      throw new Error('Falta el número de teléfono del cliente.');
+    }
+
+    const client = this.supabaseService.getClient();
+
+    const { data: existingSession, error: existingError } = await client
+      .from('conversation_sessions')
+      .select(
+        'id, company_id, customer_phone, stage, context, last_message_at',
+      )
+      .eq('company_id', id)
+      .eq('customer_phone', phone)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new Error(
+        `No se pudo consultar la sesión: ${existingError.message}`,
+      );
+    }
+
+    if (existingSession) {
+      return this.toSession(existingSession);
+    }
+
+    const now = new Date().toISOString();
+
+    const { data: createdSession, error: createError } = await client
+      .from('conversation_sessions')
+      .insert({
+        company_id: id,
+        customer_phone: phone,
+        stage: 'main',
+        context: {},
+        last_message_at: now,
+        updated_at: now,
+      })
+      .select(
+        'id, company_id, customer_phone, stage, context, last_message_at',
+      )
+      .single();
+
+    if (createError || !createdSession) {
+      throw new Error(
+        `No se pudo crear la sesión: ${
+          createError?.message ?? 'respuesta vacía'
+        }`,
+      );
+    }
+
+    return this.toSession(createdSession);
+  }
   private toSession(session: {
     id: string;
     company_id: string;

@@ -1,3 +1,4 @@
+import { CompanyIntegrationService } from './company-integration.service';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -16,6 +17,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
   imports: [ScheduleModule.forRoot()],
   controllers: [AppController, WhatsappWebhookController],
   providers: [
+    CompanyIntegrationService,
     AppService,
     ShopifyService,
     ShopifyAbandonedCheckoutSyncService,

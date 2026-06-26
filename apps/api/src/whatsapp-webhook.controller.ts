@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ChatAgentService } from './chat-agent.service';
+import { CompanyIntegrationService } from './company-integration.service';
 import {
   ConversationMemoryService,
   type CompanyProfile,
@@ -28,6 +29,7 @@ export class WhatsappWebhookController {
   constructor(
     private readonly chatAgentService: ChatAgentService,
     private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly companyIntegrationService: CompanyIntegrationService,
   ) {}
 
   @Get()
@@ -63,16 +65,30 @@ export class WhatsappWebhookController {
     }
 
     try {
-      const companySlug = this.getCompanySlug();
+      const incomingPhoneNumberId =
+        this.getIncomingPhoneNumberId(body);
+
+      const integration =
+        await this.companyIntegrationService.findActiveIntegrationByExternalId(
+          'meta',
+          'whatsapp',
+          incomingPhoneNumberId,
+        );
+
+      if (!integration) {
+        throw new Error(
+          'No existe una empresa activa para el canal de WhatsApp entrante.',
+        );
+      }
 
       const profile =
-        await this.conversationMemoryService.getCompanyProfile(
-          companySlug,
+        await this.conversationMemoryService.getCompanyProfileById(
+          integration.companyId,
         );
 
       const session =
-        await this.conversationMemoryService.getOrCreateSession(
-          companySlug,
+        await this.conversationMemoryService.getOrCreateSessionByCompanyId(
+          integration.companyId,
           phone,
         );
 
@@ -161,8 +177,6 @@ export class WhatsappWebhookController {
       return this.resolveServiceReply(session, cleanText);
     }
 
-    // Desde aquí, Ventas, Producto, Variante y Compra
-    // pasan siempre por OpenAI con contexto e historial.
     return this.chatAgentService.reply(profile, session, text);
   }
 
@@ -241,14 +255,22 @@ export class WhatsappWebhookController {
     return body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0] ?? null;
   }
 
-  private getCompanySlug(): string {
-    const companySlug = process.env.CHATPRO_COMPANY_SLUG?.trim();
+  private getIncomingPhoneNumberId(body: any): string {
+    const rawPhoneNumberId =
+      body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
 
-    if (!companySlug) {
-      throw new Error('Falta CHATPRO_COMPANY_SLUG en Railway.');
+    const phoneNumberId =
+      typeof rawPhoneNumberId === 'string'
+        ? rawPhoneNumberId.trim()
+        : '';
+
+    if (!phoneNumberId) {
+      throw new Error(
+        'Meta no envió el identificador del canal de WhatsApp.',
+      );
     }
 
-    return companySlug;
+    return phoneNumberId;
   }
 
   private async sendTextMessage(to: string, body: string) {
