@@ -44,7 +44,7 @@ export class ChatAgentService {
   customerMessage,
 );
 
-const activeSession =
+let activeSession =
   currentIntent === 'new_catalog_search'
     ? await this.conversationMemoryService.updateSession(session.id, {
         stage: 'sales',
@@ -68,9 +68,9 @@ const history = contextStatus.is_within_context_window
           settings: profile.settings,
         },
         session: {
-  stage: session.stage,
-  context: session.context,
-  last_message_at: session.lastMessageAt,
+  stage: activeSession.stage,
+  context: activeSession.context,
+  last_message_at: activeSession.lastMessageAt,
   context_status: contextStatus,
 },
         conversation_history: history,
@@ -108,6 +108,10 @@ activeSession,
           call_id: item.call_id,
           output: JSON.stringify(result),
         });
+        activeSession =
+  await this.conversationMemoryService.getSessionById(
+    activeSession.id,
+  );
       }
 
       if (!toolOutputs.length) {

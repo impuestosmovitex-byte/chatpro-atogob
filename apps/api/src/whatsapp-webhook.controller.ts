@@ -59,6 +59,7 @@ export class WhatsappWebhookController {
 
     const phone = message.from?.trim();
     const text = message.text?.body?.trim() ?? '';
+    const incomingMessageId = this.getIncomingMessageId(message);
 
     if (!phone || !text) {
       return 'EVENT_RECEIVED';
@@ -92,13 +93,20 @@ export class WhatsappWebhookController {
           phone,
         );
 
-      await this.conversationMemoryService.saveMessage({
-        companyId: profile.id,
-        sessionId: session.id,
-        customerPhone: phone,
-        message: text,
-        sender: 'customer',
-      });
+      const receivedMessage =
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: phone,
+          message: text,
+          sender: 'customer',
+          providerMessageId: incomingMessageId,
+        });
+
+      if (receivedMessage === 'duplicate') {
+        console.log(`Mensaje duplicado ignorado de ${phone}`);
+        return 'EVENT_RECEIVED';
+      }
 
       const reply = await this.resolveReply(profile, session, text);
 
@@ -253,6 +261,14 @@ export class WhatsappWebhookController {
 
   private getIncomingMessage(body: any) {
     return body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0] ?? null;
+  }
+
+  private getIncomingMessageId(message: any): string | null {
+    const rawMessageId = message?.id;
+
+    return typeof rawMessageId === 'string' && rawMessageId.trim()
+      ? rawMessageId.trim()
+      : null;
   }
 
   private getIncomingPhoneNumberId(body: any): string {
