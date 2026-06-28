@@ -67,15 +67,8 @@ export class CartService {
       };
     }
 
-    const cart = this.readCart(session.context);
-    const existingLine = cart.find(
-      (line) => line.variantId === variant.id,
-    );
-
-    if (existingLine) {
-      existingLine.quantity += quantity;
-    } else {
-      cart.push({
+    return this.addCartLines(session, [
+      {
         productId: product.id,
         productTitle: product.title,
         productUrl: product.url,
@@ -85,14 +78,66 @@ export class CartService {
         unitPrice: variant.price,
         options: variant.options,
         quantity,
-      });
+      },
+    ]);
+  }
+
+  async addCartLines(
+    session: ConversationSession,
+    linesToAdd: CartLine[],
+  ) {
+    if (!Array.isArray(linesToAdd) || !linesToAdd.length) {
+      return {
+        ok: false,
+        error: 'No hay productos válidos para agregar al carrito.',
+      };
     }
+
+    const cart = this.readCart(session.context).map((line) => ({
+      ...line,
+      options: line.options.map((option) => ({ ...option })),
+    }));
+
+    for (const candidate of linesToAdd) {
+      if (
+        !candidate ||
+        typeof candidate.productId !== 'string' ||
+        typeof candidate.productTitle !== 'string' ||
+        typeof candidate.productUrl !== 'string' ||
+        typeof candidate.variantId !== 'string' ||
+        typeof candidate.variantLegacyId !== 'string' ||
+        typeof candidate.variantTitle !== 'string' ||
+        typeof candidate.unitPrice !== 'string' ||
+        !Array.isArray(candidate.options) ||
+        !Number.isInteger(candidate.quantity) ||
+        candidate.quantity < 1
+      ) {
+        return {
+          ok: false,
+          error: 'Una de las variantes no tiene información válida.',
+        };
+      }
+
+      const existingLine = cart.find(
+        (line) => line.variantId === candidate.variantId,
+      );
+
+      if (existingLine) {
+        existingLine.quantity += candidate.quantity;
+      } else {
+        cart.push({
+          ...candidate,
+          options: candidate.options.map((option) => ({ ...option })),
+        });
+      }
+    }
+
     const links = await this.shopifyService.buildCartLinks(
-  cart.map((line) => ({
-    variantLegacyId: line.variantLegacyId,
-    quantity: line.quantity,
-  })),
-);
+      cart.map((line) => ({
+        variantLegacyId: line.variantLegacyId,
+        quantity: line.quantity,
+      })),
+    );
 
     const updatedSession =
       await this.conversationMemoryService.updateSession(session.id, {
@@ -100,24 +145,24 @@ export class CartService {
         context: {
           ...session.context,
           cart,
-lastCartUrl: links.cartUrl,
-lastCheckoutUrl: links.checkoutUrl,
-lastCartUpdatedAt: new Date().toISOString(),
+          lastCartUrl: links.cartUrl,
+          lastCheckoutUrl: links.checkoutUrl,
+          lastCartUpdatedAt: new Date().toISOString(),
         },
       });
 
     await this.syncRecoveryCart(
-  updatedSession,
-  cart,
-  'active',
-  links.checkoutUrl,
-);
+      updatedSession,
+      cart,
+      'active',
+      links.checkoutUrl,
+    );
 
     return {
       ok: true,
       cart: this.cartSummary(cart),
       cart_url: links.cartUrl,
-checkout_url: links.checkoutUrl,
+      checkout_url: links.checkoutUrl,
     };
   }
 

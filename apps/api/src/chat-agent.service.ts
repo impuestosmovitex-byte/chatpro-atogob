@@ -1,4 +1,4 @@
-import { CartService } from './cart.service';
+import { CartService, type CartLine } from './cart.service';
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import {
@@ -22,6 +22,28 @@ type SelectedProduct = {
   url: string;
 };
 
+type ProductOption = {
+  name: string;
+  value: string;
+};
+
+type SelectedVariant = {
+  id: string;
+  legacyResourceId: string;
+  title: string;
+  price: string;
+  options: ProductOption[];
+};
+
+type SelectedVariantSelection = SelectedVariant & {
+  quantity: number;
+};
+
+type VariantSelectionRequest = {
+  optionValues: string[];
+  quantity: number;
+};
+
 @Injectable()
 export class ChatAgentService {
   private client: OpenAI | null = null;
@@ -38,19 +60,37 @@ export class ChatAgentService {
     session: ConversationSession,
     customerMessage: string,
   ): Promise<string> {
+    let activeSession = session;
+
+    const controlledReply =
+      await this.handleControlledPurchaseAction(
+        profile,
+        activeSession,
+        customerMessage,
+      );
+
+    if (controlledReply) {
+      return controlledReply;
+    }
+
     const currentIntent = await this.classifyCurrentIntent(
       profile,
-      session,
+      activeSession,
       customerMessage,
     );
 
-    let activeSession =
+    activeSession =
       currentIntent === 'new_catalog_search'
-        ? await this.conversationMemoryService.updateSession(session.id, {
-            stage: 'sales',
-            context: this.clearSelectedProductContext(session.context),
-          })
-        : session;
+        ? await this.conversationMemoryService.updateSession(
+            activeSession.id,
+            {
+              stage: 'sales',
+              context: this.clearSelectedProductContext(
+                activeSession.context,
+              ),
+            },
+          )
+        : activeSession;
 
     const collections = await this.shopifyService.getCollections();
     const contextStatus = this.getContextStatus(profile, activeSession);
@@ -81,7 +121,11 @@ export class ChatAgentService {
           url: collection.onlineStoreUrl,
         })),
       }),
-      tools: this.getTools(),
+      tools: this.getTools().filter(
+        (tool) =>
+          tool.name !== 'add_selected_variant_to_cart' &&
+          tool.name !== 'create_checkout_link',
+      ),
       tool_choice: 'auto',
     });
 
@@ -92,8 +136,7 @@ export class ChatAgentService {
         output: string;
       }> = [];
 
-      let cartUpdatedResult: unknown = null;
-      let checkoutCreatedResult: unknown = null;
+      let selectedVariantsResolved = false;
 
       for (const item of response.output) {
         if (item.type !== 'function_call') {
@@ -112,12 +155,11 @@ export class ChatAgentService {
           output: JSON.stringify(result),
         });
 
-        if (item.name === 'add_selected_variant_to_cart') {
-          cartUpdatedResult = result;
-        }
-
-        if (item.name === 'create_checkout_link') {
-          checkoutCreatedResult = result;
+        if (
+          item.name === 'select_variant' &&
+          this.isSuccessfulToolResult(result)
+        ) {
+          selectedVariantsResolved = true;
         }
 
         activeSession =
@@ -126,18 +168,13 @@ export class ChatAgentService {
           );
       }
 
-      const checkoutReply =
-        this.buildRealCheckoutReply(checkoutCreatedResult);
+      if (selectedVariantsResolved) {
+        const pendingReply =
+          await this.preparePendingCartAdd(activeSession);
 
-      if (checkoutReply) {
-        return checkoutReply;
-      }
-
-      const cartReply =
-        this.buildRealCartReply(cartUpdatedResult);
-
-      if (cartReply) {
-        return cartReply;
+        if (pendingReply) {
+          return pendingReply;
+        }
       }
 
       if (!toolOutputs.length) {
@@ -152,6 +189,328 @@ export class ChatAgentService {
     }
 
     return 'Estoy revisando la información para ayudarte. Cuéntame nuevamente qué producto buscas o envíame el enlace.';
+  }
+
+  private async handleControlledPurchaseAction(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    customerMessage: string,
+  ): Promise<string | null> {
+    const pendingLines = this.readPendingCartLines(session.context);
+    const cartResult = await this.cartService.getCart(session);
+    const hasCart = this.isSuccessfulToolResult(cartResult);
+
+    if (!pendingLines.length && !hasCart) {
+      return null;
+    }
+
+    const action = await this.classifyControlledPurchaseAction(
+      profile,
+      session,
+      customerMessage,
+      pendingLines,
+      cartResult,
+    );
+
+    if (action === 'cancel_pending' && pendingLines.length) {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'sales',
+        context: {
+          ...session.context,
+          pendingCartAdd: null,
+        },
+      });
+
+      return 'Listo, no lo agregué. Puedes cambiar color, talla, cantidad o seguir mirando otros productos.';
+    }
+
+    if (
+      (action === 'confirm_pending' ||
+        action === 'confirm_pending_and_checkout') &&
+      pendingLines.length
+    ) {
+      const addedResult = await this.cartService.addCartLines(
+        session,
+        pendingLines,
+      );
+
+      const updatedSession =
+        await this.conversationMemoryService.getSessionById(
+          session.id,
+        );
+
+      const cleanSession =
+        await this.conversationMemoryService.updateSession(
+          updatedSession.id,
+          {
+            stage: 'sales',
+            context: {
+              ...updatedSession.context,
+              pendingCartAdd: null,
+            },
+          },
+        );
+
+      if (action === 'confirm_pending_and_checkout') {
+        const checkoutResult =
+          await this.cartService.createCheckoutLink(cleanSession);
+
+        return (
+          this.buildRealCheckoutReply(checkoutResult) ??
+          this.buildRealCartReply(addedResult)
+        );
+      }
+
+      return (
+        this.buildRealCartReply(addedResult) ??
+        'No pude agregar esos productos al carrito. Revisemos nuevamente color, talla y cantidad.'
+      );
+    }
+
+    if (action === 'checkout' && hasCart) {
+      const checkoutResult =
+        await this.cartService.createCheckoutLink(session);
+
+      return (
+        this.buildRealCheckoutReply(checkoutResult) ??
+        'No pude generar el checkout todavía. Intenta nuevamente en un momento.'
+      );
+    }
+
+    return null;
+  }
+
+  private async classifyControlledPurchaseAction(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    customerMessage: string,
+    pendingLines: CartLine[],
+    cartResult: unknown,
+  ): Promise<
+    | 'confirm_pending'
+    | 'confirm_pending_and_checkout'
+    | 'cancel_pending'
+    | 'checkout'
+    | 'none'
+  > {
+    const history = await this.getRecentMessages(session.id);
+    const cartPayload = this.toToolRecord(cartResult);
+    const cart = cartPayload
+      ? this.toToolRecord(cartPayload.cart)
+      : null;
+
+    const response = await this.getClient().responses.create({
+      model: this.getModel(),
+      instructions: `
+Analiza la intención actual de una conversación comercial en español colombiano.
+
+Devuelve únicamente JSON válido:
+{"action":"confirm_pending"|"confirm_pending_and_checkout"|"cancel_pending"|"checkout"|"none"}
+
+Significado:
+- confirm_pending: la persona acepta agregar los productos pendientes.
+- confirm_pending_and_checkout: confirma pendientes y también quiere pagar.
+- cancel_pending: rechaza los productos pendientes.
+- checkout: quiere pagar únicamente los productos ya agregados.
+- none: hace una pregunta, cambia color/talla/cantidad, busca otro producto o no está confirmando.
+
+Entiende lenguaje natural y el contexto: “sí”, “sii”, “dale”, “hágale”, “de una”, “agrégala”, “mejor no”, “ya quiero pagar”, “mándame a pagar”.
+
+Reglas:
+- Una pregunta de precio nunca es confirmación.
+- “Sí” confirma productos pendientes, pero no significa pagar salvo que también mencione pago.
+- “Quiero una blusa también” es none: no borra el carrito ni confirma lo pendiente.
+- Si no hay productos pendientes y pide pagar, checkout.
+Empresa: ${profile.name}.
+`.trim(),
+      input: JSON.stringify({
+        current_customer_message: customerMessage,
+        pending_products: pendingLines.map((line) => ({
+          product: line.productTitle,
+          variant: line.variantTitle,
+          quantity: line.quantity,
+          unit_price_cop: line.unitPrice,
+        })),
+        current_cart: cart,
+        conversation_history: history,
+      }),
+    });
+
+    const text = response.output_text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
+
+    try {
+      const parsed = JSON.parse(text) as { action?: string };
+
+      if (
+        parsed.action === 'confirm_pending' ||
+        parsed.action === 'confirm_pending_and_checkout' ||
+        parsed.action === 'cancel_pending' ||
+        parsed.action === 'checkout'
+      ) {
+        return parsed.action;
+      }
+    } catch {
+      return 'none';
+    }
+
+    return 'none';
+  }
+
+  private async preparePendingCartAdd(
+    session: ConversationSession,
+  ): Promise<string | null> {
+    const lines = this.buildSelectedCartLines(session.context);
+
+    if (!lines.length) {
+      return null;
+    }
+
+    const cartResult = await this.cartService.getCart(session);
+    const cartPayload = this.toToolRecord(cartResult);
+    const currentCart = cartPayload
+      ? this.toToolRecord(cartPayload.cart)
+      : null;
+
+    const currentTotal = Number(
+      currentCart?.products_total_cop ?? 0,
+    );
+
+    const addedTotal = lines.reduce(
+      (total, line) =>
+        total + Number(line.unitPrice || 0) * line.quantity,
+      0,
+    );
+
+    await this.conversationMemoryService.updateSession(session.id, {
+      stage: 'variant',
+      context: {
+        ...session.context,
+        pendingCartAdd: {
+          lines,
+          createdAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    const detail = lines
+      .map((line) => this.formatPendingCartLine(line))
+      .join('\n');
+
+    return [
+      'Perfecto ✨',
+      detail,
+      '',
+      `Total con lo que llevas: ${this.formatCop(currentTotal + addedTotal)}.`,
+      '',
+      lines.length === 1
+        ? '¿Lo agrego al carrito?'
+        : '¿Los agrego al carrito?',
+    ].join('\n');
+  }
+
+  private buildSelectedCartLines(context: JsonObject): CartLine[] {
+    const product = this.readSelectedProduct(context);
+    const variants = this.readSelectedVariants(context);
+
+    if (!product || !variants.length) {
+      return [];
+    }
+
+    return variants.map((variant) => ({
+      productId: product.id,
+      productTitle: product.title,
+      productUrl: product.url,
+      variantId: variant.id,
+      variantLegacyId: variant.legacyResourceId,
+      variantTitle: variant.title,
+      unitPrice: variant.price,
+      options: variant.options.map((option) => ({ ...option })),
+      quantity: variant.quantity,
+    }));
+  }
+
+  private formatPendingCartLine(line: CartLine): string {
+    const options = line.options
+      .map((option) => option.value)
+      .filter(Boolean)
+      .join(' / ');
+
+    return `• ${line.productTitle}${options ? ` — ${options}` : ''} — Cantidad: ${line.quantity} — ${this.formatCop(Number(line.unitPrice) * line.quantity)}`;
+  }
+
+  private readPendingCartLines(context: JsonObject): CartLine[] {
+    const pending = context.pendingCartAdd;
+
+    if (
+      !pending ||
+      typeof pending !== 'object' ||
+      Array.isArray(pending)
+    ) {
+      return [];
+    }
+
+    const lines = (pending as Record<string, unknown>).lines;
+
+    if (!Array.isArray(lines)) {
+      return [];
+    }
+
+    const validLines: CartLine[] = [];
+
+    for (const value of lines) {
+      if (!this.isValidCartLine(value)) {
+        continue;
+      }
+
+      validLines.push({
+        ...value,
+        options: value.options.map((option) => ({ ...option })),
+      });
+    }
+
+    return validLines;
+  }
+
+  private isValidCartLine(value: unknown): value is CartLine {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value)
+    ) {
+      return false;
+    }
+
+    const line = value as Record<string, unknown>;
+
+    return (
+      typeof line.productId === 'string' &&
+      typeof line.productTitle === 'string' &&
+      typeof line.productUrl === 'string' &&
+      typeof line.variantId === 'string' &&
+      typeof line.variantLegacyId === 'string' &&
+      typeof line.variantTitle === 'string' &&
+      typeof line.unitPrice === 'string' &&
+      Array.isArray(line.options) &&
+      line.options.every(
+        (option) =>
+          option &&
+          typeof option === 'object' &&
+          !Array.isArray(option) &&
+          typeof (option as Record<string, unknown>).name === 'string' &&
+          typeof (option as Record<string, unknown>).value === 'string',
+      ) &&
+      Number.isInteger(line.quantity) &&
+      Number(line.quantity) > 0
+    );
+  }
+
+  private isSuccessfulToolResult(result: unknown): boolean {
+    const payload = this.toToolRecord(result);
+
+    return payload?.ok === true;
   }
 
   private buildRealCartReply(result: unknown): string | null {
@@ -173,26 +532,13 @@ export class ChatAgentService {
       return null;
     }
 
-    const checkoutUrl =
-      typeof payload.checkout_url === 'string'
-        ? payload.checkout_url.trim()
-        : '';
-
     return [
-      'Listo ✨ Agregué el producto al carrito:',
+      'Listo ✨ Ya quedó agregado al carrito:',
       '',
       summary,
       '',
-      checkoutUrl
-        ? 'Ya puedes continuar al pago aquí:'
-        : '¿Quieres agregar algo más o escribes “pagar” y te envío el link real de checkout?',
-      checkoutUrl || '',
-      checkoutUrl
-        ? 'También puedes decirme si quieres agregar otro producto antes de pagar.'
-        : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
+      'Puedes seguir agregando productos. Cuando termines, escribe “pagar” y te envío un único link real con todo el carrito.',
+    ].join('\n');
   }
 
   private buildRealCheckoutReply(result: unknown): string | null {
@@ -463,6 +809,7 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
 
   delete nextContext.selectedProduct;
   delete nextContext.selectedVariant;
+  delete nextContext.selectedVariants;
   delete nextContext.selectedAt;
   delete nextContext.selectedVariantAt;
   delete nextContext.purchaseIntent;
@@ -562,22 +909,36 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
         type: 'function',
         name: 'select_variant',
         description:
-          'Valida y selecciona una variante del producto actual usando valores reales como talla, color, medida o capacidad.',
+          'Valida una o varias variantes reales del producto actual. Úsala cuando la persona indique color, talla, medida y cantidad. Ejemplo: “uno talla S y uno talla M” son dos selecciones distintas.',
         strict: true,
         parameters: {
           type: 'object',
           additionalProperties: false,
           properties: {
-            option_values: {
+            selections: {
               type: 'array',
+              minItems: 1,
               items: {
-                type: 'string',
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  option_values: {
+                    type: 'array',
+                    minItems: 1,
+                    items: {
+                      type: 'string',
+                    },
+                  },
+                  quantity: {
+                    type: 'integer',
+                    minimum: 1,
+                  },
+                },
+                required: ['option_values', 'quantity'],
               },
-              description:
-                'Valores que la persona eligió, por ejemplo Negro y 8.',
             },
           },
-          required: ['option_values'],
+          required: ['selections'],
         },
       },
       {
@@ -656,7 +1017,10 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
       }
 
       if (name === 'select_variant') {
-        return this.selectVariant(session, this.readStringArray(args, 'option_values'));
+        return this.selectVariant(
+          session,
+          this.readVariantSelections(args),
+        );
       }
 
       if (name === 'add_selected_variant_to_cart') {
@@ -808,6 +1172,7 @@ if (name === 'create_checkout_link') {
         ...session.context,
         selectedProduct,
         selectedVariant: null,
+        selectedVariants: [],
         selectedAt: new Date().toISOString(),
       },
     });
@@ -847,7 +1212,7 @@ if (name === 'create_checkout_link') {
 
   private async selectVariant(
     session: ConversationSession,
-    optionValues: string[],
+    selections: VariantSelectionRequest[],
   ) {
     const selectedProduct = this.readSelectedProduct(session.context);
 
@@ -855,6 +1220,13 @@ if (name === 'create_checkout_link') {
       return {
         ok: false,
         error: 'No hay producto seleccionado.',
+      };
+    }
+
+    if (!selections.length) {
+      return {
+        ok: false,
+        error: 'No se recibieron variantes para validar.',
       };
     }
 
@@ -869,75 +1241,108 @@ if (name === 'create_checkout_link') {
       };
     }
 
-    const values = optionValues
-      .map((value) => this.normalizeText(value))
-      .filter(Boolean);
+    const resolved = new Map<string, SelectedVariantSelection>();
 
-    if (!values.length) {
-      return {
-        ok: false,
-        error: 'No se recibieron opciones para validar.',
-        product: this.productSnapshot(product),
-      };
-    }
+    for (const selection of selections) {
+      const values = selection.optionValues
+        .map((value) => this.normalizeText(value))
+        .filter(Boolean);
 
-    const matches = product.variants.edges
-      .map(({ node }) => node)
-      .filter((variant) =>
-        values.every((value) =>
-          variant.selectedOptions.some(
-            (option) => this.normalizeText(option.value) === value,
+      if (!values.length) {
+        return {
+          ok: false,
+          error: 'Falta color, talla o medida para validar una variante.',
+          product: this.productSnapshot(product),
+        };
+      }
+
+      const matches = product.variants.edges
+        .map(({ node }) => node)
+        .filter((variant) =>
+          values.every((value) =>
+            variant.selectedOptions.some(
+              (option) =>
+                this.normalizeText(option.value) === value,
+            ),
           ),
-        ),
-      );
+        );
 
-    if (!matches.length) {
+      if (!matches.length) {
+        return {
+          ok: false,
+          error: 'No existe una variante con esas opciones.',
+          product: this.productSnapshot(product),
+        };
+      }
+
+      if (matches.length > 1) {
+        return {
+          ok: false,
+          error: 'Todavía faltan opciones para elegir una variante única.',
+          matching_variants: matches.slice(0, 10).map((variant) => ({
+            id: variant.id,
+            title: variant.title,
+            price_cop: variant.price,
+            options: variant.selectedOptions,
+          })),
+        };
+      }
+
+      const variant = matches[0];
+      const existing = resolved.get(variant.id);
+
+      if (existing) {
+        existing.quantity += selection.quantity;
+        continue;
+      }
+
+      resolved.set(variant.id, {
+        id: variant.id,
+        legacyResourceId: variant.legacyResourceId,
+        title: variant.title,
+        price: variant.price,
+        options: variant.selectedOptions,
+        quantity: selection.quantity,
+      });
+    }
+
+    const selectedVariants = Array.from(resolved.values());
+
+    if (!selectedVariants.length) {
       return {
         ok: false,
-        error: 'No existe una variante con esas opciones.',
-        product: this.productSnapshot(product),
+        error: 'No se encontró una variante válida.',
       };
     }
 
-    if (matches.length > 1) {
-      return {
-        ok: false,
-        error: 'Todavía faltan opciones para elegir una variante única.',
-        matching_variants: matches.slice(0, 10).map((variant) => ({
-          id: variant.id,
-          title: variant.title,
-          price_cop: variant.price,
-          options: variant.selectedOptions,
-        })),
-      };
-    }
-
-    const variant = matches[0];
+    const first = selectedVariants[0];
 
     await this.conversationMemoryService.updateSession(session.id, {
       stage: 'variant',
       context: {
         ...session.context,
         selectedVariant: {
-  id: variant.id,
-  legacyResourceId: variant.legacyResourceId,
-  title: variant.title,
-          price: variant.price,
-          options: variant.selectedOptions,
+          id: first.id,
+          legacyResourceId: first.legacyResourceId,
+          title: first.title,
+          price: first.price,
+          options: first.options,
         },
+        selectedVariants,
         selectedVariantAt: new Date().toISOString(),
       },
     });
 
     return {
       ok: true,
-      selected_variant: {
-  id: variant.id,
-  legacy_resource_id: variant.legacyResourceId,
-  title: variant.title,
+      selected_variants: selectedVariants.map((variant) => ({
+        id: variant.id,
+        legacy_resource_id: variant.legacyResourceId,
+        title: variant.title,
         price_cop: variant.price,
-        options: variant.selectedOptions,
-      },
+        options: variant.options,
+        quantity: variant.quantity,
+      })),
     };
   }
 
@@ -1056,14 +1461,148 @@ if (name === 'create_checkout_link') {
     };
   }
 
-  private readSelectedVariant(context: JsonObject): JsonObject | null {
-    const value = context.selectedVariant;
+  private readSelectedVariant(
+    context: JsonObject,
+  ): SelectedVariant | null {
+    return this.parseSelectedVariant(context.selectedVariant);
+  }
 
+  private readSelectedVariants(
+    context: JsonObject,
+  ): SelectedVariantSelection[] {
+    const value = context.selectedVariants;
+
+    if (!Array.isArray(value)) {
+      const single = this.readSelectedVariant(context);
+
+      return single
+        ? [
+            {
+              ...single,
+              quantity: 1,
+            },
+          ]
+        : [];
+    }
+
+    const variants: SelectedVariantSelection[] = [];
+
+    for (const item of value) {
+      const variant = this.parseSelectedVariant(item);
+
+      if (!variant) {
+        continue;
+      }
+
+      const quantity =
+        item &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        Number.isInteger(
+          (item as Record<string, unknown>).quantity,
+        ) &&
+        Number((item as Record<string, unknown>).quantity) > 0
+          ? Number((item as Record<string, unknown>).quantity)
+          : 1;
+
+      variants.push({
+        ...variant,
+        quantity,
+      });
+    }
+
+    return variants;
+  }
+
+  private parseSelectedVariant(
+    value: unknown,
+  ): SelectedVariant | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return null;
     }
 
-    return value as JsonObject;
+    const variant = value as Record<string, unknown>;
+
+    if (
+      typeof variant.id !== 'string' ||
+      typeof variant.legacyResourceId !== 'string' ||
+      typeof variant.title !== 'string' ||
+      typeof variant.price !== 'string' ||
+      !Array.isArray(variant.options)
+    ) {
+      return null;
+    }
+
+    const options = variant.options.filter(
+      (option): option is ProductOption => {
+        if (
+          !option ||
+          typeof option !== 'object' ||
+          Array.isArray(option)
+        ) {
+          return false;
+        }
+
+        const item = option as Record<string, unknown>;
+
+        return (
+          typeof item.name === 'string' &&
+          typeof item.value === 'string'
+        );
+      },
+    );
+
+    return {
+      id: variant.id,
+      legacyResourceId: variant.legacyResourceId,
+      title: variant.title,
+      price: variant.price,
+      options,
+    };
+  }
+
+  private readVariantSelections(
+    args: JsonObject,
+  ): VariantSelectionRequest[] {
+    const value = args.selections;
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const selections: VariantSelectionRequest[] = [];
+
+    for (const item of value) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        continue;
+      }
+
+      const selection = item as Record<string, unknown>;
+
+      const optionValues = Array.isArray(selection.option_values)
+        ? selection.option_values.filter(
+            (option): option is string =>
+              typeof option === 'string' && option.trim().length > 0,
+          )
+        : [];
+
+      const quantity = Number(selection.quantity);
+
+      if (
+        !optionValues.length ||
+        !Number.isInteger(quantity) ||
+        quantity < 1
+      ) {
+        continue;
+      }
+
+      selections.push({
+        optionValues,
+        quantity,
+      });
+    }
+
+    return selections;
   }
 
   private parseArguments(rawArguments: string): JsonObject {
@@ -1118,19 +1657,25 @@ private readInteger(args: JsonObject, key: string): number {
   }
 
   private cleanReply(reply: string): string {
-  const clean = this.removeInternalBlocks(reply)
-    .replace(/\bto=functions\.[a-z0-9_.-]+\s*/gi, '')
-    .replace(/\bfunctions\.[a-z0-9_.-]+\s*/gi, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    const clean = this.removeInternalBlocks(reply)
+      .replace(/\bto=functions\.[a-z0-9_.-]+\s*/gi, '')
+      .replace(/\bfunctions\.[a-z0-9_.-]+\s*/gi, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
 
-  if (clean) {
+    if (!clean || this.isUnsafeModelReply(clean)) {
+      return 'Estoy confirmando la información real del carrito. Dime qué color, talla o cantidad deseas y te ayudo.';
+    }
+
     return clean.slice(0, 1500);
   }
 
-  return 'Cuéntame qué producto buscas y te ayudo a encontrarlo.';
-}
+  private isUnsafeModelReply(reply: string): boolean {
+    return /(?:now adding|proceeding|filenamestring|function_call|tool call|to=functions\.|\/cart\/)/i.test(
+      reply,
+    );
+  }
 
 private removeInternalBlocks(value: string): string {
   let result = '';
