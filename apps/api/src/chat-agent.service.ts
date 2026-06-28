@@ -22,6 +22,28 @@ type SelectedProduct = {
   url: string;
 };
 
+type ProductOption = {
+  name: string;
+  value: string;
+};
+
+type SelectedVariant = {
+  id: string;
+  legacyResourceId: string;
+  title: string;
+  price: string;
+  options: ProductOption[];
+};
+
+type SelectedVariantSelection = SelectedVariant & {
+  quantity: number;
+};
+
+type VariantSelectionRequest = {
+  optionValues: string[];
+  quantity: number;
+};
+
 @Injectable()
 export class ChatAgentService {
   private client: OpenAI | null = null;
@@ -450,6 +472,7 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
 
   delete nextContext.selectedProduct;
   delete nextContext.selectedVariant;
+  delete nextContext.selectedVariants;
   delete nextContext.selectedAt;
   delete nextContext.selectedVariantAt;
   delete nextContext.purchaseIntent;
@@ -549,22 +572,36 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
         type: 'function',
         name: 'select_variant',
         description:
-          'Valida y selecciona una variante del producto actual usando valores reales como talla, color, medida o capacidad.',
+          'Valida una o varias variantes reales del producto actual. Úsala cuando la persona indique color, talla, medida y cantidad. Ejemplo: “uno talla S y uno talla M” son dos selecciones distintas.',
         strict: true,
         parameters: {
           type: 'object',
           additionalProperties: false,
           properties: {
-            option_values: {
+            selections: {
               type: 'array',
+              minItems: 1,
               items: {
-                type: 'string',
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  option_values: {
+                    type: 'array',
+                    minItems: 1,
+                    items: {
+                      type: 'string',
+                    },
+                  },
+                  quantity: {
+                    type: 'integer',
+                    minimum: 1,
+                  },
+                },
+                required: ['option_values', 'quantity'],
               },
-              description:
-                'Valores que la persona eligió, por ejemplo Negro y 8.',
             },
           },
-          required: ['option_values'],
+          required: ['selections'],
         },
       },
       {
@@ -643,7 +680,10 @@ private clearSelectedProductContext(context: JsonObject): JsonObject {
       }
 
       if (name === 'select_variant') {
-        return this.selectVariant(session, this.readStringArray(args, 'option_values'));
+        return this.selectVariant(
+          session,
+          this.readVariantSelections(args),
+        );
       }
 
       if (name === 'add_selected_variant_to_cart') {
@@ -795,6 +835,7 @@ if (name === 'create_checkout_link') {
         ...session.context,
         selectedProduct,
         selectedVariant: null,
+        selectedVariants: [],
         selectedAt: new Date().toISOString(),
       },
     });
@@ -834,7 +875,7 @@ if (name === 'create_checkout_link') {
 
   private async selectVariant(
     session: ConversationSession,
-    optionValues: string[],
+    selections: VariantSelectionRequest[],
   ) {
     const selectedProduct = this.readSelectedProduct(session.context);
 
@@ -842,6 +883,13 @@ if (name === 'create_checkout_link') {
       return {
         ok: false,
         error: 'No hay producto seleccionado.',
+      };
+    }
+
+    if (!selections.length) {
+      return {
+        ok: false,
+        error: 'No se recibieron variantes para validar.',
       };
     }
 
@@ -856,75 +904,108 @@ if (name === 'create_checkout_link') {
       };
     }
 
-    const values = optionValues
-      .map((value) => this.normalizeText(value))
-      .filter(Boolean);
+    const resolved = new Map<string, SelectedVariantSelection>();
 
-    if (!values.length) {
-      return {
-        ok: false,
-        error: 'No se recibieron opciones para validar.',
-        product: this.productSnapshot(product),
-      };
-    }
+    for (const selection of selections) {
+      const values = selection.optionValues
+        .map((value) => this.normalizeText(value))
+        .filter(Boolean);
 
-    const matches = product.variants.edges
-      .map(({ node }) => node)
-      .filter((variant) =>
-        values.every((value) =>
-          variant.selectedOptions.some(
-            (option) => this.normalizeText(option.value) === value,
+      if (!values.length) {
+        return {
+          ok: false,
+          error: 'Falta color, talla o medida para validar una variante.',
+          product: this.productSnapshot(product),
+        };
+      }
+
+      const matches = product.variants.edges
+        .map(({ node }) => node)
+        .filter((variant) =>
+          values.every((value) =>
+            variant.selectedOptions.some(
+              (option) =>
+                this.normalizeText(option.value) === value,
+            ),
           ),
-        ),
-      );
+        );
 
-    if (!matches.length) {
+      if (!matches.length) {
+        return {
+          ok: false,
+          error: 'No existe una variante con esas opciones.',
+          product: this.productSnapshot(product),
+        };
+      }
+
+      if (matches.length > 1) {
+        return {
+          ok: false,
+          error: 'Todavía faltan opciones para elegir una variante única.',
+          matching_variants: matches.slice(0, 10).map((variant) => ({
+            id: variant.id,
+            title: variant.title,
+            price_cop: variant.price,
+            options: variant.selectedOptions,
+          })),
+        };
+      }
+
+      const variant = matches[0];
+      const existing = resolved.get(variant.id);
+
+      if (existing) {
+        existing.quantity += selection.quantity;
+        continue;
+      }
+
+      resolved.set(variant.id, {
+        id: variant.id,
+        legacyResourceId: variant.legacyResourceId,
+        title: variant.title,
+        price: variant.price,
+        options: variant.selectedOptions,
+        quantity: selection.quantity,
+      });
+    }
+
+    const selectedVariants = Array.from(resolved.values());
+
+    if (!selectedVariants.length) {
       return {
         ok: false,
-        error: 'No existe una variante con esas opciones.',
-        product: this.productSnapshot(product),
+        error: 'No se encontró una variante válida.',
       };
     }
 
-    if (matches.length > 1) {
-      return {
-        ok: false,
-        error: 'Todavía faltan opciones para elegir una variante única.',
-        matching_variants: matches.slice(0, 10).map((variant) => ({
-          id: variant.id,
-          title: variant.title,
-          price_cop: variant.price,
-          options: variant.selectedOptions,
-        })),
-      };
-    }
-
-    const variant = matches[0];
+    const first = selectedVariants[0];
 
     await this.conversationMemoryService.updateSession(session.id, {
       stage: 'variant',
       context: {
         ...session.context,
         selectedVariant: {
-  id: variant.id,
-  legacyResourceId: variant.legacyResourceId,
-  title: variant.title,
-          price: variant.price,
-          options: variant.selectedOptions,
+          id: first.id,
+          legacyResourceId: first.legacyResourceId,
+          title: first.title,
+          price: first.price,
+          options: first.options,
         },
+        selectedVariants,
         selectedVariantAt: new Date().toISOString(),
       },
     });
 
     return {
       ok: true,
-      selected_variant: {
-  id: variant.id,
-  legacy_resource_id: variant.legacyResourceId,
-  title: variant.title,
+      selected_variants: selectedVariants.map((variant) => ({
+        id: variant.id,
+        legacy_resource_id: variant.legacyResourceId,
+        title: variant.title,
         price_cop: variant.price,
-        options: variant.selectedOptions,
-      },
+        options: variant.options,
+        quantity: variant.quantity,
+      })),
     };
   }
 
@@ -1043,14 +1124,101 @@ if (name === 'create_checkout_link') {
     };
   }
 
-  private readSelectedVariant(context: JsonObject): JsonObject | null {
-    const value = context.selectedVariant;
+  private readSelectedVariant(
+    context: JsonObject,
+  ): SelectedVariant | null {
+    return this.parseSelectedVariant(context.selectedVariant);
+  }
 
+  private parseSelectedVariant(
+    value: unknown,
+  ): SelectedVariant | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return null;
     }
 
-    return value as JsonObject;
+    const variant = value as Record<string, unknown>;
+
+    if (
+      typeof variant.id !== 'string' ||
+      typeof variant.legacyResourceId !== 'string' ||
+      typeof variant.title !== 'string' ||
+      typeof variant.price !== 'string' ||
+      !Array.isArray(variant.options)
+    ) {
+      return null;
+    }
+
+    const options = variant.options.filter(
+      (option): option is ProductOption => {
+        if (
+          !option ||
+          typeof option !== 'object' ||
+          Array.isArray(option)
+        ) {
+          return false;
+        }
+
+        const item = option as Record<string, unknown>;
+
+        return (
+          typeof item.name === 'string' &&
+          typeof item.value === 'string'
+        );
+      },
+    );
+
+    return {
+      id: variant.id,
+      legacyResourceId: variant.legacyResourceId,
+      title: variant.title,
+      price: variant.price,
+      options,
+    };
+  }
+
+  private readVariantSelections(
+    args: JsonObject,
+  ): VariantSelectionRequest[] {
+    const value = args.selections;
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const selections: VariantSelectionRequest[] = [];
+
+    for (const item of value) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        continue;
+      }
+
+      const selection = item as Record<string, unknown>;
+
+      const optionValues = Array.isArray(selection.option_values)
+        ? selection.option_values.filter(
+            (option): option is string =>
+              typeof option === 'string' && option.trim().length > 0,
+          )
+        : [];
+
+      const quantity = Number(selection.quantity);
+
+      if (
+        !optionValues.length ||
+        !Number.isInteger(quantity) ||
+        quantity < 1
+      ) {
+        continue;
+      }
+
+      selections.push({
+        optionValues,
+        quantity,
+      });
+    }
+
+    return selections;
   }
 
   private parseArguments(rawArguments: string): JsonObject {
