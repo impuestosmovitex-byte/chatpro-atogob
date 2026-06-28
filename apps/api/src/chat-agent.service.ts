@@ -1,4 +1,4 @@
-import { CartService } from './cart.service';
+import { CartService, type CartLine } from './cart.service';
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import {
@@ -60,19 +60,37 @@ export class ChatAgentService {
     session: ConversationSession,
     customerMessage: string,
   ): Promise<string> {
+    let activeSession = session;
+
+    const controlledReply =
+      await this.handleControlledPurchaseAction(
+        profile,
+        activeSession,
+        customerMessage,
+      );
+
+    if (controlledReply) {
+      return controlledReply;
+    }
+
     const currentIntent = await this.classifyCurrentIntent(
       profile,
-      session,
+      activeSession,
       customerMessage,
     );
 
-    let activeSession =
+    activeSession =
       currentIntent === 'new_catalog_search'
-        ? await this.conversationMemoryService.updateSession(session.id, {
-            stage: 'sales',
-            context: this.clearSelectedProductContext(session.context),
-          })
-        : session;
+        ? await this.conversationMemoryService.updateSession(
+            activeSession.id,
+            {
+              stage: 'sales',
+              context: this.clearSelectedProductContext(
+                activeSession.context,
+              ),
+            },
+          )
+        : activeSession;
 
     const collections = await this.shopifyService.getCollections();
     const contextStatus = this.getContextStatus(profile, activeSession);
@@ -103,7 +121,11 @@ export class ChatAgentService {
           url: collection.onlineStoreUrl,
         })),
       }),
-      tools: this.getTools(),
+      tools: this.getTools().filter(
+        (tool) =>
+          tool.name !== 'add_selected_variant_to_cart' &&
+          tool.name !== 'create_checkout_link',
+      ),
       tool_choice: 'auto',
     });
 
@@ -114,8 +136,7 @@ export class ChatAgentService {
         output: string;
       }> = [];
 
-      let cartUpdatedResult: unknown = null;
-      let checkoutCreatedResult: unknown = null;
+      let selectedVariantsResolved = false;
 
       for (const item of response.output) {
         if (item.type !== 'function_call') {
@@ -134,12 +155,11 @@ export class ChatAgentService {
           output: JSON.stringify(result),
         });
 
-        if (item.name === 'add_selected_variant_to_cart') {
-          cartUpdatedResult = result;
-        }
-
-        if (item.name === 'create_checkout_link') {
-          checkoutCreatedResult = result;
+        if (
+          item.name === 'select_variant' &&
+          this.isSuccessfulToolResult(result)
+        ) {
+          selectedVariantsResolved = true;
         }
 
         activeSession =
@@ -148,18 +168,13 @@ export class ChatAgentService {
           );
       }
 
-      const checkoutReply =
-        this.buildRealCheckoutReply(checkoutCreatedResult);
+      if (selectedVariantsResolved) {
+        const pendingReply =
+          await this.preparePendingCartAdd(activeSession);
 
-      if (checkoutReply) {
-        return checkoutReply;
-      }
-
-      const cartReply =
-        this.buildRealCartReply(cartUpdatedResult);
-
-      if (cartReply) {
-        return cartReply;
+        if (pendingReply) {
+          return pendingReply;
+        }
       }
 
       if (!toolOutputs.length) {
@@ -174,6 +189,328 @@ export class ChatAgentService {
     }
 
     return 'Estoy revisando la información para ayudarte. Cuéntame nuevamente qué producto buscas o envíame el enlace.';
+  }
+
+  private async handleControlledPurchaseAction(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    customerMessage: string,
+  ): Promise<string | null> {
+    const pendingLines = this.readPendingCartLines(session.context);
+    const cartResult = await this.cartService.getCart(session);
+    const hasCart = this.isSuccessfulToolResult(cartResult);
+
+    if (!pendingLines.length && !hasCart) {
+      return null;
+    }
+
+    const action = await this.classifyControlledPurchaseAction(
+      profile,
+      session,
+      customerMessage,
+      pendingLines,
+      cartResult,
+    );
+
+    if (action === 'cancel_pending' && pendingLines.length) {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'sales',
+        context: {
+          ...session.context,
+          pendingCartAdd: null,
+        },
+      });
+
+      return 'Listo, no lo agregué. Puedes cambiar color, talla, cantidad o seguir mirando otros productos.';
+    }
+
+    if (
+      (action === 'confirm_pending' ||
+        action === 'confirm_pending_and_checkout') &&
+      pendingLines.length
+    ) {
+      const addedResult = await this.cartService.addCartLines(
+        session,
+        pendingLines,
+      );
+
+      const updatedSession =
+        await this.conversationMemoryService.getSessionById(
+          session.id,
+        );
+
+      const cleanSession =
+        await this.conversationMemoryService.updateSession(
+          updatedSession.id,
+          {
+            stage: 'sales',
+            context: {
+              ...updatedSession.context,
+              pendingCartAdd: null,
+            },
+          },
+        );
+
+      if (action === 'confirm_pending_and_checkout') {
+        const checkoutResult =
+          await this.cartService.createCheckoutLink(cleanSession);
+
+        return (
+          this.buildRealCheckoutReply(checkoutResult) ??
+          this.buildRealCartReply(addedResult)
+        );
+      }
+
+      return (
+        this.buildRealCartReply(addedResult) ??
+        'No pude agregar esos productos al carrito. Revisemos nuevamente color, talla y cantidad.'
+      );
+    }
+
+    if (action === 'checkout' && hasCart) {
+      const checkoutResult =
+        await this.cartService.createCheckoutLink(session);
+
+      return (
+        this.buildRealCheckoutReply(checkoutResult) ??
+        'No pude generar el checkout todavía. Intenta nuevamente en un momento.'
+      );
+    }
+
+    return null;
+  }
+
+  private async classifyControlledPurchaseAction(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    customerMessage: string,
+    pendingLines: CartLine[],
+    cartResult: unknown,
+  ): Promise<
+    | 'confirm_pending'
+    | 'confirm_pending_and_checkout'
+    | 'cancel_pending'
+    | 'checkout'
+    | 'none'
+  > {
+    const history = await this.getRecentMessages(session.id);
+    const cartPayload = this.toToolRecord(cartResult);
+    const cart = cartPayload
+      ? this.toToolRecord(cartPayload.cart)
+      : null;
+
+    const response = await this.getClient().responses.create({
+      model: this.getModel(),
+      instructions: `
+Analiza la intención actual de una conversación comercial en español colombiano.
+
+Devuelve únicamente JSON válido:
+{"action":"confirm_pending"|"confirm_pending_and_checkout"|"cancel_pending"|"checkout"|"none"}
+
+Significado:
+- confirm_pending: la persona acepta agregar los productos pendientes.
+- confirm_pending_and_checkout: confirma pendientes y también quiere pagar.
+- cancel_pending: rechaza los productos pendientes.
+- checkout: quiere pagar únicamente los productos ya agregados.
+- none: hace una pregunta, cambia color/talla/cantidad, busca otro producto o no está confirmando.
+
+Entiende lenguaje natural y el contexto: “sí”, “sii”, “dale”, “hágale”, “de una”, “agrégala”, “mejor no”, “ya quiero pagar”, “mándame a pagar”.
+
+Reglas:
+- Una pregunta de precio nunca es confirmación.
+- “Sí” confirma productos pendientes, pero no significa pagar salvo que también mencione pago.
+- “Quiero una blusa también” es none: no borra el carrito ni confirma lo pendiente.
+- Si no hay productos pendientes y pide pagar, checkout.
+Empresa: ${profile.name}.
+`.trim(),
+      input: JSON.stringify({
+        current_customer_message: customerMessage,
+        pending_products: pendingLines.map((line) => ({
+          product: line.productTitle,
+          variant: line.variantTitle,
+          quantity: line.quantity,
+          unit_price_cop: line.unitPrice,
+        })),
+        current_cart: cart,
+        conversation_history: history,
+      }),
+    });
+
+    const text = response.output_text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
+
+    try {
+      const parsed = JSON.parse(text) as { action?: string };
+
+      if (
+        parsed.action === 'confirm_pending' ||
+        parsed.action === 'confirm_pending_and_checkout' ||
+        parsed.action === 'cancel_pending' ||
+        parsed.action === 'checkout'
+      ) {
+        return parsed.action;
+      }
+    } catch {
+      return 'none';
+    }
+
+    return 'none';
+  }
+
+  private async preparePendingCartAdd(
+    session: ConversationSession,
+  ): Promise<string | null> {
+    const lines = this.buildSelectedCartLines(session.context);
+
+    if (!lines.length) {
+      return null;
+    }
+
+    const cartResult = await this.cartService.getCart(session);
+    const cartPayload = this.toToolRecord(cartResult);
+    const currentCart = cartPayload
+      ? this.toToolRecord(cartPayload.cart)
+      : null;
+
+    const currentTotal = Number(
+      currentCart?.products_total_cop ?? 0,
+    );
+
+    const addedTotal = lines.reduce(
+      (total, line) =>
+        total + Number(line.unitPrice || 0) * line.quantity,
+      0,
+    );
+
+    await this.conversationMemoryService.updateSession(session.id, {
+      stage: 'variant',
+      context: {
+        ...session.context,
+        pendingCartAdd: {
+          lines,
+          createdAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    const detail = lines
+      .map((line) => this.formatPendingCartLine(line))
+      .join('\n');
+
+    return [
+      'Perfecto ✨',
+      detail,
+      '',
+      `Total con lo que llevas: ${this.formatCop(currentTotal + addedTotal)}.`,
+      '',
+      lines.length === 1
+        ? '¿Lo agrego al carrito?'
+        : '¿Los agrego al carrito?',
+    ].join('\n');
+  }
+
+  private buildSelectedCartLines(context: JsonObject): CartLine[] {
+    const product = this.readSelectedProduct(context);
+    const variants = this.readSelectedVariants(context);
+
+    if (!product || !variants.length) {
+      return [];
+    }
+
+    return variants.map((variant) => ({
+      productId: product.id,
+      productTitle: product.title,
+      productUrl: product.url,
+      variantId: variant.id,
+      variantLegacyId: variant.legacyResourceId,
+      variantTitle: variant.title,
+      unitPrice: variant.price,
+      options: variant.options.map((option) => ({ ...option })),
+      quantity: variant.quantity,
+    }));
+  }
+
+  private formatPendingCartLine(line: CartLine): string {
+    const options = line.options
+      .map((option) => option.value)
+      .filter(Boolean)
+      .join(' / ');
+
+    return `• ${line.productTitle}${options ? ` — ${options}` : ''} — Cantidad: ${line.quantity} — ${this.formatCop(Number(line.unitPrice) * line.quantity)}`;
+  }
+
+  private readPendingCartLines(context: JsonObject): CartLine[] {
+    const pending = context.pendingCartAdd;
+
+    if (
+      !pending ||
+      typeof pending !== 'object' ||
+      Array.isArray(pending)
+    ) {
+      return [];
+    }
+
+    const lines = (pending as Record<string, unknown>).lines;
+
+    if (!Array.isArray(lines)) {
+      return [];
+    }
+
+    const validLines: CartLine[] = [];
+
+    for (const value of lines) {
+      if (!this.isValidCartLine(value)) {
+        continue;
+      }
+
+      validLines.push({
+        ...value,
+        options: value.options.map((option) => ({ ...option })),
+      });
+    }
+
+    return validLines;
+  }
+
+  private isValidCartLine(value: unknown): value is CartLine {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value)
+    ) {
+      return false;
+    }
+
+    const line = value as Record<string, unknown>;
+
+    return (
+      typeof line.productId === 'string' &&
+      typeof line.productTitle === 'string' &&
+      typeof line.productUrl === 'string' &&
+      typeof line.variantId === 'string' &&
+      typeof line.variantLegacyId === 'string' &&
+      typeof line.variantTitle === 'string' &&
+      typeof line.unitPrice === 'string' &&
+      Array.isArray(line.options) &&
+      line.options.every(
+        (option) =>
+          option &&
+          typeof option === 'object' &&
+          !Array.isArray(option) &&
+          typeof (option as Record<string, unknown>).name === 'string' &&
+          typeof (option as Record<string, unknown>).value === 'string',
+      ) &&
+      Number.isInteger(line.quantity) &&
+      Number(line.quantity) > 0
+    );
+  }
+
+  private isSuccessfulToolResult(result: unknown): boolean {
+    const payload = this.toToolRecord(result);
+
+    return payload?.ok === true;
   }
 
   private buildRealCartReply(result: unknown): string | null {
@@ -1128,6 +1465,53 @@ if (name === 'create_checkout_link') {
     context: JsonObject,
   ): SelectedVariant | null {
     return this.parseSelectedVariant(context.selectedVariant);
+  }
+
+  private readSelectedVariants(
+    context: JsonObject,
+  ): SelectedVariantSelection[] {
+    const value = context.selectedVariants;
+
+    if (!Array.isArray(value)) {
+      const single = this.readSelectedVariant(context);
+
+      return single
+        ? [
+            {
+              ...single,
+              quantity: 1,
+            },
+          ]
+        : [];
+    }
+
+    const variants: SelectedVariantSelection[] = [];
+
+    for (const item of value) {
+      const variant = this.parseSelectedVariant(item);
+
+      if (!variant) {
+        continue;
+      }
+
+      const quantity =
+        item &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        Number.isInteger(
+          (item as Record<string, unknown>).quantity,
+        ) &&
+        Number((item as Record<string, unknown>).quantity) > 0
+          ? Number((item as Record<string, unknown>).quantity)
+          : 1;
+
+      variants.push({
+        ...variant,
+        quantity,
+      });
+    }
+
+    return variants;
   }
 
   private parseSelectedVariant(
