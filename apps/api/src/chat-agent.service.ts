@@ -173,26 +173,13 @@ export class ChatAgentService {
       return null;
     }
 
-    const checkoutUrl =
-      typeof payload.checkout_url === 'string'
-        ? payload.checkout_url.trim()
-        : '';
-
     return [
-      'Listo ✨ Agregué el producto al carrito:',
+      'Listo ✨ Ya quedó agregado al carrito:',
       '',
       summary,
       '',
-      checkoutUrl
-        ? 'Ya puedes continuar al pago aquí:'
-        : '¿Quieres agregar algo más o escribes “pagar” y te envío el link real de checkout?',
-      checkoutUrl || '',
-      checkoutUrl
-        ? 'También puedes decirme si quieres agregar otro producto antes de pagar.'
-        : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
+      'Puedes seguir agregando productos. Cuando termines, escribe “pagar” y te envío un único link real con todo el carrito.',
+    ].join('\n');
   }
 
   private buildRealCheckoutReply(result: unknown): string | null {
@@ -1118,19 +1105,25 @@ private readInteger(args: JsonObject, key: string): number {
   }
 
   private cleanReply(reply: string): string {
-  const clean = this.removeInternalBlocks(reply)
-    .replace(/\bto=functions\.[a-z0-9_.-]+\s*/gi, '')
-    .replace(/\bfunctions\.[a-z0-9_.-]+\s*/gi, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    const clean = this.removeInternalBlocks(reply)
+      .replace(/\bto=functions\.[a-z0-9_.-]+\s*/gi, '')
+      .replace(/\bfunctions\.[a-z0-9_.-]+\s*/gi, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
 
-  if (clean) {
+    if (!clean || this.isUnsafeModelReply(clean)) {
+      return 'Estoy confirmando la información real del carrito. Dime qué color, talla o cantidad deseas y te ayudo.';
+    }
+
     return clean.slice(0, 1500);
   }
 
-  return 'Cuéntame qué producto buscas y te ayudo a encontrarlo.';
-}
+  private isUnsafeModelReply(reply: string): boolean {
+    return /(?:now adding|proceeding|filenamestring|function_call|tool call|to=functions\.|\/cart\/)/i.test(
+      reply,
+    );
+  }
 
 private removeInternalBlocks(value: string): string {
   let result = '';
