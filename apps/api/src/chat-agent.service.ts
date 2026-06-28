@@ -39,25 +39,25 @@ export class ChatAgentService {
     customerMessage: string,
   ): Promise<string> {
     const currentIntent = await this.classifyCurrentIntent(
-  profile,
-  session,
-  customerMessage,
-);
+      profile,
+      session,
+      customerMessage,
+    );
 
-let activeSession =
-  currentIntent === 'new_catalog_search'
-    ? await this.conversationMemoryService.updateSession(session.id, {
-        stage: 'sales',
-        context: this.clearSelectedProductContext(session.context),
-      })
-    : session;
+    let activeSession =
+      currentIntent === 'new_catalog_search'
+        ? await this.conversationMemoryService.updateSession(session.id, {
+            stage: 'sales',
+            context: this.clearSelectedProductContext(session.context),
+          })
+        : session;
 
-const collections = await this.shopifyService.getCollections();
-const contextStatus = this.getContextStatus(profile, activeSession);
+    const collections = await this.shopifyService.getCollections();
+    const contextStatus = this.getContextStatus(profile, activeSession);
 
-const history = contextStatus.is_within_context_window
-  ? await this.getRecentMessages(activeSession.id)
-  : [];
+    const history = contextStatus.is_within_context_window
+      ? await this.getRecentMessages(activeSession.id)
+      : [];
 
     let response = await this.getClient().responses.create({
       model: this.getModel(),
@@ -68,11 +68,11 @@ const history = contextStatus.is_within_context_window
           settings: profile.settings,
         },
         session: {
-  stage: activeSession.stage,
-  context: activeSession.context,
-  last_message_at: activeSession.lastMessageAt,
-  context_status: contextStatus,
-},
+          stage: activeSession.stage,
+          context: activeSession.context,
+          last_message_at: activeSession.lastMessageAt,
+          context_status: contextStatus,
+        },
         conversation_history: history,
         current_customer_message: customerMessage,
         real_collections: collections.map((collection) => ({
@@ -92,6 +92,9 @@ const history = contextStatus.is_within_context_window
         output: string;
       }> = [];
 
+      let cartUpdatedResult: unknown = null;
+      let checkoutCreatedResult: unknown = null;
+
       for (const item of response.output) {
         if (item.type !== 'function_call') {
           continue;
@@ -100,7 +103,7 @@ const history = contextStatus.is_within_context_window
         const result = await this.executeTool(
           item.name,
           item.arguments,
-activeSession,
+          activeSession,
         );
 
         toolOutputs.push({
@@ -108,10 +111,33 @@ activeSession,
           call_id: item.call_id,
           output: JSON.stringify(result),
         });
+
+        if (item.name === 'add_selected_variant_to_cart') {
+          cartUpdatedResult = result;
+        }
+
+        if (item.name === 'create_checkout_link') {
+          checkoutCreatedResult = result;
+        }
+
         activeSession =
-  await this.conversationMemoryService.getSessionById(
-    activeSession.id,
-  );
+          await this.conversationMemoryService.getSessionById(
+            activeSession.id,
+          );
+      }
+
+      const checkoutReply =
+        this.buildRealCheckoutReply(checkoutCreatedResult);
+
+      if (checkoutReply) {
+        return checkoutReply;
+      }
+
+      const cartReply =
+        this.buildRealCartReply(cartUpdatedResult);
+
+      if (cartReply) {
+        return cartReply;
       }
 
       if (!toolOutputs.length) {
@@ -128,6 +154,156 @@ activeSession,
     return 'Estoy revisando la información para ayudarte. Cuéntame nuevamente qué producto buscas o envíame el enlace.';
   }
 
+  private buildRealCartReply(result: unknown): string | null {
+    const payload = this.toToolRecord(result);
+
+    if (!payload || payload.ok !== true) {
+      return null;
+    }
+
+    const cart = this.toToolRecord(payload.cart);
+
+    if (!cart) {
+      return null;
+    }
+
+    const summary = this.formatRealCartSummary(cart);
+
+    if (!summary) {
+      return null;
+    }
+
+    const checkoutUrl =
+      typeof payload.checkout_url === 'string'
+        ? payload.checkout_url.trim()
+        : '';
+
+    return [
+      'Listo ✨ Agregué el producto al carrito:',
+      '',
+      summary,
+      '',
+      checkoutUrl
+        ? 'Ya puedes continuar al pago aquí:'
+        : '¿Quieres agregar algo más o escribes “pagar” y te envío el link real de checkout?',
+      checkoutUrl || '',
+      checkoutUrl
+        ? 'También puedes decirme si quieres agregar otro producto antes de pagar.'
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  private buildRealCheckoutReply(result: unknown): string | null {
+    const payload = this.toToolRecord(result);
+
+    if (!payload || payload.ok !== true) {
+      return null;
+    }
+
+    const checkoutUrl =
+      typeof payload.checkout_url === 'string'
+        ? payload.checkout_url.trim()
+        : '';
+
+    if (!checkoutUrl) {
+      return null;
+    }
+
+    const cart = this.toToolRecord(payload.cart);
+    const summary = cart
+      ? this.formatRealCartSummary(cart)
+      : '';
+
+    return [
+      'Perfecto ✨ Tu carrito ya está listo para pagar.',
+      summary ? `\n${summary}` : '',
+      '',
+      'Completa tus datos y elige tu medio de pago aquí:',
+      checkoutUrl,
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  private formatRealCartSummary(
+    cart: Record<string, unknown>,
+  ): string | null {
+    const lines = Array.isArray(cart.lines) ? cart.lines : [];
+
+    if (!lines.length) {
+      return null;
+    }
+
+    const formattedLines = lines
+      .map((value) => {
+        const line = this.toToolRecord(value);
+
+        if (!line) {
+          return null;
+        }
+
+        const product =
+          typeof line.product_title === 'string'
+            ? line.product_title
+            : 'Producto';
+
+        const variant =
+          typeof line.variant_title === 'string' &&
+          line.variant_title.trim() &&
+          line.variant_title !== 'Default Title'
+            ? ` — ${line.variant_title}`
+            : '';
+
+        const quantity =
+          typeof line.quantity === 'number' ? line.quantity : 1;
+
+        const lineTotal = this.formatCop(
+          line.line_total_cop ?? line.unit_price_cop,
+        );
+
+        return `• ${product}${variant} — Cantidad: ${quantity} — ${lineTotal}`;
+      })
+      .filter((line): line is string => Boolean(line));
+
+    if (!formattedLines.length) {
+      return null;
+    }
+
+    const total = this.formatCop(cart.products_total_cop);
+
+    return [
+      ...formattedLines,
+      `Total del carrito: ${total}`,
+    ].join('\n');
+  }
+
+  private formatCop(value: unknown): string {
+    const amount = Number(value);
+
+    if (!Number.isFinite(amount)) {
+      return 'Valor pendiente';
+    }
+
+    return `${new Intl.NumberFormat('es-CO', {
+      maximumFractionDigits: 0,
+    }).format(amount)} COP`;
+  }
+
+  private toToolRecord(
+    value: unknown,
+  ): Record<string, unknown> | null {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    ) {
+      return value as Record<string, unknown>;
+    }
+
+    return null;
+  }
   private buildInstructions(profile: CompanyProfile): string {
   const assistantName = profile.assistantName ?? 'la asesora virtual';
 
