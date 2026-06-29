@@ -66,9 +66,7 @@ export class WhatsappWebhookController {
     }
 
     try {
-      const incomingPhoneNumberId =
-        this.getIncomingPhoneNumberId(body);
-
+      const incomingPhoneNumberId = this.getIncomingPhoneNumberId(body);
       const integration =
         await this.companyIntegrationService.findActiveIntegrationByExternalId(
           'meta',
@@ -82,30 +80,45 @@ export class WhatsappWebhookController {
         );
       }
 
-      const profile =
-        await this.conversationMemoryService.getCompanyProfileById(
-          integration.companyId,
-        );
+      const profile = await this.conversationMemoryService.getCompanyProfileById(
+        integration.companyId,
+      );
 
-      const session =
+      let session =
         await this.conversationMemoryService.getOrCreateSessionByCompanyId(
           integration.companyId,
           phone,
         );
 
-      const receivedMessage =
-        await this.conversationMemoryService.saveMessage({
-          companyId: profile.id,
-          sessionId: session.id,
-          customerPhone: phone,
-          message: text,
-          sender: 'customer',
-          providerMessageId: incomingMessageId,
-        });
+      const receivedMessage = await this.conversationMemoryService.saveMessage({
+        companyId: profile.id,
+        sessionId: session.id,
+        customerPhone: phone,
+        message: text,
+        sender: 'customer',
+        authorType: 'customer',
+        providerMessageId: incomingMessageId,
+      });
 
       if (receivedMessage === 'duplicate') {
         console.log(`Mensaje duplicado ignorado de ${phone}`);
         return 'EVENT_RECEIVED';
+      }
+
+      await this.conversationMemoryService.touchSession(session.id);
+
+      if (
+        session.attentionStatus === 'waiting' ||
+        session.attentionStatus === 'human'
+      ) {
+        console.log(`Mensaje recibido para atención humana de ${phone}`);
+        return 'EVENT_RECEIVED';
+      }
+
+      if (session.attentionStatus === 'closed') {
+        session = await this.conversationMemoryService.resumeAiConversation(
+          session.id,
+        );
       }
 
       const reply = await this.resolveReply(profile, session, text);
@@ -118,9 +131,11 @@ export class WhatsappWebhookController {
         customerPhone: phone,
         message: reply,
         sender: 'assistant',
+        authorType: 'ai',
         aiResponse: reply,
       });
 
+      await this.conversationMemoryService.touchSession(session.id);
       console.log(`Respuesta enviada a ${phone}`);
     } catch (error) {
       console.error('No se pudo procesar la conversación:', error);
@@ -211,10 +226,7 @@ export class WhatsappWebhookController {
     }
 
     if (cleanText === '3') {
-      await this.conversationMemoryService.updateSession(session.id, {
-        stage: 'main',
-        context: {},
-      });
+      await this.conversationMemoryService.requestHumanAttention(session.id);
 
       return 'Perfecto. Un asesor revisará tu caso y continuará la atención contigo.';
     }
@@ -276,9 +288,7 @@ export class WhatsappWebhookController {
       body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
 
     const phoneNumberId =
-      typeof rawPhoneNumberId === 'string'
-        ? rawPhoneNumberId.trim()
-        : '';
+      typeof rawPhoneNumberId === 'string' ? rawPhoneNumberId.trim() : '';
 
     if (!phoneNumberId) {
       throw new Error(
@@ -290,8 +300,8 @@ export class WhatsappWebhookController {
   }
 
   private async sendTextMessage(to: string, body: string) {
-    const accessToken = process.env.META_WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+    const accessToken = process.env.META_WHATSAPP_ACCESS_TOKEN?.trim();
+    const phoneNumberId = process.env.META_PHONE_NUMBER_ID?.trim();
 
     if (!accessToken || !phoneNumberId) {
       throw new Error('Faltan variables de Meta en Railway.');

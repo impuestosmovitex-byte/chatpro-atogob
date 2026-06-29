@@ -3,6 +3,21 @@ import { SupabaseService } from './supabase.service';
 
 type JsonObject = Record<string, unknown>;
 
+export type AttentionStatus = 'ai' | 'waiting' | 'human' | 'closed';
+
+const SESSION_FIELDS = [
+  'id',
+  'company_id',
+  'customer_phone',
+  'stage',
+  'context',
+  'last_message_at',
+  'attention_status',
+  'assigned_to_name',
+  'taken_at',
+  'closed_at',
+].join(', ');
+
 export type CompanyProfile = {
   id: string;
   slug: string;
@@ -19,6 +34,33 @@ export type ConversationSession = {
   stage: string;
   context: JsonObject;
   lastMessageAt: string;
+  attentionStatus: AttentionStatus;
+  assignedToName: string | null;
+  takenAt: string | null;
+  closedAt: string | null;
+};
+
+export type InboxMessage = {
+  id: string | null;
+  sessionId: string;
+  message: string;
+  sender: string;
+  authorType: 'customer' | 'ai' | 'advisor';
+  createdAt: string | null;
+};
+
+export type InboxConversation = {
+  company: {
+    id: string;
+    slug: string;
+    name: string;
+  };
+  session: ConversationSession;
+  messages: InboxMessage[];
+};
+
+export type InboxSessionSummary = ConversationSession & {
+  lastMessage: InboxMessage | null;
 };
 
 type SaveMessageInput = {
@@ -27,6 +69,7 @@ type SaveMessageInput = {
   customerPhone: string;
   message: string;
   sender: 'customer' | 'assistant';
+  authorType?: 'customer' | 'ai' | 'advisor';
   aiResponse?: string | null;
   providerMessageId?: string | null;
 };
@@ -64,9 +107,7 @@ export class ConversationMemoryService {
     return this.getCompanyProfileById(company.id);
   }
 
-  async getCompanyProfileById(
-    companyId: string,
-  ): Promise<CompanyProfile> {
+  async getCompanyProfileById(companyId: string): Promise<CompanyProfile> {
     const id = companyId.trim();
 
     if (!id) {
@@ -120,10 +161,7 @@ export class ConversationMemoryService {
   ): Promise<ConversationSession> {
     const profile = await this.getCompanyProfile(companySlug);
 
-    return this.getOrCreateSessionByCompanyId(
-      profile.id,
-      customerPhone,
-    );
+    return this.getOrCreateSessionByCompanyId(profile.id, customerPhone);
   }
 
   async getOrCreateSessionByCompanyId(
@@ -145,9 +183,7 @@ export class ConversationMemoryService {
 
     const { data: existingSession, error: existingError } = await client
       .from('conversation_sessions')
-      .select(
-        'id, company_id, customer_phone, stage, context, last_message_at',
-      )
+      .select(SESSION_FIELDS)
       .eq('company_id', id)
       .eq('customer_phone', phone)
       .maybeSingle();
@@ -171,12 +207,11 @@ export class ConversationMemoryService {
         customer_phone: phone,
         stage: 'main',
         context: {},
+        attention_status: 'ai',
         last_message_at: now,
         updated_at: now,
       })
-      .select(
-        'id, company_id, customer_phone, stage, context, last_message_at',
-      )
+      .select(SESSION_FIELDS)
       .single();
 
     if (createError || !createdSession) {
@@ -189,9 +224,8 @@ export class ConversationMemoryService {
 
     return this.toSession(createdSession);
   }
-  async getSessionById(
-    sessionId: string,
-  ): Promise<ConversationSession> {
+
+  async getSessionById(sessionId: string): Promise<ConversationSession> {
     const id = sessionId.trim();
 
     if (!id) {
@@ -201,16 +235,12 @@ export class ConversationMemoryService {
     const { data, error } = await this.supabaseService
       .getClient()
       .from('conversation_sessions')
-      .select(
-        'id, company_id, customer_phone, stage, context, last_message_at',
-      )
+      .select(SESSION_FIELDS)
       .eq('id', id)
       .maybeSingle();
 
     if (error) {
-      throw new Error(
-        `No se pudo consultar la sesión: ${error.message}`,
-      );
+      throw new Error(`No se pudo consultar la sesión: ${error.message}`);
     }
 
     if (!data) {
@@ -252,9 +282,7 @@ export class ConversationMemoryService {
       .from('conversation_sessions')
       .update(updateData)
       .eq('id', sessionId)
-      .select(
-        'id, company_id, customer_phone, stage, context, last_message_at',
-      )
+      .select(SESSION_FIELDS)
       .single();
 
     if (error || !data) {
@@ -287,11 +315,173 @@ export class ConversationMemoryService {
     }
   }
 
-  async saveMessage(
-    input: SaveMessageInput,
-  ): Promise<'saved' | 'duplicate'> {
-    const providerMessageId =
-      input.providerMessageId?.trim() || null;
+  async requestHumanAttention(sessionId: string): Promise<ConversationSession> {
+    return this.updateAttention(sessionId, {
+      attention_status: 'waiting',
+      assigned_to_user_id: null,
+      assigned_to_name: null,
+      taken_at: null,
+      closed_at: null,
+    });
+  }
+
+  async takeConversation(
+    sessionId: string,
+    advisorName: string,
+  ): Promise<ConversationSession> {
+    const name = advisorName.trim() || 'Asesor';
+    const now = new Date().toISOString();
+
+    return this.updateAttention(sessionId, {
+      attention_status: 'human',
+      assigned_to_name: name,
+      taken_at: now,
+      closed_at: null,
+    });
+  }
+
+  async closeConversation(sessionId: string): Promise<ConversationSession> {
+    return this.updateAttention(sessionId, {
+      attention_status: 'closed',
+      closed_at: new Date().toISOString(),
+    });
+  }
+
+  async resumeAiConversation(sessionId: string): Promise<ConversationSession> {
+    return this.updateAttention(sessionId, {
+      attention_status: 'ai',
+      assigned_to_user_id: null,
+      assigned_to_name: null,
+      taken_at: null,
+      closed_at: null,
+    });
+  }
+
+  async listInboxSessions(
+    companySlug: string,
+    status: string = 'all',
+    limit: number = 60,
+  ): Promise<{
+    company: { id: string; slug: string; name: string };
+    sessions: InboxSessionSummary[];
+  }> {
+    const profile = await this.getCompanyProfile(companySlug);
+    const max = Math.min(Math.max(Math.trunc(limit) || 60, 1), 150);
+    const normalizedStatus = this.normalizeStatusFilter(status);
+    const client = this.supabaseService.getClient();
+
+    let query = client
+      .from('conversation_sessions')
+      .select(SESSION_FIELDS)
+      .eq('company_id', profile.id)
+      .order('last_message_at', { ascending: false })
+      .limit(max);
+
+    if (normalizedStatus) {
+      query = query.eq('attention_status', normalizedStatus);
+    }
+
+    const { data: sessionRows, error: sessionError } = await query;
+
+    if (sessionError) {
+      throw new Error(
+        `No se pudieron consultar las conversaciones: ${sessionError.message}`,
+      );
+    }
+
+    const sessions = (sessionRows ?? []).map((row) => this.toSession(row));
+
+    if (!sessions.length) {
+      return {
+        company: { id: profile.id, slug: profile.slug, name: profile.name },
+        sessions: [],
+      };
+    }
+
+    const sessionIds = sessions.map((session) => session.id);
+    const { data: messageRows, error: messageError } = await client
+      .from('conversations')
+      .select('id, session_id, message, sender, author_type, created_at')
+      .in('session_id', sessionIds)
+      .order('created_at', { ascending: false });
+
+    if (messageError) {
+      throw new Error(
+        `No se pudieron consultar los últimos mensajes: ${messageError.message}`,
+      );
+    }
+
+    const latestBySession = new Map<string, InboxMessage>();
+
+    for (const row of messageRows ?? []) {
+      const message = this.toInboxMessage(row);
+
+      if (!latestBySession.has(message.sessionId)) {
+        latestBySession.set(message.sessionId, message);
+      }
+    }
+
+    return {
+      company: { id: profile.id, slug: profile.slug, name: profile.name },
+      sessions: sessions.map((session) => ({
+        ...session,
+        lastMessage: latestBySession.get(session.id) ?? null,
+      })),
+    };
+  }
+
+  async getInboxConversation(
+    companySlug: string,
+    sessionId: string,
+  ): Promise<InboxConversation> {
+    const profile = await this.getCompanyProfile(companySlug);
+    const id = sessionId.trim();
+
+    if (!id) {
+      throw new Error('Falta el identificador de la conversación.');
+    }
+
+    const client = this.supabaseService.getClient();
+    const { data: sessionRow, error: sessionError } = await client
+      .from('conversation_sessions')
+      .select(SESSION_FIELDS)
+      .eq('id', id)
+      .eq('company_id', profile.id)
+      .maybeSingle();
+
+    if (sessionError) {
+      throw new Error(
+        `No se pudo consultar la conversación: ${sessionError.message}`,
+      );
+    }
+
+    if (!sessionRow) {
+      throw new Error('La conversación no existe para esta empresa.');
+    }
+
+    const { data: messageRows, error: messageError } = await client
+      .from('conversations')
+      .select('id, session_id, message, sender, author_type, created_at')
+      .eq('session_id', id)
+      .order('created_at', { ascending: true });
+
+    if (messageError) {
+      throw new Error(
+        `No se pudo consultar el historial: ${messageError.message}`,
+      );
+    }
+
+    return {
+      company: { id: profile.id, slug: profile.slug, name: profile.name },
+      session: this.toSession(sessionRow),
+      messages: (messageRows ?? []).map((row) => this.toInboxMessage(row)),
+    };
+  }
+
+  async saveMessage(input: SaveMessageInput): Promise<'saved' | 'duplicate'> {
+    const providerMessageId = input.providerMessageId?.trim() || null;
+    const authorType =
+      input.authorType ?? (input.sender === 'customer' ? 'customer' : 'ai');
 
     const { error } = await this.supabaseService
       .getClient()
@@ -302,6 +492,7 @@ export class ConversationMemoryService {
         customer_phone: input.customerPhone,
         message: input.message,
         sender: input.sender,
+        author_type: authorType,
         message_type: 'text',
         status: input.sender === 'customer' ? 'received' : 'sent',
         ai_response: input.aiResponse ?? null,
@@ -319,31 +510,145 @@ export class ConversationMemoryService {
     return 'saved';
   }
 
-  private toSession(session: {
-    id: string;
-    company_id: string;
-    customer_phone: string;
-    stage: string;
-    context: unknown;
-    last_message_at: string | null;
-  }): ConversationSession {
+  private async updateAttention(
+    sessionId: string,
+    changes: Record<string, unknown>,
+  ): Promise<ConversationSession> {
+    const now = new Date().toISOString();
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('conversation_sessions')
+      .update({
+        ...changes,
+        updated_at: now,
+      })
+      .eq('id', sessionId)
+      .select(SESSION_FIELDS)
+      .single();
+
+    if (error || !data) {
+      throw new Error(
+        `No se pudo cambiar el estado de la conversación: ${
+          error?.message ?? 'respuesta vacía'
+        }`,
+      );
+    }
+
+    return this.toSession(data);
+  }
+
+  private normalizeStatusFilter(status: string): AttentionStatus | null {
+    const clean = status.trim().toLowerCase();
+
+    if (
+      clean === 'ai' ||
+      clean === 'waiting' ||
+      clean === 'human' ||
+      clean === 'closed'
+    ) {
+      return clean;
+    }
+
+    return null;
+  }
+
+  private toSession(session: unknown): ConversationSession {
+    if (
+      !session ||
+      typeof session !== 'object' ||
+      Array.isArray(session)
+    ) {
+      throw new Error('La sesión recibida no tiene un formato válido.');
+    }
+
+    const row = session as Record<string, unknown>;
+
+    const id =
+      typeof row.id === 'string' ? row.id.trim() : '';
+    const companyId =
+      typeof row.company_id === 'string'
+        ? row.company_id.trim()
+        : '';
+    const customerPhone =
+      typeof row.customer_phone === 'string'
+        ? row.customer_phone.trim()
+        : '';
+
+    if (!id || !companyId || !customerPhone) {
+      throw new Error('La sesión recibida no tiene los datos requeridos.');
+    }
+
     return {
-      id: session.id,
-      companyId: session.company_id,
-      customerPhone: session.customer_phone,
-      stage: session.stage,
-      context: this.toJsonObject(session.context),
+      id,
+      companyId,
+      customerPhone,
+      stage:
+        typeof row.stage === 'string' && row.stage.trim()
+          ? row.stage
+          : 'main',
+      context: this.toJsonObject(row.context),
       lastMessageAt:
-        session.last_message_at ?? new Date(0).toISOString(),
+        typeof row.last_message_at === 'string' &&
+        row.last_message_at.trim()
+          ? row.last_message_at
+          : new Date(0).toISOString(),
+      attentionStatus: this.toAttentionStatus(
+        row.attention_status,
+      ),
+      assignedToName:
+        typeof row.assigned_to_name === 'string' &&
+        row.assigned_to_name.trim()
+          ? row.assigned_to_name
+          : null,
+      takenAt:
+        typeof row.taken_at === 'string' && row.taken_at.trim()
+          ? row.taken_at
+          : null,
+      closedAt:
+        typeof row.closed_at === 'string' && row.closed_at.trim()
+          ? row.closed_at
+          : null,
     };
   }
 
+  private toInboxMessage(message: {
+    id?: string | null;
+    session_id: string;
+    message: string;
+    sender: string;
+    author_type?: string | null;
+    created_at?: string | null;
+  }): InboxMessage {
+    const authorType =
+      message.author_type === 'advisor' ||
+      message.author_type === 'ai' ||
+      message.author_type === 'customer'
+        ? message.author_type
+        : message.sender === 'customer'
+          ? 'customer'
+          : 'ai';
+
+    return {
+      id: message.id ?? null,
+      sessionId: message.session_id,
+      message: message.message,
+      sender: message.sender,
+      authorType,
+      createdAt: message.created_at ?? null,
+    };
+  }
+
+  private toAttentionStatus(value: unknown): AttentionStatus {
+    if (value === 'waiting' || value === 'human' || value === 'closed') {
+      return value;
+    }
+
+    return 'ai';
+  }
+
   private toJsonObject(value: unknown): JsonObject {
-    if (
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value)
-    ) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
       return value as JsonObject;
     }
 
