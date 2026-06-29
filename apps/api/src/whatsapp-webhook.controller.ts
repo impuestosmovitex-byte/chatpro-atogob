@@ -164,7 +164,6 @@ export class WhatsappWebhookController {
     if (['hola', 'menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
       await this.conversationMemoryService.updateSession(session.id, {
         stage: 'main',
-        context: {},
       });
 
       return this.mainMenu(profile);
@@ -174,8 +173,7 @@ export class WhatsappWebhookController {
       if (cleanText === '1' || cleanText.includes('venta')) {
         await this.conversationMemoryService.updateSession(session.id, {
           stage: 'sales',
-          context: {},
-        });
+          });
 
         return [
           'Perfecto ✨',
@@ -187,8 +185,7 @@ export class WhatsappWebhookController {
       if (cleanText === '2' || cleanText.includes('servicio')) {
         await this.conversationMemoryService.updateSession(session.id, {
           stage: 'service',
-          context: {},
-        });
+          });
 
         return this.serviceMenu();
       }
@@ -210,7 +207,6 @@ export class WhatsappWebhookController {
     if (cleanText === '1') {
       await this.conversationMemoryService.updateSession(session.id, {
         stage: 'main',
-        context: {},
       });
 
       return 'Para revisar tu pedido, envíame tu número de pedido o el número de celular con el que realizaste la compra.';
@@ -219,7 +215,6 @@ export class WhatsappWebhookController {
     if (cleanText === '2') {
       await this.conversationMemoryService.updateSession(session.id, {
         stage: 'main',
-        context: {},
       });
 
       return 'Cuéntame qué ocurrió con el producto y te orientaré sobre el proceso de garantía o cambio.';
