@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState, useRef} from "react";
 
 type AttentionStatus = "ai" | "waiting" | "human" | "closed";
 
@@ -249,6 +249,24 @@ export default function Home() {
     [cartLines],
   );
 
+
+  const messageFeedRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const feed = messageFeedRef.current;
+
+    if (!feed || !selected || loadingChat) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      feed.scrollTop = feed.scrollHeight;
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [selected?.session.id, selected?.messages.length, loadingChat]);
+
+
   return (
     <main className="chatpro-shell">
       <aside className="main-sidebar">
@@ -402,7 +420,7 @@ export default function Home() {
                   </div>
                 </header>
 
-                <div className="message-feed">
+                <div className="message-feed" ref={messageFeedRef}>
                   {loadingChat ? <p className="feed-loading">Abriendo historial…</p> : null}
                   {!loadingChat && !selected.messages.length ? <p className="feed-loading">No hay mensajes todavía.</p> : null}
                   {selected.messages.map((item) => (
