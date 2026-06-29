@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  INBOX_SESSION_COOKIE,
+  isInboxSessionValid,
+} from '../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +29,19 @@ function config() {
   return { apiBase, inboxKey };
 }
 
+async function hasValidSession(request: NextRequest): Promise<boolean> {
+  return isInboxSessionValid(
+    request.cookies.get(INBOX_SESSION_COOKIE)?.value,
+  );
+}
+
+function unauthorized() {
+  return NextResponse.json(
+    { ok: false, error: 'Sesión requerida.' },
+    { status: 401 },
+  );
+}
+
 async function proxyResponse(response: Response) {
   const contentType = response.headers.get('content-type') ?? 'application/json';
   const body = await response.text();
@@ -36,6 +53,10 @@ async function proxyResponse(response: Response) {
 }
 
 export async function GET(request: NextRequest) {
+  if (!(await hasValidSession(request))) {
+    return unauthorized();
+  }
+
   try {
     const { apiBase, inboxKey } = config();
     const company = request.nextUrl.searchParams.get('company')?.trim() ?? '';
@@ -75,6 +96,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await hasValidSession(request))) {
+    return unauthorized();
+  }
+
   try {
     const { apiBase, inboxKey } = config();
     const body = (await request.json()) as InboxRequestBody;
