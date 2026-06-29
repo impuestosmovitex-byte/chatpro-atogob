@@ -155,6 +155,59 @@ export class ConversationMemoryService {
     };
   }
 
+  async updateCompanyAiSettings(
+    companySlug: string,
+    input: {
+      assistantName?: string;
+      tone?: string;
+      aiInstructions?: string;
+    },
+  ): Promise<CompanyProfile> {
+    const profile = await this.getCompanyProfile(companySlug);
+    const nextSettings: JsonObject = { ...profile.settings };
+
+    if (input.tone !== undefined) {
+      const tone = input.tone.trim();
+
+      if (tone) {
+        nextSettings.ai_tone = tone;
+      } else {
+        delete nextSettings.ai_tone;
+      }
+    }
+
+    const assistantName =
+      input.assistantName === undefined
+        ? profile.assistantName
+        : input.assistantName.trim() || null;
+
+    const aiInstructions =
+      input.aiInstructions === undefined
+        ? profile.aiInstructions
+        : input.aiInstructions.trim();
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('company_settings')
+      .upsert(
+        {
+          company_id: profile.id,
+          assistant_name: assistantName,
+          ai_instructions: aiInstructions,
+          settings: nextSettings,
+        },
+        { onConflict: 'company_id' },
+      );
+
+    if (error) {
+      throw new Error(
+        `No se pudo guardar la configuración de IA: ${error.message}`,
+      );
+    }
+
+    return this.getCompanyProfileById(profile.id);
+  }
+
   async getOrCreateSession(
     companySlug: string,
     customerPhone: string,

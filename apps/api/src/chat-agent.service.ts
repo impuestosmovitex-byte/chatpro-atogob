@@ -652,10 +652,15 @@ Empresa: ${profile.name}.
   }
   private buildInstructions(profile: CompanyProfile): string {
   const assistantName = profile.assistantName ?? 'la asesora virtual';
+  const configuredTone =
+    typeof profile.settings.ai_tone === 'string' &&
+    profile.settings.ai_tone.trim()
+      ? profile.settings.ai_tone.trim()
+      : 'clara, breve, amable y natural';
 
   return [
     `Eres ${assistantName}, asesora comercial de ${profile.name}.`,
-    'Hablas en español colombiano, de forma clara, breve, amable y natural.',
+    `Hablas en español colombiano, de forma ${configuredTone}.`,
     'Entiendes errores de escritura, mensajes cortos y referencias como “este”, “esa”, “la primera”, “negro”, “sí me gusta” o “lo quiero comprar”.',
     '',
     'REGLAS ABSOLUTAS:',

@@ -7,6 +7,7 @@ import { CartRecoveryService } from './cart-recovery.service';
 import { CartService } from './cart.service';
 import { ChatAgentService } from './chat-agent.service';
 import { CompanyIntegrationService } from './company-integration.service';
+import { CompanySettingsController } from './company-settings.controller';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { InboxController } from './inbox.controller';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
@@ -20,6 +21,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     AppController,
     WhatsappWebhookController,
     InboxController,
+    CompanySettingsController,
   ],
   providers: [
     CompanyIntegrationService,

@@ -285,7 +285,11 @@ export default function Home() {
           <button className="main-nav-item" type="button" disabled>
             <span>◈</span> Automatizaciones
           </button>
-          <button className="main-nav-item" type="button" disabled>
+          <button
+            className="main-nav-item"
+            type="button"
+            onClick={() => window.location.assign("/configuracion")}
+          >
             <span>⚙</span> Configuración
           </button>
         </nav>
