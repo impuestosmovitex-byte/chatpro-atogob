@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.chatpro-backups
+.env
+.env.local
+apps/api/node_modules
+apps/api/dist
+apps/api/src/*.before-*
