@@ -16,16 +16,11 @@ import {
   type ConversationSession,
 } from './conversation-memory.service';
 
-type ConversationStage =
-  | 'main'
-  | 'service'
-  | 'sales'
-  | 'product'
-  | 'variant'
-  | 'checkout';
-
 @Controller('webhook/whatsapp')
 export class WhatsappWebhookController {
+  private readonly conversationQueues = new Map<string, Promise<void>>();
+  private readonly recentProductUrlMessages = new Map<string, number>();
+
   constructor(
     private readonly chatAgentService: ChatAgentService,
     private readonly conversationMemoryService: ConversationMemoryService,
@@ -67,11 +62,118 @@ export class WhatsappWebhookController {
 
     try {
       const incomingPhoneNumberId = this.getIncomingPhoneNumberId(body);
+      const conversationKey = `${incomingPhoneNumberId}:${phone}`;
+      const suppressReply = this.isRedundantProductReference(
+        conversationKey,
+        text,
+      );
+
+      if (this.isProductUrlMessage(text)) {
+        this.recentProductUrlMessages.set(conversationKey, Date.now());
+      }
+
+      this.enqueueConversation(conversationKey, () =>
+        this.processIncomingText({
+          incomingPhoneNumberId,
+          phone,
+          text,
+          incomingMessageId,
+          suppressReply,
+        }),
+      );
+    } catch (error) {
+      console.error('No se pudo preparar el mensaje entrante:', error);
+    }
+
+    return 'EVENT_RECEIVED';
+  }
+
+  private enqueueConversation(
+    conversationKey: string,
+    task: () => Promise<void>,
+  ): void {
+    const previous =
+      this.conversationQueues.get(conversationKey) ?? Promise.resolve();
+
+    const next = previous
+      .catch((error) => {
+        console.error(
+          `Falló una tarea anterior de la conversación ${conversationKey}:`,
+          error,
+        );
+      })
+      .then(() => task());
+
+    this.conversationQueues.set(conversationKey, next);
+
+    void next
+      .catch((error) => {
+        console.error(
+          `Falló una tarea de la conversación ${conversationKey}:`,
+          error,
+        );
+      })
+      .finally(() => {
+        if (this.conversationQueues.get(conversationKey) === next) {
+          this.conversationQueues.delete(conversationKey);
+        }
+      });
+  }
+
+  private isProductUrlMessage(text: string): boolean {
+    return /https?:\/\/\S+\/products\//i.test(text);
+  }
+
+  private isRedundantProductReference(
+    conversationKey: string,
+    text: string,
+  ): boolean {
+    const lastUrlAt = this.recentProductUrlMessages.get(conversationKey);
+
+    if (!lastUrlAt) {
+      return false;
+    }
+
+    if (Date.now() - lastUrlAt > 10_000) {
+      this.recentProductUrlMessages.delete(conversationKey);
+      return false;
+    }
+
+    const normalized = text
+      .toLocaleLowerCase('es-CO')
+      .trim()
+      .replace(/[¡!¿?.,]/g, '');
+
+    const redundantReferences = [
+      'esta',
+      'este',
+      'esa',
+      'ese',
+      'la de arriba',
+      'el de arriba',
+    ];
+
+    if (!redundantReferences.includes(normalized)) {
+      return false;
+    }
+
+    this.recentProductUrlMessages.delete(conversationKey);
+    return true;
+  }
+
+  private async processIncomingText(input: {
+    incomingPhoneNumberId: string;
+    phone: string;
+    text: string;
+    incomingMessageId: string | null;
+    suppressReply: boolean;
+  }): Promise<void> {
+    try {
       const integration =
         await this.companyIntegrationService.findActiveIntegrationByExternalId(
           'meta',
           'whatsapp',
-          incomingPhoneNumberId,
+          input.incomingPhoneNumberId,
         );
 
       if (!integration) {
@@ -80,39 +182,45 @@ export class WhatsappWebhookController {
         );
       }
 
-      const profile = await this.conversationMemoryService.getCompanyProfileById(
-        integration.companyId,
-      );
+      const profile =
+        await this.conversationMemoryService.getCompanyProfileById(
+          integration.companyId,
+        );
 
       let session =
         await this.conversationMemoryService.getOrCreateSessionByCompanyId(
           integration.companyId,
-          phone,
+          input.phone,
         );
 
-      const receivedMessage = await this.conversationMemoryService.saveMessage({
-        companyId: profile.id,
-        sessionId: session.id,
-        customerPhone: phone,
-        message: text,
-        sender: 'customer',
-        authorType: 'customer',
-        providerMessageId: incomingMessageId,
-      });
+      const receivedMessage =
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: input.text,
+          sender: 'customer',
+          authorType: 'customer',
+          providerMessageId: input.incomingMessageId,
+        });
 
       if (receivedMessage === 'duplicate') {
-        console.log(`Mensaje duplicado ignorado de ${phone}`);
-        return 'EVENT_RECEIVED';
+        console.log(`Mensaje duplicado ignorado de ${input.phone}`);
+        return;
       }
 
       await this.conversationMemoryService.touchSession(session.id);
+
+      if (input.suppressReply) {
+        return;
+      }
 
       if (
         session.attentionStatus === 'waiting' ||
         session.attentionStatus === 'human'
       ) {
-        console.log(`Mensaje recibido para atención humana de ${phone}`);
-        return 'EVENT_RECEIVED';
+        console.log(`Mensaje recibido para atención humana de ${input.phone}`);
+        return;
       }
 
       if (session.attentionStatus === 'closed') {
@@ -121,14 +229,14 @@ export class WhatsappWebhookController {
         );
       }
 
-      const reply = await this.resolveReply(profile, session, text);
+      const reply = await this.resolveReply(profile, session, input.text);
 
-      await this.sendTextMessage(phone, reply);
+      await this.sendTextMessage(input.phone, reply);
 
       await this.conversationMemoryService.saveMessage({
         companyId: profile.id,
         sessionId: session.id,
-        customerPhone: phone,
+        customerPhone: input.phone,
         message: reply,
         sender: 'assistant',
         authorType: 'ai',
@@ -136,21 +244,19 @@ export class WhatsappWebhookController {
       });
 
       await this.conversationMemoryService.touchSession(session.id);
-      console.log(`Respuesta enviada a ${phone}`);
+      console.log(`Respuesta enviada a ${input.phone}`);
     } catch (error) {
       console.error('No se pudo procesar la conversación:', error);
 
       try {
         await this.sendTextMessage(
-          phone,
+          input.phone,
           'Estamos revisando la información para ayudarte. Por favor intenta nuevamente en unos minutos.',
         );
       } catch (sendError) {
         console.error('No se pudo enviar el mensaje de respaldo:', sendError);
       }
     }
-
-    return 'EVENT_RECEIVED';
   }
 
   private async resolveReply(
@@ -158,112 +264,38 @@ export class WhatsappWebhookController {
     session: ConversationSession,
     text: string,
   ): Promise<string> {
-    const cleanText = text.toLowerCase().trim();
-    const currentStage = this.getStage(session.stage);
+    const cleanText = text.toLocaleLowerCase('es-CO').trim();
 
     if (['hola', 'menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
-      await this.conversationMemoryService.updateSession(session.id, {
-        stage: 'main',
-      });
+      const resetSession = await this.conversationMemoryService.updateSession(
+        session.id,
+        { stage: 'main' },
+      );
 
-      return this.mainMenu(profile);
+      return this.chatAgentService.reply(profile, resetSession, text);
     }
 
-    if (currentStage === 'main') {
+    if (session.stage === 'main') {
       if (cleanText === '1' || cleanText.includes('venta')) {
-        await this.conversationMemoryService.updateSession(session.id, {
-          stage: 'sales',
-          });
+        const salesSession = await this.conversationMemoryService.updateSession(
+          session.id,
+          { stage: 'sales' },
+        );
 
-        return [
-          'Perfecto ✨',
-          '¿Qué producto estás buscando?',
-          'Puedes escribirme el nombre, categoría, color, talla, estilo o enviarme un enlace.',
-        ].join('\n\n');
+        return this.chatAgentService.reply(profile, salesSession, text);
       }
 
       if (cleanText === '2' || cleanText.includes('servicio')) {
-        await this.conversationMemoryService.updateSession(session.id, {
-          stage: 'service',
+        const serviceSession =
+          await this.conversationMemoryService.updateSession(session.id, {
+            stage: 'service',
           });
 
-        return this.serviceMenu();
+        return this.chatAgentService.reply(profile, serviceSession, text);
       }
-
-      return this.mainMenu(profile);
-    }
-
-    if (currentStage === 'service') {
-      return this.resolveServiceReply(session, cleanText);
     }
 
     return this.chatAgentService.reply(profile, session, text);
-  }
-
-  private async resolveServiceReply(
-    session: ConversationSession,
-    cleanText: string,
-  ): Promise<string> {
-    if (cleanText === '1') {
-      await this.conversationMemoryService.updateSession(session.id, {
-        stage: 'main',
-      });
-
-      return 'Para revisar tu pedido, envíame tu número de pedido o el número de celular con el que realizaste la compra.';
-    }
-
-    if (cleanText === '2') {
-      await this.conversationMemoryService.updateSession(session.id, {
-        stage: 'main',
-      });
-
-      return 'Cuéntame qué ocurrió con el producto y te orientaré sobre el proceso de garantía o cambio.';
-    }
-
-    if (cleanText === '3') {
-      await this.conversationMemoryService.requestHumanAttention(session.id);
-
-      return 'Perfecto. Un asesor revisará tu caso y continuará la atención contigo.';
-    }
-
-    return this.serviceMenu();
-  }
-
-  private mainMenu(profile: CompanyProfile): string {
-    const introduction = profile.assistantName
-      ? `Soy ${profile.assistantName}, asistente virtual de ${profile.name}.`
-      : `Soy el asistente virtual de ${profile.name}.`;
-
-    return [
-      'Hola 👋',
-      introduction,
-      '¿En qué puedo ayudarte?',
-      '1️⃣ Ventas',
-      '2️⃣ Servicio al cliente',
-    ].join('\n\n');
-  }
-
-  private serviceMenu(): string {
-    return [
-      'Claro, elige una opción:',
-      '1️⃣ Saber de mi pedido',
-      '2️⃣ Garantías y cambios',
-      '3️⃣ Hablar con un asesor',
-    ].join('\n\n');
-  }
-
-  private getStage(stage: string): ConversationStage {
-    if (
-      stage === 'service' ||
-      stage === 'sales' ||
-      stage === 'product' ||
-      stage === 'variant' ||
-      stage === 'checkout'
-    ) {
-      return stage;
-    }
-
-    return 'main';
   }
 
   private getIncomingMessage(body: any) {
