@@ -483,12 +483,6 @@ billingAddress: {
             createdAt: string;
             updatedAt: string;
             abandonedCheckoutUrl: string;
-            customer: {
-              firstName: string | null;
-              lastName: string | null;
-              email: string | null;
-              phone: string | null;
-            } | null;
             shippingAddress: {
               firstName: string | null;
               lastName: string | null;
@@ -541,12 +535,6 @@ billingAddress: {
                 createdAt
                 updatedAt
                 abandonedCheckoutUrl
-                customer {
-                  firstName
-                  lastName
-                  email
-                  phone
-                }
                 shippingAddress {
                   firstName
                   lastName
@@ -613,7 +601,6 @@ billingAddress: {
 
       const shippingName = nameFrom(node.shippingAddress);
       const billingName = nameFrom(node.billingAddress);
-      const customerName = nameFrom(node.customer);
 
       return {
         externalId: node.id,
@@ -623,14 +610,9 @@ billingAddress: {
         customerPhone:
           node.shippingAddress?.phone ||
           node.billingAddress?.phone ||
-          node.customer?.phone ||
           null,
-        customerName: shippingName || billingName || customerName || null,
-        customerEmail:
-          typeof node.customer?.email === 'string' &&
-          node.customer.email.trim()
-            ? node.customer.email.trim()
-            : null,
+        customerName: shippingName || billingName || null,
+        customerEmail: null,
         total: node.totalPriceSet.shopMoney,
         lines: node.lineItems.edges.map(({ node: line }) => ({
           title: line.title,
