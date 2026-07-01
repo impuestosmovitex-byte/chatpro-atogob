@@ -1,0 +1,476 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 238px minmax(0, 1fr);
+  background: #f5f6f8;
+  color: #17181d;
+}
+
+.sidebar {
+  min-height: 100vh;
+  background: #121316;
+  color: #f7f7f8;
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 800;
+  padding: 0 6px 24px;
+}
+
+.dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: #d7aa3b;
+  box-shadow: 0 0 0 4px rgba(215, 170, 59, 0.13);
+}
+
+.nav {
+  display: grid;
+  gap: 6px;
+}
+
+.nav button {
+  border: 0;
+  background: transparent;
+  color: #b8bbc3;
+  border-radius: 10px;
+  padding: 13px 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.nav button:hover:not(:disabled) {
+  background: #202227;
+  color: #fff;
+}
+
+.nav button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.nav .active {
+  color: #1a1b20;
+  background: #f0ca68;
+}
+
+.footer {
+  margin-top: auto;
+  padding: 18px 7px 0;
+  color: #9ea2ad;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workspace {
+  padding: 28px 36px 48px;
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.eyebrow,
+.sectionHeading p {
+  margin: 0 0 5px;
+  color: #8a6b2c;
+  letter-spacing: 0.08em;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.header h1,
+.sectionHeading h2 {
+  margin: 0;
+  letter-spacing: -0.035em;
+}
+
+.header h1 {
+  font-size: clamp(36px, 4vw, 50px);
+}
+
+.header > div > p:last-child {
+  margin: 9px 0 0;
+  color: #687080;
+  font-size: 17px;
+}
+
+.refresh,
+.createButton,
+.passwordButton,
+.resetBox button {
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.refresh {
+  padding: 13px 16px;
+  background: #202126;
+  color: #fff;
+}
+
+.refresh:disabled,
+.createButton:disabled,
+.passwordButton:disabled,
+.resetBox button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.error,
+.success {
+  border-radius: 12px;
+  padding: 13px 15px;
+  margin-bottom: 18px;
+  font-weight: 700;
+}
+
+.error {
+  background: #fff0ee;
+  border: 1px solid #edb1a8;
+  color: #9e2921;
+}
+
+.success {
+  background: #eff8ec;
+  border: 1px solid #b8dba8;
+  color: #376f28;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(290px, 370px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.createCard,
+.usersCard {
+  background: #fff;
+  border: 1px solid #e1e3e8;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(25, 28, 37, 0.04);
+}
+
+.createCard {
+  padding: 22px;
+  position: sticky;
+  top: 18px;
+}
+
+.usersCard {
+  overflow: hidden;
+}
+
+.sectionHeading {
+  padding: 21px 22px;
+  border-bottom: 1px solid #eceef2;
+}
+
+.sectionHeading h2 {
+  font-size: 25px;
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+.form label,
+.userControls label {
+  display: grid;
+  gap: 6px;
+}
+
+.form label > span,
+.userControls label > span {
+  color: #586071;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.form input,
+.form select,
+.userControls select,
+.resetBox input {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid #d9dde5;
+  border-radius: 9px;
+  background: #fff;
+  color: #20232a;
+  padding: 0 12px;
+  font: inherit;
+  outline: none;
+}
+
+.form input:focus,
+.form select:focus,
+.userControls select:focus,
+.resetBox input:focus {
+  border-color: #bc9232;
+  box-shadow: 0 0 0 3px rgba(215, 170, 59, 0.16);
+}
+
+.createButton {
+  padding: 13px 16px;
+  background: #202126;
+  color: #fff;
+}
+
+.rolePreview {
+  margin: 0 22px 22px;
+  padding: 16px;
+  background: #fbf8ef;
+  border: 1px solid #eee0bb;
+  border-radius: 12px;
+}
+
+.rolePreview strong {
+  font-size: 16px;
+}
+
+.rolePreview p {
+  color: #625c4d;
+  margin: 6px 0 12px;
+  line-height: 1.4;
+}
+
+.permissionList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.permissionList span {
+  color: #5f4a1d;
+  background: #f3e6bd;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.empty {
+  padding: 52px 24px;
+  text-align: center;
+  color: #737b8a;
+  font-weight: 700;
+}
+
+.userList {
+  display: grid;
+}
+
+.userRow {
+  display: grid;
+  grid-template-columns: 42px minmax(180px, 1fr) minmax(300px, auto);
+  gap: 14px;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid #eceef2;
+}
+
+.userRow:last-child {
+  border-bottom: 0;
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  background: #282a30;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.userInfo {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.userInfo strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+}
+
+.userInfo span,
+.userInfo small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #717a8b;
+}
+
+.userInfo small {
+  font-size: 12px;
+}
+
+.userControls {
+  display: flex;
+  align-items: end;
+  justify-content: end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.userControls label {
+  min-width: 138px;
+}
+
+.statusActive,
+.statusInactive {
+  min-height: 41px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.statusActive {
+  background: #e9f6e7;
+  color: #36792c;
+}
+
+.statusInactive {
+  background: #f0f1f3;
+  color: #677080;
+}
+
+.passwordButton {
+  min-height: 41px;
+  padding: 0 11px;
+  background: #f0f1f4;
+  color: #383c45;
+  font-size: 13px;
+}
+
+.rowPermissions {
+  grid-column: 2 / -1;
+  color: #7d8594;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.resetBox {
+  grid-column: 2 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  background: #f8f9fb;
+  border-radius: 10px;
+}
+
+.resetBox input {
+  flex: 1;
+}
+
+.resetBox button {
+  min-height: 40px;
+  padding: 0 12px;
+  background: #202126;
+  color: #fff;
+}
+
+.resetBox button:last-child {
+  background: #e8eaef;
+  color: #3f4550;
+}
+
+@media (max-width: 1040px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    min-height: auto;
+    padding: 14px;
+  }
+
+  .brand {
+    padding-bottom: 12px;
+  }
+
+  .nav {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .nav button {
+    white-space: nowrap;
+  }
+
+  .footer {
+    display: none;
+  }
+
+  .workspace {
+    padding: 22px 18px 36px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .createCard {
+    position: static;
+  }
+}
+
+@media (max-width: 740px) {
+  .header {
+    display: grid;
+  }
+
+  .refresh {
+    width: 100%;
+  }
+
+  .userRow {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .userControls,
+  .rowPermissions,
+  .resetBox {
+    grid-column: 1 / -1;
+  }
+
+  .userControls {
+    justify-content: stretch;
+  }
+
+  .userControls label {
+    flex: 1;
+  }
+}

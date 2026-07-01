@@ -15,6 +15,7 @@ import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkou
 import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
+import { UsersController } from './users.controller';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -24,6 +25,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     InboxController,
     ClientsController,
     CompanySettingsController,
+    UsersController,
   ],
   providers: [
     CompanyIntegrationService,

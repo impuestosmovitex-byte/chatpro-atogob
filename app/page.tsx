@@ -286,6 +286,13 @@ export default function Home() {
           >
             <span>◌</span> Clientes
           </button>
+          <button
+            className="main-nav-item"
+            type="button"
+            onClick={() => window.location.assign("/usuarios")}
+          >
+            <span>◍</span> Usuarios
+          </button>
           <button className="main-nav-item" type="button" disabled>
             <span>◈</span> Automatizaciones
           </button>
