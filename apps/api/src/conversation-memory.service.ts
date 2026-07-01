@@ -63,6 +63,28 @@ export type InboxSessionSummary = ConversationSession & {
   lastMessage: InboxMessage | null;
 };
 
+
+export type ClientSummary = {
+  customerPhone: string;
+  firstMessageAt: string | null;
+  lastMessageAt: string;
+  attentionStatus: AttentionStatus;
+  assignedToName: string | null;
+  totalMessages: number;
+  lastMessage: InboxMessage | null;
+};
+
+export type ClientProfile = {
+  company: {
+    id: string;
+    slug: string;
+    name: string;
+  };
+  client: ClientSummary;
+  session: ConversationSession;
+  messages: InboxMessage[];
+};
+
 type SaveMessageInput = {
   companyId: string;
   sessionId: string;
@@ -483,6 +505,137 @@ export class ConversationMemoryService {
     };
   }
 
+  async listClients(
+    companySlug: string,
+    search: string = '',
+    limit: number = 100,
+  ): Promise<{
+    company: { id: string; slug: string; name: string };
+    clients: ClientSummary[];
+  }> {
+    const profile = await this.getCompanyProfile(companySlug);
+    const max = Math.min(Math.max(Math.trunc(limit) || 100, 1), 150);
+    const normalizedSearch = search.trim().replace(/[^\d+]/g, '');
+    const client = this.supabaseService.getClient();
+
+    let query = client
+      .from('conversation_sessions')
+      .select(SESSION_FIELDS)
+      .eq('company_id', profile.id)
+      .order('last_message_at', { ascending: false })
+      .limit(max);
+
+    if (normalizedSearch) {
+      query = query.ilike(
+        'customer_phone',
+        `%${normalizedSearch}%`,
+      );
+    }
+
+    const { data: sessionRows, error: sessionError } = await query;
+
+    if (sessionError) {
+      throw new Error(
+        `No se pudieron consultar los clientes: ${sessionError.message}`,
+      );
+    }
+
+    const sessions = (sessionRows ?? []).map((row) => this.toSession(row));
+
+    if (!sessions.length) {
+      return {
+        company: { id: profile.id, slug: profile.slug, name: profile.name },
+        clients: [],
+      };
+    }
+
+    const sessionIds = sessions.map((session) => session.id);
+    const { data: messageRows, error: messageError } = await client
+      .from('conversations')
+      .select('id, session_id, message, sender, author_type, created_at')
+      .in('session_id', sessionIds)
+      .order('created_at', { ascending: true });
+
+    if (messageError) {
+      throw new Error(
+        `No se pudo consultar el historial de clientes: ${messageError.message}`,
+      );
+    }
+
+    const messagesBySession = new Map<string, InboxMessage[]>();
+
+    for (const row of messageRows ?? []) {
+      const message = this.toInboxMessage(row);
+      const current = messagesBySession.get(message.sessionId) ?? [];
+      current.push(message);
+      messagesBySession.set(message.sessionId, current);
+    }
+
+    return {
+      company: { id: profile.id, slug: profile.slug, name: profile.name },
+      clients: sessions.map((session) =>
+        this.buildClientSummary(
+          session,
+          messagesBySession.get(session.id) ?? [],
+        ),
+      ),
+    };
+  }
+
+  async getClientProfile(
+    companySlug: string,
+    customerPhone: string,
+  ): Promise<ClientProfile> {
+    const profile = await this.getCompanyProfile(companySlug);
+    const phone = customerPhone.trim();
+
+    if (!phone) {
+      throw new Error('Falta el número de teléfono del cliente.');
+    }
+
+    const client = this.supabaseService.getClient();
+    const { data: sessionRow, error: sessionError } = await client
+      .from('conversation_sessions')
+      .select(SESSION_FIELDS)
+      .eq('company_id', profile.id)
+      .eq('customer_phone', phone)
+      .maybeSingle();
+
+    if (sessionError) {
+      throw new Error(
+        `No se pudo consultar el cliente: ${sessionError.message}`,
+      );
+    }
+
+    if (!sessionRow) {
+      throw new Error('El cliente no existe para esta empresa.');
+    }
+
+    const session = this.toSession(sessionRow);
+    const { data: messageRows, error: messageError } = await client
+      .from('conversations')
+      .select('id, session_id, message, sender, author_type, created_at')
+      .eq('session_id', session.id)
+      .order('created_at', { ascending: true });
+
+    if (messageError) {
+      throw new Error(
+        `No se pudo consultar el historial del cliente: ${messageError.message}`,
+      );
+    }
+
+    const messages = (messageRows ?? []).map((row) =>
+      this.toInboxMessage(row),
+    );
+
+    return {
+      company: { id: profile.id, slug: profile.slug, name: profile.name },
+      client: this.buildClientSummary(session, messages),
+      session,
+      messages,
+    };
+  }
+
   async getInboxConversation(
     companySlug: string,
     sessionId: string,
@@ -604,6 +757,24 @@ export class ConversationMemoryService {
     }
 
     return null;
+  }
+
+  private buildClientSummary(
+    session: ConversationSession,
+    messages: InboxMessage[],
+  ): ClientSummary {
+    const firstMessage = messages[0] ?? null;
+    const lastMessage = messages[messages.length - 1] ?? null;
+
+    return {
+      customerPhone: session.customerPhone,
+      firstMessageAt: firstMessage?.createdAt ?? null,
+      lastMessageAt: session.lastMessageAt,
+      attentionStatus: session.attentionStatus,
+      assignedToName: session.assignedToName,
+      totalMessages: messages.length,
+      lastMessage,
+    };
   }
 
   private toSession(session: unknown): ConversationSession {

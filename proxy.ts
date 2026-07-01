@@ -39,9 +39,12 @@ export const config = {
   matcher: [
     '/',
     '/login',
+    '/clientes',
     '/configuracion',
     '/api/inbox',
     '/api/inbox/:path*',
+    '/api/clients',
+    '/api/clients/:path*',
     '/api/settings',
     '/api/settings/:path*',
   ],
