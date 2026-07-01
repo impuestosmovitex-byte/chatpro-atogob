@@ -1,5 +1,7 @@
 "use client";
 
+
+import { AppSidebar } from '../components/AppSidebar';
 import {
   FormEvent,
   useEffect,
@@ -206,37 +208,7 @@ export default function ClientsPage() {
 
   return (
     <main className={styles.shell}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <span className={styles.brandDot} />
-          <span>Chat Pro</span>
-        </div>
-
-        <nav className={styles.navigation} aria-label="Navegación principal">
-          <button
-            className={styles.navItem}
-            type="button"
-            onClick={() => window.location.assign("/")}
-          >
-            <span>◉</span> Bandeja
-          </button>
-          <button className={`${styles.navItem} ${styles.active}`} type="button">
-            <span>◌</span> Clientes
-          </button>
-          <button className={styles.navItem} type="button" disabled>
-            <span>◈</span> Automatizaciones
-          </button>
-          <button
-            className={styles.navItem}
-            type="button"
-            onClick={() => window.location.assign("/configuracion")}
-          >
-            <span>⚙</span> Configuración
-          </button>
-        </nav>
-
-        <div className={styles.sidebarFooter}>ATOGOB · WhatsApp conectado</div>
-      </aside>
+      <AppSidebar companyName="ATOGOB" />
 
       <section className={styles.workspace}>
         <header className={styles.header}>

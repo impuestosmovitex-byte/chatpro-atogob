@@ -1,161 +1,96 @@
-'use client';
+ 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { AppSidebar } from '../components/AppSidebar';
 import styles from './page.module.css';
 
-const COMPANY = process.env.NEXT_PUBLIC_CHATPRO_COMPANY || 'atogob';
+const COMPANY_NAME =
+  (process.env.NEXT_PUBLIC_CHATPRO_COMPANY || 'ATOGOB').toUpperCase();
 
-type Configuration = {
-  assistantName: string;
-  tone: string;
-  aiInstructions: string;
-};
-
-type ResponseData = {
-  ok?: boolean;
-  error?: string;
-  company?: { name?: string };
-  configuration?: Configuration;
-};
-
-const EMPTY: Configuration = {
-  assistantName: '',
-  tone: 'Cercana, clara, breve y profesional',
-  aiInstructions: '',
-};
+const cards = [
+  {
+    title: 'IA y ventas',
+    description:
+      'Define la asesora, tono, instrucciones comerciales y reglas de atención.',
+    icon: '✦',
+    href: '/configuracion/ia',
+    available: true,
+  },
+  {
+    title: 'Empresa e identidad',
+    description:
+      'Nombre, logo, datos comerciales y apariencia del espacio de trabajo.',
+    icon: '◌',
+    available: false,
+  },
+  {
+    title: 'Canales e integraciones',
+    description:
+      'WhatsApp, Instagram, Messenger, Shopify y otros canales conectados.',
+    icon: '◔',
+    available: false,
+  },
+  {
+    title: 'Horarios y atención',
+    description:
+      'Horarios comerciales, mensajes fuera de horario y reglas de asignación.',
+    icon: '◷',
+    available: false,
+  },
+  {
+    title: 'Seguridad y accesos',
+    description:
+      'Usuarios, roles, permisos y controles de acceso del equipo.',
+    icon: '◉',
+    href: '/usuarios',
+    available: true,
+  },
+];
 
 export default function ConfiguracionPage() {
-  const [configuration, setConfiguration] = useState<Configuration>(EMPTY);
-  const [companyName, setCompanyName] = useState('Empresa');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const response = await fetch(
-          `/api/settings?company=${encodeURIComponent(COMPANY)}`,
-          { cache: 'no-store' },
-        );
-        const data = (await response.json()) as ResponseData;
-
-        if (!response.ok || !data.ok || !data.configuration) {
-          throw new Error(data.error || 'No se pudo cargar la configuración.');
-        }
-
-        setConfiguration(data.configuration);
-        setCompanyName(data.company?.name || 'Empresa');
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'No se pudo cargar la configuración.');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    void load();
-  }, []);
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setMessage('');
-
-    try {
-      const response = await fetch(
-        `/api/settings?company=${encodeURIComponent(COMPANY)}`,
-        {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(configuration),
-        },
-      );
-
-      const data = (await response.json()) as ResponseData;
-
-      if (!response.ok || !data.ok || !data.configuration) {
-        throw new Error(data.error || 'No se pudo guardar.');
-      }
-
-      setConfiguration(data.configuration);
-      setMessage('Configuración guardada. La IA la usará en las siguientes conversaciones.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudo guardar la configuración.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <main className={styles.shell}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>CONFIGURACIÓN</p>
-          <h1>IA y ventas · {companyName}</h1>
-          <p>Define cómo debe atender y vender la asistente de esta empresa.</p>
-        </div>
-        <button type="button" className={styles.back} onClick={() => window.location.assign('/')}>
-          ← Volver a bandeja
-        </button>
-      </header>
+      <AppSidebar companyName={COMPANY_NAME} />
 
-      <form className={styles.card} onSubmit={save}>
-        <label>
-          <span>Nombre de la asesora</span>
-          <input
-            value={configuration.assistantName}
-            onChange={(event) =>
-              setConfiguration((current) => ({
-                ...current,
-                assistantName: event.target.value,
-              }))
-            }
-            placeholder="Ejemplo: Daniela"
-            disabled={loading}
-          />
-        </label>
+      <section className={styles.workspace}>
+        <header className={styles.header}>
+          <div>
+            <p className={styles.eyebrow}>CONFIGURACIÓN</p>
+            <h1>Configura {COMPANY_NAME}</h1>
+            <p>
+              Administra los ajustes de tu empresa, equipo, canales y atención.
+            </p>
+          </div>
+        </header>
 
-        <label>
-          <span>Tono de atención</span>
-          <input
-            value={configuration.tone}
-            onChange={(event) =>
-              setConfiguration((current) => ({
-                ...current,
-                tone: event.target.value,
-              }))
-            }
-            placeholder="Ejemplo: Cercana, clara, breve y profesional"
-            disabled={loading}
-          />
-        </label>
+        <section className={styles.grid} aria-label="Opciones de configuración">
+          {cards.map((card) => (
+            <article
+              className={`${styles.card} ${
+                card.available ? '' : styles.disabledCard
+              }`}
+              key={card.title}
+            >
+              <span className={styles.icon}>{card.icon}</span>
+              <div>
+                <h2>{card.title}</h2>
+                <p>{card.description}</p>
+              </div>
 
-        <label>
-          <span>Instrucciones comerciales para la IA</span>
-          <textarea
-            value={configuration.aiInstructions}
-            onChange={(event) =>
-              setConfiguration((current) => ({
-                ...current,
-                aiInstructions: event.target.value,
-              }))
-            }
-            placeholder="Escribe aquí promociones, medios de pago, reglas de envío, venta cruzada, políticas y cuándo debe llamar a un asesor."
-            rows={18}
-            disabled={loading}
-          />
-        </label>
-
-        <div className={styles.help}>
-          Estas instrucciones son exclusivas de {companyName}. No cambian Aural, Maogo ni otras empresas.
-        </div>
-
-        {message ? <p className={styles.message}>{message}</p> : null}
-
-        <button className={styles.save} type="submit" disabled={loading || saving}>
-          {saving ? 'Guardando…' : 'Guardar configuración de IA'}
-        </button>
-      </form>
+              {card.available && card.href ? (
+                <button
+                  type="button"
+                  className={styles.openButton}
+                  onClick={() => window.location.assign(card.href!)}
+                >
+                  Abrir
+                </button>
+              ) : (
+                <span className={styles.soon}>Próximamente</span>
+              )}
+            </article>
+          ))}
+        </section>
+      </section>
     </main>
   );
 }

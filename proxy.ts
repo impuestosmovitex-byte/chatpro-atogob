@@ -41,6 +41,7 @@ export const config = {
     '/login',
     '/clientes',
     '/configuracion',
+    '/configuracion/:path*',
     '/usuarios',
     '/api/inbox',
     '/api/inbox/:path*',

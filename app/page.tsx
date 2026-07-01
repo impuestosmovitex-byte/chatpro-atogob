@@ -1,5 +1,7 @@
 "use client";
 
+
+import { AppSidebar } from './components/AppSidebar';
 import { FormEvent, useEffect, useMemo, useState, useRef} from "react";
 
 type AttentionStatus = "ai" | "waiting" | "human" | "closed";
@@ -269,44 +271,7 @@ export default function Home() {
 
   return (
     <main className="chatpro-shell">
-      <aside className="main-sidebar">
-        <div className="brand-mark">
-          <span className="brand-dot" />
-          <span>Chat Pro</span>
-        </div>
-
-        <nav className="main-nav" aria-label="Navegación principal">
-          <button className="main-nav-item active" type="button">
-            <span>◉</span> Bandeja
-          </button>
-          <button
-            className="main-nav-item"
-            type="button"
-            onClick={() => window.location.assign("/clientes")}
-          >
-            <span>◌</span> Clientes
-          </button>
-          <button
-            className="main-nav-item"
-            type="button"
-            onClick={() => window.location.assign("/usuarios")}
-          >
-            <span>◍</span> Usuarios
-          </button>
-          <button className="main-nav-item" type="button" disabled>
-            <span>◈</span> Automatizaciones
-          </button>
-          <button
-            className="main-nav-item"
-            type="button"
-            onClick={() => window.location.assign("/configuracion")}
-          >
-            <span>⚙</span> Configuración
-          </button>
-        </nav>
-
-        <div className="sidebar-footer">ATOGOB · WhatsApp conectado</div>
-      </aside>
+      <AppSidebar companyName="ATOGOB" />
 
       <section className="workspace">
         <header className="workspace-header">

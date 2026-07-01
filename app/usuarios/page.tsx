@@ -1,5 +1,7 @@
  'use client';
 
+import { AppSidebar } from '../components/AppSidebar';
+
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import styles from './page.module.css';
 
@@ -249,38 +251,7 @@ export default function UsuariosPage() {
 
   return (
     <main className={styles.shell}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <span className={styles.dot} />
-          <span>Chat Pro</span>
-        </div>
-
-        <nav className={styles.nav} aria-label="Navegación principal">
-          <button type="button" onClick={() => window.location.assign('/')}>
-            <span>◉</span> Bandeja
-          </button>
-          <button
-            type="button"
-            onClick={() => window.location.assign('/clientes')}
-          >
-            <span>◌</span> Clientes
-          </button>
-          <button className={styles.active} type="button">
-            <span>◍</span> Usuarios
-          </button>
-          <button type="button" disabled>
-            <span>◈</span> Automatizaciones
-          </button>
-          <button
-            type="button"
-            onClick={() => window.location.assign('/configuracion')}
-          >
-            <span>⚙</span> Configuración
-          </button>
-        </nav>
-
-        <div className={styles.footer}>{companyName}</div>
-      </aside>
+      <AppSidebar companyName={companyName} />
 
       <section className={styles.workspace}>
         <header className={styles.header}>
