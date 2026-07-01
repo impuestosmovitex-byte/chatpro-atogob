@@ -18,6 +18,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (
+    pathname === '/api/auth/login' ||
+    pathname === '/api/auth/logout'
+  ) {
+    return NextResponse.next();
+  }
+
   if (authenticated) {
     return NextResponse.next();
   }
@@ -44,6 +51,7 @@ export const config = {
     '/configuracion/:path*',
     '/usuarios',
     '/usuarios/:path*',
+    '/api/auth/session',
     '/api/inbox',
     '/api/inbox/:path*',
     '/api/clients',
@@ -51,7 +59,8 @@ export const config = {
     '/api/settings',
     '/api/settings/:path*',
     '/api/users',
-    '/api/roles',
     '/api/users/:path*',
+    '/api/roles',
+    '/api/roles/:path*',
   ],
 };

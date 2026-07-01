@@ -6,76 +6,9 @@
   color: #17181d;
 }
 
-.sidebar {
-  min-height: 100vh;
-  background: #121316;
-  color: #f7f7f8;
-  padding: 20px 14px;
-  display: flex;
-  flex-direction: column;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 20px;
-  font-weight: 800;
-  padding: 0 6px 24px;
-}
-
-.dot {
-  width: 13px;
-  height: 13px;
-  border-radius: 999px;
-  background: #d7aa3b;
-  box-shadow: 0 0 0 4px rgba(215, 170, 59, 0.13);
-}
-
-.nav {
-  display: grid;
-  gap: 6px;
-}
-
-.nav button {
-  border: 0;
-  background: transparent;
-  color: #b8bbc3;
-  border-radius: 10px;
-  padding: 13px 12px;
-  text-align: left;
-  font: inherit;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.nav button:hover:not(:disabled) {
-  background: #202227;
-  color: #fff;
-}
-
-.nav button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
-.nav .active {
-  color: #1a1b20;
-  background: #f0ca68;
-}
-
-.footer {
-  margin-top: auto;
-  padding: 18px 7px 0;
-  color: #9ea2ad;
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .workspace {
-  padding: 28px 36px 48px;
   min-width: 0;
+  padding: 28px 36px 48px;
 }
 
 .header {
@@ -111,7 +44,15 @@
   font-size: 17px;
 }
 
+.headerActions {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .refresh,
+.rolesButton,
 .createButton,
 .passwordButton,
 .resetBox button {
@@ -122,10 +63,18 @@
   cursor: pointer;
 }
 
-.refresh {
+.refresh,
+.createButton,
+.resetBox button:first-of-type {
   padding: 13px 16px;
   background: #202126;
   color: #fff;
+}
+
+.rolesButton {
+  padding: 13px 16px;
+  background: #e9edf2;
+  color: #3f4652;
 }
 
 .refresh:disabled,
@@ -209,12 +158,19 @@
   font-weight: 800;
 }
 
+.form label small {
+  color: #7d8594;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .form input,
 .form select,
 .userControls select,
 .resetBox input {
   width: 100%;
   min-height: 43px;
+  box-sizing: border-box;
   border: 1px solid #d9dde5;
   border-radius: 9px;
   background: #fff;
@@ -230,12 +186,6 @@
 .resetBox input:focus {
   border-color: #bc9232;
   box-shadow: 0 0 0 3px rgba(215, 170, 59, 0.16);
-}
-
-.createButton {
-  padding: 13px 16px;
-  background: #202126;
-  color: #fff;
 }
 
 .rolePreview {
@@ -313,18 +263,20 @@
   gap: 3px;
 }
 
-.userInfo strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 16px;
-}
-
+.userInfo strong,
 .userInfo span,
 .userInfo small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.userInfo strong {
+  font-size: 16px;
+}
+
+.userInfo span,
+.userInfo small {
   color: #717a8b;
 }
 
@@ -374,13 +326,6 @@
   font-size: 13px;
 }
 
-.rowPermissions {
-  grid-column: 2 / -1;
-  color: #7d8594;
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .resetBox {
   grid-column: 2 / -1;
   display: flex;
@@ -398,8 +343,6 @@
 .resetBox button {
   min-height: 40px;
   padding: 0 12px;
-  background: #202126;
-  color: #fff;
 }
 
 .resetBox button:last-child {
@@ -410,28 +353,6 @@
 @media (max-width: 1040px) {
   .shell {
     grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    min-height: auto;
-    padding: 14px;
-  }
-
-  .brand {
-    padding-bottom: 12px;
-  }
-
-  .nav {
-    display: flex;
-    overflow-x: auto;
-  }
-
-  .nav button {
-    white-space: nowrap;
-  }
-
-  .footer {
-    display: none;
   }
 
   .workspace {
@@ -447,13 +368,17 @@
   }
 }
 
-@media (max-width: 740px) {
+@media (max-width: 680px) {
   .header {
     display: grid;
   }
 
-  .refresh {
+  .headerActions {
     width: 100%;
+  }
+
+  .headerActions button {
+    flex: 1;
   }
 
   .userRow {
@@ -461,45 +386,8 @@
   }
 
   .userControls,
-  .rowPermissions,
   .resetBox {
     grid-column: 1 / -1;
-  }
-
-  .userControls {
-    justify-content: stretch;
-  }
-
-  .userControls label {
-    flex: 1;
-  }
-}
-
-
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  flex-wrap: wrap;
-}
-
-.rolesButton {
-  border: 0;
-  border-radius: 10px;
-  padding: 13px 16px;
-  cursor: pointer;
-  color: #3f4652;
-  background: #e9edf2;
-  font: inherit;
-  font-weight: 800;
-}
-
-@media (max-width: 680px) {
-  .headerActions {
-    width: 100%;
-  }
-
-  .headerActions button {
-    flex: 1;
+    justify-content: start;
   }
 }

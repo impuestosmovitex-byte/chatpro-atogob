@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -11,7 +11,6 @@ type AppSidebarProps = {
 const navigation = [
   { href: '/', label: 'Bandeja', icon: '◉', exact: true },
   { href: '/clientes', label: 'Clientes', icon: '◌' },
-  { href: '/usuarios', label: 'Usuarios', icon: '◍' },
   {
     href: '/automatizaciones',
     label: 'Automatizaciones',

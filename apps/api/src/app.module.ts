@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AccessAuthService } from './access-auth.service';
+import { AccessController } from './access.controller';
 import { AiService } from './ai.service';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -11,12 +13,12 @@ import { CompanyIntegrationService } from './company-integration.service';
 import { CompanySettingsController } from './company-settings.controller';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { InboxController } from './inbox.controller';
+import { RolesController } from './roles.controller';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
-import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { UsersController } from './users.controller';
-import { RolesController } from './roles.controller';
+import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -28,6 +30,7 @@ import { RolesController } from './roles.controller';
     CompanySettingsController,
     UsersController,
     RolesController,
+    AccessController,
   ],
   providers: [
     CompanyIntegrationService,
@@ -40,6 +43,7 @@ import { RolesController } from './roles.controller';
     CartService,
     ChatAgentService,
     CartRecoveryService,
+    AccessAuthService,
   ],
 })
 export class AppModule {}

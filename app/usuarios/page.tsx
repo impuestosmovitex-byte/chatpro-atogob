@@ -1,8 +1,7 @@
- 'use client';
-
-import { AppSidebar } from '../components/AppSidebar';
+'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { AppSidebar } from '../components/AppSidebar';
 import styles from './page.module.css';
 
 const COMPANY = process.env.NEXT_PUBLIC_CHATPRO_COMPANY || 'atogob';
@@ -24,7 +23,7 @@ type CompanyUser = {
   id: string;
   membershipId: string;
   fullName: string;
-  email: string;
+  identifier: string;
   roleKey: string;
   roleName: string;
   active: boolean;
@@ -43,9 +42,9 @@ type ResponseData = {
 
 const EMPTY_FORM = {
   fullName: '',
-  email: '',
+  identifier: '',
   password: '',
-  roleKey: 'advisor',
+  roleKey: '',
 };
 
 function formatDate(value: string | null): string {
@@ -78,6 +77,11 @@ export default function UsuariosPage() {
   const [resetUserId, setResetUserId] = useState('');
   const [resetPassword, setResetPassword] = useState('');
 
+  const isFirstUser = users.length === 0;
+  const availableRoles = useMemo(
+    () => (isFirstUser ? roles.filter((role) => role.key === 'owner') : roles),
+    [isFirstUser, roles],
+  );
   const selectedRole = useMemo(
     () => roles.find((role) => role.key === form.roleKey) ?? null,
     [form.roleKey, roles],
@@ -98,21 +102,25 @@ export default function UsuariosPage() {
         throw new Error(data.error || 'No se pudieron cargar los usuarios.');
       }
 
-      setCompanyName(data.company?.name || 'Empresa');
-      setRoles(data.roles || []);
-      setUsers(data.users || []);
+      const nextUsers = data.users || [];
+      const nextRoles = data.roles || [];
+      const defaultRole =
+        nextUsers.length === 0
+          ? nextRoles.find((role) => role.key === 'owner')?.key || ''
+          : nextRoles.find((role) => role.key === 'advisor')?.key ||
+            nextRoles[0]?.key ||
+            '';
 
-      if (
-        data.roles?.length &&
-        !data.roles.some((role) => role.key === form.roleKey)
-      ) {
-        setForm((current) => ({
-          ...current,
-          roleKey: data.roles?.find((role) => role.key === 'advisor')?.key ||
-            data.roles?.[0]?.key ||
-            '',
-        }));
-      }
+      setCompanyName(data.company?.name || 'Empresa');
+      setUsers(nextUsers);
+      setRoles(nextRoles);
+      setForm((current) => ({
+        ...current,
+        roleKey: nextRoles.some((role) => role.key === current.roleKey) &&
+          (nextUsers.length > 0 || current.roleKey === 'owner')
+          ? current.roleKey
+          : defaultRole,
+      }));
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -140,10 +148,7 @@ export default function UsuariosPage() {
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            action: 'create',
-            ...form,
-          }),
+          body: JSON.stringify({ action: 'create', ...form }),
         },
       );
       const data = (await response.json()) as ResponseData;
@@ -153,10 +158,7 @@ export default function UsuariosPage() {
       }
 
       setMessage(data.message || 'Usuario creado correctamente.');
-      setForm((current) => ({
-        ...EMPTY_FORM,
-        roleKey: current.roleKey,
-      }));
+      setForm(EMPTY_FORM);
       await load();
     } catch (createError) {
       setError(
@@ -169,10 +171,7 @@ export default function UsuariosPage() {
     }
   }
 
-  async function updateUser(
-    userId: string,
-    payload: Record<string, unknown>,
-  ) {
+  async function updateUser(userId: string, payload: Record<string, unknown>) {
     setWorkingUserId(userId);
     setMessage('');
     setError('');
@@ -236,8 +235,8 @@ export default function UsuariosPage() {
       }
 
       setMessage(data.message || 'Contraseña actualizada correctamente.');
-      setResetPassword('');
       setResetUserId('');
+      setResetPassword('');
     } catch (passwordError) {
       setError(
         passwordError instanceof Error
@@ -256,12 +255,11 @@ export default function UsuariosPage() {
       <section className={styles.workspace}>
         <header className={styles.header}>
           <div>
-            <p className={styles.eyebrow}>EQUIPO Y ACCESOS</p>
+            <p className={styles.eyebrow}>SEGURIDAD Y ACCESOS</p>
             <h1>Usuarios</h1>
-            <p>
-              Crea y administra las cuentas que pueden operar {companyName}.
-            </p>
+            <p>Crea accesos con identificación o código para {companyName}.</p>
           </div>
+
           <div className={styles.headerActions}>
             <button
               className={styles.rolesButton}
@@ -287,8 +285,10 @@ export default function UsuariosPage() {
         <div className={styles.grid}>
           <section className={styles.createCard}>
             <div className={styles.sectionHeading}>
-              <p>Nuevo acceso</p>
-              <h2>Crear usuario</h2>
+              <p>{isFirstUser ? 'Configuración inicial' : 'Nuevo acceso'}</p>
+              <h2>
+                {isFirstUser ? 'Crear propietario inicial' : 'Crear usuario'}
+              </h2>
             </div>
 
             <form onSubmit={createUser} className={styles.form}>
@@ -302,29 +302,33 @@ export default function UsuariosPage() {
                       fullName: event.target.value,
                     }))
                   }
-                  placeholder="Ejemplo: Valentina Gómez"
+                  placeholder="Ejemplo: Yesid Vargas"
                   disabled={loading || creating}
                 />
               </label>
 
               <label>
-                <span>Correo</span>
+                <span>Identificación o código de acceso</span>
                 <input
-                  type="email"
-                  value={form.email}
+                  value={form.identifier}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
-                      email: event.target.value,
+                      identifier: event.target.value,
                     }))
                   }
-                  placeholder="asesora@empresa.com"
+                  placeholder="Ejemplo: 1020304050"
+                  autoCapitalize="characters"
                   disabled={loading || creating}
                 />
+                <small>
+                  Puede ser una cédula o un código interno. No se usa correo
+                  para iniciar sesión.
+                </small>
               </label>
 
               <label>
-                <span>Contraseña temporal</span>
+                <span>Contraseña inicial</span>
                 <input
                   type="password"
                   minLength={8}
@@ -350,9 +354,9 @@ export default function UsuariosPage() {
                       roleKey: event.target.value,
                     }))
                   }
-                  disabled={loading || creating}
+                  disabled={loading || creating || isFirstUser}
                 >
-                  {roles.map((role) => (
+                  {availableRoles.map((role) => (
                     <option key={role.key} value={role.key}>
                       {role.name}
                     </option>
@@ -363,16 +367,23 @@ export default function UsuariosPage() {
               <button
                 className={styles.createButton}
                 type="submit"
-                disabled={loading || creating || !roles.length}
+                disabled={
+                  loading ||
+                  creating ||
+                  !availableRoles.length ||
+                  !form.roleKey
+                }
               >
-                {creating ? 'Creando…' : 'Crear usuario'}
+                {creating
+                  ? 'Creando…'
+                  : isFirstUser
+                    ? 'Crear propietario'
+                    : 'Crear usuario'}
               </button>
             </form>
 
             <div className={styles.rolePreview}>
-              <strong>
-                {selectedRole?.name || 'Selecciona un rol'}
-              </strong>
+              <strong>{selectedRole?.name || 'Selecciona un rol'}</strong>
               <p>{selectedRole?.description || 'Define el nivel de acceso.'}</p>
               <div className={styles.permissionList}>
                 {(selectedRole?.permissions || []).map((permission) => (
@@ -394,119 +405,106 @@ export default function UsuariosPage() {
               <div className={styles.empty}>Cargando accesos…</div>
             ) : users.length === 0 ? (
               <div className={styles.empty}>
-                Aún no hay usuarios. Crea el primer propietario o asesor de{' '}
-                {companyName}.
+                Crea el propietario inicial. Después cada persona entrará con
+                su identificación o código y su contraseña.
               </div>
             ) : (
               <div className={styles.userList}>
-                {users.map((user) => {
-                  const role = roles.find(
-                    (item) => item.key === user.roleKey,
-                  );
-                  const working = workingUserId === user.id;
+                {users.map((user) => (
+                  <article className={styles.userRow} key={user.id}>
+                    <div className={styles.avatar}>
+                      {user.fullName.slice(0, 1).toUpperCase()}
+                    </div>
 
-                  return (
-                    <article className={styles.userRow} key={user.id}>
-                      <div className={styles.avatar}>
-                        {user.fullName.trim().slice(0, 1).toUpperCase() || 'U'}
-                      </div>
+                    <div className={styles.userInfo}>
+                      <strong>{user.fullName}</strong>
+                      <span>Identificación: {user.identifier}</span>
+                      <small>Último acceso: {formatDate(user.lastSignInAt)}</small>
+                    </div>
 
-                      <div className={styles.userInfo}>
-                        <strong>{user.fullName}</strong>
-                        <span>{user.email}</span>
-                        <small>
-                          Último ingreso: {formatDate(user.lastSignInAt)}
-                        </small>
-                      </div>
-
-                      <div className={styles.userControls}>
-                        <label>
-                          <span>Rol</span>
-                          <select
-                            value={user.roleKey}
-                            disabled={working}
-                            onChange={(event) =>
-                              void updateUser(user.id, {
-                                roleKey: event.target.value,
-                              })
-                            }
-                          >
-                            {roles.map((item) => (
-                              <option key={item.key} value={item.key}>
-                                {item.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <button
-                          className={
-                            user.active
-                              ? styles.statusActive
-                              : styles.statusInactive
-                          }
-                          type="button"
-                          disabled={working}
-                          onClick={() =>
+                    <div className={styles.userControls}>
+                      <label>
+                        <span>Rol</span>
+                        <select
+                          value={user.roleKey}
+                          disabled={workingUserId === user.id}
+                          onChange={(event) =>
                             void updateUser(user.id, {
-                              active: !user.active,
+                              roleKey: event.target.value,
                             })
                           }
                         >
-                          {user.active ? 'Activo' : 'Inactivo'}
-                        </button>
+                          {roles.map((role) => (
+                            <option key={role.key} value={role.key}>
+                              {role.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
+                      <button
+                        className={
+                          user.active
+                            ? styles.statusActive
+                            : styles.statusInactive
+                        }
+                        type="button"
+                        disabled={workingUserId === user.id}
+                        onClick={() =>
+                          void updateUser(user.id, { active: !user.active })
+                        }
+                      >
+                        {user.active ? 'Activo' : 'Inactivo'}
+                      </button>
+
+                      <button
+                        className={styles.passwordButton}
+                        type="button"
+                        disabled={workingUserId === user.id}
+                        onClick={() => {
+                          setResetUserId(user.id);
+                          setResetPassword('');
+                        }}
+                      >
+                        Cambiar clave
+                      </button>
+                    </div>
+
+                    {resetUserId === user.id ? (
+                      <form
+                        className={styles.resetBox}
+                        onSubmit={changePassword}
+                      >
+                        <input
+                          type="password"
+                          minLength={8}
+                          value={resetPassword}
+                          onChange={(event) =>
+                            setResetPassword(event.target.value)
+                          }
+                          placeholder="Nueva contraseña, mínimo 8 caracteres"
+                          required
+                        />
                         <button
-                          className={styles.passwordButton}
+                          type="submit"
+                          disabled={workingUserId === user.id || !resetPassword}
+                        >
+                          Guardar
+                        </button>
+                        <button
                           type="button"
-                          disabled={working}
+                          disabled={workingUserId === user.id}
                           onClick={() => {
-                            setResetUserId(user.id);
+                            setResetUserId('');
                             setResetPassword('');
                           }}
                         >
-                          Restablecer clave
+                          Cancelar
                         </button>
-                      </div>
-
-                      {role ? (
-                        <div className={styles.rowPermissions}>
-                          {role.permissions.length} permisos por rol
-                        </div>
-                      ) : null}
-
-                      {resetUserId === user.id ? (
-                        <form
-                          className={styles.resetBox}
-                          onSubmit={changePassword}
-                        >
-                          <input
-                            type="password"
-                            minLength={8}
-                            value={resetPassword}
-                            onChange={(event) =>
-                              setResetPassword(event.target.value)
-                            }
-                            placeholder="Nueva contraseña temporal"
-                            autoFocus
-                          />
-                          <button type="submit" disabled={working}>
-                            Guardar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setResetUserId('');
-                              setResetPassword('');
-                            }}
-                          >
-                            Cancelar
-                          </button>
-                        </form>
-                      ) : null}
-                    </article>
-                  );
-                })}
+                      </form>
+                    ) : null}
+                  </article>
+                ))}
               </div>
             )}
           </section>

@@ -10,6 +10,8 @@ import {
   Query,
   UnauthorizedException,
 } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { AccessAuthService } from './access-auth.service';
 import { SupabaseService } from './supabase.service';
 
 type RoleRow = {
@@ -39,12 +41,13 @@ type MembershipRow = {
 type ProfileRow = {
   user_id: string;
   full_name: string;
-  email: string | null;
+  login_identifier: string | null;
+  contact_email: string | null;
 };
 
 type CreateUserBody = {
   fullName?: unknown;
-  email?: unknown;
+  identifier?: unknown;
   password?: unknown;
   roleKey?: unknown;
 };
@@ -63,7 +66,10 @@ type ResetPasswordBody = {
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly accessAuthService: AccessAuthService,
+  ) {}
 
   @Get()
   async listUsers(
@@ -87,9 +93,10 @@ export class UsersController {
     @Body() body: CreateUserBody,
   ) {
     this.assertInternalKey(providedKey);
+
     const company = await this.getCompany(companySlug);
     const fullName = this.requiredText(body.fullName, 'Escribe el nombre.');
-    const email = this.normalizeEmail(body.email);
+    const identifier = this.normalizeIdentifier(body.identifier);
     const password = this.validPassword(body.password);
     const role = await this.getRole(
       this.requiredText(body.roleKey, 'Selecciona un rol.'),
@@ -97,18 +104,57 @@ export class UsersController {
     );
     const client = this.supabaseService.getClient();
 
+    const { count, error: countError } = await client
+      .from('company_memberships')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', company.id)
+      .eq('active', true);
+
+    if (countError) {
+      throw new BadRequestException(
+        `No se pudo validar el primer usuario: ${countError.message}`,
+      );
+    }
+
+    if ((count ?? 0) === 0 && role.key !== 'owner') {
+      throw new BadRequestException(
+        'El primer usuario de la empresa debe tener el rol Propietario.',
+      );
+    }
+
+    const { data: existing, error: existingError } = await client
+      .from('app_profiles')
+      .select('user_id')
+      .eq('login_identifier', identifier)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new BadRequestException(
+        `No se pudo validar la identificación: ${existingError.message}`,
+      );
+    }
+
+    if (existing) {
+      throw new BadRequestException(
+        'Esta identificación o código ya está en uso.',
+      );
+    }
+
+    const technicalEmail = this.technicalEmail(company.slug, identifier);
     const { data: created, error: createError } =
       await client.auth.admin.createUser({
-        email,
+        email: technicalEmail,
         password,
         email_confirm: true,
-        user_metadata: { full_name: fullName },
+        user_metadata: {
+          full_name: fullName,
+          login_identifier: identifier,
+        },
       });
 
     if (createError || !created.user) {
       throw new BadRequestException(
-        createError?.message ||
-          'No se pudo crear el usuario. Revisa que el correo no esté registrado.',
+        createError?.message || 'No se pudo crear el usuario.',
       );
     }
 
@@ -117,7 +163,10 @@ export class UsersController {
         {
           user_id: created.user.id,
           full_name: fullName,
-          email,
+          email: technicalEmail,
+          contact_email: null,
+          login_identifier: identifier,
+          password_hash: this.accessAuthService.hash(password),
           active: true,
           updated_at: new Date().toISOString(),
         },
@@ -142,6 +191,7 @@ export class UsersController {
       }
     } catch (error) {
       await client.auth.admin.deleteUser(created.user.id);
+
       throw new BadRequestException(
         `No se pudo vincular el usuario a ${company.name}: ${
           error instanceof Error ? error.message : 'error desconocido'
@@ -162,6 +212,7 @@ export class UsersController {
     @Body() body: UpdateUserBody,
   ) {
     this.assertInternalKey(providedKey);
+
     const company = await this.getCompany(companySlug);
     const userId = this.requiredText(body.userId, 'Falta el usuario.');
     const membership = await this.getMembership(company.id, userId);
@@ -208,6 +259,7 @@ export class UsersController {
 
     if (typeof body.fullName === 'string') {
       const fullName = this.requiredText(body.fullName, 'Escribe el nombre.');
+
       const { error } = await client
         .from('app_profiles')
         .update({
@@ -237,19 +289,34 @@ export class UsersController {
     @Body() body: ResetPasswordBody,
   ) {
     this.assertInternalKey(providedKey);
+
     const company = await this.getCompany(companySlug);
     const userId = this.requiredText(body.userId, 'Falta el usuario.');
     const password = this.validPassword(body.password);
-
     await this.getMembership(company.id, userId);
 
-    const { error } = await this.supabaseService
-      .getClient()
-      .auth.admin.updateUserById(userId, { password });
+    const client = this.supabaseService.getClient();
+    const { error: authError } = await client.auth.admin.updateUserById(userId, {
+      password,
+    });
 
-    if (error) {
+    if (authError) {
       throw new BadRequestException(
-        `No se pudo cambiar la contraseña: ${error.message}`,
+        `No se pudo cambiar la contraseña: ${authError.message}`,
+      );
+    }
+
+    const { error: profileError } = await client
+      .from('app_profiles')
+      .update({
+        password_hash: this.accessAuthService.hash(password),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId);
+
+    if (profileError) {
+      throw new BadRequestException(
+        `No se pudo actualizar la contraseña: ${profileError.message}`,
       );
     }
 
@@ -348,9 +415,11 @@ export class UsersController {
 
     for (const item of rolePermissions.data ?? []) {
       const permission = permissionsById.get(item.permission_id);
+
       if (!permission) {
         continue;
       }
+
       const list = permissionsByRoleId.get(item.role_id) ?? [];
       list.push(permission);
       permissionsByRoleId.set(item.role_id, list);
@@ -376,7 +445,7 @@ export class UsersController {
       userIds.length > 0
         ? await client
             .from('app_profiles')
-            .select('user_id, full_name, email')
+            .select('user_id, full_name, login_identifier, contact_email')
             .in('user_id', userIds)
         : { data: [], error: null };
 
@@ -432,7 +501,10 @@ export class UsersController {
             profile?.full_name ||
             String(authUser?.user_metadata?.full_name ?? '') ||
             'Sin nombre',
-          email: profile?.email || authUser?.email || '',
+          identifier:
+            profile?.login_identifier ||
+            String(authUser?.user_metadata?.login_identifier ?? '') ||
+            'Sin identificación',
           roleKey: role?.key ?? '',
           roleName: role?.name ?? 'Sin rol',
           active: membership.active,
@@ -551,27 +623,44 @@ export class UsersController {
     }
   }
 
+  private normalizeIdentifier(value: unknown): string {
+    const identifier = this.requiredText(
+      value,
+      'Escribe la identificación o código de acceso.',
+    )
+      .toUpperCase()
+      .replace(/\s+/g, '');
+
+    if (!/^[A-Z0-9._-]{3,60}$/.test(identifier)) {
+      throw new BadRequestException(
+        'La identificación o código solo puede usar letras, números, punto, guion o guion bajo.',
+      );
+    }
+
+    return identifier;
+  }
+
+  private technicalEmail(companySlug: string, identifier: string): string {
+    const hash = createHash('sha256')
+      .update(`${companySlug}:${identifier}`)
+      .digest('hex')
+      .slice(0, 28);
+
+    return `access-${hash}@chatpro.invalid`;
+  }
+
   private requiredText(value: unknown, message: string): string {
     if (typeof value !== 'string' || !value.trim()) {
       throw new BadRequestException(message);
     }
+
     return value.trim();
-  }
-
-  private normalizeEmail(value: unknown): string {
-    const email = this.requiredText(value, 'Escribe el correo.').toLowerCase();
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new BadRequestException('Escribe un correo válido.');
-    }
-
-    return email;
   }
 
   private validPassword(value: unknown): string {
     const password = this.requiredText(
       value,
-      'Escribe una contraseña temporal.',
+      'Escribe una contraseña inicial.',
     );
 
     if (password.length < 8) {

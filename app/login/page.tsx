@@ -6,6 +6,7 @@ import styles from './page.module.css';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,7 +20,7 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ identifier, password }),
       });
 
       const data = (await response.json()) as {
@@ -49,12 +50,22 @@ export default function LoginPage() {
       <section className={styles.card}>
         <div className={styles.mark}>CP</div>
         <p className={styles.eyebrow}>CHAT PRO</p>
-        <h1>Acceso al Inbox</h1>
+        <h1>Iniciar sesión</h1>
         <p className={styles.copy}>
-          Ingresa la contraseña de tu equipo para abrir las conversaciones.
+          Ingresa tu identificación o código de acceso y tu contraseña.
         </p>
 
         <form className={styles.form} onSubmit={submit}>
+          <label htmlFor="identifier">Identificación o código</label>
+          <input
+            id="identifier"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+            autoComplete="username"
+            autoFocus
+            placeholder="Ejemplo: 1020304050"
+          />
+
           <label htmlFor="password">Contraseña</label>
           <input
             id="password"
@@ -62,12 +73,17 @@ export default function LoginPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
-            autoFocus
             required
           />
+
+          <p className={styles.copy}>
+            Para configurar la primera cuenta de la empresa, deja vacía la
+            identificación y usa la contraseña principal actual.
+          </p>
+
           {error ? <p className={styles.error}>{error}</p> : null}
           <button type="submit" disabled={loading || !password}>
-            {loading ? 'Ingresando…' : 'Ingresar al Inbox'}
+            {loading ? 'Ingresando…' : 'Ingresar'}
           </button>
         </form>
       </section>
