@@ -43,6 +43,7 @@ export const config = {
     '/configuracion',
     '/configuracion/:path*',
     '/usuarios',
+    '/usuarios/:path*',
     '/api/inbox',
     '/api/inbox/:path*',
     '/api/clients',
@@ -50,6 +51,7 @@ export const config = {
     '/api/settings',
     '/api/settings/:path*',
     '/api/users',
+    '/api/roles',
     '/api/users/:path*',
   ],
 };

@@ -16,6 +16,7 @@ import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { UsersController } from './users.controller';
+import { RolesController } from './roles.controller';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -26,6 +27,7 @@ import { UsersController } from './users.controller';
     ClientsController,
     CompanySettingsController,
     UsersController,
+    RolesController,
   ],
   providers: [
     CompanyIntegrationService,

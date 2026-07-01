@@ -262,14 +262,23 @@ export default function UsuariosPage() {
               Crea y administra las cuentas que pueden operar {companyName}.
             </p>
           </div>
-          <button
-            className={styles.refresh}
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            ↻ Actualizar
-          </button>
+          <div className={styles.headerActions}>
+            <button
+              className={styles.rolesButton}
+              type="button"
+              onClick={() => window.location.assign('/usuarios/roles')}
+            >
+              Roles y permisos
+            </button>
+            <button
+              className={styles.refresh}
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+            >
+              ↻ Actualizar
+            </button>
+          </div>
         </header>
 
         {error ? <div className={styles.error}>{error}</div> : null}

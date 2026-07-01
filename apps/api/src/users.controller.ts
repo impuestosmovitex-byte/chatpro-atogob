@@ -17,6 +17,7 @@ type RoleRow = {
   key: string;
   name: string;
   description: string | null;
+  company_id: string | null;
 };
 
 type PermissionRow = {
@@ -71,16 +72,11 @@ export class UsersController {
   ) {
     this.assertInternalKey(providedKey);
     const company = await this.getCompany(companySlug);
-    const payload = await this.buildCompanyUsers(company.id);
 
     return {
       ok: true,
-      company: {
-        id: company.id,
-        name: company.name,
-        slug: company.slug,
-      },
-      ...payload,
+      company,
+      ...(await this.buildCompanyUsers(company.id)),
     };
   }
 
@@ -92,15 +88,15 @@ export class UsersController {
   ) {
     this.assertInternalKey(providedKey);
     const company = await this.getCompany(companySlug);
-
     const fullName = this.requiredText(body.fullName, 'Escribe el nombre.');
     const email = this.normalizeEmail(body.email);
     const password = this.validPassword(body.password);
     const role = await this.getRole(
       this.requiredText(body.roleKey, 'Selecciona un rol.'),
+      company.id,
     );
-
     const client = this.supabaseService.getClient();
+
     const { data: created, error: createError } =
       await client.auth.admin.createUser({
         email,
@@ -117,18 +113,16 @@ export class UsersController {
     }
 
     try {
-      const { error: profileError } = await client
-        .from('app_profiles')
-        .upsert(
-          {
-            user_id: created.user.id,
-            full_name: fullName,
-            email,
-            active: true,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' },
-        );
+      const { error: profileError } = await client.from('app_profiles').upsert(
+        {
+          user_id: created.user.id,
+          full_name: fullName,
+          email,
+          active: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
 
       if (profileError) {
         throw new Error(profileError.message);
@@ -148,7 +142,6 @@ export class UsersController {
       }
     } catch (error) {
       await client.auth.admin.deleteUser(created.user.id);
-
       throw new BadRequestException(
         `No se pudo vincular el usuario a ${company.name}: ${
           error instanceof Error ? error.message : 'error desconocido'
@@ -159,14 +152,6 @@ export class UsersController {
     return {
       ok: true,
       message: 'Usuario creado correctamente.',
-      user: {
-        id: created.user.id,
-        fullName,
-        email,
-        roleKey: role.key,
-        roleName: role.name,
-        active: true,
-      },
     };
   }
 
@@ -179,14 +164,12 @@ export class UsersController {
     this.assertInternalKey(providedKey);
     const company = await this.getCompany(companySlug);
     const userId = this.requiredText(body.userId, 'Falta el usuario.');
-
     const membership = await this.getMembership(company.id, userId);
     const client = this.supabaseService.getClient();
-
-    const currentRole = await this.getRoleById(membership.role_id);
+    const currentRole = await this.getRoleById(membership.role_id, company.id);
     const nextRole =
       typeof body.roleKey === 'string'
-        ? await this.getRole(body.roleKey)
+        ? await this.getRole(body.roleKey, company.id)
         : currentRole;
     const nextActive =
       typeof body.active === 'boolean' ? body.active : membership.active;
@@ -211,22 +194,21 @@ export class UsersController {
     }
 
     if (Object.keys(membershipUpdate).length > 1) {
-      const { error: membershipError } = await client
+      const { error } = await client
         .from('company_memberships')
         .update(membershipUpdate)
         .eq('id', membership.id);
 
-      if (membershipError) {
+      if (error) {
         throw new BadRequestException(
-          `No se pudo actualizar el usuario: ${membershipError.message}`,
+          `No se pudo actualizar el usuario: ${error.message}`,
         );
       }
     }
 
     if (typeof body.fullName === 'string') {
       const fullName = this.requiredText(body.fullName, 'Escribe el nombre.');
-
-      const { error: profileError } = await client
+      const { error } = await client
         .from('app_profiles')
         .update({
           full_name: fullName,
@@ -234,9 +216,9 @@ export class UsersController {
         })
         .eq('user_id', userId);
 
-      if (profileError) {
+      if (error) {
         throw new BadRequestException(
-          `No se pudo actualizar el nombre: ${profileError.message}`,
+          `No se pudo actualizar el nombre: ${error.message}`,
         );
       }
 
@@ -309,21 +291,27 @@ export class UsersController {
     return data as { id: string; name: string; slug: string };
   }
 
-  private async buildCompanyUsers(companyId: string) {
-    const client = this.supabaseService.getClient();
-
-    const { data: rolesData, error: rolesError } = await client
+  private async getRolesForCompany(companyId: string): Promise<RoleRow[]> {
+    const { data, error } = await this.supabaseService
+      .getClient()
       .from('app_roles')
-      .select('id, key, name, description')
+      .select('id, key, name, description, company_id')
+      .or(`company_id.is.null,company_id.eq.${companyId}`)
+      .order('company_id', { ascending: true, nullsFirst: true })
       .order('name', { ascending: true });
 
-    if (rolesError) {
+    if (error) {
       throw new BadRequestException(
-        `No se pudieron consultar los roles: ${rolesError.message}`,
+        `No se pudieron consultar los roles: ${error.message}`,
       );
     }
 
-    const roles = (rolesData ?? []) as RoleRow[];
+    return (data ?? []) as RoleRow[];
+  }
+
+  private async buildCompanyUsers(companyId: string) {
+    const client = this.supabaseService.getClient();
+    const roles = await this.getRolesForCompany(companyId);
     const roleIds = roles.map((role) => role.id);
 
     const { data: permissionsData, error: permissionsError } = await client
@@ -360,11 +348,9 @@ export class UsersController {
 
     for (const item of rolePermissions.data ?? []) {
       const permission = permissionsById.get(item.permission_id);
-
       if (!permission) {
         continue;
       }
-
       const list = permissionsByRoleId.get(item.role_id) ?? [];
       list.push(permission);
       permissionsByRoleId.set(item.role_id, list);
@@ -386,7 +372,7 @@ export class UsersController {
     const userIds = memberships.map((membership) => membership.user_id);
     const rolesById = new Map(roles.map((role) => [role.id, role]));
 
-    const profileResponse =
+    const profiles =
       userIds.length > 0
         ? await client
             .from('app_profiles')
@@ -394,24 +380,21 @@ export class UsersController {
             .in('user_id', userIds)
         : { data: [], error: null };
 
-    if (profileResponse.error) {
+    if (profiles.error) {
       throw new BadRequestException(
-        `No se pudieron consultar los perfiles: ${profileResponse.error.message}`,
+        `No se pudieron consultar los perfiles: ${profiles.error.message}`,
       );
     }
 
     const profilesByUserId = new Map(
-      ((profileResponse.data ?? []) as ProfileRow[]).map((profile) => [
+      ((profiles.data ?? []) as ProfileRow[]).map((profile) => [
         profile.user_id,
         profile,
       ]),
     );
 
     const { data: authData, error: authError } =
-      await client.auth.admin.listUsers({
-        page: 1,
-        perPage: 1000,
-      });
+      await client.auth.admin.listUsers({ page: 1, perPage: 1000 });
 
     if (authError) {
       throw new BadRequestException(
@@ -428,6 +411,7 @@ export class UsersController {
         key: role.key,
         name: role.name,
         description: role.description ?? '',
+        scope: role.company_id ? 'custom' : 'base',
         permissions: (permissionsByRoleId.get(role.id) ?? [])
           .map((permission) => ({
             key: permission.key,
@@ -475,22 +459,18 @@ export class UsersController {
     }
 
     if (!data) {
-      throw new NotFoundException(
-        'El usuario no pertenece a esta empresa.',
-      );
+      throw new NotFoundException('El usuario no pertenece a esta empresa.');
     }
 
     return data as MembershipRow;
   }
 
-  private async getRole(roleKey: string): Promise<RoleRow> {
-    const key = roleKey.trim().toLowerCase();
-
+  private async getRole(roleKey: string, companyId: string): Promise<RoleRow> {
     const { data, error } = await this.supabaseService
       .getClient()
       .from('app_roles')
-      .select('id, key, name, description')
-      .eq('key', key)
+      .select('id, key, name, description, company_id')
+      .eq('key', roleKey.trim().toLowerCase())
       .maybeSingle();
 
     if (error) {
@@ -503,14 +483,25 @@ export class UsersController {
       throw new BadRequestException('El rol seleccionado no existe.');
     }
 
-    return data as RoleRow;
+    const role = data as RoleRow;
+
+    if (role.company_id && role.company_id !== companyId) {
+      throw new BadRequestException(
+        'El rol seleccionado no pertenece a esta empresa.',
+      );
+    }
+
+    return role;
   }
 
-  private async getRoleById(roleId: string): Promise<RoleRow> {
+  private async getRoleById(
+    roleId: string,
+    companyId: string,
+  ): Promise<RoleRow> {
     const { data, error } = await this.supabaseService
       .getClient()
       .from('app_roles')
-      .select('id, key, name, description')
+      .select('id, key, name, description, company_id')
       .eq('id', roleId)
       .maybeSingle();
 
@@ -524,7 +515,15 @@ export class UsersController {
       throw new BadRequestException('No se encontró el rol del usuario.');
     }
 
-    return data as RoleRow;
+    const role = data as RoleRow;
+
+    if (role.company_id && role.company_id !== companyId) {
+      throw new BadRequestException(
+        'El rol del usuario no pertenece a esta empresa.',
+      );
+    }
+
+    return role;
   }
 
   private async assertCompanyKeepsOwner(
@@ -556,14 +555,11 @@ export class UsersController {
     if (typeof value !== 'string' || !value.trim()) {
       throw new BadRequestException(message);
     }
-
     return value.trim();
   }
 
   private normalizeEmail(value: unknown): string {
-    const email = this.requiredText(value, 'Escribe el correo.')
-      .trim()
-      .toLowerCase();
+    const email = this.requiredText(value, 'Escribe el correo.').toLowerCase();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new BadRequestException('Escribe un correo válido.');
