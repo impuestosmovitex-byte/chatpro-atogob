@@ -470,11 +470,11 @@ billingAddress: {
       ),
     }));
   }
-    async listOpenAbandonedCheckoutsUpdatedSince(
-    updatedSince: string,
+    async listOpenAbandonedCheckoutsCreatedSince(
+    createdSince: string,
     limit = 50,
   ) {
-    const normalizedUpdatedSince = new Date(updatedSince).toISOString();
+    const normalizedCreatedSince = new Date(createdSince).toISOString();
     const data = await this.graphql<{
       abandonedCheckouts: {
         edges: Array<{
@@ -483,6 +483,22 @@ billingAddress: {
             createdAt: string;
             updatedAt: string;
             abandonedCheckoutUrl: string;
+            customer: {
+              firstName: string | null;
+              lastName: string | null;
+              email: string | null;
+              phone: string | null;
+            } | null;
+            shippingAddress: {
+              firstName: string | null;
+              lastName: string | null;
+              phone: string | null;
+            } | null;
+            billingAddress: {
+              firstName: string | null;
+              lastName: string | null;
+              phone: string | null;
+            } | null;
             totalPriceSet: {
               shopMoney: {
                 amount: string;
@@ -509,7 +525,7 @@ billingAddress: {
       };
     }>(
       `
-        query OpenAbandonedCheckoutsForSync(
+        query OpenAbandonedCheckoutsForRecovery(
           $first: Int!
           $query: String!
         ) {
@@ -517,7 +533,7 @@ billingAddress: {
             first: $first
             query: $query
             sortKey: CREATED_AT
-            reverse: true
+            reverse: false
           ) {
             edges {
               node {
@@ -525,6 +541,22 @@ billingAddress: {
                 createdAt
                 updatedAt
                 abandonedCheckoutUrl
+                customer {
+                  firstName
+                  lastName
+                  email
+                  phone
+                }
+                shippingAddress {
+                  firstName
+                  lastName
+                  phone
+                }
+                billingAddress {
+                  firstName
+                  lastName
+                  phone
+                }
                 totalPriceSet {
                   shopMoney {
                     amount
@@ -556,25 +588,60 @@ billingAddress: {
         query: [
           'status:open',
           'recovery_state:not_recovered',
-          `updated_at:>='${normalizedUpdatedSince}'`,
+          `created_at:>='${normalizedCreatedSince}'`,
         ].join(' '),
       },
     );
 
-    return data.abandonedCheckouts.edges.map(({ node }) => ({
-      externalId: node.id,
-      createdAt: node.createdAt,
-      updatedAt: node.updatedAt,
-      checkoutUrl: node.abandonedCheckoutUrl,
-      total: node.totalPriceSet.shopMoney,
-      lines: node.lineItems.edges.map(({ node: line }) => ({
-        title: line.title,
-        variantTitle: line.variantTitle,
-        quantity: line.quantity,
-        unitPrice: line.originalUnitPriceSet.shopMoney,
-      })),
-    }));
+    return data.abandonedCheckouts.edges.map(({ node }) => {
+      const nameFrom = (
+        address:
+          | {
+              firstName: string | null;
+              lastName: string | null;
+            }
+          | null
+          | undefined,
+      ) =>
+        [address?.firstName, address?.lastName]
+          .filter(
+            (value): value is string =>
+              typeof value === 'string' && Boolean(value.trim()),
+          )
+          .join(' ')
+          .trim();
+
+      const shippingName = nameFrom(node.shippingAddress);
+      const billingName = nameFrom(node.billingAddress);
+      const customerName = nameFrom(node.customer);
+
+      return {
+        externalId: node.id,
+        createdAt: node.createdAt,
+        updatedAt: node.updatedAt,
+        checkoutUrl: node.abandonedCheckoutUrl,
+        customerPhone:
+          node.shippingAddress?.phone ||
+          node.billingAddress?.phone ||
+          node.customer?.phone ||
+          null,
+        customerName: shippingName || billingName || customerName || null,
+        customerEmail:
+          typeof node.customer?.email === 'string' &&
+          node.customer.email.trim()
+            ? node.customer.email.trim()
+            : null,
+        total: node.totalPriceSet.shopMoney,
+        lines: node.lineItems.edges.map(({ node: line }) => ({
+          title: line.title,
+          variantTitle: line.variantTitle,
+          quantity: line.quantity,
+          unitPrice: line.originalUnitPriceSet.shopMoney,
+        })),
+      };
+    });
   }
+
   private extractProductHandle(value: string): string | null {
     const match = value.trim().match(/\/products\/([^/?#]+)/i);
 

@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import OpenAI from 'openai';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
+import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -45,6 +46,7 @@ export class CartRecoveryService {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly shopifyAbandonedCheckoutSyncService: ShopifyAbandonedCheckoutSyncService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -56,6 +58,15 @@ export class CartRecoveryService {
     this.isRunning = true;
 
     try {
+      try {
+        await this.shopifyAbandonedCheckoutSyncService.syncEnabledCompanies();
+      } catch (error) {
+        this.logger.error(
+          'No se pudieron sincronizar los abandonos web antes de recuperar carritos.',
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
+
       await this.processDueCarts();
     } catch (error) {
       this.logger.error('No se pudieron revisar los carritos pendientes.', error);
@@ -151,6 +162,31 @@ export class CartRecoveryService {
       return;
     }
 
+    const company = await this.getCompanyContext(cart.company_id);
+    const recipient = this.normalizeWhatsAppRecipient(
+      cart.customer_phone,
+      company.settings,
+    );
+
+    if (!recipient) {
+      this.logger.warn(
+        `No se envió recuperación para el carrito ${cart.id}: teléfono inválido o sin prefijo internacional.`,
+      );
+      return;
+    }
+
+    if (
+      !this.isRecipientAllowedForRecoveryTest(
+        recipient,
+        company.settings,
+      )
+    ) {
+      this.logger.log(
+        `Recuperación en modo prueba: se omitió el carrito ${cart.id}.`,
+      );
+      return;
+    }
+
     if (rule.delivery_mode === 'session') {
       const isInsideCustomerWindow = await this.isInsideCustomerWindow(
         cart.session_id,
@@ -160,14 +196,13 @@ export class CartRecoveryService {
         return;
       }
 
-      const company = await this.getCompanyContext(cart.company_id);
       const message = await this.buildSessionMessage(
         company,
         rule,
         cart,
       );
 
-      await this.sendTextMessage(cart.customer_phone, message);
+      await this.sendTextMessage(recipient, message);
 
       if (cart.session_id) {
         await this.conversationMemoryService.saveMessage({
@@ -187,9 +222,10 @@ export class CartRecoveryService {
       }
 
       await this.sendTemplateMessage(
-        cart.customer_phone,
+        recipient,
         rule.template_name,
         rule.template_language,
+        [cart.checkout_url],
       );
     }
 
@@ -367,16 +403,98 @@ export class CartRecoveryService {
     }
   }
 
+  private isRecipientAllowedForRecoveryTest(
+    recipient: string,
+    settings: JsonObject,
+  ): boolean {
+    if (settings.cart_recovery_test_mode !== true) {
+      return true;
+    }
+
+    const testPhones = Array.isArray(
+      settings.cart_recovery_test_phones,
+    )
+      ? settings.cart_recovery_test_phones
+      : [];
+
+    return testPhones.some((value) => {
+      if (typeof value !== 'string') {
+        return false;
+      }
+
+      return (
+        this.normalizeWhatsAppRecipient(value, settings) === recipient
+      );
+    });
+  }
+
+  private normalizeWhatsAppRecipient(
+    value: string,
+    settings: JsonObject,
+  ): string | null {
+    const raw = value.trim();
+    const digits = raw.replace(/\D/g, '');
+
+    if (!digits || digits.length < 8 || digits.length > 15) {
+      return null;
+    }
+
+    if (raw.startsWith('+') || digits.length > 10) {
+      return digits;
+    }
+
+    const countryCode = String(
+      settings.cart_recovery_default_country_code ?? '',
+    ).replace(/\D/g, '');
+
+    if (
+      countryCode &&
+      countryCode.length <= 4 &&
+      digits.length === 10
+    ) {
+      return `${countryCode}${digits}`;
+    }
+
+    return null;
+  }
+
   private async sendTemplateMessage(
     to: string,
     templateName: string,
     languageCode: string,
+    bodyParameters: string[] = [],
   ): Promise<void> {
     const accessToken = process.env.META_WHATSAPP_ACCESS_TOKEN;
     const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
 
     if (!accessToken || !phoneNumberId) {
       throw new Error('Faltan variables de Meta en Railway.');
+    }
+
+    const template: {
+      name: string;
+      language: { code: string };
+      components?: Array<{
+        type: 'body';
+        parameters: Array<{ type: 'text'; text: string }>;
+      }>;
+    } = {
+      name: templateName,
+      language: {
+        code: languageCode,
+      },
+    };
+
+    if (bodyParameters.length) {
+      template.components = [
+        {
+          type: 'body',
+          parameters: bodyParameters.map((text) => ({
+            type: 'text',
+            text,
+          })),
+        },
+      ];
     }
 
     const response = await fetch(
@@ -391,12 +509,7 @@ export class CartRecoveryService {
           messaging_product: 'whatsapp',
           to,
           type: 'template',
-          template: {
-            name: templateName,
-            language: {
-              code: languageCode,
-            },
-          },
+          template,
         }),
       },
     );
