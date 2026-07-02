@@ -421,16 +421,21 @@ export class RolesController {
     return value.trim();
   }
 
-  private createKey(companyId: string, name: string): string {
-    const slug =
-      name
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 36) || 'rol';
+  private createKey(companyId: string, roleName: string): string {
+    const companyPrefix = companyId
+      .replace(/[^a-z0-9]/gi, '')
+      .toLowerCase()
+      .slice(0, 8);
 
-    return `custom-${companyId.replace(/-/g, '').slice(0, 8)}-${slug}-${Date.now().toString(36)}`;
+    const normalized = roleName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+      .slice(0, 36) || 'rol';
+
+    // Solo letras minúsculas y números. Ejemplo:
+    // custom4ebe87b9servicioalclienteabc123
+    return `custom${companyPrefix}${normalized}${Date.now().toString(36)}`;
   }
 }
