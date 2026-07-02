@@ -166,6 +166,175 @@ export class CartService {
     };
   }
 
+  async replaceCartLineWithSelectedVariant(
+    session: ConversationSession,
+    currentVariantId: string,
+    quantity: number,
+  ) {
+    if (!currentVariantId.trim()) {
+      return {
+        ok: false,
+        error: 'Falta identificar el producto del carrito que se va a cambiar.',
+      };
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return {
+        ok: false,
+        error: 'La cantidad para el cambio debe ser un número entero mayor a cero.',
+      };
+    }
+
+    const selectedProduct = this.readSelectedProduct(session.context);
+    const selectedVariant = this.readSelectedVariant(session.context);
+    const cart = this.readCart(session.context).map((line) => ({
+      ...line,
+      options: line.options.map((option) => ({ ...option })),
+    }));
+
+    if (!selectedProduct || !selectedVariant) {
+      return {
+        ok: false,
+        error: 'Primero selecciona el producto y la variante nueva que el cliente confirmó.',
+      };
+    }
+
+    const sourceIndex = cart.findIndex(
+      (line) => line.variantId === currentVariantId,
+    );
+
+    if (sourceIndex < 0) {
+      return {
+        ok: false,
+        error: 'El producto que se quiere cambiar ya no está en el carrito actual.',
+      };
+    }
+
+    const source = cart[sourceIndex];
+
+    if (source.productId !== selectedProduct.id) {
+      return {
+        ok: false,
+        error: 'La variante nueva no corresponde al mismo producto del carrito.',
+      };
+    }
+
+    if (quantity > source.quantity) {
+      return {
+        ok: false,
+        error: 'La cantidad que se quiere cambiar es mayor a la cantidad actual del carrito.',
+      };
+    }
+
+    if (source.variantId === selectedVariant.id) {
+      source.quantity = quantity;
+      return this.persistEditedCart(session, cart);
+    }
+
+    const replacement: CartLine = {
+      productId: selectedProduct.id,
+      productTitle: selectedProduct.title,
+      productUrl: selectedProduct.url,
+      variantId: selectedVariant.id,
+      variantLegacyId: selectedVariant.legacyResourceId,
+      variantTitle: selectedVariant.title,
+      unitPrice: selectedVariant.price,
+      options: selectedVariant.options.map((option) => ({ ...option })),
+      quantity,
+    };
+
+    const sameVariantIndex = cart.findIndex(
+      (line, index) =>
+        index !== sourceIndex && line.variantId === replacement.variantId,
+    );
+
+    if (quantity === source.quantity) {
+      if (sameVariantIndex >= 0) {
+        cart[sameVariantIndex].quantity += quantity;
+        cart.splice(sourceIndex, 1);
+      } else {
+        cart[sourceIndex] = replacement;
+      }
+    } else {
+      source.quantity -= quantity;
+
+      if (sameVariantIndex >= 0) {
+        cart[sameVariantIndex].quantity += quantity;
+      } else {
+        cart.push(replacement);
+      }
+    }
+
+    return this.persistEditedCart(session, cart);
+  }
+
+  async setCartLineQuantity(
+    session: ConversationSession,
+    variantId: string,
+    quantity: number,
+  ) {
+    if (!variantId.trim()) {
+      return {
+        ok: false,
+        error: 'Falta identificar el producto del carrito.',
+      };
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return {
+        ok: false,
+        error: 'La cantidad debe ser un número entero mayor a cero.',
+      };
+    }
+
+    const cart = this.readCart(session.context).map((line) => ({
+      ...line,
+      options: line.options.map((option) => ({ ...option })),
+    }));
+
+    const line = cart.find((item) => item.variantId === variantId);
+
+    if (!line) {
+      return {
+        ok: false,
+        error: 'El producto ya no está en el carrito actual.',
+      };
+    }
+
+    line.quantity = quantity;
+
+    return this.persistEditedCart(session, cart);
+  }
+
+  async removeCartLine(
+    session: ConversationSession,
+    variantId: string,
+  ) {
+    if (!variantId.trim()) {
+      return {
+        ok: false,
+        error: 'Falta identificar el producto del carrito.',
+      };
+    }
+
+    const current = this.readCart(session.context);
+    const cart = current
+      .filter((line) => line.variantId !== variantId)
+      .map((line) => ({
+        ...line,
+        options: line.options.map((option) => ({ ...option })),
+      }));
+
+    if (cart.length === current.length) {
+      return {
+        ok: false,
+        error: 'El producto ya no está en el carrito actual.',
+      };
+    }
+
+    return this.persistEditedCart(session, cart);
+  }
+
   async getCart(session: ConversationSession) {
     const cart = this.readCart(session.context);
 
@@ -225,6 +394,46 @@ export class CartService {
     };
   }
 
+  private async persistEditedCart(
+    session: ConversationSession,
+    cart: CartLine[],
+  ) {
+    const links = cart.length
+      ? await this.shopifyService.buildCartLinks(
+          cart.map((line) => ({
+            variantLegacyId: line.variantLegacyId,
+            quantity: line.quantity,
+          })),
+        )
+      : null;
+
+    const updatedSession =
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'sales',
+        context: {
+          ...session.context,
+          cart,
+          lastCartUrl: links?.cartUrl ?? null,
+          lastCheckoutUrl: links?.checkoutUrl ?? null,
+          lastCartUpdatedAt: new Date().toISOString(),
+        },
+      });
+
+    await this.syncRecoveryCart(
+      updatedSession,
+      cart,
+      'active',
+      links?.checkoutUrl ?? null,
+    );
+
+    return {
+      ok: true,
+      cart: this.cartSummary(cart),
+      cart_url: links?.cartUrl ?? null,
+      checkout_url: links?.checkoutUrl ?? null,
+    };
+  }
+
   private async syncRecoveryCart(
     session: ConversationSession,
     cart: CartLine[],
@@ -233,8 +442,41 @@ export class CartService {
   ) {
     const now = new Date().toISOString();
     const client = this.supabaseService.getClient();
+    const recoveryCartId = this.readRecoveryCartId(session.context);
+    const recoveryCurrency = this.readRecoveryCurrency(session.context);
 
     try {
+      const payload = {
+        company_id: session.companyId,
+        session_id: session.id,
+        customer_phone: session.customerPhone,
+        cart_snapshot: this.cartRecoverySnapshot(cart, recoveryCurrency),
+        cart_state: state,
+        checkout_url: checkoutUrl,
+        checkout_created_at: checkoutUrl ? now : null,
+        last_activity_at: now,
+        updated_at: now,
+      };
+
+      if (recoveryCartId) {
+        const { data: recoveredCart, error: recoveryUpdateError } =
+          await client
+            .from('abandoned_carts')
+            .update(payload)
+            .eq('id', recoveryCartId)
+            .eq('company_id', session.companyId)
+            .select('id')
+            .maybeSingle();
+
+        if (recoveryUpdateError) {
+          throw new Error(recoveryUpdateError.message);
+        }
+
+        if (recoveredCart?.id) {
+          return;
+        }
+      }
+
       const { data: existingCart, error: findError } = await client
         .from('abandoned_carts')
         .select('id')
@@ -247,18 +489,6 @@ export class CartService {
       if (findError) {
         throw new Error(findError.message);
       }
-
-      const payload = {
-        company_id: session.companyId,
-        session_id: session.id,
-        customer_phone: session.customerPhone,
-        cart_snapshot: this.cartSummary(cart),
-        cart_state: state,
-        checkout_url: checkoutUrl,
-        checkout_created_at: checkoutUrl ? now : null,
-        last_activity_at: now,
-        updated_at: now,
-      };
 
       const { error } = existingCart
         ? await client
@@ -276,6 +506,65 @@ export class CartService {
         error,
       );
     }
+  }
+
+  private readRecoveryCartId(context: JsonObject): string | null {
+    const value = context.cart_recovery;
+
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const cartId = (value as Record<string, unknown>).cart_id;
+
+    return typeof cartId === 'string' && cartId.trim()
+      ? cartId.trim()
+      : null;
+  }
+
+  private readRecoveryCurrency(context: JsonObject): string | null {
+    const value = context.cart_recovery;
+
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const cart = (value as Record<string, unknown>).cart;
+
+    if (!cart || typeof cart !== 'object' || Array.isArray(cart)) {
+      return null;
+    }
+
+    const currency = (cart as Record<string, unknown>).currency;
+
+    return typeof currency === 'string' && currency.trim()
+      ? currency.trim()
+      : null;
+  }
+
+  private cartRecoverySnapshot(
+    cart: CartLine[],
+    currency: string | null,
+  ) {
+    const summary = this.cartSummary(cart);
+
+    return {
+      ...summary,
+      total_amount: summary.products_total_cop,
+      currency,
+      lines: cart.map((line) => ({
+        product_id: line.productId,
+        product_title: line.productTitle,
+        product_url: line.productUrl,
+        variant_id: line.variantId,
+        variant_legacy_id: line.variantLegacyId,
+        variant_title: line.variantTitle,
+        options: line.options.map((option) => ({ ...option })),
+        quantity: line.quantity,
+        unit_price: line.unitPrice,
+        currency,
+      })),
+    };
   }
 
   private cartSummary(cart: CartLine[]) {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
 
 type JsonObject = Record<string, unknown>;
@@ -15,12 +16,28 @@ type RecoveryCartRow = {
   recovery_step: number | null;
 };
 
+export type RecoveryCartLine = {
+  productId: string;
+  productTitle: string;
+  productUrl: string;
+  variantId: string;
+  variantLegacyId: string;
+  variantTitle: string;
+  unitPrice: string;
+  options: Array<{
+    name: string;
+    value: string;
+  }>;
+  quantity: number;
+};
+
 export type CartRecoveryReplyContext = {
   type: 'abandoned_cart_recovery';
   cart_id: string;
   recovery_sent_at: string;
   recovery_step: number;
   expires_at: string;
+  cart_is_editable: boolean;
   cart: {
     items: Array<{
       product_title: string;
@@ -37,14 +54,22 @@ export type CartRecoveryReplyContext = {
   };
 };
 
+export type CartRecoveryMatch = {
+  context: CartRecoveryReplyContext;
+  cartLines: RecoveryCartLine[];
+};
+
 @Injectable()
 export class CartRecoveryContextService {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly shopifyService: ShopifyService,
+  ) {}
 
   async findForCustomer(
     companyId: string,
     customerPhone: string,
-  ): Promise<CartRecoveryReplyContext | null> {
+  ): Promise<CartRecoveryMatch | null> {
     const client = this.supabaseService.getClient();
     const settings = await this.getCompanySettings(companyId);
     const contextHours = this.getContextHours(settings);
@@ -95,8 +120,8 @@ export class CartRecoveryContextService {
     }
 
     const snapshot = this.object(cart.cart_snapshot);
-    const lines = Array.isArray(snapshot.lines) ? snapshot.lines : [];
-    const items = lines
+    const rawLines = Array.isArray(snapshot.lines) ? snapshot.lines : [];
+    const items = rawLines
       .map((line) => this.toCartItem(line))
       .filter(
         (
@@ -105,23 +130,144 @@ export class CartRecoveryContextService {
           item !== null,
       );
 
+    const cartLines = await this.toRecoveryCartLines(rawLines);
+
     return {
-      type: 'abandoned_cart_recovery',
-      cart_id: cart.id,
-      recovery_sent_at: cart.last_recovery_sent_at,
-      recovery_step:
-        typeof cart.recovery_step === 'number' ? cart.recovery_step : 0,
-      expires_at: expiresAt,
-      cart: {
-        items,
-        total_amount:
-          this.text(snapshot.total_amount) ?? this.text(cart.cart_value),
-        currency: this.text(snapshot.currency),
-        checkout_url: cart.checkout_url,
-        checkout_created_at: cart.checkout_created_at,
-        last_activity_at: cart.last_activity_at,
+      context: {
+        type: 'abandoned_cart_recovery',
+        cart_id: cart.id,
+        recovery_sent_at: cart.last_recovery_sent_at,
+        recovery_step:
+          typeof cart.recovery_step === 'number' ? cart.recovery_step : 0,
+        expires_at: expiresAt,
+        cart_is_editable: cartLines.length > 0,
+        cart: {
+          items,
+          total_amount:
+            this.text(snapshot.total_amount) ?? this.text(cart.cart_value),
+          currency: this.text(snapshot.currency),
+          checkout_url: cart.checkout_url,
+          checkout_created_at: cart.checkout_created_at,
+          last_activity_at: cart.last_activity_at,
+        },
       },
+      cartLines,
     };
+  }
+
+  private async toRecoveryCartLines(
+    rawLines: unknown[],
+  ): Promise<RecoveryCartLine[]> {
+    const lines: RecoveryCartLine[] = [];
+
+    for (const rawLine of rawLines) {
+      const direct = this.toRecoveryCartLine(rawLine);
+
+      if (direct) {
+        lines.push(direct);
+        continue;
+      }
+
+      const legacy = await this.resolveLegacyCartLine(rawLine);
+
+      if (legacy) {
+        lines.push(legacy);
+      }
+    }
+
+    return lines;
+  }
+
+  private toRecoveryCartLine(value: unknown): RecoveryCartLine | null {
+    const line = this.object(value);
+    const productId = this.text(line.product_id);
+    const productTitle = this.text(line.product_title);
+    const productUrl = this.text(line.product_url);
+    const variantId = this.text(line.variant_id);
+    const variantLegacyId = this.text(line.variant_legacy_id);
+    const variantTitle = this.text(line.variant_title);
+    const unitPrice = this.text(line.unit_price);
+    const quantity = this.number(line.quantity);
+
+    if (
+      !productId ||
+      !productTitle ||
+      !variantId ||
+      !variantLegacyId ||
+      !variantTitle ||
+      !unitPrice ||
+      !quantity ||
+      quantity < 1
+    ) {
+      return null;
+    }
+
+    return {
+      productId,
+      productTitle,
+      productUrl: productUrl ?? '',
+      variantId,
+      variantLegacyId,
+      variantTitle,
+      unitPrice,
+      options: this.options(line.options),
+      quantity,
+    };
+  }
+
+  private async resolveLegacyCartLine(
+    value: unknown,
+  ): Promise<RecoveryCartLine | null> {
+    const line = this.object(value);
+    const productTitle = this.text(line.product_title);
+    const variantTitle = this.text(line.variant_title);
+    const quantity = this.number(line.quantity);
+    const unitPrice = this.text(line.unit_price);
+
+    if (!productTitle || !variantTitle || !quantity || quantity < 1) {
+      return null;
+    }
+
+    try {
+      const products = await this.shopifyService.searchCatalog(productTitle, 5);
+      const product =
+        products.find(
+          (candidate) =>
+            this.normalizeText(candidate.title) ===
+            this.normalizeText(productTitle),
+        ) ?? null;
+
+      if (!product) {
+        return null;
+      }
+
+      const variant =
+        product.variants.edges
+          .map(({ node }) => node)
+          .find(
+            (candidate) =>
+              this.normalizeText(candidate.title) ===
+              this.normalizeText(variantTitle),
+          ) ?? null;
+
+      if (!variant) {
+        return null;
+      }
+
+      return {
+        productId: product.id,
+        productTitle: product.title,
+        productUrl: product.onlineStoreUrl ?? '',
+        variantId: variant.id,
+        variantLegacyId: variant.legacyResourceId,
+        variantTitle: variant.title,
+        unitPrice: unitPrice ?? variant.price,
+        options: variant.selectedOptions,
+        quantity,
+      };
+    } catch {
+      return null;
+    }
   }
 
   private async getCompanySettings(companyId: string): Promise<JsonObject> {
@@ -219,6 +365,30 @@ export class CartRecoveryContextService {
     }
 
     return digits;
+  }
+
+  private normalizeText(value: string): string {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es-CO')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  private options(value: unknown): Array<{ name: string; value: string }> {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter(
+      (option): option is { name: string; value: string } =>
+        Boolean(option) &&
+        typeof option === 'object' &&
+        !Array.isArray(option) &&
+        typeof (option as Record<string, unknown>).name === 'string' &&
+        typeof (option as Record<string, unknown>).value === 'string',
+    );
   }
 
   private object(value: unknown): JsonObject {

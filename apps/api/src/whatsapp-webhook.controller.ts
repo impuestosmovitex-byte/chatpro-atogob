@@ -273,34 +273,48 @@ export class WhatsappWebhookController {
     customerPhone: string,
   ): Promise<ConversationSession> {
     try {
-      const recoveryContext =
+      const recovery =
         await this.cartRecoveryContextService.findForCustomer(
           companyId,
           customerPhone,
         );
 
-      if (!recoveryContext) {
+      if (!recovery) {
         return session;
       }
 
-      const existing = session.context.cart_recovery as
-        | { cart_id?: unknown }
-        | undefined;
+      const recoveryContext = recovery.context;
+      const initializedCartId =
+        typeof session.context.cart_recovery_initialized_id === 'string'
+          ? session.context.cart_recovery_initialized_id
+          : null;
 
-      if (
-        existing &&
-        typeof existing === 'object' &&
-        existing.cart_id === recoveryContext.cart_id
-      ) {
+      if (initializedCartId === recoveryContext.cart_id) {
         return session;
       }
+
+      const nextContext: Record<string, unknown> = {
+        ...session.context,
+        cart_recovery: recoveryContext,
+        cart_recovery_initialized_id: recoveryContext.cart_id,
+        cart: recovery.cartLines,
+      };
+
+      delete nextContext.selectedProduct;
+      delete nextContext.selectedVariant;
+      delete nextContext.selectedVariants;
+      delete nextContext.selectedAt;
+      delete nextContext.selectedVariantAt;
+      delete nextContext.purchaseIntent;
+      delete nextContext.purchaseIntentAt;
+      delete nextContext.lastCartUrl;
+      delete nextContext.lastCheckoutUrl;
+      delete nextContext.lastCartUpdatedAt;
+      delete nextContext.checkoutCreatedAt;
 
       return this.conversationMemoryService.updateSession(session.id, {
         stage: 'sales',
-        context: {
-          ...session.context,
-          cart_recovery: recoveryContext,
-        },
+        context: nextContext,
       });
     } catch (error) {
       console.error(

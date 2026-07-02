@@ -505,6 +505,22 @@ billingAddress: {
                   title: string | null;
                   variantTitle: string | null;
                   quantity: number;
+                  product: {
+                    id: string;
+                    handle: string;
+                    title: string;
+                    onlineStoreUrl: string | null;
+                  } | null;
+                  variant: {
+                    id: string;
+                    legacyResourceId: string;
+                    title: string;
+                    price: string;
+                    selectedOptions: Array<{
+                      name: string;
+                      value: string;
+                    }>;
+                  } | null;
                   originalUnitPriceSet: {
                     shopMoney: {
                       amount: string;
@@ -557,6 +573,22 @@ billingAddress: {
                       title
                       variantTitle
                       quantity
+                      product {
+                        id
+                        handle
+                        title
+                        onlineStoreUrl
+                      }
+                      variant {
+                        id
+                        legacyResourceId
+                        title
+                        price
+                        selectedOptions {
+                          name
+                          value
+                        }
+                      }
                       originalUnitPriceSet {
                         shopMoney {
                           amount
@@ -618,6 +650,23 @@ billingAddress: {
           title: line.title,
           variantTitle: line.variantTitle,
           quantity: line.quantity,
+          product: line.product
+            ? {
+                id: line.product.id,
+                handle: line.product.handle,
+                title: line.product.title,
+                url: line.product.onlineStoreUrl,
+              }
+            : null,
+          variant: line.variant
+            ? {
+                id: line.variant.id,
+                legacyResourceId: line.variant.legacyResourceId,
+                title: line.variant.title,
+                price: line.variant.price,
+                options: line.variant.selectedOptions,
+              }
+            : null,
           unitPrice: line.originalUnitPriceSet.shopMoney,
         })),
       };

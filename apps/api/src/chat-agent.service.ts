@@ -216,25 +216,27 @@ export class ChatAgentService {
       '- No preguntes “¿lo agrego?” después de que la persona ya confirmó color, talla o variante.',
       '- Antes de crear checkout, sigue las instrucciones de la empresa: pide solo los datos que falten, confirma ciudad, envío, medio de pago y resumen.',
       '- Usa create_checkout_link únicamente cuando la persona confirme que desea finalizar la compra.',
-      ...(hasRecoveryContext
-        ? [
-            '',
-            'CONTEXTO DE RESPUESTA A RECUPERACIÓN DE CARRITO:',
-            '- Este bloque aplica únicamente porque el input incluye recovery_context con datos reales de un carrito que recibió una recuperación.',
-            '- Antes de responder, identifica los artículos reales dentro de recovery_context.cart.items.',
-            '- En la primera respuesta útil sobre talla, pago, envío o el carrito, ancla la conversación al carrito: menciona al menos el nombre real del producto principal.',
-            '- Menciona variante, color, talla o cantidad únicamente cuando ese dato aparezca de forma explícita en recovery_context. No lo inventes ni lo deduzcas.',
-            '- Si la persona pregunta por talla, indica primero qué producto dejó pendiente y, si existe, la talla o variante actual. Luego pide solo el dato mínimo necesario para orientarla.',
-            '- Si pregunta por pago, crédito, envío u otra duda, relaciónala con los productos reales del carrito y sigue las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA.',
-            '- No lo llames pedido, compra finalizada ni pago aprobado: el sistema no tiene una confirmación de pago.',
-            '- Nunca preguntes por cambiar un pedido ya pagado cuando la persona está preguntando por los productos del carrito recuperado.',
-            '- No inventes productos, variantes, condiciones ni medios de pago. Si falta un dato en recovery_context, dilo con claridad.',
-            '- La estrategia comercial, financiación, pagos, envíos y cierre de venta siempre la definen las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA.',
-          ]
-        : []),
       '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',
+      ...(hasRecoveryContext
+        ? [
+            '',
+            'REGLAS PRIORITARIAS PARA RESPUESTAS A CARRITOS RECUPERADOS:',
+            '- Estas reglas aplican únicamente cuando el input incluye recovery_context.',
+            '- recovery_context describe el carrito que generó el mensaje de recuperación. session.context.cart es el carrito de trabajo actual para esta conversación.',
+            '- Ignora productos mencionados en historiales anteriores como base del carrito. Solo usa el carrito de recuperación y productos nuevos que la persona pida claramente en esta conversación.',
+            '- Antes de responder sobre talla, color, cantidad, pago, envío o el carrito, identifica los artículos reales de recovery_context y session.context.cart.',
+            '- Si hay varios productos y no es claro cuál desea cambiar, menciona los productos reales y pregunta cuál desea modificar. No adivines.',
+            '- Para cambiar talla, color o variante de una prenda que ya está en el carrito: selecciona el producto real, valida la nueva variante y usa replace_cart_line_variant. Nunca uses add_selected_variant_to_cart para un cambio de una prenda existente.',
+            '- Para modificar únicamente unidades de una prenda existente usa set_cart_line_quantity. Para quitar una prenda confirmada usa remove_cart_line.',
+            '- Solo agrega un producto nuevo cuando la persona lo solicite con claridad. Para un producto nuevo sí usa el flujo normal y add_selected_variant_to_cart.',
+            '- Después de aplicar un cambio confirmado a un carrito recuperado, genera de inmediato el enlace actualizado con create_checkout_link y compártelo. No vuelvas a pedir ciudad, envío ni medio de pago antes de enviar ese enlace actualizado.',
+            '- No generes enlace nuevo si la persona solo está haciendo una pregunta o aún no confirma un cambio.',
+            '- No llames al carrito recuperado pedido, compra finalizada ni pago aprobado.',
+            '- No inventes productos, variantes, condiciones, medios de pago ni disponibilidad. La forma de orientar pagos, crédito, envíos y cierre de venta sigue las instrucciones específicas de la empresa.',
+          ]
+        : []),
     ].join('\n');
   }
 
@@ -528,6 +530,71 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 },
 {
   type: 'function',
+  name: 'replace_cart_line_variant',
+  description:
+    'Reemplaza una línea existente del carrito por la variante ya seleccionada. Úsala solo para un cambio confirmado de talla, color o variante de un producto que ya está en el carrito. No la uses para agregar un producto nuevo.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      current_variant_id: {
+        type: 'string',
+        description:
+          'ID de la variante actual de la línea que el cliente pidió cambiar.',
+      },
+      quantity: {
+        type: 'integer',
+        minimum: 1,
+        description:
+          'Cantidad de unidades de esa línea que se cambia a la nueva variante.',
+      },
+    },
+    required: ['current_variant_id', 'quantity'],
+  },
+},
+{
+  type: 'function',
+  name: 'set_cart_line_quantity',
+  description:
+    'Cambia la cantidad de una variante que ya está en el carrito, cuando el cliente confirma la nueva cantidad.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      variant_id: {
+        type: 'string',
+        description: 'ID de la variante cuya cantidad se va a actualizar.',
+      },
+      quantity: {
+        type: 'integer',
+        minimum: 1,
+      },
+    },
+    required: ['variant_id', 'quantity'],
+  },
+},
+{
+  type: 'function',
+  name: 'remove_cart_line',
+  description:
+    'Quita una variante existente del carrito solo cuando el cliente confirme que no la quiere.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      variant_id: {
+        type: 'string',
+        description: 'ID de la variante que se va a quitar.',
+      },
+    },
+    required: ['variant_id'],
+  },
+},
+{
+  type: 'function',
   name: 'get_cart',
   description:
     'Consulta el resumen, cantidades y total actual del carrito.',
@@ -603,6 +670,29 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         return this.cartService.addSelectedVariant(
           session,
           this.readInteger(args, 'quantity'),
+        );
+      }
+
+      if (name === 'replace_cart_line_variant') {
+        return this.cartService.replaceCartLineWithSelectedVariant(
+          session,
+          this.readString(args, 'current_variant_id'),
+          this.readInteger(args, 'quantity'),
+        );
+      }
+
+      if (name === 'set_cart_line_quantity') {
+        return this.cartService.setCartLineQuantity(
+          session,
+          this.readString(args, 'variant_id'),
+          this.readInteger(args, 'quantity'),
+        );
+      }
+
+      if (name === 'remove_cart_line') {
+        return this.cartService.removeCartLine(
+          session,
+          this.readString(args, 'variant_id'),
         );
       }
 
