@@ -32,6 +32,15 @@ type InboxSession = ConversationSession & {
   lastMessage: InboxMessage | null;
 };
 
+type QuickReply = {
+  id: string;
+  shortcut: string;
+  title: string;
+  body: string;
+  category: string;
+  isActive: boolean;
+};
+
 type InboxConversation = {
   company: { id: string; slug: string; name: string };
   session: ConversationSession;
@@ -119,6 +128,8 @@ export default function Home() {
   const [selected, setSelected] = useState<InboxConversation | null>(null);
   const [agentName, setAgentName] = useState("Asesor");
   const [message, setMessage] = useState("");
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [quickReplyOpen, setQuickReplyOpen] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -155,6 +166,27 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "No se pudo cargar la bandeja.");
     } finally {
       if (showSpinner) setLoadingList(false);
+    }
+  }
+
+  async function loadQuickReplies() {
+    try {
+      const response = await fetch(
+        `/api/quick-replies?company=${encodeURIComponent(COMPANY)}`,
+        { cache: "no-store" },
+      );
+      const data = (await readJson(response)) as {
+        ok?: boolean;
+        quickReplies?: QuickReply[];
+      };
+
+      if (response.ok && data.ok) {
+        setQuickReplies(
+          (data.quickReplies ?? []).filter((reply) => reply.isActive),
+        );
+      }
+    } catch {
+      // La bandeja sigue funcionando si las respuestas rápidas no cargan.
     }
   }
 
@@ -231,6 +263,13 @@ export default function Home() {
 
   useEffect(() => {
     void loadList();
+    void loadQuickReplies();
+
+    const targetSession = new URLSearchParams(window.location.search).get("session");
+    if (targetSession) {
+      void openConversation(targetSession);
+    }
+
     const timer = window.setInterval(() => void loadList(false), 12000);
 
     return () => window.clearInterval(timer);
@@ -268,6 +307,28 @@ export default function Home() {
     return () => cancelAnimationFrame(frame);
   }, [selected?.session.id, selected?.messages.length, loadingChat]);
 
+
+  const quickReplyQuery = message.trimStart().startsWith("/")
+    ? message.trimStart().slice(1).toLowerCase()
+    : "";
+
+  const visibleQuickReplies =
+    quickReplyOpen && message.trimStart().startsWith("/")
+      ? quickReplies
+          .filter(
+            (reply) =>
+              !quickReplyQuery ||
+              reply.shortcut.includes(quickReplyQuery) ||
+              reply.title.toLowerCase().includes(quickReplyQuery) ||
+              reply.category.toLowerCase().includes(quickReplyQuery),
+          )
+          .slice(0, 7)
+      : [];
+
+  function chooseQuickReply(reply: QuickReply) {
+    setMessage(reply.body);
+    setQuickReplyOpen(false);
+  }
 
   return (
     <main className="chatpro-shell">
@@ -418,12 +479,39 @@ export default function Home() {
 
                 {selected.session.attentionStatus === "human" ? (
                   <form className="reply-box" onSubmit={sendMessage}>
-                    <textarea
-                      value={message}
-                      onChange={(event) => setMessage(event.target.value)}
-                      placeholder="Escribe una respuesta para el cliente…"
-                      rows={3}
-                    />
+                    <div className="quick-reply-wrap">
+                      <textarea
+                        value={message}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setMessage(next);
+                          setQuickReplyOpen(next.trimStart().startsWith("/"));
+                        }}
+                        onFocus={() =>
+                          setQuickReplyOpen(message.trimStart().startsWith("/"))
+                        }
+                        placeholder="Escribe una respuesta o usa / para atajos…"
+                        rows={3}
+                      />
+                      {visibleQuickReplies.length ? (
+                        <div className="quick-reply-menu">
+                          {visibleQuickReplies.map((reply) => (
+                            <button
+                              key={reply.id}
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => chooseQuickReply(reply)}
+                            >
+                              <code>/{reply.shortcut}</code>
+                              <span>
+                                <b>{reply.title}</b>
+                                <small>{reply.category}</small>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                     <button className="button primary" type="submit" disabled={actionLoading || !message.trim()}>
                       {actionLoading ? "Enviando…" : "Enviar"}
                     </button>

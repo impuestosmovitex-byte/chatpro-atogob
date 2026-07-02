@@ -134,3 +134,15 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
   .advisor-field { width: 100%; }
   .channel-tabs { overflow-x: auto; }
 }
+
+/* Respuestas rápidas de Bandeja */
+.quick-reply-wrap{position:relative;flex:1;min-width:0}
+.quick-reply-wrap textarea{width:100%;box-sizing:border-box}
+.quick-reply-menu{position:absolute;z-index:30;left:0;right:0;bottom:calc(100% + 8px);max-height:300px;overflow-y:auto;border:1px solid #deded9;border-radius:12px;background:#fff;box-shadow:0 12px 32px rgba(0,0,0,.14)}
+.quick-reply-menu button{width:100%;display:flex;align-items:flex-start;gap:12px;border:0;border-bottom:1px solid #efefeb;background:#fff;padding:11px 13px;text-align:left;cursor:pointer}
+.quick-reply-menu button:last-child{border-bottom:0}
+.quick-reply-menu button:hover{background:#f7f7f4}
+.quick-reply-menu code{min-width:88px;font-weight:800;color:#8f6615}
+.quick-reply-menu span{display:grid;gap:2px}
+.quick-reply-menu b{font-size:13px}
+.quick-reply-menu small{color:#777;font-size:11px}
