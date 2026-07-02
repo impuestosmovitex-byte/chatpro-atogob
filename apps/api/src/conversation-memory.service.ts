@@ -64,8 +64,21 @@ export type InboxSessionSummary = ConversationSession & {
 };
 
 
+export type ContactRecord = {
+  id: string;
+  companyId: string;
+  phone: string;
+  displayName: string | null;
+  primaryChannel: 'whatsapp' | 'instagram' | 'messenger' | 'manual';
+  tags: string[];
+  notes: string;
+  firstSeenAt: string | null;
+  lastActivityAt: string | null;
+};
+
 export type ClientSummary = {
   customerPhone: string;
+  contact: ContactRecord | null;
   firstMessageAt: string | null;
   lastMessageAt: string;
   attentionStatus: AttentionStatus;
@@ -239,6 +252,73 @@ export class ConversationMemoryService {
     return this.getOrCreateSessionByCompanyId(profile.id, customerPhone);
   }
 
+  async createManualContact(
+    companySlug: string,
+    input: {
+      phone: string;
+      displayName?: string;
+      tags?: string[];
+      notes?: string;
+    },
+  ): Promise<{
+    company: { id: string; slug: string; name: string };
+    contact: ContactRecord;
+    session: ConversationSession;
+  }> {
+    const profile = await this.getCompanyProfile(companySlug);
+    const phone = this.normalizePhone(input.phone);
+
+    if (!phone) {
+      throw new Error('Escribe un número de teléfono válido.');
+    }
+
+    const now = new Date().toISOString();
+    const contact = await this.upsertContact(profile.id, {
+      phone,
+      displayName: input.displayName,
+      primaryChannel: 'manual',
+      tags: input.tags,
+      notes: input.notes,
+      firstSeenAt: now,
+      lastActivityAt: now,
+    });
+
+    const session = await this.getOrCreateSessionByCompanyId(
+      profile.id,
+      phone,
+    );
+
+    return {
+      company: { id: profile.id, slug: profile.slug, name: profile.name },
+      contact,
+      session,
+    };
+  }
+
+  async updateContact(
+    companySlug: string,
+    phoneInput: string,
+    input: {
+      displayName?: string;
+      tags?: string[];
+      notes?: string;
+    },
+  ): Promise<ContactRecord> {
+    const profile = await this.getCompanyProfile(companySlug);
+    const phone = this.normalizePhone(phoneInput);
+
+    if (!phone) {
+      throw new Error('Falta el teléfono del contacto.');
+    }
+
+    return this.upsertContact(profile.id, {
+      phone,
+      displayName: input.displayName,
+      tags: input.tags,
+      notes: input.notes,
+    });
+  }
+
   async getOrCreateSessionByCompanyId(
     companyId: string,
     customerPhone: string,
@@ -270,6 +350,12 @@ export class ConversationMemoryService {
     }
 
     if (existingSession) {
+      await this.upsertContact(id, {
+        phone,
+        primaryChannel: 'whatsapp',
+        lastActivityAt: new Date().toISOString(),
+      });
+
       return this.toSession(existingSession);
     }
 
@@ -296,6 +382,13 @@ export class ConversationMemoryService {
         }`,
       );
     }
+
+    await this.upsertContact(id, {
+      phone,
+      primaryChannel: 'whatsapp',
+      firstSeenAt: now,
+      lastActivityAt: now,
+    });
 
     return this.toSession(createdSession);
   }
@@ -387,6 +480,17 @@ export class ConversationMemoryService {
       throw new Error(
         `No se pudo actualizar la actividad de la sesión: ${error.message}`,
       );
+    }
+
+    try {
+      const session = await this.getSessionById(sessionId);
+      await this.upsertContact(session.companyId, {
+        phone: session.customerPhone,
+        primaryChannel: 'whatsapp',
+        lastActivityAt: now,
+      });
+    } catch (contactError) {
+      console.error('No se pudo sincronizar la actividad del contacto:', contactError);
     }
   }
 
@@ -571,12 +675,18 @@ export class ConversationMemoryService {
       messagesBySession.set(message.sessionId, current);
     }
 
+    const contactsByPhone = await this.getContactsByPhones(
+      profile.id,
+      sessions.map((session) => session.customerPhone),
+    );
+
     return {
       company: { id: profile.id, slug: profile.slug, name: profile.name },
       clients: sessions.map((session) =>
         this.buildClientSummary(
           session,
           messagesBySession.get(session.id) ?? [],
+          contactsByPhone.get(session.customerPhone) ?? null,
         ),
       ),
     };
@@ -628,9 +738,18 @@ export class ConversationMemoryService {
       this.toInboxMessage(row),
     );
 
+    const contactsByPhone = await this.getContactsByPhones(
+      profile.id,
+      [session.customerPhone],
+    );
+
     return {
       company: { id: profile.id, slug: profile.slug, name: profile.name },
-      client: this.buildClientSummary(session, messages),
+      client: this.buildClientSummary(
+        session,
+        messages,
+        contactsByPhone.get(session.customerPhone) ?? null,
+      ),
       session,
       messages,
     };
@@ -716,6 +835,176 @@ export class ConversationMemoryService {
     return 'saved';
   }
 
+  private async upsertContact(
+    companyId: string,
+    input: {
+      phone: string;
+      displayName?: string;
+      primaryChannel?: 'whatsapp' | 'instagram' | 'messenger' | 'manual';
+      tags?: string[];
+      notes?: string;
+      firstSeenAt?: string;
+      lastActivityAt?: string;
+    },
+  ): Promise<ContactRecord> {
+    const phone = this.normalizePhone(input.phone);
+
+    if (!phone) {
+      throw new Error('El contacto no tiene un teléfono válido.');
+    }
+
+    const client = this.supabaseService.getClient();
+    const { data: existing, error: findError } = await client
+      .from('contacts')
+      .select(
+        'id, company_id, phone, display_name, primary_channel, tags, notes, first_seen_at, last_activity_at',
+      )
+      .eq('company_id', companyId)
+      .eq('phone', phone)
+      .maybeSingle();
+
+    if (findError) {
+      throw new Error(`No se pudo consultar el contacto: ${findError.message}`);
+    }
+
+    const now = new Date().toISOString();
+    const payload = {
+      company_id: companyId,
+      phone,
+      display_name:
+        input.displayName === undefined
+          ? existing?.display_name ?? null
+          : input.displayName.trim() || null,
+      primary_channel:
+        input.primaryChannel ?? existing?.primary_channel ?? 'whatsapp',
+      tags:
+        input.tags === undefined
+          ? this.toTags(existing?.tags)
+          : this.toTags(input.tags),
+      notes:
+        input.notes === undefined
+          ? typeof existing?.notes === 'string'
+            ? existing.notes
+            : ''
+          : input.notes.trim(),
+      first_seen_at:
+        existing?.first_seen_at ?? input.firstSeenAt ?? now,
+      last_activity_at:
+        input.lastActivityAt ??
+        existing?.last_activity_at ??
+        now,
+      updated_at: now,
+    };
+
+    const result = existing?.id
+      ? await client
+          .from('contacts')
+          .update(payload)
+          .eq('id', existing.id)
+          .select(
+            'id, company_id, phone, display_name, primary_channel, tags, notes, first_seen_at, last_activity_at',
+          )
+          .single()
+      : await client
+          .from('contacts')
+          .insert(payload)
+          .select(
+            'id, company_id, phone, display_name, primary_channel, tags, notes, first_seen_at, last_activity_at',
+          )
+          .single();
+
+    if (result.error || !result.data) {
+      throw new Error(
+        `No se pudo guardar el contacto: ${result.error?.message ?? 'respuesta vacía'}`,
+      );
+    }
+
+    return this.toContact(result.data);
+  }
+
+  private async getContactsByPhones(
+    companyId: string,
+    phones: string[],
+  ): Promise<Map<string, ContactRecord>> {
+    if (!phones.length) {
+      return new Map();
+    }
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('contacts')
+      .select(
+        'id, company_id, phone, display_name, primary_channel, tags, notes, first_seen_at, last_activity_at',
+      )
+      .eq('company_id', companyId)
+      .in('phone', phones);
+
+    if (error) {
+      throw new Error(`No se pudieron consultar los contactos: ${error.message}`);
+    }
+
+    return new Map(
+      (data ?? []).map((row) => {
+        const contact = this.toContact(row);
+        return [contact.phone, contact];
+      }),
+    );
+  }
+
+  private toContact(value: unknown): ContactRecord {
+    const row =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
+
+    const channel =
+      row.primary_channel === 'instagram' ||
+      row.primary_channel === 'messenger' ||
+      row.primary_channel === 'manual'
+        ? row.primary_channel
+        : 'whatsapp';
+
+    return {
+      id: typeof row.id === 'string' ? row.id : '',
+      companyId: typeof row.company_id === 'string' ? row.company_id : '',
+      phone: typeof row.phone === 'string' ? row.phone : '',
+      displayName:
+        typeof row.display_name === 'string' && row.display_name.trim()
+          ? row.display_name.trim()
+          : null,
+      primaryChannel: channel,
+      tags: this.toTags(row.tags),
+      notes: typeof row.notes === 'string' ? row.notes : '',
+      firstSeenAt:
+        typeof row.first_seen_at === 'string' ? row.first_seen_at : null,
+      lastActivityAt:
+        typeof row.last_activity_at === 'string' ? row.last_activity_at : null,
+    };
+  }
+
+  private toTags(value: unknown): string[] {
+    const source = Array.isArray(value) ? value : [];
+    const unique = new Set<string>();
+
+    for (const item of source) {
+      if (typeof item !== 'string') {
+        continue;
+      }
+
+      const clean = item.trim().replace(/\s+/g, ' ').slice(0, 40);
+
+      if (clean) {
+        unique.add(clean);
+      }
+    }
+
+    return Array.from(unique).slice(0, 15);
+  }
+
+  private normalizePhone(value: string): string {
+    return value.trim().replace(/[^\d+]/g, '');
+  }
+
   private async updateAttention(
     sessionId: string,
     changes: Record<string, unknown>,
@@ -762,12 +1051,14 @@ export class ConversationMemoryService {
   private buildClientSummary(
     session: ConversationSession,
     messages: InboxMessage[],
+    contact: ContactRecord | null = null,
   ): ClientSummary {
     const firstMessage = messages[0] ?? null;
     const lastMessage = messages[messages.length - 1] ?? null;
 
     return {
       customerPhone: session.customerPhone,
+      contact,
       firstMessageAt: firstMessage?.createdAt ?? null,
       lastMessageAt: session.lastMessageAt,
       attentionStatus: session.attentionStatus,

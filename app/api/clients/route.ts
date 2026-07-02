@@ -98,3 +98,52 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export async function POST(request: NextRequest) {
+  if (!(await hasValidSession(request))) {
+    return unauthorized();
+  }
+
+  try {
+    const { apiBase, inboxKey } = config();
+    const payload = await request.json();
+    const company = text(
+      typeof payload?.company === 'string'
+        ? payload.company
+        : request.nextUrl.searchParams.get('company'),
+    );
+
+    if (!company) {
+      return NextResponse.json(
+        { ok: false, error: 'Falta la empresa.' },
+        { status: 400 },
+      );
+    }
+
+    const target = new URL(`${apiBase}/clients`);
+    target.searchParams.set('company', company);
+
+    const response = await fetch(target, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-chatpro-inbox-key': inboxKey,
+      },
+      body: JSON.stringify({ ...payload, company }),
+      cache: 'no-store',
+    });
+
+    return proxyResponse(response);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'No se pudo guardar el contacto.',
+      },
+      { status: 500 },
+    );
+  }
+}

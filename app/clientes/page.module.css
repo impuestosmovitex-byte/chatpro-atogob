@@ -585,3 +585,179 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.secondaryButton,
+.saveButton {
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 14px;
+  background: #f4e6bf;
+  color: #3a2c11;
+  font: inherit;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.saveButton {
+  background: #1c1d20;
+  color: #fff;
+}
+
+.secondaryButton:hover,
+.saveButton:hover,
+.inboxButton:hover {
+  filter: brightness(0.97);
+}
+
+.success {
+  margin: 0 0 18px;
+  border: 1px solid #b7dfc4;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #effaf2;
+  color: #23683c;
+}
+
+.createCard {
+  display: grid;
+  grid-template-columns: 1.3fr repeat(3, minmax(140px, 1fr));
+  gap: 14px;
+  align-items: end;
+  margin-bottom: 18px;
+  border: 1px solid #e3e5e8;
+  border-radius: 16px;
+  padding: 20px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(20, 24, 31, 0.05);
+}
+
+.createCard h2,
+.contactForm h3 {
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.createCard p {
+  margin: 7px 0 0;
+  color: #69707a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.createCard label,
+.contactForm label {
+  display: grid;
+  gap: 7px;
+  color: #4e5560;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.createCard input,
+.createCard textarea,
+.contactForm input,
+.contactForm textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #d9dde3;
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: #fff;
+  color: #1f2227;
+  font: inherit;
+  font-weight: 400;
+  outline: none;
+  resize: vertical;
+}
+
+.createCard input:focus,
+.createCard textarea:focus,
+.contactForm input:focus,
+.contactForm textarea:focus {
+  border-color: #a9843e;
+  box-shadow: 0 0 0 3px rgba(169, 132, 62, 0.16);
+}
+
+.fullField {
+  grid-column: 1 / -1;
+}
+
+.phone {
+  color: #7e858e;
+  font-size: 12px;
+}
+
+.contactForm {
+  border-bottom: 1px solid #edf0f2;
+  padding: 18px 24px;
+}
+
+.contactFormHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 15px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.helper {
+  margin: 10px 0 0;
+  color: #7a818a;
+  font-size: 12px;
+}
+
+@media (max-width: 1180px) {
+  .createCard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .createCard > div {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace {
+    padding: 20px;
+  }
+
+  .header,
+  .profileHeader,
+  .contactFormHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .headerActions {
+    width: 100%;
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .profileData,
+  .formGrid,
+  .createCard {
+    grid-template-columns: 1fr;
+  }
+
+  .createCard > div,
+  .fullField {
+    grid-column: auto;
+  }
+}
