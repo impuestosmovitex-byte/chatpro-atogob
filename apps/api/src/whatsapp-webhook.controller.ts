@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ChatAgentService } from './chat-agent.service';
+import { CartRecoveryContextService } from './cart-recovery-context.service';
 import { CompanyIntegrationService } from './company-integration.service';
 import {
   ConversationMemoryService,
@@ -25,6 +26,7 @@ export class WhatsappWebhookController {
     private readonly chatAgentService: ChatAgentService,
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly companyIntegrationService: CompanyIntegrationService,
+    private readonly cartRecoveryContextService: CartRecoveryContextService,
   ) {}
 
   @Get()
@@ -229,6 +231,12 @@ export class WhatsappWebhookController {
         );
       }
 
+      session = await this.attachRecoveryContext(
+        session,
+        profile.id,
+        input.phone,
+      );
+
       const reply = await this.resolveReply(profile, session, input.text);
 
       await this.sendTextMessage(input.phone, reply);
@@ -256,6 +264,50 @@ export class WhatsappWebhookController {
       } catch (sendError) {
         console.error('No se pudo enviar el mensaje de respaldo:', sendError);
       }
+    }
+  }
+
+  private async attachRecoveryContext(
+    session: ConversationSession,
+    companyId: string,
+    customerPhone: string,
+  ): Promise<ConversationSession> {
+    try {
+      const recoveryContext =
+        await this.cartRecoveryContextService.findForCustomer(
+          companyId,
+          customerPhone,
+        );
+
+      if (!recoveryContext) {
+        return session;
+      }
+
+      const existing = session.context.cart_recovery as
+        | { cart_id?: unknown }
+        | undefined;
+
+      if (
+        existing &&
+        typeof existing === 'object' &&
+        existing.cart_id === recoveryContext.cart_id
+      ) {
+        return session;
+      }
+
+      return this.conversationMemoryService.updateSession(session.id, {
+        stage: 'sales',
+        context: {
+          ...session.context,
+          cart_recovery: recoveryContext,
+        },
+      });
+    } catch (error) {
+      console.error(
+        `No se pudo adjuntar el contexto de recuperación para ${customerPhone}:`,
+        error,
+      );
+      return session;
     }
   }
 

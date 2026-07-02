@@ -6,6 +6,7 @@ import { AiService } from './ai.service';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CartRecoveryService } from './cart-recovery.service';
+import { CartRecoveryContextService } from './cart-recovery-context.service';
 import { CartService } from './cart.service';
 import { ChatAgentService } from './chat-agent.service';
 import { ClientsController } from './clients.controller';
@@ -43,6 +44,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     CartService,
     ChatAgentService,
     CartRecoveryService,
+    CartRecoveryContextService,
     AccessAuthService,
   ],
 })

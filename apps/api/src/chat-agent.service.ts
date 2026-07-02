@@ -82,6 +82,9 @@ export class ChatAgentService {
         : activeSession;
 
     const collections = await this.shopifyService.getCollections();
+    const recoveryContext = this.getActiveRecoveryContext(
+      activeSession.context,
+    );
     const contextStatus = this.getContextStatus(profile, activeSession);
     const history = contextStatus.is_within_context_window
       ? await this.getRecentMessages(activeSession.id)
@@ -100,6 +103,7 @@ export class ChatAgentService {
             context: activeSession.context,
             last_message_at: activeSession.lastMessageAt,
             context_status: contextStatus,
+            recovery_context: recoveryContext,
           },
           conversation_history: history,
           current_customer_message: customerMessage,
@@ -114,7 +118,10 @@ export class ChatAgentService {
 
     let response = await this.getClient().responses.create({
       model: this.getModel(),
-      instructions: this.buildInstructions(profile),
+      instructions: this.buildInstructions(
+        profile,
+        Boolean(recoveryContext),
+      ),
       input,
       tools: this.getTools(),
       tool_choice: 'auto',
@@ -158,7 +165,10 @@ export class ChatAgentService {
 
       response = await this.getClient().responses.create({
         model: this.getModel(),
-        instructions: this.buildInstructions(profile),
+        instructions: this.buildInstructions(
+          profile,
+          Boolean(recoveryContext),
+        ),
         input,
         tools: this.getTools(),
         tool_choice: 'auto',
@@ -168,7 +178,10 @@ export class ChatAgentService {
     return 'Estoy revisando la información para ayudarte. Cuéntame qué necesitas y lo revisamos.';
   }
 
-  private buildInstructions(profile: CompanyProfile): string {
+  private buildInstructions(
+    profile: CompanyProfile,
+    hasRecoveryContext = false,
+  ): string {
     const assistantName = profile.assistantName ?? 'Sofía';
     const configuredTone =
       typeof profile.settings.ai_tone === 'string' &&
@@ -203,10 +216,41 @@ export class ChatAgentService {
       '- No preguntes “¿lo agrego?” después de que la persona ya confirmó color, talla o variante.',
       '- Antes de crear checkout, sigue las instrucciones de la empresa: pide solo los datos que falten, confirma ciudad, envío, medio de pago y resumen.',
       '- Usa create_checkout_link únicamente cuando la persona confirme que desea finalizar la compra.',
+      ...(hasRecoveryContext
+        ? [
+            '',
+            'CONTEXTO DE RESPUESTA A RECUPERACIÓN DE CARRITO:',
+            '- Este bloque aplica únicamente porque el input incluye recovery_context con datos reales de un carrito que recibió una recuperación.',
+            '- Usa los productos, variantes, tallas, cantidades y valor de recovery_context para entender la duda actual y responder sobre esos productos.',
+            '- No lo llames pedido, compra finalizada ni pago aprobado: el sistema no tiene una confirmación de pago.',
+            '- No preguntes por cambiar un pedido ya pagado cuando la persona está preguntando por los productos del carrito recuperado.',
+            '- No inventes productos, variantes o condiciones. Si falta un dato, dilo con claridad y orienta la conversación según las instrucciones de la empresa.',
+            '- La estrategia comercial, medios de pago, financiación, envíos y cierre de venta siempre la definen las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA.',
+          ]
+        : []),
       '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',
     ].join('\n');
+  }
+
+  private getActiveRecoveryContext(
+    context: JsonObject,
+  ): JsonObject | null {
+    const value = context.cart_recovery;
+
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const recoveryContext = value as JsonObject;
+    const expiresAt = recoveryContext.expires_at;
+
+    if (typeof expiresAt !== 'string' || Date.parse(expiresAt) <= Date.now()) {
+      return null;
+    }
+
+    return recoveryContext;
   }
 
   private getContextStatus(
