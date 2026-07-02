@@ -15,6 +15,7 @@ import { CompanySettingsController } from './company-settings.controller';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { InboxController } from './inbox.controller';
 import { RolesController } from './roles.controller';
+import { QuickRepliesController } from './quick-replies.controller';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
@@ -31,6 +32,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     CompanySettingsController,
     UsersController,
     RolesController,
+    QuickRepliesController,
     AccessController,
   ],
   providers: [

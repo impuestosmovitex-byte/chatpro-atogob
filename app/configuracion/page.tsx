@@ -16,6 +16,13 @@ const cards = [
     available: true,
   },
   {
+    title: 'Respuestas rápidas',
+    description: 'Crea atajos con / para que el equipo responda más rápido en la bandeja.',
+    icon: '↗',
+    href: '/configuracion/respuestas-rapidas',
+    available: true,
+  },
+  {
     title: 'Empresa e identidad',
     description:
       'Nombre, logo, datos comerciales y apariencia del espacio de trabajo.',
