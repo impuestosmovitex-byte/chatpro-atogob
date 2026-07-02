@@ -116,7 +116,7 @@ export default function RolesPage() {
       const data = (await response.json()) as ResponseData;
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudieron cargar los roles.');
+        throw new Error(data.message || data.error || 'No se pudieron cargar los roles.');
       }
 
       setCompanyName(data.company?.name || 'Empresa');
@@ -187,7 +187,7 @@ export default function RolesPage() {
       const data = (await response.json()) as ResponseData;
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudo guardar el rol.');
+        throw new Error(data.message || data.error || 'No se pudo guardar el rol.');
       }
 
       setMessage(data.message || 'Rol guardado correctamente.');
