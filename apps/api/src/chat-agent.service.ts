@@ -216,6 +216,8 @@ export class ChatAgentService {
       '- No preguntes “¿lo agrego?” después de que la persona ya confirmó color, talla o variante.',
       '- Antes de crear checkout, sigue las instrucciones de la empresa: pide solo los datos que falten, confirma ciudad, envío, medio de pago y resumen.',
       '- Usa create_checkout_link únicamente cuando la persona confirme que desea finalizar la compra.',
+      '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para finalizar el pago. Nunca sustituyas ese enlace por un cart_url.',
+      '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
       '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',
@@ -608,6 +610,19 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 },
 {
   type: 'function',
+  name: 'request_human_attention',
+  description:
+    'Transfiere la conversación a la cola de un asesor humano. Úsala únicamente cuando las instrucciones específicas de la empresa indiquen escalar el caso o cuando el cliente pida explícitamente un asesor. Antes de usarla, responde al cliente con el mensaje que indiquen las instrucciones de la empresa.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {},
+    required: [],
+  },
+},
+{
+  type: 'function',
   name: 'create_checkout_link',
   description:
     'Crea el link real de carrito y pago de Shopify con los productos que ya estén agregados.',
@@ -698,6 +713,18 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (name === 'get_cart') {
         return this.cartService.getCart(session);
+      }
+
+      if (name === 'request_human_attention') {
+        const updatedSession =
+          await this.conversationMemoryService.requestHumanAttention(
+            session.id,
+          );
+
+        return {
+          ok: true,
+          attention_status: updatedSession.attentionStatus,
+        };
       }
 
       if (name === 'create_checkout_link') {

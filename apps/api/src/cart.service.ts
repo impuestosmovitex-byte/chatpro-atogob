@@ -389,8 +389,8 @@ export class CartService {
     return {
       ok: true,
       cart: this.cartSummary(cart),
-      cart_url: links.cartUrl,
       checkout_url: links.checkoutUrl,
+      checkout_purpose: 'payment',
     };
   }
 
