@@ -6,6 +6,15 @@ import { FormEvent, useEffect, useMemo, useState, useRef} from "react";
 
 type AttentionStatus = "ai" | "waiting" | "human" | "closed";
 
+type Contact = {
+  id: string;
+  phone: string;
+  displayName: string | null;
+  primaryChannel: "whatsapp" | "instagram" | "messenger" | "manual";
+  tags: string[];
+  notes: string;
+};
+
 type InboxMessage = {
   id: string | null;
   sessionId: string;
@@ -29,6 +38,7 @@ type ConversationSession = {
 };
 
 type InboxSession = ConversationSession & {
+  contact?: Contact | null;
   lastMessage: InboxMessage | null;
 };
 
@@ -44,6 +54,7 @@ type QuickReply = {
 type InboxConversation = {
   company: { id: string; slug: string; name: string };
   session: ConversationSession;
+  contact?: Contact | null;
   messages: InboxMessage[];
 };
 
@@ -61,6 +72,7 @@ type ApiConversation = {
   session?: ConversationSession;
   messages?: InboxMessage[];
   conversation?: InboxConversation;
+  contact?: Contact | null;
 };
 
 const COMPANY = process.env.NEXT_PUBLIC_CHATPRO_COMPANY || "atogob";
@@ -107,8 +119,8 @@ function formatMoney(value: unknown) {
   }).format(amount);
 }
 
-function customerLabel(phone: string) {
-  return phone ? `Cliente ${phone}` : "Cliente sin número";
+function customerLabel(phone: string, contact?: Contact | null) {
+  return contact?.displayName?.trim() || (phone ? `Cliente ${phone}` : "Cliente sin número");
 }
 
 function getCart(context: Record<string, unknown>) {
@@ -207,6 +219,7 @@ export default function Home() {
       setSelected({
         company: data.company,
         session: data.session,
+        contact: data.contact ?? null,
         messages: data.messages ?? [],
       });
       setError("");
@@ -403,7 +416,7 @@ export default function Home() {
                   <span className="avatar">{session.customerPhone.slice(-2) || "CP"}</span>
                   <span className="conversation-summary">
                     <span className="conversation-topline">
-                      <strong>{customerLabel(session.customerPhone)}</strong>
+                      <strong>{customerLabel(session.customerPhone, session.contact)}</strong>
                       <time>{formatDate(session.lastMessageAt)}</time>
                     </span>
                     <span className="conversation-preview">{session.lastMessage?.message || "Sin mensajes todavía"}</span>
@@ -428,7 +441,7 @@ export default function Home() {
                 <header className="chat-header">
                   <div>
                     <p className="eyebrow">WhatsApp</p>
-                    <h2>{customerLabel(selected.session.customerPhone)}</h2>
+                    <h2>{customerLabel(selected.session.customerPhone, selected.contact)}</h2>
                     <p className="chat-subtitle">
                       {statusLabel[selected.session.attentionStatus]}
                       {selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}
@@ -542,6 +555,12 @@ export default function Home() {
                     <dt>Teléfono</dt>
                     <dd>{selected.session.customerPhone}</dd>
                   </div>
+                  {selected.contact?.tags?.length ? (
+                    <div>
+                      <dt>Etiquetas</dt>
+                      <dd>{selected.contact.tags.join(" · ")}</dd>
+                    </div>
+                  ) : null}
                   <div>
                     <dt>Flujo actual</dt>
                     <dd>{selected.session.stage}</dd>
@@ -551,6 +570,13 @@ export default function Home() {
                     <dd>{statusLabel[selected.session.attentionStatus]}</dd>
                   </div>
                 </dl>
+
+                {selected.contact?.notes?.trim() ? (
+                  <section className="contact-notes-context">
+                    <h3>Notas internas</h3>
+                    <p>{selected.contact.notes}</p>
+                  </section>
+                ) : null}
 
                 <section className="cart-context">
                   <div className="cart-context-heading">

@@ -56,6 +56,7 @@ export type InboxConversation = {
     name: string;
   };
   session: ConversationSession;
+  contact: ContactRecord | null;
   messages: InboxMessage[];
 };
 
@@ -600,10 +601,16 @@ export class ConversationMemoryService {
       }
     }
 
+    const contactsByPhone = await this.getContactsByPhones(
+      profile.id,
+      sessions.map((session) => session.customerPhone),
+    );
+
     return {
       company: { id: profile.id, slug: profile.slug, name: profile.name },
       sessions: sessions.map((session) => ({
         ...session,
+        contact: contactsByPhone.get(session.customerPhone) ?? null,
         lastMessage: latestBySession.get(session.id) ?? null,
       })),
     };
@@ -796,9 +803,16 @@ export class ConversationMemoryService {
       );
     }
 
+    const session = this.toSession(sessionRow);
+    const contactsByPhone = await this.getContactsByPhones(
+      profile.id,
+      [session.customerPhone],
+    );
+
     return {
       company: { id: profile.id, slug: profile.slug, name: profile.name },
-      session: this.toSession(sessionRow),
+      session,
+      contact: contactsByPhone.get(session.customerPhone) ?? null,
       messages: (messageRows ?? []).map((row) => this.toInboxMessage(row)),
     };
   }
