@@ -37,6 +37,14 @@ const cards = [
     available: false,
   },
   {
+    title: 'Áreas de atención',
+    description:
+      'Crea las áreas de tu empresa para organizar y repartir conversaciones.',
+    icon: '◫',
+    href: '/configuracion/areas-atencion',
+    available: true,
+  },
+  {
     title: 'Horarios y atención',
     description:
       'Horarios comerciales, mensajes fuera de horario y reglas de asignación.',

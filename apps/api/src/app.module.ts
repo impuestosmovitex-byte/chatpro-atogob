@@ -21,6 +21,7 @@ import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
 import { SupportSettingsController } from './support-settings.controller';
 import { AdvisorPresenceController } from './advisor-presence.controller';
+import { ServiceAreasController } from './service-areas.controller';
 import { UsersController } from './users.controller';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 
@@ -38,6 +39,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     AccessController,
     SupportSettingsController,
     AdvisorPresenceController,
+    ServiceAreasController,
   ],
   providers: [
     CompanyIntegrationService,
