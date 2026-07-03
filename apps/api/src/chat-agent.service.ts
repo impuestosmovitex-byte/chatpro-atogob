@@ -62,17 +62,17 @@ export class ChatAgentService {
   ): Promise<string> {
     let activeSession = session;
 
-    const unresolvedNumberReply =
-      await this.handleUnresolvedNumericInput(activeSession, customerMessage);
-
-    if (unresolvedNumberReply) {
-      return unresolvedNumberReply;
-    }
-
     const scope = await this.classifyBusinessScope(profile, customerMessage);
 
     if (scope === 'outside') {
       return `Puedo ayudarte con la información y los servicios de ${profile.name}. ¿Qué necesitas revisar?`;
+    }
+
+    const unclearMessageReply =
+      await this.handleUnclearMessage(profile, activeSession, customerMessage);
+
+    if (unclearMessageReply) {
+      return unclearMessageReply;
     }
 
     const currentIntent = await this.classifyCurrentIntent(
@@ -243,7 +243,7 @@ export class ChatAgentService {
       '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
       '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
       '- Atiende primero el caso con la información disponible. Usa request_human_attention solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa, o las instrucciones específicas indiquen escalar.',
-      '- REGLA DE COMPRENSIÓN: si el mensaje es ambiguo o no tienes información suficiente, pide una aclaración concreta una vez. Si, después de esa aclaración, la nueva respuesta sigue sin permitir entender o resolver el caso, usa request_human_attention. No hagas una tercera pregunta equivalente.',
+      '- REGLA DE COMPRENSIÓN: no transfieras por un solo mensaje ambiguo. Pide una aclaración breve y concreta. Si después de esa aclaración la persona sigue sin permitir entender o resolver el caso, usa request_human_attention. No supongas que un número, documento, teléfono, talla, referencia, enlace o dato corto es incorrecto: interprétalo usando el contexto o pide aclaración.',
       '- Al transferir usa request_human_attention con un resumen interno MUY CORTO, máximo 3 líneas o 450 caracteres. Incluye solo: motivo de transferencia, qué necesita el cliente y el dato pendiente principal. No copies ni resumas todo el historial, carrito completo, precios ni mensajes anteriores; el asesor puede leer la conversación.',
       '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
@@ -366,52 +366,97 @@ export class ChatAgentService {
     }
   }
 
-  private async handleUnresolvedNumericInput(
+  private async handleUnclearMessage(
+    profile: CompanyProfile,
     session: ConversationSession,
     customerMessage: string,
   ): Promise<string | null> {
-    const normalized = customerMessage.trim().replace(/[^\d]/g, '');
+    const raw = customerMessage.trim();
 
-    if (!/^\d{5,}$/.test(normalized)) {
+    // Los enlaces siempre deben llegar al flujo real de producto.
+    if (/^https?:\/\/\S+$/i.test(raw)) {
       return null;
     }
 
+    const history = await this.getRecentMessages(session.id);
+    const response = await this.getClient().responses.create({
+      model: this.getModel(),
+      instructions: [
+        'Clasifica si el último mensaje se entiende suficientemente dentro de una conversación de negocio.',
+        'Devuelve únicamente JSON válido: {"understanding":"clear"} o {"understanding":"unclear"}.',
+        'clear: el mensaje puede procesarse usando el historial, las instrucciones de la empresa, sus productos, pedidos, pagos, servicios o integraciones.',
+        'unclear: no se puede saber qué solicita o a qué se refiere, incluso considerando el historial.',
+        'IMPORTANTE: no marques como unclear solo porque el mensaje contiene números, una cédula, teléfono, referencia, talla, código, ciudad, nombre, enlace o dato corto. Si ese dato puede tener sentido por el contexto, marca clear.',
+        'No respondas al cliente ni inventes información.',
+        `Empresa: ${profile.name}.`,
+        `Instrucciones de la empresa: ${profile.aiInstructions || 'No hay instrucciones adicionales.'}`,
+      ].join('\n'),
+      input: JSON.stringify({
+        historial_reciente: history,
+        mensaje_actual: customerMessage,
+        contexto: session.context,
+      }),
+    });
+
+    const rawResponse = response.output_text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
+
+    let understanding: 'clear' | 'unclear' = 'clear';
+
+    try {
+      const parsed = JSON.parse(rawResponse) as { understanding?: string };
+      understanding = parsed.understanding === 'unclear' ? 'unclear' : 'clear';
+    } catch {
+      understanding = 'clear';
+    }
+
     const previous =
-      session.context.unresolved_numeric &&
-      typeof session.context.unresolved_numeric === 'object' &&
-      !Array.isArray(session.context.unresolved_numeric)
-        ? session.context.unresolved_numeric as JsonObject
-        : {};
+      session.context.clarification_state &&
+      typeof session.context.clarification_state === 'object' &&
+      !Array.isArray(session.context.clarification_state)
+        ? session.context.clarification_state as JsonObject
+        : null;
 
-    const previousValue =
-      typeof previous.value === 'string' ? previous.value : '';
+    if (understanding === 'clear') {
+      if (previous) {
+        const nextContext = { ...session.context };
+        delete nextContext.clarification_state;
+        await this.conversationMemoryService.updateSession(session.id, {
+          context: nextContext,
+        });
+      }
 
-    if (previousValue === normalized) {
+      return null;
+    }
+
+    if (previous?.waiting_for_clarification === true) {
       const updated = await this.conversationMemoryService.requestHumanAttention(
         session.id,
         {
-          reason: 'Dato numérico repetido sin contexto.',
+          reason: 'No se logró comprender la solicitud después de una aclaración.',
           summary:
-            'El cliente repitió un número sin explicar a qué corresponde. Confirmar si es pedido, referencia u otro dato.',
+            'El cliente envió un mensaje que no se pudo interpretar y no logró aclararlo después de una solicitud breve de contexto.',
         },
       );
 
       return updated.attentionStatus === 'human'
-        ? 'Listo, te voy a comunicar con un asesor para que te ayude.'
-        : 'Dejé tu solicitud pendiente para que un asesor la revise y te responda lo antes posible.';
+        ? 'Para ayudarte mejor, te voy a comunicar con un asesor.'
+        : 'Para ayudarte mejor, dejé tu solicitud pendiente para que un asesor la revise.';
     }
 
     await this.conversationMemoryService.updateSession(session.id, {
       context: {
         ...session.context,
-        unresolved_numeric: {
-          value: normalized,
+        clarification_state: {
+          waiting_for_clarification: true,
           asked_at: new Date().toISOString(),
         },
       },
     });
 
-    return '¿Ese número corresponde a un pedido, una referencia o a qué dato se refiere? Así lo reviso.';
+    return 'No logré entender bien a qué te refieres. ¿Puedes explicarme un poco más o decirme qué necesitas revisar?';
   }
 
   private async classifyCurrentIntent(
