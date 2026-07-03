@@ -230,7 +230,7 @@ export class ChatAgentService {
       '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
       '- Atiende primero el caso con la información disponible. Usa request_human_attention solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa, o las instrucciones específicas indiquen escalar.',
       '- REGLA DE COMPRENSIÓN: si el mensaje es ambiguo o no tienes información suficiente, pide una aclaración concreta una vez. Si, después de esa aclaración, la nueva respuesta sigue sin permitir entender o resolver el caso, usa request_human_attention. No hagas una tercera pregunta equivalente.',
-      '- Al transferir usa request_human_attention con un resumen interno: necesidad del cliente, información o productos revisados, acciones realizadas y lo que falta. El resumen no se muestra al cliente.',
+      '- Al transferir usa request_human_attention con un resumen interno MUY CORTO, máximo 3 líneas o 450 caracteres. Incluye solo: motivo de transferencia, qué necesita el cliente y el dato pendiente principal. No copies ni resumas todo el historial, carrito completo, precios ni mensajes anteriores; el asesor puede leer la conversación.',
       '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',

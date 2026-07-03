@@ -544,7 +544,7 @@ export class ConversationMemoryService {
         : 'El caso requiere atención humana.';
     const handoffSummary =
       typeof handoff.summary === 'string' && handoff.summary.trim()
-        ? handoff.summary.trim().slice(0, 1800)
+        ? handoff.summary.trim().slice(0, 500)
         : 'Revisa el historial de la conversación.';
     const nextContext: JsonObject = {
       ...session.context,
