@@ -187,7 +187,9 @@ export class ClientsController {
     const name = fullName.trim();
     const role = roleKey.trim().toLowerCase();
 
-    if (!id || !name || headerCompanyId.trim() !== companyId) {
+    // La pertenencia real a la empresa se valida abajo en company_memberships.
+    // No bloqueamos Clientes por un dato antiguo o ausente dentro de la cookie.
+    if (!id) {
       throw new UnauthorizedException('Sesión de usuario no válida.');
     }
 
