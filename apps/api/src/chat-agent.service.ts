@@ -726,6 +726,8 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         return {
           ok: true,
           attention_status: updatedSession.attentionStatus,
+          assigned_to_name: updatedSession.assignedToName,
+          assigned: updatedSession.attentionStatus === 'human',
         };
       }
 

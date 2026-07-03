@@ -533,13 +533,294 @@ export class ConversationMemoryService {
   }
 
   async requestHumanAttention(sessionId: string): Promise<ConversationSession> {
+    const session = await this.getSessionById(sessionId);
+    const area = this.readSelectedServiceArea(session.context);
+
+    if (!area) {
+      return this.updateAttention(sessionId, {
+        attention_status: 'waiting',
+        assigned_to_user_id: null,
+        assigned_to_name: null,
+        taken_at: null,
+        closed_at: null,
+      });
+    }
+
+    const canRoute = await this.isHumanAttentionOpen(session.companyId);
+
+    if (!canRoute) {
+      return this.updateAttention(sessionId, {
+        attention_status: 'waiting',
+        assigned_to_user_id: null,
+        assigned_to_name: null,
+        taken_at: null,
+        closed_at: null,
+      });
+    }
+
+    const advisor = await this.findAvailableAdvisorForArea(
+      session.companyId,
+      area.id,
+    );
+
+    if (!advisor) {
+      return this.updateAttention(sessionId, {
+        attention_status: 'waiting',
+        assigned_to_user_id: null,
+        assigned_to_name: null,
+        taken_at: null,
+        closed_at: null,
+      });
+    }
+
     return this.updateAttention(sessionId, {
-      attention_status: 'waiting',
-      assigned_to_user_id: null,
-      assigned_to_name: null,
-      taken_at: null,
+      attention_status: 'human',
+      assigned_to_user_id: advisor.userId,
+      assigned_to_name: advisor.fullName,
+      taken_at: new Date().toISOString(),
       closed_at: null,
     });
+  }
+
+  private readSelectedServiceArea(
+    context: JsonObject,
+  ): { id: string; name: string } | null {
+    const raw = context.service_area;
+
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return null;
+    }
+
+    const area = raw as JsonObject;
+    const id = typeof area.id === 'string' ? area.id.trim() : '';
+    const name = typeof area.name === 'string' ? area.name.trim() : '';
+
+    return id && name ? { id, name } : null;
+  }
+
+  private async isHumanAttentionOpen(companyId: string): Promise<boolean> {
+    const client = this.supabaseService.getClient();
+    const { data: settings, error: settingsError } = await client
+      .from('company_support_settings')
+      .select('timezone, human_attention_enabled')
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (settingsError) {
+      throw new Error(
+        `No se pudo consultar la configuración de atención: ${settingsError.message}`,
+      );
+    }
+
+    if (settings?.human_attention_enabled === false) {
+      return false;
+    }
+
+    const timezone =
+      typeof settings?.timezone === 'string' && settings.timezone.trim()
+        ? settings.timezone.trim()
+        : 'America/Bogota';
+
+    const now = new Date();
+    let parts: Intl.DateTimeFormatPart[];
+
+    try {
+      parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(now);
+    } catch {
+      parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Bogota',
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(now);
+    }
+
+    const value = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((part) => part.type === type)?.value ?? '';
+
+    const weekDayMap: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+
+    const dayOfWeek = weekDayMap[value('weekday')] ?? -1;
+    const time = `${value('hour')}:${value('minute')}`;
+
+    if (dayOfWeek < 0 || !/^\d{2}:\d{2}$/.test(time)) {
+      return false;
+    }
+
+    const { data: day, error: dayError } = await client
+      .from('company_support_hours')
+      .select('is_open, start_time, end_time')
+      .eq('company_id', companyId)
+      .eq('day_of_week', dayOfWeek)
+      .maybeSingle();
+
+    if (dayError) {
+      throw new Error(
+        `No se pudo consultar el horario de atención: ${dayError.message}`,
+      );
+    }
+
+    if (!day?.is_open || !day.start_time || !day.end_time) {
+      return false;
+    }
+
+    const start = String(day.start_time).slice(0, 5);
+    const end = String(day.end_time).slice(0, 5);
+
+    return time >= start && time < end;
+  }
+
+  private async findAvailableAdvisorForArea(
+    companyId: string,
+    areaId: string,
+  ): Promise<{ userId: string; fullName: string } | null> {
+    const client = this.supabaseService.getClient();
+
+    const { data: areaAssignments, error: areaError } = await client
+      .from('advisor_service_areas')
+      .select('user_id')
+      .eq('company_id', companyId)
+      .eq('area_id', areaId);
+
+    if (areaError) {
+      throw new Error(
+        `No se pudieron consultar los asesores del área: ${areaError.message}`,
+      );
+    }
+
+    const areaUserIds = [...new Set(
+      (areaAssignments ?? [])
+        .map((row: any) => typeof row.user_id === 'string' ? row.user_id : '')
+        .filter(Boolean),
+    )];
+
+    if (!areaUserIds.length) {
+      return null;
+    }
+
+    const [
+      { data: memberships, error: membershipError },
+      { data: availability, error: availabilityError },
+      { data: profiles, error: profileError },
+    ] = await Promise.all([
+      client
+        .from('company_memberships')
+        .select('user_id')
+        .eq('company_id', companyId)
+        .eq('active', true)
+        .in('user_id', areaUserIds),
+      client
+        .from('advisor_availability')
+        .select('user_id, status')
+        .eq('company_id', companyId)
+        .eq('status', 'available')
+        .in('user_id', areaUserIds),
+      client
+        .from('app_profiles')
+        .select('user_id, full_name')
+        .in('user_id', areaUserIds),
+    ]);
+
+    if (membershipError || availabilityError || profileError) {
+      throw new Error(
+        `No se pudo consultar la disponibilidad de asesores: ${
+          membershipError?.message ??
+          availabilityError?.message ??
+          profileError?.message ??
+          'error desconocido'
+        }`,
+      );
+    }
+
+    const active = new Set(
+      (memberships ?? [])
+        .map((row: any) => typeof row.user_id === 'string' ? row.user_id : '')
+        .filter(Boolean),
+    );
+    const available = new Set(
+      (availability ?? [])
+        .map((row: any) => typeof row.user_id === 'string' ? row.user_id : '')
+        .filter(Boolean),
+    );
+    const names = new Map<string, string>();
+
+    for (const row of profiles ?? []) {
+      const userId =
+        typeof (row as any).user_id === 'string'
+          ? (row as any).user_id
+          : '';
+      const fullName =
+        typeof (row as any).full_name === 'string'
+          ? (row as any).full_name.trim()
+          : '';
+
+      if (userId && fullName) {
+        names.set(userId, fullName);
+      }
+    }
+
+    const candidates = areaUserIds
+      .filter((userId) => active.has(userId) && available.has(userId) && names.has(userId))
+      .sort();
+
+    if (!candidates.length) {
+      return null;
+    }
+
+    const { data: activeChats, error: chatsError } = await client
+      .from('conversation_sessions')
+      .select('assigned_to_user_id')
+      .eq('company_id', companyId)
+      .eq('attention_status', 'human')
+      .in('assigned_to_user_id', candidates);
+
+    if (chatsError) {
+      throw new Error(
+        `No se pudo calcular la carga de asesores: ${chatsError.message}`,
+      );
+    }
+
+    const loads = new Map(candidates.map((userId) => [userId, 0]));
+
+    for (const chat of activeChats ?? []) {
+      const userId =
+        typeof (chat as any).assigned_to_user_id === 'string'
+          ? (chat as any).assigned_to_user_id
+          : '';
+
+      if (loads.has(userId)) {
+        loads.set(userId, (loads.get(userId) ?? 0) + 1);
+      }
+    }
+
+    const chosen = candidates
+      .map((userId) => ({
+        userId,
+        fullName: names.get(userId) as string,
+        load: loads.get(userId) ?? 0,
+      }))
+      .sort(
+        (left, right) =>
+          left.load - right.load ||
+          left.fullName.localeCompare(right.fullName, 'es-CO'),
+      )[0];
+
+    return chosen ? { userId: chosen.userId, fullName: chosen.fullName } : null;
   }
 
   async takeConversation(
