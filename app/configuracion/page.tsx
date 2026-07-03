@@ -41,7 +41,8 @@ const cards = [
     description:
       'Horarios comerciales, mensajes fuera de horario y reglas de asignación.',
     icon: '◷',
-    available: false,
+    href: '/configuracion/horarios-atencion',
+    available: true,
   },
   {
     title: 'Seguridad y accesos',

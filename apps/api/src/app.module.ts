@@ -19,6 +19,7 @@ import { QuickRepliesController } from './quick-replies.controller';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
+import { SupportSettingsController } from './support-settings.controller';
 import { UsersController } from './users.controller';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 
@@ -34,6 +35,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     RolesController,
     QuickRepliesController,
     AccessController,
+    SupportSettingsController,
   ],
   providers: [
     CompanyIntegrationService,

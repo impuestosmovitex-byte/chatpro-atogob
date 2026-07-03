@@ -1,0 +1,27 @@
+.shell{min-height:100vh;display:flex;background:#f6f6f4;color:#171717}
+.workspace{flex:1;padding:42px;max-width:1250px}
+.workspace header{display:flex;justify-content:space-between;gap:20px;margin-bottom:25px}
+.workspace header p{font-size:12px;letter-spacing:.12em;font-weight:800;color:#886c25;margin:0}
+.workspace header h1{margin:6px 0 8px}
+.workspace header span,.workspace small,.workspace em{color:#697386}
+.workspace header button,.workspace form button{border:1px solid #ddd;border-radius:9px;background:#fff;padding:10px 13px;cursor:pointer}
+.workspace form{display:grid;gap:16px;max-width:900px}
+.workspace article{background:#fff;border:1px solid #e7e6e1;border-radius:15px;padding:22px}
+.workspace article h2{margin:0 0 15px}
+.head{display:flex;justify-content:space-between;gap:15px;margin-bottom:15px}
+.workspace article>label{display:grid;gap:8px;margin:15px 0;font-weight:700}
+.workspace input[type=number],.workspace textarea{font:inherit;border:1px solid #d7d7d2;border-radius:8px;padding:9px}
+.workspace input[type=number]{width:85px}
+.workspace textarea{resize:vertical}
+.day{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #eee}
+.day:last-child{border:0}
+.day input[type=time]{font:inherit;border:1px solid #d7d7d2;border-radius:7px;padding:7px}
+.msg{background:#fff1cd;border-radius:9px;padding:11px}
+.save{justify-self:start!important;background:#171717!important;color:#fff;border:0!important;font-weight:800}
+@media(max-width:750px){
+  .workspace{padding:22px}
+  .workspace header,.head,.day{display:block}
+  .workspace header button{margin-top:14px}
+  .head label{display:block;margin-top:12px}
+  .day span{display:block;margin-top:9px}
+}
