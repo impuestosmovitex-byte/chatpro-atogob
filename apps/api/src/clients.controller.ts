@@ -134,12 +134,8 @@ export class ClientsController {
     const action = this.readText(body.action);
 
     if (action === 'create') {
-      if (!actor.isFullAccess) {
-        throw new ForbiddenException(
-          'Solo un administrador puede crear contactos manuales.',
-        );
-      }
-
+      // Los asesores pueden registrar contactos manuales. El acceso posterior
+      // al historial sigue limitado a conversaciones humanas activas asignadas.
       return {
         ok: true,
         ...(await this.conversationMemoryService.createManualContact(
