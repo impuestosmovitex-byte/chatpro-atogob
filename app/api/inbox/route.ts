@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   INBOX_SESSION_COOKIE,
-  isInboxSessionValid,
+  getInboxSession,
 } from '../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
@@ -29,10 +29,18 @@ function config() {
   return { apiBase, inboxKey };
 }
 
-async function hasValidSession(request: NextRequest): Promise<boolean> {
-  return isInboxSessionValid(
-    request.cookies.get(INBOX_SESSION_COOKIE)?.value,
-  );
+async function currentSession(request: NextRequest) {
+  return getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
+}
+
+function trustedHeaders(inboxKey: string, session: NonNullable<Awaited<ReturnType<typeof currentSession>>>) {
+  const headers: Record<string, string> = { 'x-chatpro-inbox-key': inboxKey };
+  if (session.type === 'user' && session.userId) {
+    headers['x-chatpro-user-id'] = session.userId;
+    headers['x-chatpro-user-name'] = session.fullName;
+    headers['x-chatpro-company-id'] = session.companyId;
+  }
+  return headers;
 }
 
 function unauthorized() {
@@ -53,9 +61,8 @@ async function proxyResponse(response: Response) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!(await hasValidSession(request))) {
-    return unauthorized();
-  }
+  const session = await currentSession(request);
+  if (!session) return unauthorized();
 
   try {
     const { apiBase, inboxKey } = config();
@@ -79,7 +86,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response = await fetch(target, {
-      headers: { 'x-chatpro-inbox-key': inboxKey },
+      headers: trustedHeaders(inboxKey, session),
       cache: 'no-store',
     });
 
@@ -96,9 +103,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await hasValidSession(request))) {
-    return unauthorized();
-  }
+  const session = await currentSession(request);
+  if (!session) return unauthorized();
 
   try {
     const { apiBase, inboxKey } = config();
@@ -133,10 +139,9 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-chatpro-inbox-key': inboxKey,
+        ...trustedHeaders(inboxKey, session),
       },
       body: JSON.stringify({
-        agentName: text(body.agentName),
         message: text(body.message),
       }),
       cache: 'no-store',

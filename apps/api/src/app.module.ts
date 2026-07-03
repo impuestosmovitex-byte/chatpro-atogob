@@ -20,6 +20,7 @@ import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkou
 import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
 import { SupportSettingsController } from './support-settings.controller';
+import { AdvisorPresenceController } from './advisor-presence.controller';
 import { UsersController } from './users.controller';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 
@@ -36,6 +37,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     QuickRepliesController,
     AccessController,
     SupportSettingsController,
+    AdvisorPresenceController,
   ],
   providers: [
     CompanyIntegrationService,

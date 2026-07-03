@@ -32,6 +32,7 @@ type ConversationSession = {
   context: Record<string, unknown>;
   lastMessageAt: string;
   attentionStatus: AttentionStatus;
+  assignedToUserId: string | null;
   assignedToName: string | null;
   takenAt: string | null;
   closedAt: string | null;
@@ -50,6 +51,11 @@ type QuickReply = {
   category: string;
   isActive: boolean;
 };
+
+type AdvisorStatus = "available" | "busy" | "away" | "offline";
+type CurrentUser = { userId: string; companyName: string; fullName: string; roleName: string };
+type AdvisorPresence = { status: AdvisorStatus };
+const advisorStatusLabel: Record<AdvisorStatus, string> = { available: "Disponible", busy: "Ocupado", away: "Ausente", offline: "Desconectado" };
 
 type InboxConversation = {
   company: { id: string; slug: string; name: string };
@@ -138,7 +144,9 @@ export default function Home() {
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [sessions, setSessions] = useState<InboxSession[]>([]);
   const [selected, setSelected] = useState<InboxConversation | null>(null);
-  const [agentName, setAgentName] = useState("Asesor");
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [presence, setPresence] = useState<AdvisorPresence | null>(null);
+  const [presenceLoading, setPresenceLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
@@ -146,6 +154,34 @@ export default function Home() {
   const [loadingChat, setLoadingChat] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
+
+  async function loadIdentityAndPresence() {
+    try {
+      const meResponse = await fetch("/api/auth/session", { cache: "no-store" });
+      const me = await readJson(meResponse) as { ok?: boolean; error?: string; session?: CurrentUser };
+      if (!meResponse.ok || !me.ok || !me.session?.userId) throw new Error(me.error || "No se pudo identificar al usuario.");
+      setCurrentUser(me.session);
+      const presenceResponse = await fetch(`/api/advisor-presence?company=${encodeURIComponent(COMPANY)}`, { cache: "no-store" });
+      const data = await readJson(presenceResponse) as { ok?: boolean; error?: string; advisor?: AdvisorPresence };
+      if (!presenceResponse.ok || !data.ok || !data.advisor) throw new Error(data.error || "No se pudo cargar la disponibilidad.");
+      setPresence(data.advisor);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudo cargar tu disponibilidad.");
+    }
+  }
+
+  async function changePresence(status: AdvisorStatus) {
+    setPresenceLoading(true);
+    try {
+      const response = await fetch(`/api/advisor-presence?company=${encodeURIComponent(COMPANY)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+      const data = await readJson(response) as { ok?: boolean; error?: string; advisor?: AdvisorPresence };
+      if (!response.ok || !data.ok || !data.advisor) throw new Error(data.error || "No se pudo guardar la disponibilidad.");
+      setPresence(data.advisor);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudo guardar la disponibilidad.");
+    } finally { setPresenceLoading(false); }
+  }
 
   async function readJson(response: Response) {
     const contentType = response.headers.get("content-type") ?? "";
@@ -243,7 +279,6 @@ export default function Home() {
           company: COMPANY,
           sessionId: selected.session.id,
           action,
-          agentName,
           message,
         }),
       });
@@ -277,6 +312,7 @@ export default function Home() {
   useEffect(() => {
     void loadList();
     void loadQuickReplies();
+    void loadIdentityAndPresence();
 
     const targetSession = new URLSearchParams(window.location.search).get("session");
     if (targetSession) {
@@ -345,7 +381,7 @@ export default function Home() {
 
   return (
     <main className="chatpro-shell">
-      <AppSidebar companyName="ATOGOB" />
+      <AppSidebar companyName={currentUser?.companyName ?? "Empresa"} />
 
       <section className="workspace">
         <header className="workspace-header">
@@ -353,14 +389,16 @@ export default function Home() {
             <p className="eyebrow">Bandeja unificada</p>
             <h1>Conversaciones</h1>
           </div>
-          <label className="advisor-field">
-            <span>Asesor</span>
-            <input
-              value={agentName}
-              onChange={(event) => setAgentName(event.target.value)}
-              placeholder="Nombre del asesor"
-            />
-          </label>
+          <div className="advisor-presence">
+            <span className={`presence-dot ${presence?.status ?? "offline"}`} />
+            <div className="advisor-presence-copy">
+              <b>{currentUser?.fullName ?? "Cargando usuario…"}</b>
+              <small>{currentUser?.roleName ?? "Asesor"}</small>
+            </div>
+            <select value={presence?.status ?? "offline"} disabled={presenceLoading || !currentUser} onChange={(event) => void changePresence(event.target.value as AdvisorStatus)}>
+              {Object.entries(advisorStatusLabel).map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
         </header>
 
         <div className="channel-tabs" aria-label="Canales">

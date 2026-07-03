@@ -13,7 +13,6 @@ import {
 import { ConversationMemoryService } from './conversation-memory.service';
 
 type InboxBody = {
-  agentName?: unknown;
   message?: unknown;
 };
 
@@ -63,19 +62,24 @@ export class InboxController {
   @HttpCode(200)
   async takeConversation(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
     @Query('company') company = '',
     @Param('sessionId') sessionId = '',
-    @Body() body: InboxBody = {},
   ) {
     this.authorize(providedKey);
-    await this.conversationMemoryService.getInboxConversation(
+    const conversation = await this.conversationMemoryService.getInboxConversation(
       this.requiredCompany(company),
       sessionId,
     );
+    if (!userId.trim() || !fullName.trim() || headerCompanyId.trim() !== conversation.company.id) {
+      throw new UnauthorizedException('Sesión de asesor no válida.');
+    }
 
     const session = await this.conversationMemoryService.takeConversation(
       sessionId,
-      this.readText(body.agentName) || 'Asesor',
+      { userId, fullName },
     );
 
     return { ok: true, session };

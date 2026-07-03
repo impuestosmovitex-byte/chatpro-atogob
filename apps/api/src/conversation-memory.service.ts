@@ -13,6 +13,7 @@ const SESSION_FIELDS = [
   'context',
   'last_message_at',
   'attention_status',
+  'assigned_to_user_id',
   'assigned_to_name',
   'taken_at',
   'closed_at',
@@ -35,6 +36,7 @@ export type ConversationSession = {
   context: JsonObject;
   lastMessageAt: string;
   attentionStatus: AttentionStatus;
+  assignedToUserId: string | null;
   assignedToName: string | null;
   takenAt: string | null;
   closedAt: string | null;
@@ -507,13 +509,16 @@ export class ConversationMemoryService {
 
   async takeConversation(
     sessionId: string,
-    advisorName: string,
+    advisor: { userId: string; fullName: string },
   ): Promise<ConversationSession> {
-    const name = advisorName.trim() || 'Asesor';
+    const userId = advisor.userId.trim();
+    const name = advisor.fullName.trim();
+    if (!userId || !name) throw new Error('Falta el asesor autenticado.');
     const now = new Date().toISOString();
 
     return this.updateAttention(sessionId, {
       attention_status: 'human',
+      assigned_to_user_id: userId,
       assigned_to_name: name,
       taken_at: now,
       closed_at: null,
@@ -1125,6 +1130,11 @@ export class ConversationMemoryService {
       attentionStatus: this.toAttentionStatus(
         row.attention_status,
       ),
+      assignedToUserId:
+        typeof row.assigned_to_user_id === 'string' &&
+        row.assigned_to_user_id.trim()
+          ? row.assigned_to_user_id
+          : null,
       assignedToName:
         typeof row.assigned_to_name === 'string' &&
         row.assigned_to_name.trim()

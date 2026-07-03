@@ -146,3 +146,6 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
 .quick-reply-menu span{display:grid;gap:2px}
 .quick-reply-menu b{font-size:13px}
 .quick-reply-menu small{color:#777;font-size:11px}
+
+/* advisor-presence-v1 */
+.advisor-presence{display:flex;align-items:center;gap:10px;padding:7px 9px 7px 11px;background:#fff;border:1px solid #e7e7e3;border-radius:12px}.advisor-presence-copy{display:grid;gap:1px;min-width:120px}.advisor-presence-copy b{font-size:13px}.advisor-presence-copy small{font-size:11px;color:#747474}.advisor-presence select{border:1px solid #deded9;background:#f8f8f6;border-radius:8px;padding:7px 8px;font:inherit;font-size:12px;font-weight:700}.presence-dot{width:10px;height:10px;border-radius:50%;background:#9ca3af}.presence-dot.available{background:#2e9b63}.presence-dot.busy{background:#e69b2e}.presence-dot.away{background:#d35d5d}.presence-dot.offline{background:#9ca3af}
