@@ -62,19 +62,9 @@ export class ChatAgentService {
   ): Promise<string> {
     let activeSession = session;
 
-    const scope = await this.classifyBusinessScope(profile, customerMessage);
-
-    if (scope === 'outside') {
-      return `Puedo ayudarte con la información y los servicios de ${profile.name}. ¿Qué necesitas revisar?`;
-    }
-
-    const unclearMessageReply =
-      await this.handleUnclearMessage(profile, activeSession, customerMessage);
-
-    if (unclearMessageReply) {
-      return unclearMessageReply;
-    }
-
+    // La atención principal ya recibe las reglas de alcance y comprensión
+    // dentro de buildInstructions. Evitamos dos llamadas previas de IA por mensaje
+    // para mantener respuestas rápidas y no afectar carrito ni recuperación.
     const currentIntent = await this.classifyCurrentIntent(
       profile,
       activeSession,
