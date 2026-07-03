@@ -62,6 +62,19 @@ export class ChatAgentService {
   ): Promise<string> {
     let activeSession = session;
 
+    const unresolvedNumberReply =
+      await this.handleUnresolvedNumericInput(activeSession, customerMessage);
+
+    if (unresolvedNumberReply) {
+      return unresolvedNumberReply;
+    }
+
+    const scope = await this.classifyBusinessScope(profile, customerMessage);
+
+    if (scope === 'outside') {
+      return `Puedo ayudarte con la información y los servicios de ${profile.name}. ¿Qué necesitas revisar?`;
+    }
+
     const currentIntent = await this.classifyCurrentIntent(
       profile,
       activeSession,
@@ -208,6 +221,7 @@ export class ChatAgentService {
       '- Nunca inventes productos, precios, variantes, descuentos, stock, promociones, envíos, políticas, pedidos o enlaces.',
       '- Usa únicamente resultados reales de las herramientas y la configuración de la empresa.',
       '- Nunca solicites claves, códigos de seguridad, datos bancarios sensibles ni datos de tarjeta.',
+      '- ALCANCE OBLIGATORIO: responde solo temas relacionados con la empresa, sus productos, servicios, pedidos, pagos, envíos, políticas, herramientas conectadas o instrucciones configuradas. No respondas cultura general, noticias, historia, tecnología, personas famosas ni preguntas externas. En esos casos redirige amablemente al tema de la empresa.',
       '',
       'FORMA DE ATENDER:',
       '- Las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA tienen prioridad y definen cómo conversar y vender.',
@@ -320,6 +334,84 @@ export class ChatAgentService {
     }
 
     return 168;
+  }
+
+  private async classifyBusinessScope(
+    profile: CompanyProfile,
+    customerMessage: string,
+  ): Promise<'business' | 'outside'> {
+    const response = await this.getClient().responses.create({
+      model: this.getModel(),
+      instructions: [
+        'Clasifica sin responder la pregunta.',
+        'Devuelve únicamente JSON válido: {"scope":"business"} o {"scope":"outside"}.',
+        'business: consulta relacionada con la empresa, sus productos, servicios, pedidos, pagos, envíos, políticas, integraciones o una solicitud ambigua que podría ser comercial.',
+        'outside: cultura general o información externa que no depende de la empresa ni de sus integraciones.',
+        `Empresa: ${profile.name}.`,
+        `Instrucciones de la empresa: ${profile.aiInstructions || 'No hay instrucciones adicionales.'}`,
+      ].join('\n'),
+      input: JSON.stringify({ mensaje_actual: customerMessage }),
+    });
+
+    const raw = response.output_text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
+
+    try {
+      const parsed = JSON.parse(raw) as { scope?: string };
+      return parsed.scope === 'outside' ? 'outside' : 'business';
+    } catch {
+      return 'business';
+    }
+  }
+
+  private async handleUnresolvedNumericInput(
+    session: ConversationSession,
+    customerMessage: string,
+  ): Promise<string | null> {
+    const normalized = customerMessage.trim().replace(/[^\d]/g, '');
+
+    if (!/^\d{5,}$/.test(normalized)) {
+      return null;
+    }
+
+    const previous =
+      session.context.unresolved_numeric &&
+      typeof session.context.unresolved_numeric === 'object' &&
+      !Array.isArray(session.context.unresolved_numeric)
+        ? session.context.unresolved_numeric as JsonObject
+        : {};
+
+    const previousValue =
+      typeof previous.value === 'string' ? previous.value : '';
+
+    if (previousValue === normalized) {
+      const updated = await this.conversationMemoryService.requestHumanAttention(
+        session.id,
+        {
+          reason: 'Dato numérico repetido sin contexto.',
+          summary:
+            'El cliente repitió un número sin explicar a qué corresponde. Confirmar si es pedido, referencia u otro dato.',
+        },
+      );
+
+      return updated.attentionStatus === 'human'
+        ? 'Listo, te voy a comunicar con un asesor para que te ayude.'
+        : 'Dejé tu solicitud pendiente para que un asesor la revise y te responda lo antes posible.';
+    }
+
+    await this.conversationMemoryService.updateSession(session.id, {
+      context: {
+        ...session.context,
+        unresolved_numeric: {
+          value: normalized,
+          asked_at: new Date().toISOString(),
+        },
+      },
+    });
+
+    return '¿Ese número corresponde a un pedido, una referencia o a qué dato se refiere? Así lo reviso.';
   }
 
   private async classifyCurrentIntent(

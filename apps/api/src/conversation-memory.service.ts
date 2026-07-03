@@ -503,6 +503,44 @@ export class ConversationMemoryService {
     }
   }
 
+  async getDefaultServiceArea(
+    companyId: string,
+  ): Promise<ActiveServiceArea | null> {
+    const id = companyId.trim();
+
+    if (!id) {
+      return null;
+    }
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('service_areas')
+      .select('id, name, description')
+      .eq('company_id', id)
+      .eq('is_active', true)
+      .eq('is_default', true)
+      .order('created_at')
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo consultar el área predeterminada: ${error.message}`,
+      );
+    }
+
+    if (!data || typeof data.id !== 'string' || typeof data.name !== 'string') {
+      return null;
+    }
+
+    return {
+      id: data.id,
+      name: data.name.trim(),
+      description:
+        typeof data.description === 'string' ? data.description.trim() : '',
+    };
+  }
+
   async listActiveServiceAreas(
     companyId: string,
   ): Promise<ActiveServiceArea[]> {
@@ -537,7 +575,10 @@ export class ConversationMemoryService {
     handoff: { reason?: string; summary?: string } = {},
   ): Promise<ConversationSession> {
     const session = await this.getSessionById(sessionId);
-    const area = this.readSelectedServiceArea(session.context);
+    const selectedArea = this.readSelectedServiceArea(session.context);
+    const area =
+      selectedArea ??
+      await this.getDefaultServiceArea(session.companyId);
     const handoffReason =
       typeof handoff.reason === 'string' && handoff.reason.trim()
         ? handoff.reason.trim().slice(0, 500)
@@ -548,6 +589,16 @@ export class ConversationMemoryService {
         : 'Revisa el historial de la conversación.';
     const nextContext: JsonObject = {
       ...session.context,
+      ...(area && !selectedArea
+        ? {
+            service_area: {
+              id: area.id,
+              name: area.name,
+              selected_at: new Date().toISOString(),
+              selected_automatically: true,
+            },
+          }
+        : {}),
       handoff: {
         reason: handoffReason,
         summary: handoffSummary,

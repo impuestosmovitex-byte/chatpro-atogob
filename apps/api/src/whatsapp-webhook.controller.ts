@@ -369,7 +369,31 @@ export class WhatsappWebhookController {
         },
       );
 
-      return this.buildAreaWelcome(selectedArea.name, selectedSession);
+      return this.chatAgentService.reply(profile, selectedSession, text);
+    }
+
+    if (session.stage === 'main' || session.stage === 'area_menu') {
+      const defaultArea =
+        await this.conversationMemoryService.getDefaultServiceArea(profile.id);
+
+      const nextSession =
+        defaultArea
+          ? await this.conversationMemoryService.updateSession(session.id, {
+              stage: 'active',
+              context: {
+                ...session.context,
+                service_area: {
+                  id: defaultArea.id,
+                  name: defaultArea.name,
+                  description: defaultArea.description,
+                  selected_at: new Date().toISOString(),
+                  selected_automatically: true,
+                },
+              },
+            })
+          : session;
+
+      return this.chatAgentService.reply(profile, nextSession, text);
     }
 
     return this.chatAgentService.reply(profile, session, text);
