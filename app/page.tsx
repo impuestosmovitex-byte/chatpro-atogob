@@ -266,7 +266,7 @@ export default function Home() {
     }
   }
 
-  async function runAction(action: "take" | "close" | "message") {
+  async function runAction(action: "take" | "close" | "resume_ai" | "message") {
     if (!selected) return;
 
     setActionLoading(true);
@@ -497,14 +497,24 @@ export default function Home() {
                       </button>
                     ) : null}
                     {selected.session.attentionStatus === "human" ? (
-                      <button
-                        className="button quiet"
-                        type="button"
-                        disabled={actionLoading}
-                        onClick={() => void runAction("close")}
-                      >
-                        {actionLoading ? "Finalizando…" : "Finalizar conversación"}
-                      </button>
+                      <>
+                        <button
+                          className="button quiet"
+                          type="button"
+                          disabled={actionLoading}
+                          onClick={() => void runAction("resume_ai")}
+                        >
+                          {actionLoading ? "Actualizando…" : "Devolver a Sofía"}
+                        </button>
+                        <button
+                          className="button quiet"
+                          type="button"
+                          disabled={actionLoading}
+                          onClick={() => void runAction("close")}
+                        >
+                          {actionLoading ? "Finalizando…" : "Finalizar conversación"}
+                        </button>
+                      </>
                     ) : null}
                     {selected.session.attentionStatus === "closed" ? (
                       <span className="history-badge">En historial</span>

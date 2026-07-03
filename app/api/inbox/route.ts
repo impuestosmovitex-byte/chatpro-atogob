@@ -122,9 +122,11 @@ export async function POST(request: NextRequest) {
         ? 'take'
         : action === 'close'
           ? 'close'
-          : action === 'message'
-            ? 'messages'
-            : '';
+          : action === 'resume_ai'
+            ? 'resume-ai'
+            : action === 'message'
+              ? 'messages'
+              : '';
 
     if (!suffix) {
       return NextResponse.json({ ok: false, error: 'Acción no válida.' }, { status: 400 });
