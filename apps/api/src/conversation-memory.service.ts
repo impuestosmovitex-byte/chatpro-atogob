@@ -5,6 +5,12 @@ type JsonObject = Record<string, unknown>;
 
 export type AttentionStatus = 'ai' | 'waiting' | 'human' | 'closed';
 
+export type ActiveServiceArea = {
+  id: string;
+  name: string;
+  description: string;
+};
+
 const SESSION_FIELDS = [
   'id',
   'company_id',
@@ -495,6 +501,35 @@ export class ConversationMemoryService {
     } catch (contactError) {
       console.error('No se pudo sincronizar la actividad del contacto:', contactError);
     }
+  }
+
+  async listActiveServiceAreas(
+    companyId: string,
+  ): Promise<ActiveServiceArea[]> {
+    const id = companyId.trim();
+
+    if (!id) {
+      return [];
+    }
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('service_areas')
+      .select('id, name, description')
+      .eq('company_id', id)
+      .eq('is_active', true)
+      .order('created_at');
+
+    if (error) {
+      throw new Error(`No se pudieron consultar las áreas de atención: ${error.message}`);
+    }
+
+    return (data ?? []).map((area: any) => ({
+      id: String(area.id),
+      name: typeof area.name === 'string' ? area.name.trim() : '',
+      description:
+        typeof area.description === 'string' ? area.description.trim() : '',
+    })).filter((area) => area.id && area.name);
   }
 
   async requestHumanAttention(sessionId: string): Promise<ConversationSession> {

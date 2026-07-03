@@ -331,37 +331,92 @@ export class WhatsappWebhookController {
     text: string,
   ): Promise<string> {
     const cleanText = text.toLocaleLowerCase('es-CO').trim();
+    const activeAreas =
+      await this.conversationMemoryService.listActiveServiceAreas(profile.id);
 
     if (['hola', 'menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
+      const nextContext = { ...session.context };
+      delete nextContext.service_area;
+
       const resetSession = await this.conversationMemoryService.updateSession(
         session.id,
-        { stage: 'main' },
+        { stage: 'area_menu', context: nextContext },
       );
 
-      return this.chatAgentService.reply(profile, resetSession, text);
+      return this.buildServiceAreaMenu(activeAreas, resetSession);
     }
 
-    if (session.stage === 'main') {
-      if (cleanText === '1' || cleanText.includes('venta')) {
-        const salesSession = await this.conversationMemoryService.updateSession(
-          session.id,
-          { stage: 'sales' },
-        );
+    if (session.stage === 'main' || session.stage === 'area_menu') {
+      const selectedArea = this.resolveServiceAreaChoice(activeAreas, cleanText);
 
-        return this.chatAgentService.reply(profile, salesSession, text);
+      if (!selectedArea) {
+        return this.buildServiceAreaMenu(activeAreas, session);
       }
 
-      if (cleanText === '2' || cleanText.includes('servicio')) {
-        const serviceSession =
-          await this.conversationMemoryService.updateSession(session.id, {
-            stage: 'service',
-          });
+      const selectedSession = await this.conversationMemoryService.updateSession(
+        session.id,
+        {
+          stage: 'active',
+          context: {
+            ...session.context,
+            service_area: {
+              id: selectedArea.id,
+              name: selectedArea.name,
+              description: selectedArea.description,
+              selected_at: new Date().toISOString(),
+            },
+          },
+        },
+      );
 
-        return this.chatAgentService.reply(profile, serviceSession, text);
-      }
+      return this.buildAreaWelcome(selectedArea.name, selectedSession);
     }
 
     return this.chatAgentService.reply(profile, session, text);
+  }
+
+  private resolveServiceAreaChoice(
+    areas: Array<{ id: string; name: string; description: string }>,
+    cleanText: string,
+  ): { id: string; name: string; description: string } | null {
+    const numericChoice = Number(cleanText);
+
+    if (
+      Number.isInteger(numericChoice) &&
+      numericChoice >= 1 &&
+      numericChoice <= areas.length
+    ) {
+      return areas[numericChoice - 1] ?? null;
+    }
+
+    return (
+      areas.find((area) => {
+        const name = area.name.toLocaleLowerCase('es-CO');
+        return cleanText === name || cleanText.includes(name);
+      }) ?? null
+    );
+  }
+
+  private buildServiceAreaMenu(
+    areas: Array<{ id: string; name: string; description: string }>,
+    _session: ConversationSession,
+  ): string {
+    if (!areas.length) {
+      return 'Hola. Cuéntame en qué te podemos ayudar.';
+    }
+
+    const options = areas
+      .map((area, index) => `${index + 1}. ${area.name}`)
+      .join('\n');
+
+    return `Hola, soy Sofía. ¿En qué te podemos ayudar?\n\n${options}\n\nRespóndeme con el número o el nombre de la opción.`;
+  }
+
+  private buildAreaWelcome(
+    areaName: string,
+    _session: ConversationSession,
+  ): string {
+    return `Perfecto, te ayudo con ${areaName}. Cuéntame qué necesitas.`;
   }
 
   private getIncomingMessage(body: any) {

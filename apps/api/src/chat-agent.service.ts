@@ -218,6 +218,8 @@ export class ChatAgentService {
       '- Usa create_checkout_link únicamente cuando la persona confirme que desea finalizar la compra.',
       '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para finalizar el pago. Nunca sustituyas ese enlace por un cart_url.',
       '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
+      '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
+      '- Atiende primero el caso con la información disponible. Usa request_human_attention solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa, o las instrucciones específicas indiquen escalar.',
       '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',
@@ -612,7 +614,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'request_human_attention',
   description:
-    'Transfiere la conversación a la cola de un asesor humano. Úsala únicamente cuando las instrucciones específicas de la empresa indiquen escalar el caso o cuando el cliente pida explícitamente un asesor. Antes de usarla, responde al cliente con el mensaje que indiquen las instrucciones de la empresa.',
+    'Transfiere la conversación a la cola de un asesor humano conservando el área que eligió el cliente en session.context.service_area. Úsala solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa o las instrucciones específicas indiquen escalar. Antes de usarla, responde al cliente con el mensaje que indiquen las instrucciones de la empresa.',
   strict: true,
   parameters: {
     type: 'object',
