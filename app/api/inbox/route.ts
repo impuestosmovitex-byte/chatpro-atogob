@@ -39,6 +39,7 @@ function trustedHeaders(inboxKey: string, session: NonNullable<Awaited<ReturnTyp
     headers['x-chatpro-user-id'] = session.userId;
     headers['x-chatpro-user-name'] = session.fullName;
     headers['x-chatpro-company-id'] = session.companyId;
+    headers['x-chatpro-role-key'] = session.roleKey;
   }
   return headers;
 }

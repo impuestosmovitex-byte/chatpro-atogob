@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   INBOX_SESSION_COOKIE,
-  isInboxSessionValid,
+  getInboxSession,
 } from '../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
@@ -21,15 +21,31 @@ function config() {
   return { apiBase, inboxKey };
 }
 
-async function hasValidSession(request: NextRequest): Promise<boolean> {
-  return isInboxSessionValid(
-    request.cookies.get(INBOX_SESSION_COOKIE)?.value,
-  );
+async function currentSession(request: NextRequest) {
+  return getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
+}
+
+function trustedHeaders(
+  inboxKey: string,
+  session: NonNullable<Awaited<ReturnType<typeof currentSession>>>,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'x-chatpro-inbox-key': inboxKey,
+  };
+
+  if (session.type === 'user' && session.userId) {
+    headers['x-chatpro-user-id'] = session.userId;
+    headers['x-chatpro-user-name'] = session.fullName;
+    headers['x-chatpro-company-id'] = session.companyId;
+    headers['x-chatpro-role-key'] = session.roleKey;
+  }
+
+  return headers;
 }
 
 function unauthorized() {
   return NextResponse.json(
-    { ok: false, error: 'Sesión requerida.' },
+    { ok: false, error: 'Sesión de usuario requerida.' },
     { status: 401 },
   );
 }
@@ -46,15 +62,15 @@ async function proxyResponse(response: Response) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!(await hasValidSession(request))) {
+  const session = await currentSession(request);
+
+  if (!session || session.type !== 'user' || !session.userId) {
     return unauthorized();
   }
 
   try {
     const { apiBase, inboxKey } = config();
-    const company = text(
-      request.nextUrl.searchParams.get('company'),
-    );
+    const company = text(request.nextUrl.searchParams.get('company'));
     const phone = text(request.nextUrl.searchParams.get('phone'));
     const search = text(request.nextUrl.searchParams.get('search'));
     const limit = text(request.nextUrl.searchParams.get('limit')) || '100';
@@ -80,7 +96,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response = await fetch(target, {
-      headers: { 'x-chatpro-inbox-key': inboxKey },
+      headers: trustedHeaders(inboxKey, session),
       cache: 'no-store',
     });
 
@@ -100,7 +116,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await hasValidSession(request))) {
+  const session = await currentSession(request);
+
+  if (!session || session.type !== 'user' || !session.userId) {
     return unauthorized();
   }
 
@@ -127,7 +145,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-chatpro-inbox-key': inboxKey,
+        ...trustedHeaders(inboxKey, session),
       },
       body: JSON.stringify({ ...payload, company }),
       cache: 'no-store',
