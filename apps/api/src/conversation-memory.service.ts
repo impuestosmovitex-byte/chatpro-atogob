@@ -554,11 +554,12 @@ export class ConversationMemoryService {
         created_at: new Date().toISOString(),
         area_id: area?.id ?? null,
         area_name: area?.name ?? null,
+        status: 'pending',
       },
     };
 
     if (!area) {
-      await this.updateSession(sessionId, { context: nextContext });
+      await this.saveHandoffStatus(sessionId, nextContext, 'waiting_no_area');
       return this.updateAttention(sessionId, {
         attention_status: 'waiting',
         assigned_to_user_id: null,
@@ -571,7 +572,7 @@ export class ConversationMemoryService {
     const canRoute = await this.isHumanAttentionOpen(session.companyId);
 
     if (!canRoute) {
-      await this.updateSession(sessionId, { context: nextContext });
+      await this.saveHandoffStatus(sessionId, nextContext, 'waiting_outside_hours');
       return this.updateAttention(sessionId, {
         attention_status: 'waiting',
         assigned_to_user_id: null,
@@ -587,7 +588,7 @@ export class ConversationMemoryService {
     );
 
     if (!advisor) {
-      await this.updateSession(sessionId, { context: nextContext });
+      await this.saveHandoffStatus(sessionId, nextContext, 'waiting_no_advisor');
       return this.updateAttention(sessionId, {
         attention_status: 'waiting',
         assigned_to_user_id: null,
@@ -597,7 +598,7 @@ export class ConversationMemoryService {
       });
     }
 
-    await this.updateSession(sessionId, { context: nextContext });
+    await this.saveHandoffStatus(sessionId, nextContext, 'assigned');
 
     return this.updateAttention(sessionId, {
       attention_status: 'human',
@@ -605,6 +606,27 @@ export class ConversationMemoryService {
       assigned_to_name: advisor.fullName,
       taken_at: new Date().toISOString(),
       closed_at: null,
+    });
+  }
+
+  private async saveHandoffStatus(
+    sessionId: string,
+    context: JsonObject,
+    status: 'assigned' | 'waiting_no_area' | 'waiting_outside_hours' | 'waiting_no_advisor',
+  ): Promise<void> {
+    const handoff =
+      context.handoff && typeof context.handoff === 'object' && !Array.isArray(context.handoff)
+        ? context.handoff as JsonObject
+        : {};
+
+    await this.updateSession(sessionId, {
+      context: {
+        ...context,
+        handoff: {
+          ...handoff,
+          status,
+        },
+      },
     });
   }
 

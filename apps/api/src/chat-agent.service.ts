@@ -145,6 +145,15 @@ export class ChatAgentService {
           activeSession,
         );
 
+        if (
+          item.name === 'request_human_attention' &&
+          result &&
+          typeof result === 'object' &&
+          typeof (result as { customer_message?: unknown }).customer_message === 'string'
+        ) {
+          return (result as { customer_message: string }).customer_message;
+        }
+
         toolOutputs.push({
           type: 'function_call_output',
           call_id: item.call_id,
@@ -738,11 +747,35 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             },
           );
 
+        const context =
+          updatedSession.context &&
+          typeof updatedSession.context === 'object'
+            ? updatedSession.context as Record<string, unknown>
+            : {};
+        const handoff =
+          context.handoff &&
+          typeof context.handoff === 'object' &&
+          !Array.isArray(context.handoff)
+            ? context.handoff as Record<string, unknown>
+            : {};
+        const handoffStatus =
+          typeof handoff.status === 'string' ? handoff.status : '';
+
+        const customerMessage =
+          updatedSession.attentionStatus === 'human'
+            ? 'Listo, te voy a comunicar con un asesor para que te ayude.'
+            : handoffStatus === 'waiting_outside_hours'
+              ? 'Nuestro equipo te atenderá dentro del horario de atención. Mientras tanto, puedo ayudarte con productos, tallas, envíos y pagos.'
+              : handoffStatus === 'waiting_no_advisor'
+                ? 'En este momento todos nuestros asesores están ocupados. Dejé tu solicitud pendiente para que te atiendan apenas estén disponibles.'
+                : 'Dejé tu solicitud pendiente para que un asesor la revise y te responda lo antes posible.';
+
         return {
           ok: true,
           attention_status: updatedSession.attentionStatus,
           assigned_to_name: updatedSession.assignedToName,
           assigned: updatedSession.attentionStatus === 'human',
+          customer_message: customerMessage,
         };
       }
 
