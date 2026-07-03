@@ -53,9 +53,9 @@ const cards = [
     available: true,
   },
   {
-    title: 'Seguridad y accesos',
+    title: 'Usuarios',
     description:
-      'Usuarios, roles, permisos y controles de acceso del equipo.',
+      'Crea usuarios, asigna áreas de atención y administra roles y permisos.',
     icon: '◉',
     href: '/usuarios',
     available: true,

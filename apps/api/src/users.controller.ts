@@ -50,6 +50,7 @@ type CreateUserBody = {
   identifier?: unknown;
   password?: unknown;
   roleKey?: unknown;
+  areaIds?: unknown;
 };
 
 type UpdateUserBody = {
@@ -57,6 +58,7 @@ type UpdateUserBody = {
   fullName?: unknown;
   roleKey?: unknown;
   active?: unknown;
+  areaIds?: unknown;
 };
 
 type ResetPasswordBody = {
@@ -189,6 +191,8 @@ export class UsersController {
       if (membershipError) {
         throw new Error(membershipError.message);
       }
+
+      await this.replaceUserAreas(company.id, created.user.id, body.areaIds);
     } catch (error) {
       await client.auth.admin.deleteUser(created.user.id);
 
@@ -277,6 +281,10 @@ export class UsersController {
       await client.auth.admin.updateUserById(userId, {
         user_metadata: { full_name: fullName },
       });
+    }
+
+    if (body.areaIds !== undefined) {
+      await this.replaceUserAreas(company.id, userId, body.areaIds);
     }
 
     return { ok: true, message: 'Usuario actualizado correctamente.' };
@@ -462,6 +470,37 @@ export class UsersController {
       ]),
     );
 
+    const { data: areasData, error: areasError } = await client
+      .from('service_areas')
+      .select('id, name, is_active')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: true });
+
+    if (areasError) {
+      throw new BadRequestException(
+        `No se pudieron consultar las áreas: ${areasError.message}`,
+      );
+    }
+
+    const areas = (areasData ?? []) as Array<{ id: string; name: string; is_active: boolean }>;
+    const areasById = new Map(areas.map((area) => [area.id, area]));
+    const mappings = userIds.length > 0
+      ? await client.from('advisor_service_areas').select('user_id, area_id').eq('company_id', companyId).in('user_id', userIds)
+      : { data: [], error: null };
+
+    if (mappings.error) {
+      throw new BadRequestException(
+        `No se pudieron consultar las áreas asignadas: ${mappings.error.message}`,
+      );
+    }
+
+    const areaIdsByUser = new Map<string, string[]>();
+    for (const item of mappings.data ?? []) {
+      const list = areaIdsByUser.get(item.user_id) ?? [];
+      list.push(item.area_id);
+      areaIdsByUser.set(item.user_id, list);
+    }
+
     const { data: authData, error: authError } =
       await client.auth.admin.listUsers({ page: 1, perPage: 1000 });
 
@@ -476,6 +515,11 @@ export class UsersController {
     );
 
     return {
+      areas: areas.map((area) => ({
+        id: area.id,
+        name: area.name,
+        isActive: area.is_active,
+      })),
       roles: roles.map((role) => ({
         key: role.key,
         name: role.name,
@@ -508,11 +552,36 @@ export class UsersController {
           roleKey: role?.key ?? '',
           roleName: role?.name ?? 'Sin rol',
           active: membership.active,
+          areaIds: areaIdsByUser.get(membership.user_id) ?? [],
+          areas: (areaIdsByUser.get(membership.user_id) ?? [])
+            .map((areaId) => areasById.get(areaId))
+            .filter(Boolean)
+            .map((area) => ({ id: area!.id, name: area!.name, isActive: area!.is_active })),
           createdAt: membership.created_at,
           lastSignInAt: authUser?.last_sign_in_at ?? null,
         };
       }),
     };
+  }
+
+  private async replaceUserAreas(companyId: string, userId: string, value: unknown): Promise<void> {
+    if (value === undefined || value === null) return;
+    if (!Array.isArray(value)) throw new BadRequestException('Las áreas del usuario no son válidas.');
+    const areaIds = value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean);
+    if (areaIds.length !== value.length || new Set(areaIds).size !== areaIds.length) {
+      throw new BadRequestException('Las áreas del usuario no son válidas.');
+    }
+    const client = this.supabaseService.getClient();
+    if (areaIds.length) {
+      const { data, error } = await client.from('service_areas').select('id').eq('company_id', companyId).eq('is_active', true).in('id', areaIds);
+      if (error) throw new BadRequestException(`No se pudieron validar las áreas: ${error.message}`);
+      if ((data ?? []).length !== areaIds.length) throw new BadRequestException('Una o varias áreas no existen o están inactivas.');
+    }
+    const { error: deleteError } = await client.from('advisor_service_areas').delete().eq('company_id', companyId).eq('user_id', userId);
+    if (deleteError) throw new BadRequestException(`No se pudieron actualizar las áreas: ${deleteError.message}`);
+    if (!areaIds.length) return;
+    const { error: insertError } = await client.from('advisor_service_areas').insert(areaIds.map((areaId) => ({ company_id: companyId, user_id: userId, area_id: areaId })));
+    if (insertError) throw new BadRequestException(`No se pudieron asignar las áreas: ${insertError.message}`);
   }
 
   private async getMembership(companyId: string, userId: string) {

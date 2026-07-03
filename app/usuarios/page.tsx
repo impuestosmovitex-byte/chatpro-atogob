@@ -19,6 +19,8 @@ type Role = {
   permissions: Permission[];
 };
 
+type ServiceArea = { id: string; name: string; isActive: boolean; };
+
 type CompanyUser = {
   id: string;
   membershipId: string;
@@ -27,6 +29,8 @@ type CompanyUser = {
   roleKey: string;
   roleName: string;
   active: boolean;
+  areaIds: string[];
+  areas: ServiceArea[];
   createdAt: string;
   lastSignInAt: string | null;
 };
@@ -38,6 +42,7 @@ type ResponseData = {
   company?: { name?: string; slug?: string };
   roles?: Role[];
   users?: CompanyUser[];
+  areas?: ServiceArea[];
 };
 
 const EMPTY_FORM = {
@@ -45,6 +50,7 @@ const EMPTY_FORM = {
   identifier: '',
   password: '',
   roleKey: '',
+  areaIds: [] as string[],
 };
 
 function formatDate(value: string | null): string {
@@ -67,6 +73,7 @@ function formatDate(value: string | null): string {
 export default function UsuariosPage() {
   const [companyName, setCompanyName] = useState('Empresa');
   const [roles, setRoles] = useState<Role[]>([]);
+  const [areas, setAreas] = useState<ServiceArea[]>([]);
   const [users, setUsers] = useState<CompanyUser[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
@@ -114,6 +121,7 @@ export default function UsuariosPage() {
       setCompanyName(data.company?.name || 'Empresa');
       setUsers(nextUsers);
       setRoles(nextRoles);
+      setAreas(data.areas || []);
       setForm((current) => ({
         ...current,
         roleKey: nextRoles.some((role) => role.key === current.roleKey) &&
@@ -135,6 +143,10 @@ export default function UsuariosPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  function toggleArea(ids: string[], areaId: string): string[] {
+    return ids.includes(areaId) ? ids.filter((id) => id !== areaId) : [...ids, areaId];
+  }
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -364,6 +376,21 @@ export default function UsuariosPage() {
                 </select>
               </label>
 
+              <fieldset className={styles.areaSelector}>
+                <legend>Áreas de atención <small>Opcional</small></legend>
+                <p>Solo los usuarios con un área podrán recibir chats automáticos.</p>
+                <div className={styles.areaOptions}>
+                  {areas.filter((area) => area.isActive).map((area) => (
+                    <label key={area.id}>
+                      <input type="checkbox" checked={form.areaIds.includes(area.id)} disabled={loading || creating}
+                        onChange={() => setForm((current) => ({ ...current, areaIds: toggleArea(current.areaIds, area.id) }))} />
+                      <span>{area.name}</span>
+                    </label>
+                  ))}
+                  {!areas.filter((area) => area.isActive).length ? <small>No hay áreas activas. Crea una primero.</small> : null}
+                </div>
+              </fieldset>
+
               <button
                 className={styles.createButton}
                 type="submit"
@@ -420,6 +447,9 @@ export default function UsuariosPage() {
                       <strong>{user.fullName}</strong>
                       <span>Identificación: {user.identifier}</span>
                       <small>Último acceso: {formatDate(user.lastSignInAt)}</small>
+                      <div className={styles.userAreas}>
+                        {(user.areas ?? []).length ? (user.areas ?? []).map((area) => <span key={area.id}>{area.name}</span>) : <em>Sin área asignada · no recibe chats automáticos</em>}
+                      </div>
                     </div>
 
                     <div className={styles.userControls}>
@@ -441,6 +471,20 @@ export default function UsuariosPage() {
                           ))}
                         </select>
                       </label>
+
+                      <details className={styles.userAreaEditor}>
+                        <summary>Áreas ({(user.areas ?? []).length})</summary>
+                        <div className={styles.userAreaMenu}>
+                          <p>Selecciona las áreas que puede atender esta persona.</p>
+                          {areas.filter((area) => area.isActive).map((area) => (
+                            <label key={area.id}>
+                              <input type="checkbox" checked={(user.areaIds ?? []).includes(area.id)} disabled={workingUserId === user.id}
+                                onChange={() => void updateUser(user.id, { areaIds: toggleArea(user.areaIds ?? [], area.id) })} />
+                              <span>{area.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </details>
 
                       <button
                         className={
