@@ -619,6 +619,14 @@ export default function Home() {
                   </div>
                 </dl>
 
+                {typeof (selected.session.context as Record<string, unknown>).handoff === "object" ? (
+                  <section className="contact-notes-context">
+                    <h3>Resumen de transferencia</h3>
+                    <p><strong>Motivo:</strong> {String(((selected.session.context as Record<string, any>).handoff?.reason) || "Caso transferido")}</p>
+                    <p>{String(((selected.session.context as Record<string, any>).handoff?.summary) || "Revisa el historial de la conversación.")}</p>
+                  </section>
+                ) : null}
+
                 {selected.contact?.notes?.trim() ? (
                   <section className="contact-notes-context">
                     <h3>Notas internas</h3>

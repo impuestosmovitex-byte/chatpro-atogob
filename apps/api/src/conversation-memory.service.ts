@@ -532,11 +532,33 @@ export class ConversationMemoryService {
     })).filter((area) => area.id && area.name);
   }
 
-  async requestHumanAttention(sessionId: string): Promise<ConversationSession> {
+  async requestHumanAttention(
+    sessionId: string,
+    handoff: { reason?: string; summary?: string } = {},
+  ): Promise<ConversationSession> {
     const session = await this.getSessionById(sessionId);
     const area = this.readSelectedServiceArea(session.context);
+    const handoffReason =
+      typeof handoff.reason === 'string' && handoff.reason.trim()
+        ? handoff.reason.trim().slice(0, 500)
+        : 'El caso requiere atención humana.';
+    const handoffSummary =
+      typeof handoff.summary === 'string' && handoff.summary.trim()
+        ? handoff.summary.trim().slice(0, 1800)
+        : 'Revisa el historial de la conversación.';
+    const nextContext: JsonObject = {
+      ...session.context,
+      handoff: {
+        reason: handoffReason,
+        summary: handoffSummary,
+        created_at: new Date().toISOString(),
+        area_id: area?.id ?? null,
+        area_name: area?.name ?? null,
+      },
+    };
 
     if (!area) {
+      await this.updateSession(sessionId, { context: nextContext });
       return this.updateAttention(sessionId, {
         attention_status: 'waiting',
         assigned_to_user_id: null,
@@ -549,6 +571,7 @@ export class ConversationMemoryService {
     const canRoute = await this.isHumanAttentionOpen(session.companyId);
 
     if (!canRoute) {
+      await this.updateSession(sessionId, { context: nextContext });
       return this.updateAttention(sessionId, {
         attention_status: 'waiting',
         assigned_to_user_id: null,
@@ -564,6 +587,7 @@ export class ConversationMemoryService {
     );
 
     if (!advisor) {
+      await this.updateSession(sessionId, { context: nextContext });
       return this.updateAttention(sessionId, {
         attention_status: 'waiting',
         assigned_to_user_id: null,
@@ -572,6 +596,8 @@ export class ConversationMemoryService {
         closed_at: null,
       });
     }
+
+    await this.updateSession(sessionId, { context: nextContext });
 
     return this.updateAttention(sessionId, {
       attention_status: 'human',

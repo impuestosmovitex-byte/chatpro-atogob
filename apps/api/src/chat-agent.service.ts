@@ -220,6 +220,8 @@ export class ChatAgentService {
       '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
       '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
       '- Atiende primero el caso con la información disponible. Usa request_human_attention solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa, o las instrucciones específicas indiquen escalar.',
+      '- REGLA DE COMPRENSIÓN: si el mensaje es ambiguo o no tienes información suficiente, pide una aclaración concreta una vez. Si, después de esa aclaración, la nueva respuesta sigue sin permitir entender o resolver el caso, usa request_human_attention. No hagas una tercera pregunta equivalente.',
+      '- Al transferir usa request_human_attention con un resumen interno: necesidad del cliente, información o productos revisados, acciones realizadas y lo que falta. El resumen no se muestra al cliente.',
       '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',
@@ -614,13 +616,22 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'request_human_attention',
   description:
-    'Transfiere la conversación a la cola de un asesor humano conservando el área que eligió el cliente en session.context.service_area. Úsala solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa o las instrucciones específicas indiquen escalar. Antes de usarla, responde al cliente con el mensaje que indiquen las instrucciones de la empresa.',
+    'Transfiere la conversación a la cola de un asesor humano conservando el área que eligió el cliente. Úsala cuando pida asesor, no puedas resolver o tras una aclaración fallida. Incluye motivo y resumen interno. Antes de usarla, responde al cliente con el mensaje definido por la empresa.',
   strict: true,
   parameters: {
     type: 'object',
     additionalProperties: false,
-    properties: {},
-    required: [],
+    properties: {
+      reason: {
+        type: 'string',
+        description: 'Motivo breve de la transferencia.',
+      },
+      summary: {
+        type: 'string',
+        description: 'Resumen interno: necesidad, datos revisados, acciones realizadas y pendiente.',
+      },
+    },
+    required: ['reason', 'summary'],
   },
 },
 {
@@ -721,6 +732,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         const updatedSession =
           await this.conversationMemoryService.requestHumanAttention(
             session.id,
+            {
+              reason: this.readString(args, 'reason'),
+              summary: this.readString(args, 'summary'),
+            },
           );
 
         return {
