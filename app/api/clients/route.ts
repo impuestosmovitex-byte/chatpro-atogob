@@ -33,11 +33,13 @@ function trustedHeaders(
     'x-chatpro-inbox-key': inboxKey,
   };
 
+  headers['x-chatpro-session-type'] = session.type;
+  headers['x-chatpro-user-name'] = session.fullName;
+  headers['x-chatpro-company-id'] = session.companyId;
+  headers['x-chatpro-role-key'] = session.roleKey;
+
   if (session.type === 'user' && session.userId) {
     headers['x-chatpro-user-id'] = session.userId;
-    headers['x-chatpro-user-name'] = session.fullName;
-    headers['x-chatpro-company-id'] = session.companyId;
-    headers['x-chatpro-role-key'] = session.roleKey;
   }
 
   return headers;
@@ -64,7 +66,7 @@ async function proxyResponse(response: Response) {
 export async function GET(request: NextRequest) {
   const session = await currentSession(request);
 
-  if (!session || session.type !== 'user' || !session.userId) {
+  if (!session) {
     return unauthorized();
   }
 
@@ -118,7 +120,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const session = await currentSession(request);
 
-  if (!session || session.type !== 'user' || !session.userId) {
+  if (!session) {
     return unauthorized();
   }
 

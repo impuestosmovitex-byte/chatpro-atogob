@@ -42,6 +42,7 @@ export class ClientsController {
   @Get('profile')
   async profile(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-user-name') fullName = '',
     @Headers('x-chatpro-company-id') headerCompanyId = '',
@@ -55,6 +56,7 @@ export class ClientsController {
       this.requiredPhone(phone),
     );
     const actor = await this.actor(
+      sessionType,
       userId,
       fullName,
       headerCompanyId,
@@ -70,6 +72,7 @@ export class ClientsController {
   @Get()
   async list(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-user-name') fullName = '',
     @Headers('x-chatpro-company-id') headerCompanyId = '',
@@ -85,6 +88,7 @@ export class ClientsController {
       Number(limit),
     );
     const actor = await this.actor(
+      sessionType,
       userId,
       fullName,
       headerCompanyId,
@@ -109,6 +113,7 @@ export class ClientsController {
   @HttpCode(200)
   async saveContact(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-user-name') fullName = '',
     @Headers('x-chatpro-company-id') headerCompanyId = '',
@@ -125,6 +130,7 @@ export class ClientsController {
       company,
     );
     const actor = await this.actor(
+      sessionType,
       userId,
       fullName,
       headerCompanyId,
@@ -177,6 +183,7 @@ export class ClientsController {
   }
 
   private async actor(
+    sessionType: string,
     userId: string,
     fullName: string,
     headerCompanyId: string,
@@ -186,10 +193,25 @@ export class ClientsController {
     const id = userId.trim();
     const name = fullName.trim();
     const role = roleKey.trim().toLowerCase();
+    const type = sessionType.trim().toLowerCase();
 
-    // La pertenencia real a la empresa se valida abajo en company_memberships.
-    // No bloqueamos Clientes por un dato antiguo o ausente dentro de la cookie.
-    if (!id) {
+    // La sesión bootstrap corresponde al propietario durante la configuración
+    // inicial. Se permite acceso completo, pero únicamente como owner y para
+    // la misma empresa firmada por la aplicación web.
+    if (type === 'bootstrap') {
+      if (role !== 'owner' || headerCompanyId.trim() !== companyId) {
+        throw new UnauthorizedException('Sesión inicial no válida.');
+      }
+
+      return {
+        userId: '',
+        fullName: name || 'Configuración inicial',
+        permissions: new Set<string>(),
+        isFullAccess: true,
+      };
+    }
+
+    if (type !== 'user' || !id || headerCompanyId.trim() !== companyId) {
       throw new UnauthorizedException('Sesión de usuario no válida.');
     }
 
