@@ -609,6 +609,122 @@ export class ConversationMemoryService {
     });
   }
 
+  async assignWaitingSessionsToAdvisor(
+    companyId: string,
+    advisor: { userId: string; fullName: string },
+    limit = 20,
+  ): Promise<number> {
+    const userId = advisor.userId.trim();
+    const fullName = advisor.fullName.trim();
+
+    if (!companyId.trim() || !userId || !fullName) {
+      return 0;
+    }
+
+    const client = this.supabaseService.getClient();
+    const { data: areas, error: areasError } = await client
+      .from('advisor_service_areas')
+      .select('area_id')
+      .eq('company_id', companyId)
+      .eq('user_id', userId);
+
+    if (areasError) {
+      throw new Error(
+        `No se pudieron consultar las áreas del asesor: ${areasError.message}`,
+      );
+    }
+
+    const areaIds = new Set(
+      (areas ?? [])
+        .map((row: any) =>
+          typeof row.area_id === 'string' ? row.area_id.trim() : '',
+        )
+        .filter(Boolean),
+    );
+
+    if (!areaIds.size) {
+      return 0;
+    }
+
+    const max = Math.min(Math.max(Math.trunc(limit) || 20, 1), 100);
+    const { data: waitingRows, error: waitingError } = await client
+      .from('conversation_sessions')
+      .select('id, context')
+      .eq('company_id', companyId)
+      .eq('attention_status', 'waiting')
+      .order('last_message_at', { ascending: true })
+      .limit(100);
+
+    if (waitingError) {
+      throw new Error(
+        `No se pudieron consultar las conversaciones pendientes: ${waitingError.message}`,
+      );
+    }
+
+    let assigned = 0;
+    const now = new Date().toISOString();
+
+    for (const row of waitingRows ?? []) {
+      if (assigned >= max) break;
+
+      const context =
+        row.context && typeof row.context === 'object' && !Array.isArray(row.context)
+          ? row.context as JsonObject
+          : {};
+      const area = this.readSelectedServiceArea(context);
+
+      if (!area || !areaIds.has(area.id)) {
+        continue;
+      }
+
+      const handoff =
+        context.handoff &&
+        typeof context.handoff === 'object' &&
+        !Array.isArray(context.handoff)
+          ? context.handoff as JsonObject
+          : {};
+
+      const nextContext: JsonObject = {
+        ...context,
+        handoff: {
+          ...handoff,
+          status: 'assigned',
+          assigned_at: now,
+          assigned_to_name: fullName,
+        },
+      };
+
+      const { data: updated, error: updateError } = await client
+        .from('conversation_sessions')
+        .update({
+          attention_status: 'human',
+          assigned_to_user_id: userId,
+          assigned_to_name: fullName,
+          taken_at: now,
+          closed_at: null,
+          context: nextContext,
+          updated_at: now,
+        })
+        .eq('id', row.id)
+        .eq('company_id', companyId)
+        .eq('attention_status', 'waiting')
+        .select('id')
+        .maybeSingle();
+
+      if (updateError) {
+        throw new Error(
+          `No se pudo asignar una conversación pendiente: ${updateError.message}`,
+        );
+      }
+
+      if (updated?.id) {
+        assigned += 1;
+      }
+    }
+
+    return assigned;
+  }
+
   private async saveHandoffStatus(
     sessionId: string,
     context: JsonObject,

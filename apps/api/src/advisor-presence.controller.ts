@@ -1,12 +1,16 @@
 import { BadRequestException, Body, Controller, Get, Headers, Put, Query, UnauthorizedException } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { ConversationMemoryService } from './conversation-memory.service';
 
 type PresenceStatus = 'available' | 'busy' | 'away' | 'offline';
 const STATUSES: PresenceStatus[] = ['available', 'busy', 'away', 'offline'];
 
 @Controller('advisor-presence')
 export class AdvisorPresenceController {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly conversationMemoryService: ConversationMemoryService,
+  ) {}
 
   @Get()
   async get(
@@ -41,7 +45,27 @@ export class AdvisorPresenceController {
     const now=new Date().toISOString();
     const {data,error}=await this.supabase.getClient().from('advisor_availability').upsert({company_id:company.id,user_id:userId,status,last_seen_at:now,status_changed_at:now,updated_at:now},{onConflict:'company_id,user_id'}).select('status,last_seen_at,status_changed_at').single();
     if(error||!data) throw new BadRequestException(error?.message ?? 'No se pudo guardar.');
-    return {ok:true,advisor:{userId,fullName,status:this.status(data.status),lastSeenAt:data.last_seen_at ?? null,statusChangedAt:data.status_changed_at ?? null}};
+
+    const savedStatus = this.status(data.status);
+    const assignedPendingCount =
+      savedStatus === 'available'
+        ? await this.conversationMemoryService.assignWaitingSessionsToAdvisor(
+            company.id,
+            { userId, fullName },
+          )
+        : 0;
+
+    return {
+      ok:true,
+      advisor:{
+        userId,
+        fullName,
+        status:savedStatus,
+        lastSeenAt:data.last_seen_at ?? null,
+        statusChangedAt:data.status_changed_at ?? null,
+      },
+      assignedPendingCount,
+    };
   }
 
   private authorize(value:string){const expected=process.env.CHATPRO_INBOX_KEY?.trim();if(!expected||value.trim()!==expected)throw new UnauthorizedException('No autorizado.');}
