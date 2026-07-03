@@ -2,13 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import styles from './AppSidebar.module.css';
 
 type AppSidebarProps = {
   companyName?: string;
 };
 
-const navigation = [
+type Session = {
+  roleKey?: string;
+};
+
+const baseNavigation = [
   { href: '/', label: 'Bandeja', icon: '◉', exact: true },
   { href: '/clientes', label: 'Clientes', icon: '◌' },
   {
@@ -17,7 +22,6 @@ const navigation = [
     icon: '◈',
     disabled: true,
   },
-  { href: '/configuracion', label: 'Configuración', icon: '⚙' },
 ];
 
 function isActive(pathname: string, href: string, exact?: boolean): boolean {
@@ -28,10 +32,55 @@ function isActive(pathname: string, href: string, exact?: boolean): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function canManageConfiguration(roleKey: string): boolean {
+  return roleKey === 'owner' || roleKey === 'admin';
+}
+
 export function AppSidebar({
   companyName = 'ATOGOB',
 }: AppSidebarProps) {
   const pathname = usePathname();
+  const [roleKey, setRoleKey] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    void fetch('/api/auth/session', { cache: 'no-store' })
+      .then(async (response) => {
+        const data = (await response.json()) as {
+          session?: Session;
+        };
+
+        if (active && response.ok) {
+          setRoleKey(data.session?.roleKey?.trim().toLowerCase() ?? '');
+        }
+      })
+      .catch(() => {
+        if (active) setRoleKey('');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const navigation = canManageConfiguration(roleKey)
+    ? [
+        ...baseNavigation,
+        { href: '/configuracion', label: 'Configuración', icon: '⚙' },
+      ]
+    : baseNavigation;
+
+  async function logout() {
+    setLoggingOut(true);
+
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      window.location.assign('/login');
+    }
+  }
 
   return (
     <aside className={styles.sidebar}>
@@ -44,7 +93,7 @@ export function AppSidebar({
         {navigation.map((item) => {
           const active = isActive(pathname, item.href, item.exact);
 
-          if (item.disabled) {
+          if ('disabled' in item && item.disabled) {
             return (
               <span
                 className={`${styles.item} ${styles.disabled}`}
@@ -79,6 +128,25 @@ export function AppSidebar({
           <small>WhatsApp conectado</small>
         </span>
       </div>
+
+      <button
+        type="button"
+        onClick={() => void logout()}
+        disabled={loggingOut}
+        style={{
+          margin: '0 14px 16px',
+          padding: '10px 12px',
+          border: '1px solid rgba(255,255,255,.18)',
+          borderRadius: 10,
+          background: 'transparent',
+          color: '#fff',
+          textAlign: 'left',
+          cursor: loggingOut ? 'wait' : 'pointer',
+          fontWeight: 700,
+        }}
+      >
+        {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
+      </button>
     </aside>
   );
 }
