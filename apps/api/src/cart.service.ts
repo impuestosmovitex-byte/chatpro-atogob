@@ -352,7 +352,11 @@ export class CartService {
   }
 
   async createCheckoutLink(session: ConversationSession) {
-    const cart = this.readCart(session.context);
+    // El checkout debe usar el carrito persistido más reciente, no una copia
+    // anterior que pudo existir antes de agregar o cambiar una variante.
+    const currentSession =
+      await this.conversationMemoryService.getSessionById(session.id);
+    const cart = this.readCart(currentSession.context);
 
     if (!cart.length) {
       return {
@@ -361,18 +365,46 @@ export class CartService {
       };
     }
 
-    const links = await this.shopifyService.buildCartLinks(
-      cart.map((line) => ({
-        variantLegacyId: line.variantLegacyId,
-        quantity: line.quantity,
-      })),
+    const requestedLines = cart.map((line) => ({
+      variantLegacyId: line.variantLegacyId,
+      quantity: line.quantity,
+    }));
+
+    const links = await this.shopifyService.buildCartLinks(requestedLines);
+
+    const expected = new Map(
+      requestedLines.map((line) => [
+        line.variantLegacyId,
+        line.quantity,
+      ]),
     );
+    const generated = new Map(
+      links.lines.map((line) => [
+        line.variantLegacyId,
+        line.quantity,
+      ]),
+    );
+
+    const matchesCart =
+      expected.size === generated.size &&
+      Array.from(expected.entries()).every(
+        ([variantLegacyId, quantity]) =>
+          generated.get(variantLegacyId) === quantity,
+      );
+
+    if (!matchesCart) {
+      return {
+        ok: false,
+        error:
+          'No se pudo confirmar que el enlace contiene todos los productos actuales del carrito.',
+      };
+    }
 
     const updatedSession =
       await this.conversationMemoryService.updateSession(session.id, {
         stage: 'checkout',
         context: {
-          ...session.context,
+          ...currentSession.context,
           lastCartUrl: links.cartUrl,
           lastCheckoutUrl: links.checkoutUrl,
           checkoutCreatedAt: new Date().toISOString(),
