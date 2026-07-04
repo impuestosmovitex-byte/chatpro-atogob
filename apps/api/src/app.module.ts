@@ -15,6 +15,7 @@ import { CompanySettingsController } from './company-settings.controller';
 import { CompanyProfileController } from './company-profile.controller';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { InboxController } from './inbox.controller';
+import { IntegrationsController } from './integrations.controller';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
@@ -34,6 +35,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     AppController,
     WhatsappWebhookController,
     InboxController,
+    IntegrationsController,
     ClientsController,
     CompanySettingsController,
     CompanyProfileController,

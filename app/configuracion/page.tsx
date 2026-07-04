@@ -35,7 +35,8 @@ const cards = [
     description:
       'WhatsApp, Instagram, Messenger, Shopify y otros canales conectados.',
     icon: '◔',
-    available: false,
+    href: '/configuracion/integraciones',
+    available: true,
   },
   {
     title: 'Áreas de atención',
