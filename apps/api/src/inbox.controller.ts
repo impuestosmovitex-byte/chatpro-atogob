@@ -33,7 +33,12 @@ export class InboxController {
     const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
     if(!actor.isFullAccess&&!actor.permissions.has('inbox.take')) throw new ForbiddenException('No tienes permiso para tomar conversaciones.');
     if(!actor.isFullAccess&&!this.canView(actor,conversation.session)) throw new ForbiddenException('No tienes permiso para tomar esta conversación.');
-    return {ok:true,session:await this.conversationMemoryService.takeConversation(sessionId,{userId:actor.userId,fullName:actor.fullName})};
+
+    const advisor = actor.userId
+      ? { userId: actor.userId, fullName: actor.fullName }
+      : await this.resolveBootstrapOwner(conversation.company.id);
+
+    return {ok:true,session:await this.conversationMemoryService.takeConversation(sessionId,advisor)};
   }
 
   @Post(':sessionId/close') @HttpCode(200)
@@ -91,6 +96,56 @@ export class InboxController {
     if(!permissions.has('inbox.view')) throw new ForbiddenException('No tienes permiso para ver la bandeja.');
     return {userId:id,fullName:name,permissions,isFullAccess:role==='owner'||role==='admin'};
   }
+  private async resolveBootstrapOwner(companyId:string):Promise<{userId:string;fullName:string}>{
+    const c=this.supabaseService.getClient();
+
+    const {data:memberships,error:membershipError}=await c
+      .from('company_memberships')
+      .select('user_id,role_id')
+      .eq('company_id',companyId)
+      .eq('active',true);
+
+    if(membershipError) throw new BadRequestException(`No se pudo resolver el propietario: ${membershipError.message}`);
+
+    const rows=(memberships??[]).filter((row:any)=>typeof row.user_id==='string'&&typeof row.role_id==='string');
+    const roleIds=rows.map((row:any)=>row.role_id);
+
+    if(!roleIds.length) throw new ForbiddenException('No hay un propietario activo configurado para tomar conversaciones.');
+
+    const {data:roles,error:rolesError}=await c
+      .from('app_roles')
+      .select('id,key')
+      .in('id',roleIds);
+
+    if(rolesError) throw new BadRequestException(`No se pudieron cargar los roles: ${rolesError.message}`);
+
+    const ownerRoleIds=new Set(
+      (roles??[])
+        .filter((role:any)=>role?.key==='owner')
+        .map((role:any)=>role.id)
+        .filter((id:unknown):id is string=>typeof id==='string'),
+    );
+
+    const owner=rows.find((row:any)=>ownerRoleIds.has(row.role_id));
+
+    if(!owner) throw new ForbiddenException('No hay un propietario activo configurado para tomar conversaciones.');
+
+    const {data:profile,error:profileError}=await c
+      .from('app_profiles')
+      .select('full_name')
+      .eq('user_id',owner.user_id)
+      .maybeSingle();
+
+    if(profileError) throw new BadRequestException(`No se pudo cargar el propietario: ${profileError.message}`);
+
+    return {
+      userId: owner.user_id,
+      fullName: typeof profile?.full_name==='string'&&profile.full_name.trim()
+        ? profile.full_name.trim()
+        : 'Propietario',
+    };
+  }
+
   private canView(actor:Actor,session:ConversationSession|InboxSessionSummary){
     if(actor.isFullAccess)return true;
     if(actor.permissions.has('inbox.view_own')&&session.assignedToUserId===actor.userId)return true;
