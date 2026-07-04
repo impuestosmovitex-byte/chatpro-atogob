@@ -9,8 +9,19 @@ type AppSidebarProps = {
   companyName?: string;
 };
 
+type CompanyOption = {
+  id: string;
+  slug: string;
+  name: string;
+  roleKey: string;
+  roleName: string;
+};
+
 type Session = {
+  companySlug?: string;
+  companyName?: string;
   roleKey?: string;
+  userId?: string | null;
 };
 
 const baseNavigation = [
@@ -25,10 +36,7 @@ const baseNavigation = [
 ];
 
 function isActive(pathname: string, href: string, exact?: boolean): boolean {
-  if (exact) {
-    return pathname === href;
-  }
-
+  if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -37,33 +45,60 @@ function canManageConfiguration(roleKey: string): boolean {
 }
 
 export function AppSidebar({
-  companyName = 'ATOGOB',
+  companyName = 'Empresa',
 }: AppSidebarProps) {
   const pathname = usePathname();
   const [roleKey, setRoleKey] = useState('');
+  const [activeCompany, setActiveCompany] = useState(companyName);
+  const [activeSlug, setActiveSlug] = useState('');
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [changingCompany, setChangingCompany] = useState(false);
+  const [message, setMessage] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
-    let active = true;
+    let alive = true;
 
-    void fetch('/api/auth/session', { cache: 'no-store' })
-      .then(async (response) => {
-        const data = (await response.json()) as {
+    async function load() {
+      try {
+        const sessionResponse = await fetch('/api/auth/session', {
+          cache: 'no-store',
+        });
+        const sessionData = (await sessionResponse.json()) as {
           session?: Session;
         };
 
-        if (active && response.ok) {
-          setRoleKey(data.session?.roleKey?.trim().toLowerCase() ?? '');
+        if (!alive || !sessionResponse.ok || !sessionData.session) return;
+
+        const session = sessionData.session;
+        setRoleKey(session.roleKey?.trim().toLowerCase() || '');
+        setActiveCompany(session.companyName?.trim() || companyName);
+        setActiveSlug(session.companySlug?.trim().toLowerCase() || '');
+
+        if (!session.userId) return;
+
+        const companiesResponse = await fetch('/api/auth/companies', {
+          cache: 'no-store',
+        });
+        const companiesData = (await companiesResponse.json()) as {
+          ok?: boolean;
+          companies?: CompanyOption[];
+        };
+
+        if (alive && companiesResponse.ok && companiesData.ok) {
+          setCompanies(companiesData.companies || []);
         }
-      })
-      .catch(() => {
-        if (active) setRoleKey('');
-      });
+      } catch {
+        // La navegación sigue funcionando aunque no se cargue el selector.
+      }
+    }
+
+    void load();
 
     return () => {
-      active = false;
+      alive = false;
     };
-  }, []);
+  }, [companyName]);
 
   const navigation = canManageConfiguration(roleKey)
     ? [
@@ -72,15 +107,46 @@ export function AppSidebar({
       ]
     : baseNavigation;
 
+  async function changeCompany(companySlug: string) {
+    if (!companySlug || companySlug === activeSlug || changingCompany) return;
+
+    setMessage('');
+    setChangingCompany(true);
+
+    try {
+      const response = await fetch('/api/auth/switch-company', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ companySlug }),
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !data.ok) {
+        setMessage(data.error || 'No se pudo cambiar de empresa.');
+        return;
+      }
+
+      window.location.assign('/');
+    } catch {
+      setMessage('No se pudo cambiar de empresa.');
+    } finally {
+      setChangingCompany(false);
+    }
+  }
+
   async function logout() {
     setLoggingOut(true);
-
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } finally {
       window.location.assign('/login');
     }
   }
+
+  const canSwitch = companies.length > 1;
 
   return (
     <aside className={styles.sidebar}>
@@ -121,29 +187,38 @@ export function AppSidebar({
 
       <div className={styles.footer}>
         <span className={styles.footerAvatar}>
-          {companyName.trim().slice(0, 1).toUpperCase() || 'E'}
+          {activeCompany.trim().slice(0, 1).toUpperCase() || 'E'}
         </span>
-        <span>
-          <strong>{companyName}</strong>
-          <small>WhatsApp conectado</small>
+        <span className={styles.companyBlock}>
+          <strong>{activeCompany}</strong>
+          <small>{canSwitch ? 'Empresa activa' : 'Empresa'}</small>
         </span>
       </div>
+
+      {canSwitch ? (
+        <label className={styles.companyPicker}>
+          <span>Cambiar empresa</span>
+          <select
+            value={activeSlug}
+            onChange={(event) => void changeCompany(event.target.value)}
+            disabled={changingCompany}
+          >
+            {companies.map((company) => (
+              <option key={company.id} value={company.slug}>
+                {company.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      {message ? <p className={styles.companyError}>{message}</p> : null}
 
       <button
         type="button"
         onClick={() => void logout()}
         disabled={loggingOut}
-        style={{
-          margin: '0 14px 16px',
-          padding: '10px 12px',
-          border: '1px solid rgba(255,255,255,.18)',
-          borderRadius: 10,
-          background: 'transparent',
-          color: '#fff',
-          textAlign: 'left',
-          cursor: loggingOut ? 'wait' : 'pointer',
-          fontWeight: 700,
-        }}
+        className={styles.logout}
       >
         {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
       </button>
