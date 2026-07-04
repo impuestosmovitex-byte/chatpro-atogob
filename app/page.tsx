@@ -486,7 +486,7 @@ export default function Home() {
                     </p>
                   </div>
                   <div className="chat-actions">
-                    {selected.session.attentionStatus !== "human" && selected.session.attentionStatus !== "closed" ? (
+                    {selected.session.attentionStatus !== "closed" ? (
                       <button
                         className="button primary"
                         type="button"

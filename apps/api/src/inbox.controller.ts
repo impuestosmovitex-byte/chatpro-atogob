@@ -10,55 +10,55 @@ export class InboxController {
   constructor(private readonly conversationMemoryService: ConversationMemoryService, private readonly supabaseService: SupabaseService) {}
 
   @Get()
-  async list(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Query('status') status='all', @Query('limit') limit='60') {
+  async list(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Query('status') status='all', @Query('limit') limit='60') {
     this.authorize(key);
     const payload=await this.conversationMemoryService.listInboxSessions(this.requiredCompany(company),status,Number(limit));
-    const actor=await this.actor(userId,fullName,headerCompanyId,roleKey,payload.company.id);
+    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,payload.company.id);
     return {ok:true,...payload,sessions:payload.sessions.filter(session=>this.canView(actor,session))};
   }
 
   @Get(':sessionId')
-  async getConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
+  async getConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
     this.authorize(key);
     const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(userId,fullName,headerCompanyId,roleKey,conversation.company.id);
+    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
     this.assertView(actor,conversation.session);
     return {ok:true,...conversation};
   }
 
   @Post(':sessionId/take') @HttpCode(200)
-  async takeConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
+  async takeConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
     this.authorize(key);
     const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(userId,fullName,headerCompanyId,roleKey,conversation.company.id);
+    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
     if(!actor.isFullAccess&&!actor.permissions.has('inbox.take')) throw new ForbiddenException('No tienes permiso para tomar conversaciones.');
     if(!actor.isFullAccess&&!this.canView(actor,conversation.session)) throw new ForbiddenException('No tienes permiso para tomar esta conversación.');
     return {ok:true,session:await this.conversationMemoryService.takeConversation(sessionId,{userId:actor.userId,fullName:actor.fullName})};
   }
 
   @Post(':sessionId/close') @HttpCode(200)
-  async closeConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
+  async closeConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
     this.authorize(key);
     const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(userId,fullName,headerCompanyId,roleKey,conversation.company.id);
+    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
     this.assertManageOwn(actor,conversation.session,'inbox.close');
     return {ok:true,session:await this.conversationMemoryService.closeConversation(sessionId)};
   }
 
   @Post(':sessionId/resume-ai') @HttpCode(200)
-  async resumeAiConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
+  async resumeAiConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
     this.authorize(key);
     const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(userId,fullName,headerCompanyId,roleKey,conversation.company.id);
+    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
     this.assertManageOwn(actor,conversation.session,'inbox.return_to_ai');
     return {ok:true,session:await this.conversationMemoryService.resumeAiConversation(sessionId)};
   }
 
   @Post(':sessionId/messages') @HttpCode(200)
-  async sendAdvisorMessage(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='', @Body() body:InboxBody={}) {
+  async sendAdvisorMessage(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='', @Body() body:InboxBody={}) {
     this.authorize(key);
     const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(userId,fullName,headerCompanyId,roleKey,conversation.company.id);
+    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
     this.assertManageOwn(actor,conversation.session,'inbox.reply');
     if(conversation.session.attentionStatus!=='human') throw new BadRequestException('La conversación debe estar tomada por un asesor para responder.');
     const message=this.readText(body.message); if(!message) throw new BadRequestException('Escribe un mensaje antes de enviarlo.');
@@ -68,9 +68,17 @@ export class InboxController {
     return {ok:true,conversation:await this.conversationMemoryService.getInboxConversation(conversation.company.slug,conversation.session.id)};
   }
 
-  private async actor(userId:string,fullName:string,headerCompanyId:string,roleKey:string,companyId:string):Promise<Actor>{
-    const id=userId.trim(),name=fullName.trim(),role=roleKey.trim().toLowerCase();
-    if(!id||!name||headerCompanyId.trim()!==companyId) throw new UnauthorizedException('Sesión de asesor no válida.');
+  private async actor(sessionType:string,userId:string,fullName:string,headerCompanyId:string,roleKey:string,companyId:string):Promise<Actor>{
+    const type=sessionType.trim().toLowerCase(),id=userId.trim(),name=fullName.trim(),role=roleKey.trim().toLowerCase();
+
+    // La sesión bootstrap es el propietario durante la configuración inicial.
+    // Solo se acepta como owner y para la empresa firmada por la web.
+    if(type==='bootstrap'){
+      if(role!=='owner'||headerCompanyId.trim()!==companyId) throw new UnauthorizedException('Sesión inicial no válida.');
+      return {userId:'',fullName:name||'Configuración inicial',permissions:new Set<string>(),isFullAccess:true};
+    }
+
+    if(type!=='user'||!id||!name||headerCompanyId.trim()!==companyId) throw new UnauthorizedException('Sesión de asesor no válida.');
     const c=this.supabaseService.getClient();
     const {data:membership,error:me}=await c.from('company_memberships').select('role_id,active').eq('company_id',companyId).eq('user_id',id).maybeSingle();
     if(me||!membership?.active||!membership.role_id) throw new UnauthorizedException('Tu acceso a esta empresa no está activo.');

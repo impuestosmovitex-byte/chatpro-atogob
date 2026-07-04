@@ -34,13 +34,18 @@ async function currentSession(request: NextRequest) {
 }
 
 function trustedHeaders(inboxKey: string, session: NonNullable<Awaited<ReturnType<typeof currentSession>>>) {
-  const headers: Record<string, string> = { 'x-chatpro-inbox-key': inboxKey };
+  const headers: Record<string, string> = {
+    'x-chatpro-inbox-key': inboxKey,
+    'x-chatpro-session-type': session.type,
+    'x-chatpro-user-name': session.fullName,
+    'x-chatpro-company-id': session.companyId,
+    'x-chatpro-role-key': session.roleKey,
+  };
+
   if (session.type === 'user' && session.userId) {
     headers['x-chatpro-user-id'] = session.userId;
-    headers['x-chatpro-user-name'] = session.fullName;
-    headers['x-chatpro-company-id'] = session.companyId;
-    headers['x-chatpro-role-key'] = session.roleKey;
   }
+
   return headers;
 }
 
