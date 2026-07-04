@@ -15,6 +15,7 @@ import { CompanySettingsController } from './company-settings.controller';
 import { CompanyProfileController } from './company-profile.controller';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { InboxController } from './inbox.controller';
+import { IntegrationCredentialsService } from './integration-credentials.service';
 import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
@@ -46,6 +47,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
   ],
   providers: [
     CompanyIntegrationService,
+    IntegrationCredentialsService,
     WhatsappMessagingService,
     AppService,
     ShopifyService,
