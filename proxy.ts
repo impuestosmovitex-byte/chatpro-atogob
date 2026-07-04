@@ -11,6 +11,7 @@ const RESTRICTED_PAGES = [
 
 const RESTRICTED_APIS = [
   '/api/settings',
+  '/api/company-profile',
   '/api/users',
   '/api/roles',
   '/api/service-areas',
@@ -97,6 +98,8 @@ export const config = {
     '/api/clients/:path*',
     '/api/settings',
     '/api/settings/:path*',
+    '/api/company-profile',
+    '/api/company-profile/:path*',
     '/api/users',
     '/api/users/:path*',
     '/api/roles',

@@ -27,7 +27,8 @@ const cards = [
     description:
       'Nombre, logo, datos comerciales y apariencia del espacio de trabajo.',
     icon: '◌',
-    available: false,
+    href: '/configuracion/empresa-identidad',
+    available: true,
   },
   {
     title: 'Canales e integraciones',
