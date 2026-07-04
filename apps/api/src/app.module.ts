@@ -21,6 +21,7 @@ import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 import { ShopifyService } from './shopify.service';
+import { ShopifyOauthController } from './shopify-oauth.controller';
 import { SupabaseService } from './supabase.service';
 import { SupportSettingsController } from './support-settings.controller';
 import { AdvisorPresenceController } from './advisor-presence.controller';
@@ -36,6 +37,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     WhatsappWebhookController,
     InboxController,
     IntegrationsController,
+    ShopifyOauthController,
     ClientsController,
     CompanySettingsController,
     CompanyProfileController,
