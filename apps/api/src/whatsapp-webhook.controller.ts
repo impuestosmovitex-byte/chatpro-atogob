@@ -11,6 +11,7 @@ import type { Response } from 'express';
 import { ChatAgentService } from './chat-agent.service';
 import { CartRecoveryContextService } from './cart-recovery-context.service';
 import { CompanyIntegrationService } from './company-integration.service';
+import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import {
   ConversationMemoryService,
   type CompanyProfile,
@@ -26,6 +27,7 @@ export class WhatsappWebhookController {
     private readonly chatAgentService: ChatAgentService,
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly companyIntegrationService: CompanyIntegrationService,
+    private readonly whatsappMessagingService: WhatsappMessagingService,
     private readonly cartRecoveryContextService: CartRecoveryContextService,
   ) {}
 
@@ -239,7 +241,11 @@ export class WhatsappWebhookController {
 
       const reply = await this.resolveReply(profile, session, input.text);
 
-      await this.sendTextMessage(input.phone, reply);
+      await this.whatsappMessagingService.sendText(
+        profile.id,
+        input.phone,
+        reply,
+      );
 
       await this.conversationMemoryService.saveMessage({
         companyId: profile.id,
@@ -257,10 +263,20 @@ export class WhatsappWebhookController {
       console.error('No se pudo procesar la conversación:', error);
 
       try {
-        await this.sendTextMessage(
-          input.phone,
-          'Estamos revisando la información para ayudarte. Por favor intenta nuevamente en unos minutos.',
-        );
+        const fallbackIntegration =
+          await this.companyIntegrationService.findActiveIntegrationByExternalId(
+            'meta',
+            'whatsapp',
+            input.incomingPhoneNumberId,
+          );
+
+        if (fallbackIntegration) {
+          await this.whatsappMessagingService.sendText(
+            fallbackIntegration.companyId,
+            input.phone,
+            'Estamos revisando la información para ayudarte. Por favor intenta nuevamente en unos minutos.',
+          );
+        }
       } catch (sendError) {
         console.error('No se pudo enviar el mensaje de respaldo:', sendError);
       }
@@ -471,33 +487,4 @@ export class WhatsappWebhookController {
     return phoneNumberId;
   }
 
-  private async sendTextMessage(to: string, body: string) {
-    const accessToken = process.env.META_WHATSAPP_ACCESS_TOKEN?.trim();
-    const phoneNumberId = process.env.META_PHONE_NUMBER_ID?.trim();
-
-    if (!accessToken || !phoneNumberId) {
-      throw new Error('Faltan variables de Meta en Railway.');
-    }
-
-    const response = await fetch(
-      `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to,
-          type: 'text',
-          text: { body },
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
-  }
 }

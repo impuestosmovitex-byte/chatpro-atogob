@@ -1,13 +1,14 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, HttpCode, Param, Post, Query, UnauthorizedException } from '@nestjs/common';
 import { ConversationMemoryService, type ConversationSession, type InboxSessionSummary } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
+import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
 type InboxBody = { message?: unknown };
 type Actor = { userId:string; fullName:string; permissions:Set<string>; isFullAccess:boolean };
 
 @Controller('inbox')
 export class InboxController {
-  constructor(private readonly conversationMemoryService: ConversationMemoryService, private readonly supabaseService: SupabaseService) {}
+  constructor(private readonly conversationMemoryService: ConversationMemoryService, private readonly supabaseService: SupabaseService, private readonly whatsappMessagingService: WhatsappMessagingService) {}
 
   @Get()
   async list(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Query('status') status='all', @Query('limit') limit='60') {
@@ -67,7 +68,7 @@ export class InboxController {
     this.assertManageOwn(actor,conversation.session,'inbox.reply');
     if(conversation.session.attentionStatus!=='human') throw new BadRequestException('La conversación debe estar tomada por un asesor para responder.');
     const message=this.readText(body.message); if(!message) throw new BadRequestException('Escribe un mensaje antes de enviarlo.');
-    await this.sendTextMessage(conversation.session.customerPhone,message);
+    await this.whatsappMessagingService.sendText(conversation.company.id,conversation.session.customerPhone,message);
     await this.conversationMemoryService.saveMessage({companyId:conversation.company.id,sessionId:conversation.session.id,customerPhone:conversation.session.customerPhone,message,sender:'assistant',authorType:'advisor',aiResponse:null});
     await this.conversationMemoryService.touchSession(conversation.session.id);
     return {ok:true,conversation:await this.conversationMemoryService.getInboxConversation(conversation.company.slug,conversation.session.id)};
@@ -162,5 +163,4 @@ export class InboxController {
   private authorize(value:string){const expected=process.env.CHATPRO_INBOX_KEY?.trim();if(!expected||value.trim()!==expected)throw new UnauthorizedException('No autorizado para usar la bandeja.');}
   private requiredCompany(value:string){const company=value.trim().toLowerCase();if(!company)throw new BadRequestException('Falta la empresa.');return company;}
   private readText(value:unknown){return typeof value==='string'?value.trim():'';}
-  private async sendTextMessage(to:string,body:string){const token=process.env.META_WHATSAPP_ACCESS_TOKEN?.trim(),phoneId=process.env.META_PHONE_NUMBER_ID?.trim();if(!token||!phoneId)throw new Error('Faltan variables de Meta en Railway.');const response=await fetch(`https://graph.facebook.com/v25.0/${phoneId}/messages`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',to,type:'text',text:{body}})});if(!response.ok)throw new Error(await response.text());}
 }

@@ -1,0 +1,152 @@
+import { Injectable } from '@nestjs/common';
+import { CompanyIntegrationService } from './company-integration.service';
+
+type JsonObject = Record<string, unknown>;
+
+@Injectable()
+export class WhatsappMessagingService {
+  constructor(
+    private readonly companyIntegrationService: CompanyIntegrationService,
+  ) {}
+
+  async sendText(
+    companyId: string,
+    to: string,
+    body: string,
+  ): Promise<void> {
+    const channel = await this.resolveChannel(companyId);
+
+    await this.send(channel, {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'text',
+      text: { body },
+    });
+  }
+
+  async sendTemplate(
+    companyId: string,
+    to: string,
+    templateName: string,
+    languageCode: string,
+    bodyParameters: string[] = [],
+  ): Promise<void> {
+    const channel = await this.resolveChannel(companyId);
+    const template: {
+      name: string;
+      language: { code: string };
+      components?: Array<{
+        type: 'body';
+        parameters: Array<{ type: 'text'; text: string }>;
+      }>;
+    } = {
+      name: templateName,
+      language: { code: languageCode },
+    };
+
+    if (bodyParameters.length) {
+      template.components = [
+        {
+          type: 'body',
+          parameters: bodyParameters.map((text) => ({
+            type: 'text',
+            text,
+          })),
+        },
+      ];
+    }
+
+    await this.send(channel, {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template,
+    });
+  }
+
+  private async resolveChannel(companyId: string): Promise<{
+    phoneNumberId: string;
+    accessToken: string;
+    apiVersion: string;
+  }> {
+    const integration =
+      await this.companyIntegrationService.getActiveIntegration(
+        companyId,
+        'meta',
+        'whatsapp',
+      );
+
+    if (!integration) {
+      throw new Error(
+        'Esta empresa no tiene un canal de WhatsApp activo configurado.',
+      );
+    }
+
+    const phoneNumberId = integration.externalId.trim();
+
+    if (!phoneNumberId) {
+      throw new Error(
+        'La integración de WhatsApp no tiene Phone Number ID configurado.',
+      );
+    }
+
+    if (integration.credentialMode !== 'environment') {
+      throw new Error(
+        'Esta integración de WhatsApp todavía no tiene un método de credenciales compatible.',
+      );
+    }
+
+    const reference = integration.credentialReference as JsonObject;
+    const tokenEnv = this.readText(reference.access_token_env);
+
+    if (!tokenEnv) {
+      throw new Error(
+        'La integración de WhatsApp no tiene definida la referencia segura del token.',
+      );
+    }
+
+    const accessToken = process.env[tokenEnv]?.trim();
+
+    if (!accessToken) {
+      throw new Error(
+        `Falta la variable segura ${tokenEnv} para el WhatsApp de esta empresa.`,
+      );
+    }
+
+    const config = integration.config as JsonObject;
+    const apiVersion = this.readText(config.api_version) || 'v25.0';
+
+    return { phoneNumberId, accessToken, apiVersion };
+  }
+
+  private async send(
+    channel: {
+      phoneNumberId: string;
+      accessToken: string;
+      apiVersion: string;
+    },
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const response = await fetch(
+      `https://graph.facebook.com/${channel.apiVersion}/${channel.phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${channel.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Meta no aceptó el mensaje: ${await response.text()}`,
+      );
+    }
+  }
+
+  private readText(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+}

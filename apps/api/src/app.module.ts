@@ -25,6 +25,7 @@ import { AdvisorPresenceController } from './advisor-presence.controller';
 import { ServiceAreasController } from './service-areas.controller';
 import { UsersController } from './users.controller';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
+import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -45,6 +46,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
   ],
   providers: [
     CompanyIntegrationService,
+    WhatsappMessagingService,
     AppService,
     ShopifyService,
     ShopifyAbandonedCheckoutSyncService,

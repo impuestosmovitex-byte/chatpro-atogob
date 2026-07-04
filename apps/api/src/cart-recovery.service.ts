@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
+import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -47,6 +48,7 @@ export class CartRecoveryService {
     private readonly supabaseService: SupabaseService,
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly shopifyAbandonedCheckoutSyncService: ShopifyAbandonedCheckoutSyncService,
+    private readonly whatsappMessagingService: WhatsappMessagingService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -202,7 +204,7 @@ export class CartRecoveryService {
         cart,
       );
 
-      await this.sendTextMessage(recipient, message);
+      await this.whatsappMessagingService.sendText(cart.company_id, recipient, message);
 
       if (cart.session_id) {
         await this.conversationMemoryService.saveMessage({
@@ -221,7 +223,8 @@ export class CartRecoveryService {
         return;
       }
 
-      await this.sendTemplateMessage(
+      await this.whatsappMessagingService.sendTemplate(
+        cart.company_id,
         recipient,
         rule.template_name,
         rule.template_language,
@@ -373,36 +376,6 @@ export class CartRecoveryService {
     }
   }
 
-  private async sendTextMessage(to: string, body: string): Promise<void> {
-    const accessToken = process.env.META_WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
-
-    if (!accessToken || !phoneNumberId) {
-      throw new Error('Faltan variables de Meta en Railway.');
-    }
-
-    const response = await fetch(
-      `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to,
-          type: 'text',
-          text: { body },
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
-  }
-
   private isRecipientAllowedForRecoveryTest(
     recipient: string,
     settings: JsonObject,
@@ -456,67 +429,6 @@ export class CartRecoveryService {
     }
 
     return null;
-  }
-
-  private async sendTemplateMessage(
-    to: string,
-    templateName: string,
-    languageCode: string,
-    bodyParameters: string[] = [],
-  ): Promise<void> {
-    const accessToken = process.env.META_WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
-
-    if (!accessToken || !phoneNumberId) {
-      throw new Error('Faltan variables de Meta en Railway.');
-    }
-
-    const template: {
-      name: string;
-      language: { code: string };
-      components?: Array<{
-        type: 'body';
-        parameters: Array<{ type: 'text'; text: string }>;
-      }>;
-    } = {
-      name: templateName,
-      language: {
-        code: languageCode,
-      },
-    };
-
-    if (bodyParameters.length) {
-      template.components = [
-        {
-          type: 'body',
-          parameters: bodyParameters.map((text) => ({
-            type: 'text',
-            text,
-          })),
-        },
-      ];
-    }
-
-    const response = await fetch(
-      `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to,
-          type: 'template',
-          template,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
   }
 
   private cleanMessage(value: string): string {
