@@ -54,6 +54,14 @@ export default function IntegracionesPage() {
     shopDomain: string;
     productCount: number;
   } | null>(null);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState<Array<{
+    id: string;
+    title: string;
+    handle: string;
+    imageUrl: string | null;
+    variants: Array<{ title: string; price: string }>;
+  }> | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -159,6 +167,47 @@ export default function IntegracionesPage() {
       );
     } finally {
       setTestingShopify(false);
+    }
+  }
+
+  async function previewCatalog() {
+    setMessage('');
+    setCatalogProducts(null);
+    setLoadingCatalog(true);
+
+    try {
+      const response = await fetch(
+        '/api/integrations/shopify/catalog-preview',
+        {
+          method: 'POST',
+          cache: 'no-store',
+        },
+      );
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        products?: Array<{
+          id: string;
+          title: string;
+          handle: string;
+          imageUrl: string | null;
+          variants: Array<{ title: string; price: string }>;
+        }>;
+      };
+
+      if (!response.ok || !data.ok || !data.products) {
+        throw new Error(data.error || 'No se pudo cargar el catálogo.');
+      }
+
+      setCatalogProducts(data.products);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo cargar el catálogo.',
+      );
+    } finally {
+      setLoadingCatalog(false);
     }
   }
 
@@ -320,6 +369,36 @@ export default function IntegracionesPage() {
                       <span>{shopifyTest.shopName}</span>
                       <span>{shopifyTest.shopDomain}</span>
                       <span>{shopifyTest.productCount} productos detectados</span>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={styles.catalogButton}
+                    onClick={() => void previewCatalog()}
+                    disabled={loadingCatalog}
+                  >
+                    {loadingCatalog ? 'Cargando catálogo…' : 'Ver primeros productos'}
+                  </button>
+                  {catalogProducts ? (
+                    <div className={styles.catalogPreview}>
+                      <strong>Catálogo por empresa</strong>
+                      {catalogProducts.length ? (
+                        <ul>
+                          {catalogProducts.map((product) => (
+                            <li key={product.id}>
+                              <span>{product.title}</span>
+                              <small>
+                                {product.variants.length} variante{product.variants.length === 1 ? '' : 's'}
+                                {product.variants[0]
+                                  ? ` · $${product.variants[0].price}`
+                                  : ''}
+                              </small>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span>No se encontraron productos activos vendibles.</span>
+                      )}
                     </div>
                   ) : null}
                 </div>

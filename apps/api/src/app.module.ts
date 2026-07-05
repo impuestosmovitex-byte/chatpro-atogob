@@ -11,6 +11,7 @@ import { CartService } from './cart.service';
 import { ChatAgentService } from './chat-agent.service';
 import { ClientsController } from './clients.controller';
 import { CompanyIntegrationService } from './company-integration.service';
+import { CompanyShopifyService } from './company-shopify.service';
 import { CompanySettingsController } from './company-settings.controller';
 import { CompanyProfileController } from './company-profile.controller';
 import { ConversationMemoryService } from './conversation-memory.service';
@@ -23,6 +24,7 @@ import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkou
 import { ShopifyService } from './shopify.service';
 import { ShopifyOauthController } from './shopify-oauth.controller';
 import { ShopifyIntegrationTestController } from './shopify-integration-test.controller';
+import { ShopifyCatalogPreviewController } from './shopify-catalog-preview.controller';
 import { SupabaseService } from './supabase.service';
 import { SupportSettingsController } from './support-settings.controller';
 import { AdvisorPresenceController } from './advisor-presence.controller';
@@ -40,6 +42,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     IntegrationsController,
     ShopifyOauthController,
     ShopifyIntegrationTestController,
+    ShopifyCatalogPreviewController,
     ClientsController,
     CompanySettingsController,
     CompanyProfileController,
@@ -53,6 +56,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
   ],
   providers: [
     CompanyIntegrationService,
+    CompanyShopifyService,
     IntegrationCredentialsService,
     WhatsappMessagingService,
     AppService,
