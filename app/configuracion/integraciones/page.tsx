@@ -48,6 +48,12 @@ export default function IntegracionesPage() {
   const [message, setMessage] = useState('');
   const [shopDomain, setShopDomain] = useState('');
   const [connectingShopify, setConnectingShopify] = useState(false);
+  const [testingShopify, setTestingShopify] = useState(false);
+  const [shopifyTest, setShopifyTest] = useState<{
+    shopName: string;
+    shopDomain: string;
+    productCount: number;
+  } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -116,6 +122,43 @@ export default function IntegracionesPage() {
           : 'No se pudo iniciar la conexión con Shopify.',
       );
       setConnectingShopify(false);
+    }
+  }
+
+  async function testShopify() {
+    setMessage('');
+    setShopifyTest(null);
+    setTestingShopify(true);
+
+    try {
+      const response = await fetch('/api/integrations/shopify/test', {
+        method: 'POST',
+        cache: 'no-store',
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        shop?: { name?: string; domain?: string };
+        products?: { count?: number };
+      };
+
+      if (!response.ok || !data.ok || !data.shop || !data.products) {
+        throw new Error(data.error || 'La prueba de Shopify no fue exitosa.');
+      }
+
+      setShopifyTest({
+        shopName: data.shop.name || 'Tienda Shopify',
+        shopDomain: data.shop.domain || '',
+        productCount: data.products.count || 0,
+      });
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo probar la conexión Shopify.',
+      );
+    } finally {
+      setTestingShopify(false);
     }
   }
 
@@ -255,6 +298,30 @@ export default function IntegracionesPage() {
                   <small>
                     Las credenciales se autorizan en Shopify y no se muestran en Chat Pro.
                   </small>
+                </div>
+              ) : selected.key === 'shopify' && selected.status === 'active' ? (
+                <div className={styles.testBox}>
+                  <strong>Verificar conexión</strong>
+                  <p>
+                    Comprueba que Chat Pro puede leer los datos básicos de esta
+                    tienda usando el token protegido.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.testButton}
+                    onClick={() => void testShopify()}
+                    disabled={testingShopify}
+                  >
+                    {testingShopify ? 'Probando conexión…' : 'Probar conexión'}
+                  </button>
+                  {shopifyTest ? (
+                    <div className={styles.testResult}>
+                      <strong>Conexión verificada</strong>
+                      <span>{shopifyTest.shopName}</span>
+                      <span>{shopifyTest.shopDomain}</span>
+                      <span>{shopifyTest.productCount} productos detectados</span>
+                    </div>
+                  ) : null}
                 </div>
               ) : selected.status === 'active' ? (
                 <div className={styles.notice}>
