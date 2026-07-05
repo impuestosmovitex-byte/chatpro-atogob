@@ -32,6 +32,77 @@ type ResponseData = {
   integrations?: Integration[];
 };
 
+
+type CatalogCount = {
+  count: number;
+  precision: string;
+};
+
+type CatalogDiagnostics = {
+  counts: {
+    totalProducts: CatalogCount;
+    statuses: {
+      active: CatalogCount;
+      draft: CatalogCount;
+      archived: CatalogCount;
+      unlisted: CatalogCount;
+    };
+    onlineStore: {
+      published: CatalogCount;
+    };
+    inventory: {
+      withStock: CatalogCount;
+      withoutStock: CatalogCount;
+      notTracked: CatalogCount;
+    };
+  };
+  scan: {
+    scannedProducts: number;
+    hasMoreProducts: boolean;
+    reportedVariantsInScannedProducts: number;
+    readVariants: number;
+    sellableVariants: number;
+    nonSellableVariants: number;
+    productsWithUnreadVariants: number;
+  };
+  products: Array<{
+    id: string;
+    title: string;
+    handle: string;
+    status: string;
+    onlineStorePublished: boolean;
+    hasPublicUrl: boolean;
+    totalInventory: number;
+    tracksInventory: boolean;
+    saleReady: boolean;
+    variants: {
+      total: number;
+      read: number;
+      sellable: number;
+      nonSellable: number;
+      withStock: number;
+      withoutStock: number;
+      notTracked: number;
+      hasMore: boolean;
+    };
+    reasons: string[];
+    note: string | null;
+  }>;
+};
+
+function formatCatalogCount(value: CatalogCount): string {
+  const suffix = value.precision === 'AT_LEAST' ? '+' : '';
+  return `${value.count.toLocaleString('es-CO')}${suffix}`;
+}
+
+function catalogStatusLabel(status: string): string {
+  if (status === 'ACTIVE') return 'Activo';
+  if (status === 'DRAFT') return 'Borrador';
+  if (status === 'ARCHIVED') return 'Archivado';
+  if (status === 'UNLISTED') return 'No listado';
+  return status;
+}
+
 function icon(key: string) {
   if (key === 'whatsapp') return '◉';
   if (key === 'shopify') return '⬡';
@@ -62,6 +133,8 @@ export default function IntegracionesPage() {
     imageUrl: string | null;
     variants: Array<{ title: string; price: string }>;
   }> | null>(null);
+  const [catalogDiagnostics, setCatalogDiagnostics] =
+    useState<CatalogDiagnostics | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -173,6 +246,7 @@ export default function IntegracionesPage() {
   async function previewCatalog() {
     setMessage('');
     setCatalogProducts(null);
+    setCatalogDiagnostics(null);
     setLoadingCatalog(true);
 
     try {
@@ -193,6 +267,7 @@ export default function IntegracionesPage() {
           imageUrl: string | null;
           variants: Array<{ title: string; price: string }>;
         }>;
+        diagnostics?: CatalogDiagnostics;
       };
 
       if (!response.ok || !data.ok || !data.products) {
@@ -200,6 +275,7 @@ export default function IntegracionesPage() {
       }
 
       setCatalogProducts(data.products);
+      setCatalogDiagnostics(data.diagnostics || null);
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -381,24 +457,180 @@ export default function IntegracionesPage() {
                   </button>
                   {catalogProducts ? (
                     <div className={styles.catalogPreview}>
-                      <strong>Catálogo por empresa</strong>
-                      {catalogProducts.length ? (
-                        <ul>
-                          {catalogProducts.map((product) => (
-                            <li key={product.id}>
-                              <span>{product.title}</span>
-                              <small>
-                                {product.variants.length} variante{product.variants.length === 1 ? '' : 's'}
-                                {product.variants[0]
-                                  ? ` · $${product.variants[0].price}`
-                                  : ''}
-                              </small>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No se encontraron productos activos vendibles.</span>
-                      )}
+                      <div className={styles.catalogPreviewTitle}>
+                        <strong>Diagnóstico del catálogo</strong>
+                        <span>
+                          {catalogDiagnostics
+                            ? 'Consulta realizada a Shopify'
+                            : 'Vista básica del catálogo'}
+                        </span>
+                      </div>
+
+                      {catalogDiagnostics ? (
+                        <>
+                          <div className={styles.catalogMetrics}>
+                            <div>
+                              <small>Productos</small>
+                              <strong>
+                                {formatCatalogCount(
+                                  catalogDiagnostics.counts.totalProducts,
+                                )}
+                              </strong>
+                            </div>
+                            <div>
+                              <small>Publicados online</small>
+                              <strong>
+                                {formatCatalogCount(
+                                  catalogDiagnostics.counts.onlineStore.published,
+                                )}
+                              </strong>
+                            </div>
+                            <div>
+                              <small>Con inventario</small>
+                              <strong>
+                                {formatCatalogCount(
+                                  catalogDiagnostics.counts.inventory.withStock,
+                                )}
+                              </strong>
+                            </div>
+                          </div>
+
+                          <div className={styles.catalogPills}>
+                            <span>
+                              Activos{' '}
+                              <b>
+                                {formatCatalogCount(
+                                  catalogDiagnostics.counts.statuses.active,
+                                )}
+                              </b>
+                            </span>
+                            <span>
+                              Borradores{' '}
+                              <b>
+                                {formatCatalogCount(
+                                  catalogDiagnostics.counts.statuses.draft,
+                                )}
+                              </b>
+                            </span>
+                            <span>
+                              Archivados{' '}
+                              <b>
+                                {formatCatalogCount(
+                                  catalogDiagnostics.counts.statuses.archived,
+                                )}
+                              </b>
+                            </span>
+                            <span>
+                              No listados{' '}
+                              <b>
+                                {formatCatalogCount(
+                                  catalogDiagnostics.counts.statuses.unlisted,
+                                )}
+                              </b>
+                            </span>
+                            <span>
+                              Sin stock{' '}
+                              <b>
+                                {formatCatalogCount(
+                                  catalogDiagnostics.counts.inventory.withoutStock,
+                                )}
+                              </b>
+                            </span>
+                            <span>
+                              Inventario no controlado{' '}
+                              <b>
+                                {formatCatalogCount(
+                                  catalogDiagnostics.counts.inventory.notTracked,
+                                )}
+                              </b>
+                            </span>
+                          </div>
+
+                          <p className={styles.catalogScope}>
+                            Se analizaron{' '}
+                            {catalogDiagnostics.scan.scannedProducts.toLocaleString(
+                              'es-CO',
+                            )}{' '}
+                            productos recientes y{' '}
+                            {catalogDiagnostics.scan.readVariants.toLocaleString(
+                              'es-CO',
+                            )}{' '}
+                            variantes.{' '}
+                            {catalogDiagnostics.scan.hasMoreProducts
+                              ? 'Hay más productos en Shopify que se revisarán desde la futura página Productos.'
+                              : 'El diagnóstico incluye todos los productos encontrados.'}
+                          </p>
+
+                          {catalogDiagnostics.products.length ? (
+                            <div className={styles.catalogDiagnosis}>
+                              <strong>Motivo por producto</strong>
+                              <ul className={styles.diagnosticList}>
+                                {catalogDiagnostics.products.map((product) => (
+                                  <li key={product.id}>
+                                    <div className={styles.diagnosticTop}>
+                                      <span>
+                                        <b>{product.title}</b>
+                                        <small>
+                                          {catalogStatusLabel(product.status)} ·{' '}
+                                          {product.variants.sellable}/
+                                          {product.variants.total} variantes
+                                          vendibles
+                                        </small>
+                                      </span>
+                                      <em
+                                        className={
+                                          product.saleReady
+                                            ? styles.diagnosticReady
+                                            : styles.diagnosticBlocked
+                                        }
+                                      >
+                                        {product.saleReady
+                                          ? 'Disponible'
+                                          : 'Revisar'}
+                                      </em>
+                                    </div>
+                                    <ul className={styles.reasonList}>
+                                      {product.reasons.map((reason) => (
+                                        <li key={reason}>{reason}</li>
+                                      ))}
+                                    </ul>
+                                    {product.note ? (
+                                      <small className={styles.diagnosticNote}>
+                                        {product.note}
+                                      </small>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : null}
+
+                      <div className={styles.availableProducts}>
+                        <strong>Primeros productos disponibles</strong>
+                        {catalogProducts.length ? (
+                          <ul>
+                            {catalogProducts.map((product) => (
+                              <li key={product.id}>
+                                <span>{product.title}</span>
+                                <small>
+                                  {product.variants.length} variante
+                                  {product.variants.length === 1 ? '' : 's'}
+                                  {product.variants[0]
+                                    ? ` · $${product.variants[0].price}`
+                                    : ''}
+                                </small>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span>
+                            No se encontraron productos activos, publicados y
+                            vendibles. Revisa el diagnóstico anterior.
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ) : null}
                 </div>

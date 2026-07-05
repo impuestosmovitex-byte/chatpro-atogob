@@ -48,11 +48,10 @@ export class ShopifyCatalogPreviewController {
       );
     }
 
-    const products = await this.companyShopifyService.listCatalog(
-      company.id,
-      '',
-      10,
-    );
+    const [products, diagnostics] = await Promise.all([
+      this.companyShopifyService.listCatalog(company.id, '', 10),
+      this.companyShopifyService.getCatalogDiagnostics(company.id, 20),
+    ]);
 
     return {
       ok: true,
@@ -61,6 +60,7 @@ export class ShopifyCatalogPreviewController {
         slug: company.slug,
       },
       products,
+      diagnostics,
     };
   }
 

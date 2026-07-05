@@ -51,6 +51,96 @@ export type CompanyShopifyCatalogItem = {
   }>;
 };
 
+
+type ShopifyCount = {
+  count: number;
+  precision: string;
+};
+
+type ShopifyCatalogDiagnosticVariant = {
+  availableForSale: boolean;
+  inventoryQuantity: number | null;
+  inventoryPolicy: string;
+  inventoryItem: {
+    tracked: boolean;
+  };
+};
+
+type ShopifyCatalogDiagnosticProduct = {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  publishedAt: string | null;
+  onlineStoreUrl: string | null;
+  totalInventory: number;
+  tracksInventory: boolean;
+  variantsCount: ShopifyCount;
+  variants: {
+    pageInfo: {
+      hasNextPage: boolean;
+    };
+    edges: Array<{ node: ShopifyCatalogDiagnosticVariant }>;
+  };
+};
+
+type CompanyShopifyCount = {
+  count: number;
+  precision: string;
+};
+
+export type CompanyShopifyCatalogDiagnostics = {
+  counts: {
+    totalProducts: CompanyShopifyCount;
+    statuses: {
+      active: CompanyShopifyCount;
+      draft: CompanyShopifyCount;
+      archived: CompanyShopifyCount;
+      unlisted: CompanyShopifyCount;
+    };
+    onlineStore: {
+      published: CompanyShopifyCount;
+    };
+    inventory: {
+      withStock: CompanyShopifyCount;
+      withoutStock: CompanyShopifyCount;
+      notTracked: CompanyShopifyCount;
+    };
+  };
+  scan: {
+    scannedProducts: number;
+    hasMoreProducts: boolean;
+    reportedVariantsInScannedProducts: number;
+    readVariants: number;
+    sellableVariants: number;
+    nonSellableVariants: number;
+    productsWithUnreadVariants: number;
+  };
+  products: Array<{
+    id: string;
+    title: string;
+    handle: string;
+    status: string;
+    onlineStorePublished: boolean;
+    hasPublicUrl: boolean;
+    totalInventory: number;
+    tracksInventory: boolean;
+    saleReady: boolean;
+    variants: {
+      total: number;
+      read: number;
+      sellable: number;
+      nonSellable: number;
+      withStock: number;
+      withoutStock: number;
+      notTracked: number;
+      hasMore: boolean;
+    };
+    reasons: string[];
+    note: string | null;
+  }>;
+};
+
 @Injectable()
 export class CompanyShopifyService {
   constructor(
@@ -135,6 +225,266 @@ export class CompanyShopifyService {
           Boolean(product.onlineStoreUrl) && product.variants.length > 0,
       );
   }
+
+
+  async getCatalogDiagnostics(
+    companyId: string,
+    productLimit = 20,
+  ): Promise<CompanyShopifyCatalogDiagnostics> {
+    const first = Math.min(Math.max(productLimit, 1), 20);
+    const variantsFirst = 25;
+
+    const [countData, catalogData] = await Promise.all([
+      this.graphql<{
+        total: ShopifyCount;
+        active: ShopifyCount;
+        draft: ShopifyCount;
+        archived: ShopifyCount;
+        unlisted: ShopifyCount;
+        onlineStorePublished: ShopifyCount;
+        withStock: ShopifyCount;
+        withoutStock: ShopifyCount;
+        notTracked: ShopifyCount;
+      }>(
+        companyId,
+        `
+          query ChatProCatalogDiagnosticCounts {
+            total: productsCount(limit: null) {
+              count
+              precision
+            }
+            active: productsCount(query: "status:active", limit: null) {
+              count
+              precision
+            }
+            draft: productsCount(query: "status:draft", limit: null) {
+              count
+              precision
+            }
+            archived: productsCount(query: "status:archived", limit: null) {
+              count
+              precision
+            }
+            unlisted: productsCount(query: "status:unlisted", limit: null) {
+              count
+              precision
+            }
+            onlineStorePublished: productsCount(
+              query: "published_status:published"
+              limit: null
+            ) {
+              count
+              precision
+            }
+            withStock: productsCount(query: "inventory_total:>0", limit: null) {
+              count
+              precision
+            }
+            withoutStock: productsCount(query: "inventory_total:<=0", limit: null) {
+              count
+              precision
+            }
+            notTracked: productsCount(query: "tracks_inventory:false", limit: null) {
+              count
+              precision
+            }
+          }
+        `,
+      ),
+      this.graphql<{
+        products: {
+          pageInfo: {
+            hasNextPage: boolean;
+          };
+          edges: Array<{ node: ShopifyCatalogDiagnosticProduct }>;
+        };
+      }>(
+        companyId,
+        `
+          query ChatProCatalogDiagnostics($first: Int!, $variantsFirst: Int!) {
+            products(first: $first, sortKey: UPDATED_AT, reverse: true) {
+              pageInfo {
+                hasNextPage
+              }
+              edges {
+                node {
+                  id
+                  title
+                  handle
+                  status
+                  publishedAt
+                  onlineStoreUrl
+                  totalInventory
+                  tracksInventory
+                  variantsCount {
+                    count
+                    precision
+                  }
+                  variants(first: $variantsFirst) {
+                    pageInfo {
+                      hasNextPage
+                    }
+                    edges {
+                      node {
+                        availableForSale
+                        inventoryQuantity
+                        inventoryPolicy
+                        inventoryItem {
+                          tracked
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `,
+        { first, variantsFirst },
+      ),
+    ]);
+
+    let reportedVariantsInScannedProducts = 0;
+    let readVariants = 0;
+    let sellableVariants = 0;
+    let nonSellableVariants = 0;
+    let productsWithUnreadVariants = 0;
+
+    const products = catalogData.products.edges.map(({ node }) => {
+      const variants = node.variants.edges.map(({ node: variant }) => variant);
+      const totalVariants = node.variantsCount.count;
+      const sellable = variants.filter(
+        (variant) => variant.availableForSale,
+      ).length;
+      const nonSellable = variants.length - sellable;
+      const withStock = variants.filter(
+        (variant) =>
+          variant.inventoryItem.tracked &&
+          (variant.inventoryQuantity ?? 0) > 0,
+      ).length;
+      const withoutStock = variants.filter(
+        (variant) =>
+          variant.inventoryItem.tracked &&
+          (variant.inventoryQuantity ?? 0) <= 0,
+      ).length;
+      const notTracked = variants.filter(
+        (variant) => !variant.inventoryItem.tracked,
+      ).length;
+      const onlineStorePublished = Boolean(node.publishedAt);
+      const hasPublicUrl = Boolean(node.onlineStoreUrl);
+      const status = node.status.toUpperCase();
+      const allReadVariantsAreOutOfStock =
+        !node.variants.pageInfo.hasNextPage &&
+        variants.length > 0 &&
+        variants.every(
+          (variant) =>
+            variant.inventoryItem.tracked &&
+            (variant.inventoryQuantity ?? 0) <= 0 &&
+            variant.inventoryPolicy !== 'CONTINUE',
+        );
+      const saleReady =
+        status === 'ACTIVE' &&
+        onlineStorePublished &&
+        hasPublicUrl &&
+        sellable > 0;
+
+      const reasons: string[] = [];
+
+      if (status !== 'ACTIVE') {
+        reasons.push(
+          `El producto está ${this.catalogStatusLabel(status).toLowerCase()}.`,
+        );
+      }
+
+      if (!onlineStorePublished) {
+        reasons.push('No está publicado en la tienda online.');
+      }
+
+      if (!hasPublicUrl) {
+        reasons.push('Shopify no expone una URL pública para el producto.');
+      }
+
+      if (totalVariants === 0) {
+        reasons.push('No tiene variantes configuradas.');
+      } else if (sellable === 0) {
+        reasons.push(
+          allReadVariantsAreOutOfStock
+            ? 'Todas las variantes están sin inventario y no permiten seguir vendiendo.'
+            : 'Shopify no marca ninguna variante como disponible para venta.',
+        );
+      }
+
+      if (reasons.length === 0) {
+        reasons.push('Disponible para venta según la información actual de Shopify.');
+      }
+
+      reportedVariantsInScannedProducts += totalVariants;
+      readVariants += variants.length;
+      sellableVariants += sellable;
+      nonSellableVariants += nonSellable;
+
+      if (node.variants.pageInfo.hasNextPage) {
+        productsWithUnreadVariants += 1;
+      }
+
+      return {
+        id: node.id,
+        title: node.title,
+        handle: node.handle,
+        status,
+        onlineStorePublished,
+        hasPublicUrl,
+        totalInventory: node.totalInventory,
+        tracksInventory: node.tracksInventory,
+        saleReady,
+        variants: {
+          total: totalVariants,
+          read: variants.length,
+          sellable,
+          nonSellable,
+          withStock,
+          withoutStock,
+          notTracked,
+          hasMore: node.variants.pageInfo.hasNextPage,
+        },
+        reasons,
+        note: node.variants.pageInfo.hasNextPage
+          ? 'Este producto tiene más de 25 variantes; se analizaron las primeras 25.'
+          : null,
+      };
+    });
+
+    return {
+      counts: {
+        totalProducts: this.toCount(countData.total),
+        statuses: {
+          active: this.toCount(countData.active),
+          draft: this.toCount(countData.draft),
+          archived: this.toCount(countData.archived),
+          unlisted: this.toCount(countData.unlisted),
+        },
+        onlineStore: {
+          published: this.toCount(countData.onlineStorePublished),
+        },
+        inventory: {
+          withStock: this.toCount(countData.withStock),
+          withoutStock: this.toCount(countData.withoutStock),
+          notTracked: this.toCount(countData.notTracked),
+        },
+      },
+      scan: {
+        scannedProducts: products.length,
+        hasMoreProducts: catalogData.products.pageInfo.hasNextPage,
+        reportedVariantsInScannedProducts,
+        readVariants,
+        sellableVariants,
+        nonSellableVariants,
+        productsWithUnreadVariants,
+      },
+      products,
+    };
+  }
+
 
   private async graphql<T>(
     companyId: string,
@@ -231,6 +581,23 @@ export class CompanyShopifyService {
       accessToken,
     };
   }
+
+
+  private toCount(value: ShopifyCount): CompanyShopifyCount {
+    return {
+      count: value.count,
+      precision: value.precision,
+    };
+  }
+
+  private catalogStatusLabel(status: string): string {
+    if (status === 'DRAFT') return 'Borrador';
+    if (status === 'ARCHIVED') return 'Archivado';
+    if (status === 'UNLISTED') return 'No listado';
+    if (status === 'ACTIVE') return 'Activo';
+    return status;
+  }
+
 
   private normalizeShop(value: string): string {
     const shop = value
