@@ -12,6 +12,7 @@ import { ChatAgentService } from './chat-agent.service';
 import { ClientsController } from './clients.controller';
 import { CompanyIntegrationService } from './company-integration.service';
 import { CompanyShopifyService } from './company-shopify.service';
+import { CompanyProductsController } from './company-products.controller';
 import { CompanySettingsController } from './company-settings.controller';
 import { CompanyProfileController } from './company-profile.controller';
 import { ConversationMemoryService } from './conversation-memory.service';
@@ -46,6 +47,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     ClientsController,
     CompanySettingsController,
     CompanyProfileController,
+    CompanyProductsController,
     UsersController,
     RolesController,
     QuickRepliesController,

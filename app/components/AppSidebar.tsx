@@ -26,6 +26,7 @@ type Session = {
 
 const baseNavigation = [
   { href: '/', label: 'Bandeja', icon: '◉', exact: true },
+  { href: '/productos', label: 'Productos', icon: '⬡' },
   { href: '/clientes', label: 'Clientes', icon: '◌' },
   {
     href: '/automatizaciones',

@@ -52,6 +52,81 @@ export type CompanyShopifyCatalogItem = {
 };
 
 
+
+type ShopifyProductListVariant = {
+  legacyResourceId: string;
+  title: string;
+  sku: string | null;
+  price: string;
+  availableForSale: boolean;
+  inventoryQuantity: number | null;
+  inventoryPolicy: string;
+  inventoryItem: {
+    tracked: boolean;
+  };
+};
+
+type ShopifyProductListNode = {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  publishedAt: string | null;
+  onlineStoreUrl: string | null;
+  totalInventory: number;
+  tracksInventory: boolean;
+  featuredImage: {
+    url: string;
+    altText: string | null;
+  } | null;
+  variantsCount: ShopifyCount;
+  variants: {
+    pageInfo: {
+      hasNextPage: boolean;
+    };
+    edges: Array<{ node: ShopifyProductListVariant }>;
+  };
+};
+
+export type CompanyShopifyProductListItem = {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  publishedAt: string | null;
+  onlineStoreUrl: string | null;
+  imageUrl: string | null;
+  imageAlt: string | null;
+  totalInventory: number;
+  tracksInventory: boolean;
+  saleReady: boolean;
+  variants: {
+    total: number;
+    shown: number;
+    sellable: number;
+    withoutStock: number;
+    notTracked: number;
+    hasMore: boolean;
+  };
+  previewVariants: Array<{
+    legacyResourceId: string;
+    title: string;
+    sku: string | null;
+    price: string;
+    availableForSale: boolean;
+    inventoryQuantity: number | null;
+    tracked: boolean;
+  }>;
+};
+
+export type CompanyShopifyProductsPage = {
+  products: CompanyShopifyProductListItem[];
+  pageInfo: {
+    hasNextPage: boolean;
+    endCursor: string | null;
+  };
+};
+
 type ShopifyCount = {
   count: number;
   precision: string;
@@ -226,6 +301,163 @@ export class CompanyShopifyService {
       );
   }
 
+
+
+  async listProducts(
+    companyId: string,
+    options: {
+      searchText?: string;
+      status?: string;
+      after?: string | null;
+      limit?: number;
+    } = {},
+  ): Promise<CompanyShopifyProductsPage> {
+    const first = Math.min(Math.max(options.limit ?? 20, 1), 20);
+    const status = this.normalizeProductStatus(options.status || '');
+    const searchText = this.normalizeProductSearch(options.searchText || '');
+    const query = [
+      status ? `status:${status.toLowerCase()}` : '',
+      searchText,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const data = await this.graphql<{
+      products: {
+        pageInfo: {
+          hasNextPage: boolean;
+          endCursor: string | null;
+        };
+        edges: Array<{ node: ShopifyProductListNode }>;
+      };
+    }>(
+      companyId,
+      `
+        query ChatProCompanyProducts(
+          $first: Int!
+          $after: String
+          $query: String!
+        ) {
+          products(
+            first: $first
+            after: $after
+            query: $query
+            sortKey: UPDATED_AT
+            reverse: true
+          ) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              node {
+                id
+                title
+                handle
+                status
+                publishedAt
+                onlineStoreUrl
+                totalInventory
+                tracksInventory
+                featuredImage {
+                  url
+                  altText
+                }
+                variantsCount {
+                  count
+                  precision
+                }
+                variants(first: 5) {
+                  pageInfo {
+                    hasNextPage
+                  }
+                  edges {
+                    node {
+                      legacyResourceId
+                      title
+                      sku
+                      price
+                      availableForSale
+                      inventoryQuantity
+                      inventoryPolicy
+                      inventoryItem {
+                        tracked
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      {
+        first,
+        after: this.text(options.after || '') || null,
+        query,
+      },
+    );
+
+    return {
+      products: data.products.edges.map(({ node }) => {
+        const variants = node.variants.edges.map(({ node: variant }) => variant);
+        const sellable = variants.filter(
+          (variant) => variant.availableForSale,
+        ).length;
+        const withoutStock = variants.filter(
+          (variant) =>
+            variant.inventoryItem.tracked &&
+            (variant.inventoryQuantity ?? 0) <= 0 &&
+            variant.inventoryPolicy !== 'CONTINUE',
+        ).length;
+        const notTracked = variants.filter(
+          (variant) => !variant.inventoryItem.tracked,
+        ).length;
+        const status = node.status.toUpperCase();
+        const published = Boolean(node.publishedAt);
+        const hasPublicUrl = Boolean(node.onlineStoreUrl);
+
+        return {
+          id: node.id,
+          title: node.title,
+          handle: node.handle,
+          status,
+          publishedAt: node.publishedAt,
+          onlineStoreUrl: node.onlineStoreUrl,
+          imageUrl: node.featuredImage?.url || null,
+          imageAlt: node.featuredImage?.altText || null,
+          totalInventory: node.totalInventory,
+          tracksInventory: node.tracksInventory,
+          saleReady:
+            status === 'ACTIVE' &&
+            published &&
+            hasPublicUrl &&
+            sellable > 0,
+          variants: {
+            total: node.variantsCount.count,
+            shown: variants.length,
+            sellable,
+            withoutStock,
+            notTracked,
+            hasMore: node.variants.pageInfo.hasNextPage,
+          },
+          previewVariants: variants.map((variant) => ({
+            legacyResourceId: variant.legacyResourceId,
+            title: variant.title,
+            sku: variant.sku,
+            price: variant.price,
+            availableForSale: variant.availableForSale,
+            inventoryQuantity: variant.inventoryQuantity,
+            tracked: variant.inventoryItem.tracked,
+          })),
+        };
+      }),
+      pageInfo: {
+        hasNextPage: data.products.pageInfo.hasNextPage,
+        endCursor: data.products.pageInfo.endCursor,
+      },
+    };
+  }
 
   async getCatalogDiagnostics(
     companyId: string,
@@ -598,6 +830,22 @@ export class CompanyShopifyService {
     return status;
   }
 
+
+
+  private normalizeProductStatus(value: string): string {
+    const status = this.text(value).toUpperCase();
+
+    return ['ACTIVE', 'DRAFT', 'ARCHIVED', 'UNLISTED'].includes(status)
+      ? status
+      : '';
+  }
+
+  private normalizeProductSearch(value: string): string {
+    return this.text(value)
+      .replace(/["'():]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, 120);
+  }
 
   private normalizeShop(value: string): string {
     const shop = value
