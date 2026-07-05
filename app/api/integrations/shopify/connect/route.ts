@@ -34,20 +34,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const company =
-      request.nextUrl.searchParams.get('company')?.trim().toLowerCase() || '';
     const shop = request.nextUrl.searchParams.get('shop')?.trim() || '';
 
-    if (!company || !shop) {
+    if (!shop) {
       return NextResponse.json(
-        { ok: false, error: 'Falta la empresa o el dominio de Shopify.' },
+        { ok: false, error: 'Escribe el dominio de Shopify.' },
         { status: 400 },
       );
     }
 
     const { apiBase, inboxKey } = config();
     const target = new URL(`${apiBase}/integrations/shopify/connect`);
-    target.searchParams.set('company', company);
+    target.searchParams.set('company', session.companySlug);
     target.searchParams.set('shop', shop);
 
     const response = await fetch(target, {

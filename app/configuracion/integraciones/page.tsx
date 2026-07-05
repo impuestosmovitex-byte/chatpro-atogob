@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
 import styles from './page.module.css';
 
-const COMPANY = process.env.NEXT_PUBLIC_CHATPRO_COMPANY || 'atogob';
-
 type Integration = {
   id?: string;
   key: string;
@@ -48,14 +46,15 @@ export default function IntegracionesPage() {
   const [selectedKey, setSelectedKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [shopDomain, setShopDomain] = useState('');
+  const [connectingShopify, setConnectingShopify] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
-        const response = await fetch(
-          `/api/integrations?company=${encodeURIComponent(COMPANY)}`,
-          { cache: 'no-store' },
-        );
+        const response = await fetch('/api/integrations', {
+          cache: 'no-store',
+        });
         const data = (await response.json()) as ResponseData;
 
         if (!response.ok || !data.ok || !data.integrations) {
@@ -82,6 +81,43 @@ export default function IntegracionesPage() {
   const selected =
     integrations.find((integration) => integration.key === selectedKey) ??
     integrations[0];
+
+  async function connectShopify() {
+    const shop = shopDomain.trim();
+
+    if (!shop) {
+      setMessage('Escribe el dominio de Shopify, por ejemplo mitienda.myshopify.com.');
+      return;
+    }
+
+    setMessage('');
+    setConnectingShopify(true);
+
+    try {
+      const response = await fetch(
+        `/api/integrations/shopify/connect?shop=${encodeURIComponent(shop)}`,
+        { cache: 'no-store' },
+      );
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        authorizationUrl?: string;
+      };
+
+      if (!response.ok || !data.ok || !data.authorizationUrl) {
+        throw new Error(data.error || 'No se pudo iniciar la conexión con Shopify.');
+      }
+
+      window.location.assign(data.authorizationUrl);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo iniciar la conexión con Shopify.',
+      );
+      setConnectingShopify(false);
+    }
+  }
 
   return (
     <main className={styles.shell}>
@@ -190,17 +226,44 @@ export default function IntegracionesPage() {
                 ) : null}
               </dl>
 
-              {selected.status === 'active' ? (
+              {selected.key === 'shopify' && selected.status !== 'active' ? (
+                <div className={styles.connectBox}>
+                  <strong>Conectar una tienda Shopify</strong>
+                  <p>
+                    Escribe el dominio permanente de la tienda. Se abrirá Shopify
+                    para que el propietario autorice el acceso.
+                  </p>
+                  <label htmlFor="shop-domain">Dominio Shopify</label>
+                  <input
+                    id="shop-domain"
+                    value={shopDomain}
+                    onChange={(event) => setShopDomain(event.target.value)}
+                    placeholder="mitienda.myshopify.com"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    disabled={connectingShopify}
+                  />
+                  <button
+                    type="button"
+                    className={styles.connectButton}
+                    onClick={() => void connectShopify()}
+                    disabled={connectingShopify}
+                  >
+                    {connectingShopify ? 'Abriendo Shopify…' : 'Conectar Shopify'}
+                  </button>
+                  <small>
+                    Las credenciales se autorizan en Shopify y no se muestran en Chat Pro.
+                  </small>
+                </div>
+              ) : selected.status === 'active' ? (
                 <div className={styles.notice}>
-                  Esta integración está activa. La edición y prueba de conexión
-                  se habilitarán en el siguiente bloque técnico, sin exponer
-                  credenciales.
+                  Esta integración está activa. Las credenciales permanecen protegidas.
                 </div>
               ) : selected.connectionReady ? (
                 <div className={styles.notice}>
-                  Este canal tendrá un asistente de conexión guiado. Primero
-                  terminaremos la validación segura de credenciales para que el
-                  estado activo sea real.
+                  Este canal tendrá un asistente de conexión guiado cuando su
+                  proveedor quede habilitado.
                 </div>
               ) : (
                 <div className={styles.notice}>

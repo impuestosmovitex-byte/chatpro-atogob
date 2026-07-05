@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getInboxSession, INBOX_SESSION_COOKIE } from '../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,19 +16,27 @@ function config() {
 
 export async function GET(request: NextRequest) {
   try {
-    const company =
-      request.nextUrl.searchParams.get('company')?.trim().toLowerCase() ?? '';
+    const session = await getInboxSession(
+      request.cookies.get(INBOX_SESSION_COOKIE)?.value,
+    );
 
-    if (!company) {
+    if (!session) {
       return NextResponse.json(
-        { ok: false, error: 'Falta la empresa.' },
-        { status: 400 },
+        { ok: false, error: 'Sesión requerida.' },
+        { status: 401 },
+      );
+    }
+
+    if (session.roleKey !== 'owner' && session.roleKey !== 'admin') {
+      return NextResponse.json(
+        { ok: false, error: 'No tienes permiso para administrar integraciones.' },
+        { status: 403 },
       );
     }
 
     const { apiBase, inboxKey } = config();
     const target = new URL(`${apiBase}/integrations`);
-    target.searchParams.set('company', company);
+    target.searchParams.set('company', session.companySlug);
 
     const response = await fetch(target, {
       headers: { 'x-chatpro-inbox-key': inboxKey },

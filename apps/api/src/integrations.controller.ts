@@ -37,7 +37,7 @@ const CATALOG = [
     key: 'shopify',
     name: 'Shopify',
     description: 'Catálogo, productos, variantes y enlaces de compra de tu tienda.',
-    connectionReady: false,
+    connectionReady: true,
   },
   {
     provider: 'meta',
