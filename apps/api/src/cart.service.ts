@@ -4,6 +4,7 @@ import {
   type ConversationSession,
 } from './conversation-memory.service';
 import { ShopifyService } from './shopify.service';
+import { CompanyCommerceService } from './company-commerce.service';
 import { SupabaseService } from './supabase.service';
 
 type JsonObject = Record<string, unknown>;
@@ -40,11 +41,21 @@ export type CartLine = {
   quantity: number;
 };
 
+type CartLinksForSession = {
+  cartUrl: string;
+  checkoutUrl: string;
+  lines: Array<{
+    variantLegacyId: string;
+    quantity: number;
+  }>;
+};
+
 @Injectable()
 export class CartService {
   constructor(
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly shopifyService: ShopifyService,
+    private readonly companyCommerceService: CompanyCommerceService,
     private readonly supabaseService: SupabaseService,
   ) {}
 
@@ -132,12 +143,7 @@ export class CartService {
       }
     }
 
-    const links = await this.shopifyService.buildCartLinks(
-      cart.map((line) => ({
-        variantLegacyId: line.variantLegacyId,
-        quantity: line.quantity,
-      })),
-    );
+    const links = await this.buildCartLinksForSession(session, cart);
 
     const updatedSession =
       await this.conversationMemoryService.updateSession(session.id, {
@@ -370,7 +376,10 @@ export class CartService {
       quantity: line.quantity,
     }));
 
-    const links = await this.shopifyService.buildCartLinks(requestedLines);
+    const links = await this.buildCartLinksForSession(
+      currentSession,
+      cart,
+    );
 
     const expected = new Map(
       requestedLines.map((line) => [
@@ -431,12 +440,7 @@ export class CartService {
     cart: CartLine[],
   ) {
     const links = cart.length
-      ? await this.shopifyService.buildCartLinks(
-          cart.map((line) => ({
-            variantLegacyId: line.variantLegacyId,
-            quantity: line.quantity,
-          })),
-        )
+      ? await this.buildCartLinksForSession(session, cart)
       : null;
 
     const updatedSession =
@@ -464,6 +468,37 @@ export class CartService {
       cart_url: links?.cartUrl ?? null,
       checkout_url: links?.checkoutUrl ?? null,
     };
+  }
+
+  private async buildCartLinksForSession(
+    session: ConversationSession,
+    cart: CartLine[],
+  ): Promise<CartLinksForSession> {
+    if (await this.companyCommerceService.isEnabled(session.companyId)) {
+      const links = await this.companyCommerceService.createCheckoutLink(
+        session.companyId,
+        cart.map((line) => ({
+          variantId: line.variantId,
+          quantity: line.quantity,
+        })),
+      );
+
+      return {
+        cartUrl: links.cartUrl,
+        checkoutUrl: links.checkoutUrl,
+        lines: links.lines.map((line) => ({
+          variantLegacyId: line.variantLegacyId,
+          quantity: line.quantity,
+        })),
+      };
+    }
+
+    return this.shopifyService.buildCartLinks(
+      cart.map((line) => ({
+        variantLegacyId: line.variantLegacyId,
+        quantity: line.quantity,
+      })),
+    );
   }
 
   private async syncRecoveryCart(

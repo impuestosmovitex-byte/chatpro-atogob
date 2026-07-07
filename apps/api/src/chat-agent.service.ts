@@ -1,4 +1,6 @@
 import { CartService } from './cart.service';
+import { CompanyCommerceService } from './company-commerce.service';
+import { type CompanyCommerceProduct } from './company-shopify.service';
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import {
@@ -50,6 +52,7 @@ export class ChatAgentService {
 
   constructor(
     private readonly cartService: CartService,
+    private readonly companyCommerceService: CompanyCommerceService,
     private readonly shopifyService: ShopifyService,
     private readonly supabaseService: SupabaseService,
     private readonly conversationMemoryService: ConversationMemoryService,
@@ -84,7 +87,7 @@ export class ChatAgentService {
           )
         : activeSession;
 
-    const collections = await this.shopifyService.getCollections();
+    const collections = await this.getCollectionsForSession(session);
     const recoveryContext = this.getActiveRecoveryContext(
       activeSession.context,
     );
@@ -802,7 +805,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       }
 
       if (name === 'search_products') {
-        return this.searchProducts(this.readString(args, 'query'));
+        return this.searchProducts(
+          session,
+          this.readString(args, 'query'),
+        );
       }
 
       if (name === 'select_product_by_url') {
@@ -929,6 +935,14 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     session: ConversationSession,
     collectionId: string,
   ) {
+    if (await this.usesCompanyCommerce(session)) {
+      return {
+        ok: false,
+        error:
+          'Las colecciones todavía no están disponibles para esta tienda. Busca el producto por nombre.',
+      };
+    }
+
     const collections = await this.shopifyService.getCollections();
 
     const collection =
@@ -962,7 +976,36 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     };
   }
 
-  private async searchProducts(query: string) {
+  private async searchProducts(
+    session: ConversationSession,
+    query: string,
+  ) {
+    if (await this.usesCompanyCommerce(session)) {
+      const products = await this.companyCommerceService.searchProducts(
+        session.companyId,
+        query,
+        8,
+      );
+
+      return {
+        ok: true,
+        query,
+        products: products.map((product) => ({
+          id: product.id,
+          title: product.title,
+          url: product.onlineStoreUrl,
+          image_url: product.imageUrl,
+          price_from_cop: this.getCompanyStartingPrice(product),
+          variants: product.variants.slice(0, 10).map((variant) => ({
+            id: variant.id,
+            title: variant.title,
+            price_cop: variant.price,
+            options: variant.options,
+          })),
+        })),
+      };
+    }
+
     const products = await this.shopifyService.searchCatalog(query, 8);
 
     return {
@@ -988,6 +1031,32 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     session: ConversationSession,
     url: string,
   ) {
+    if (await this.usesCompanyCommerce(session)) {
+      const handle = this.getHandleFromProductUrl(url);
+
+      if (!handle) {
+        return {
+          ok: false,
+          error: 'No encontré un enlace válido de producto.',
+        };
+      }
+
+      const product =
+        await this.companyCommerceService.getProductByHandle(
+          session.companyId,
+          handle,
+        );
+
+      if (!product) {
+        return {
+          ok: false,
+          error: 'No encontré un producto vendible en la tienda de esta empresa.',
+        };
+      }
+
+      return this.saveSelectedCompanyProduct(session, product);
+    }
+
     const product = await this.shopifyService.getProductFromUrl(url);
 
     if (!product) {
@@ -1004,6 +1073,34 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     session: ConversationSession,
     name: string,
   ) {
+    if (await this.usesCompanyCommerce(session)) {
+      const products = await this.companyCommerceService.searchProducts(
+        session.companyId,
+        name,
+        5,
+      );
+
+      const exactProduct =
+        products.find(
+          (product) =>
+            this.normalizeText(product.title) === this.normalizeText(name),
+        ) ?? null;
+
+      if (!exactProduct) {
+        return {
+          ok: false,
+          error:
+            'No encontré una coincidencia exacta. Pide el enlace del producto o más detalles.',
+          candidates: products.map((product) => ({
+            title: product.title,
+            url: product.onlineStoreUrl,
+          })),
+        };
+      }
+
+      return this.saveSelectedCompanyProduct(session, exactProduct);
+    }
+
     const products = await this.shopifyService.searchCatalog(name, 5);
 
     const exactProduct =
@@ -1065,6 +1162,26 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       };
     }
 
+    if (await this.usesCompanyCommerce(session)) {
+      const product =
+        await this.companyCommerceService.getProductByHandle(
+          session.companyId,
+          selectedProduct.handle,
+        );
+
+      if (!product) {
+        return {
+          ok: false,
+          error: 'El producto seleccionado ya no está disponible.',
+        };
+      }
+
+      return {
+        ok: true,
+        selected_product: this.companyProductSnapshot(product),
+      };
+    }
+
     const product = await this.shopifyService.getProductByHandle(
       selectedProduct.handle,
     );
@@ -1086,6 +1203,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     session: ConversationSession,
     selections: VariantSelectionRequest[],
   ) {
+    if (await this.usesCompanyCommerce(session)) {
+      return this.selectCompanyVariant(session, selections);
+    }
+
     const selectedProduct = this.readSelectedProduct(session.context);
 
     if (!selectedProduct) {
@@ -1216,6 +1337,250 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         quantity: variant.quantity,
       })),
     };
+  }
+
+  private async usesCompanyCommerce(
+    session: ConversationSession,
+  ): Promise<boolean> {
+    return this.companyCommerceService.isEnabled(session.companyId);
+  }
+
+  private async getCollectionsForSession(session: ConversationSession) {
+    if (await this.usesCompanyCommerce(session)) {
+      return [];
+    }
+
+    return this.shopifyService.getCollections();
+  }
+
+  private async saveSelectedCompanyProduct(
+    session: ConversationSession,
+    product: CompanyCommerceProduct,
+  ) {
+    await this.conversationMemoryService.updateSession(session.id, {
+      stage: 'product',
+      context: {
+        ...session.context,
+        selectedProduct: {
+          id: product.id,
+          handle: product.handle,
+          title: product.title,
+          url: product.onlineStoreUrl || '',
+        },
+        selectedVariant: null,
+        selectedVariants: [],
+        selectedAt: new Date().toISOString(),
+      },
+    });
+
+    return {
+      ok: true,
+      selected_product: this.companyProductSnapshot(product),
+    };
+  }
+
+  private async selectCompanyVariant(
+    session: ConversationSession,
+    selections: VariantSelectionRequest[],
+  ) {
+    const selectedProduct = this.readSelectedProduct(session.context);
+
+    if (!selectedProduct) {
+      return {
+        ok: false,
+        error: 'No hay producto seleccionado.',
+      };
+    }
+
+    if (!selections.length) {
+      return {
+        ok: false,
+        error: 'No se recibieron variantes para validar.',
+      };
+    }
+
+    const product =
+      await this.companyCommerceService.getProductByHandle(
+        session.companyId,
+        selectedProduct.handle,
+      );
+
+    if (!product) {
+      return {
+        ok: false,
+        error: 'El producto seleccionado ya no está disponible.',
+      };
+    }
+
+    const resolved = new Map<string, SelectedVariantSelection>();
+
+    for (const selection of selections) {
+      const values = selection.optionValues
+        .map((value) => this.normalizeText(value))
+        .filter(Boolean);
+
+      if (!values.length) {
+        return {
+          ok: false,
+          error: 'Falta color, talla o medida para validar una variante.',
+          product: this.companyProductSnapshot(product),
+        };
+      }
+
+      const matches = product.variants.filter((variant) =>
+        values.every((value) =>
+          variant.options.some(
+            (option) => this.normalizeText(option.value) === value,
+          ),
+        ),
+      );
+
+      if (!matches.length) {
+        return {
+          ok: false,
+          error: 'No existe una variante con esas opciones.',
+          product: this.companyProductSnapshot(product),
+        };
+      }
+
+      if (matches.length > 1) {
+        return {
+          ok: false,
+          error: 'Todavía faltan opciones para elegir una variante única.',
+          matching_variants: matches.slice(0, 10).map((variant) => ({
+            id: variant.id,
+            title: variant.title,
+            price_cop: variant.price,
+            options: variant.options,
+          })),
+        };
+      }
+
+      const variant = matches[0];
+      const existing = resolved.get(variant.id);
+
+      if (existing) {
+        existing.quantity += selection.quantity;
+        continue;
+      }
+
+      resolved.set(variant.id, {
+        id: variant.id,
+        legacyResourceId: variant.legacyResourceId,
+        title: variant.title,
+        price: variant.price,
+        options: variant.options.map((option) => ({ ...option })),
+        quantity: selection.quantity,
+      });
+    }
+
+    const selectedVariants = Array.from(resolved.values());
+
+    if (!selectedVariants.length) {
+      return {
+        ok: false,
+        error: 'No se encontró una variante válida.',
+      };
+    }
+
+    const first = selectedVariants[0];
+
+    await this.conversationMemoryService.updateSession(session.id, {
+      stage: 'variant',
+      context: {
+        ...session.context,
+        selectedVariant: {
+          id: first.id,
+          legacyResourceId: first.legacyResourceId,
+          title: first.title,
+          price: first.price,
+          options: first.options,
+        },
+        selectedVariants,
+        selectedVariantAt: new Date().toISOString(),
+      },
+    });
+
+    return {
+      ok: true,
+      selected_variants: selectedVariants.map((variant) => ({
+        id: variant.id,
+        legacy_resource_id: variant.legacyResourceId,
+        title: variant.title,
+        price_cop: variant.price,
+        options: variant.options,
+        quantity: variant.quantity,
+      })),
+    };
+  }
+
+  private companyProductSnapshot(product: CompanyCommerceProduct) {
+    const optionMap = new Map<string, Set<string>>();
+
+    for (const variant of product.variants) {
+      for (const option of variant.options) {
+        if (!optionMap.has(option.name)) {
+          optionMap.set(option.name, new Set<string>());
+        }
+
+        optionMap.get(option.name)?.add(option.value);
+      }
+    }
+
+    return {
+      id: product.id,
+      title: product.title,
+      url: product.onlineStoreUrl,
+      image_url: product.imageUrl,
+      price_from_cop: this.getCompanyStartingPrice(product),
+      options: Array.from(optionMap.entries()).map(([name, values]) => ({
+        name,
+        values: Array.from(values),
+      })),
+      variants: product.variants.slice(0, 30).map((variant) => ({
+        id: variant.id,
+        title: variant.title,
+        price_cop: variant.price,
+        options: variant.options,
+      })),
+    };
+  }
+
+  private getCompanyStartingPrice(
+    product: CompanyCommerceProduct,
+  ): string | null {
+    const prices = product.variants
+      .map((variant) => Number(variant.price))
+      .filter((price) => Number.isFinite(price));
+
+    if (!prices.length) {
+      return null;
+    }
+
+    return Math.min(...prices).toFixed(2);
+  }
+
+  private getHandleFromProductUrl(value: string): string {
+    const raw = value.trim();
+
+    if (!raw) {
+      return '';
+    }
+
+    try {
+      const url = new URL(raw);
+      const match = url.pathname.match(/\/products\/([^/?#]+)/i);
+
+      return match
+        ? decodeURIComponent(match[1]).trim().toLowerCase()
+        : '';
+    } catch {
+      const match = raw.match(/\/products\/([^/?#]+)/i);
+
+      return match
+        ? decodeURIComponent(match[1]).trim().toLowerCase()
+        : '';
+    }
   }
 
   private async getRecentMessages(sessionId: string) {

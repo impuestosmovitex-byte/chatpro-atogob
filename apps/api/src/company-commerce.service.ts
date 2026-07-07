@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { CompanyIntegrationService } from './company-integration.service';
 import {
   CompanyShopifyService,
   type CompanyCommerceCartLineInput,
@@ -8,7 +9,19 @@ import {
 export class CompanyCommerceService {
   constructor(
     private readonly companyShopifyService: CompanyShopifyService,
+    private readonly companyIntegrationService: CompanyIntegrationService,
   ) {}
+
+  async isEnabled(companyId: string): Promise<boolean> {
+    const integration =
+      await this.companyIntegrationService.getActiveIntegration(
+        companyId,
+        'shopify',
+        'store',
+      );
+
+    return integration?.credentialMode === 'encrypted';
+  }
 
   async searchProducts(
     companyId: string,
