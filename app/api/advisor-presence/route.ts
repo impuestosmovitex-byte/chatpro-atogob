@@ -39,8 +39,7 @@ async function forward(response: Response) {
 export async function GET(request: NextRequest) {
   const session = await sessionFor(request);
   if (!session) return forbidden();
-  const company = request.nextUrl.searchParams.get('company')?.trim().toLowerCase() ?? '';
-  if (!company || company !== session.companySlug) return NextResponse.json({ ok:false,error:'Empresa no válida.' },{status:400});
+  const company = session.companySlug;
   try {
     const { apiBase, inboxKey } = config();
     const target = new URL(`${apiBase}/advisor-presence`);
@@ -54,8 +53,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const session = await sessionFor(request);
   if (!session) return forbidden();
-  const company = request.nextUrl.searchParams.get('company')?.trim().toLowerCase() ?? '';
-  if (!company || company !== session.companySlug) return NextResponse.json({ ok:false,error:'Empresa no válida.' },{status:400});
+  const company = session.companySlug;
   try {
     const { apiBase, inboxKey } = config();
     const target = new URL(`${apiBase}/advisor-presence`);
