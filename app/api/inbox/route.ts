@@ -115,6 +115,38 @@ export async function POST(request: NextRequest) {
     const sessionId = text(body.sessionId);
     const action = text(body.action);
 
+    const internalTestAction =
+      action === 'internal_test_start'
+        ? 'start'
+        : action === 'internal_test_message'
+          ? 'message'
+          : '';
+
+    if (internalTestAction) {
+      if (internalTestAction === 'message' && !sessionId) {
+        return NextResponse.json({ ok: false, error: 'Falta la conversación de prueba.' }, { status: 400 });
+      }
+
+      const target = new URL(`${apiBase}/inbox/internal-test`);
+      target.searchParams.set('company', company);
+
+      const response = await fetch(target, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...trustedHeaders(inboxKey, session),
+        },
+        body: JSON.stringify({
+          action: internalTestAction,
+          sessionId,
+          message: text(body.message),
+        }),
+        cache: 'no-store',
+      });
+
+      return proxyResponse(response);
+    }
+
     if (!sessionId) {
       return NextResponse.json({ ok: false, error: 'Falta la conversación.' }, { status: 400 });
     }

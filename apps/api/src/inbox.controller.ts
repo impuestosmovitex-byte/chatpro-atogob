@@ -1,21 +1,28 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, HttpCode, Param, Post, Query, UnauthorizedException } from '@nestjs/common';
+import { ChatAgentService } from './chat-agent.service';
 import { ConversationMemoryService, type ConversationSession, type InboxSessionSummary } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
-type InboxBody = { message?: unknown };
+type InboxBody = { message?: unknown; action?: unknown; sessionId?: unknown };
+const INTERNAL_TEST_PHONE = '000000000000000';
 type Actor = { userId:string; fullName:string; permissions:Set<string>; isFullAccess:boolean };
 
 @Controller('inbox')
 export class InboxController {
-  constructor(private readonly conversationMemoryService: ConversationMemoryService, private readonly supabaseService: SupabaseService, private readonly whatsappMessagingService: WhatsappMessagingService) {}
+  constructor(
+    private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly supabaseService: SupabaseService,
+    private readonly whatsappMessagingService: WhatsappMessagingService,
+    private readonly chatAgentService: ChatAgentService,
+  ) {}
 
   @Get()
   async list(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Query('status') status='all', @Query('limit') limit='60') {
     this.authorize(key);
     const payload=await this.conversationMemoryService.listInboxSessions(this.requiredCompany(company),status,Number(limit));
     const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,payload.company.id);
-    return {ok:true,...payload,sessions:payload.sessions.filter(session=>this.canView(actor,session))};
+    return {ok:true,...payload,sessions:payload.sessions.filter(session=>!this.isInternalTestSession(session)&&this.canView(actor,session))};
   }
 
   @Get(':sessionId')
@@ -25,6 +32,169 @@ export class InboxController {
     const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
     this.assertView(actor,conversation.session);
     return {ok:true,...conversation};
+  }
+
+  @Post('internal-test') @HttpCode(200)
+  async internalTest(
+    @Headers('x-chatpro-inbox-key') key='',
+    @Headers('x-chatpro-session-type') sessionType='',
+    @Headers('x-chatpro-user-id') userId='',
+    @Headers('x-chatpro-user-name') fullName='',
+    @Headers('x-chatpro-company-id') headerCompanyId='',
+    @Headers('x-chatpro-role-key') roleKey='',
+    @Query('company') company='',
+    @Body() body: InboxBody={},
+  ) {
+    this.authorize(key);
+
+    const profile = await this.conversationMemoryService.getCompanyProfile(
+      this.requiredCompany(company),
+    );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      profile.id,
+    );
+
+    if (!actor.isFullAccess) {
+      throw new ForbiddenException(
+        'Solo un propietario o administrador puede probar el agente.',
+      );
+    }
+
+    const action = this.readText(body.action);
+
+    if (action === 'start') {
+      const created =
+        await this.conversationMemoryService.getOrCreateSessionByCompanyId(
+          profile.id,
+          INTERNAL_TEST_PHONE,
+        );
+
+      const client = this.supabaseService.getClient();
+      const { error: messagesError } = await client
+        .from('conversations')
+        .delete()
+        .eq('session_id', created.id);
+
+      if (messagesError) {
+        throw new BadRequestException(
+          `No se pudo reiniciar la prueba: ${messagesError.message}`,
+        );
+      }
+
+      const { error: contactError } = await client
+        .from('contacts')
+        .delete()
+        .eq('company_id', profile.id)
+        .eq('phone', INTERNAL_TEST_PHONE);
+
+      if (contactError) {
+        throw new BadRequestException(
+          `No se pudo preparar la prueba: ${contactError.message}`,
+        );
+      }
+
+      await this.conversationMemoryService.resumeAiConversation(created.id);
+
+      const session = await this.conversationMemoryService.updateSession(
+        created.id,
+        {
+          stage: 'active',
+          context: {
+            internal_test: true,
+            internal_test_started_at: new Date().toISOString(),
+          },
+        },
+      );
+
+      return {
+        ok: true,
+        internal_test: true,
+        conversation:
+          await this.conversationMemoryService.getInboxConversation(
+            profile.slug,
+            session.id,
+          ),
+      };
+    }
+
+    if (action !== 'message') {
+      throw new BadRequestException('Acción de prueba no válida.');
+    }
+
+    const sessionId = this.readText(body.sessionId);
+    const message = this.readText(body.message);
+
+    if (!sessionId || !message) {
+      throw new BadRequestException('Escribe un mensaje para probar el agente.');
+    }
+
+    const current =
+      await this.conversationMemoryService.getInboxConversation(
+        profile.slug,
+        sessionId,
+      );
+
+    if (!this.isInternalTestSession(current.session)) {
+      throw new ForbiddenException(
+        'Esta no es una conversación interna de prueba.',
+      );
+    }
+
+    let session = current.session;
+
+    if (session.attentionStatus !== 'ai') {
+      session = await this.conversationMemoryService.resumeAiConversation(
+        session.id,
+      );
+    }
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: profile.id,
+      sessionId: session.id,
+      customerPhone: INTERNAL_TEST_PHONE,
+      message,
+      sender: 'customer',
+      authorType: 'customer',
+    });
+
+    session = await this.conversationMemoryService.updateSession(session.id, {
+      context: session.context,
+    });
+
+    const reply = await this.chatAgentService.reply(profile, session, message);
+
+    const afterAgent = await this.conversationMemoryService.getSessionById(
+      session.id,
+    );
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: profile.id,
+      sessionId: afterAgent.id,
+      customerPhone: INTERNAL_TEST_PHONE,
+      message: reply,
+      sender: 'assistant',
+      authorType: 'ai',
+      aiResponse: reply,
+    });
+
+    await this.conversationMemoryService.updateSession(afterAgent.id, {
+      context: afterAgent.context,
+    });
+
+    return {
+      ok: true,
+      internal_test: true,
+      conversation:
+        await this.conversationMemoryService.getInboxConversation(
+          profile.slug,
+          afterAgent.id,
+        ),
+    };
   }
 
   @Post(':sessionId/take') @HttpCode(200)
@@ -147,6 +317,7 @@ export class InboxController {
     };
   }
 
+  private isInternalTestSession(session:ConversationSession|InboxSessionSummary){return session.customerPhone===INTERNAL_TEST_PHONE;}
   private canView(actor:Actor,session:ConversationSession|InboxSessionSummary){
     if(actor.isFullAccess)return true;
     if(actor.permissions.has('inbox.view_own')&&session.assignedToUserId===actor.userId)return true;

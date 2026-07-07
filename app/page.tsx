@@ -153,6 +153,7 @@ export default function Home() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [internalTestLoading, setInternalTestLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function loadIdentityAndPresence() {
@@ -301,6 +302,81 @@ export default function Home() {
     }
   }
 
+  async function startInternalTest() {
+    setInternalTestLoading(true);
+
+    try {
+      const response = await fetch("/api/inbox", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          company: COMPANY,
+          action: "internal_test_start",
+        }),
+      });
+      const data = (await readJson(response)) as ApiConversation;
+
+      if (!response.ok || !data.ok || !data.conversation) {
+        throw new Error(data.error || "No se pudo iniciar la prueba del agente.");
+      }
+
+      setSelected(data.conversation);
+      setMessage("");
+      setQuickReplyOpen(false);
+      setError("");
+      await loadList(false);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo iniciar la prueba del agente.",
+      );
+    } finally {
+      setInternalTestLoading(false);
+    }
+  }
+
+  async function sendInternalTestMessage(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    if (!selected || !message.trim()) return;
+
+    setInternalTestLoading(true);
+
+    try {
+      const response = await fetch("/api/inbox", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          company: COMPANY,
+          action: "internal_test_message",
+          sessionId: selected.session.id,
+          message,
+        }),
+      });
+      const data = (await readJson(response)) as ApiConversation;
+
+      if (!response.ok || !data.ok || !data.conversation) {
+        throw new Error(data.error || "No se pudo enviar el mensaje de prueba.");
+      }
+
+      setSelected(data.conversation);
+      setMessage("");
+      setQuickReplyOpen(false);
+      setError("");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo enviar el mensaje de prueba.",
+      );
+    } finally {
+      setInternalTestLoading(false);
+    }
+  }
+
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -323,6 +399,10 @@ export default function Home() {
 
     return () => window.clearInterval(timer);
   }, [filter]);
+
+  const isInternalTest = Boolean(
+    selected?.session.context?.internal_test === true,
+  );
 
   const cartLines = useMemo(
     () => (selected ? getCart(selected.session.context) : []),
@@ -405,6 +485,14 @@ export default function Home() {
           <button className="channel-tab active" type="button">
             <span className="whatsapp-icon">◔</span> WhatsApp
           </button>
+          <button
+            className="channel-tab"
+            type="button"
+            onClick={() => void startInternalTest()}
+            disabled={internalTestLoading}
+          >
+            {internalTestLoading ? "Preparando prueba…" : "Probar agente"}
+          </button>
           <button className="channel-tab" type="button" disabled>
             Instagram <small>Próximamente</small>
           </button>
@@ -478,15 +566,32 @@ export default function Home() {
               <>
                 <header className="chat-header">
                   <div>
-                    <p className="eyebrow">WhatsApp</p>
-                    <h2>{customerLabel(selected.session.customerPhone, selected.contact)}</h2>
+                    <p className="eyebrow">
+                      {isInternalTest ? "Prueba interna · no envía WhatsApp" : "WhatsApp"}
+                    </p>
+                    <h2>
+                      {isInternalTest
+                        ? `Probar a ${selected.company.name}`
+                        : customerLabel(selected.session.customerPhone, selected.contact)}
+                    </h2>
                     <p className="chat-subtitle">
-                      {statusLabel[selected.session.attentionStatus]}
-                      {selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}
+                      {isInternalTest
+                        ? "Conversación real con el agente y las integraciones de esta empresa."
+                        : `${statusLabel[selected.session.attentionStatus]}${selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}`}
                     </p>
                   </div>
                   <div className="chat-actions">
-                    {selected.session.attentionStatus !== "closed" ? (
+                    {isInternalTest ? (
+                      <button
+                        className="button quiet"
+                        type="button"
+                        disabled={internalTestLoading}
+                        onClick={() => void startInternalTest()}
+                      >
+                        {internalTestLoading ? "Reiniciando…" : "Nueva prueba"}
+                      </button>
+                    ) : null}
+                    {!isInternalTest && selected.session.attentionStatus !== "closed" ? (
                       <button
                         className="button primary"
                         type="button"
@@ -496,7 +601,7 @@ export default function Home() {
                         {actionLoading ? "Tomando…" : "Tomar conversación"}
                       </button>
                     ) : null}
-                    {selected.session.attentionStatus === "human" ? (
+                    {!isInternalTest && selected.session.attentionStatus === "human" ? (
                       <>
                         <button
                           className="button quiet"
@@ -516,7 +621,7 @@ export default function Home() {
                         </button>
                       </>
                     ) : null}
-                    {selected.session.attentionStatus === "closed" ? (
+                    {!isInternalTest && selected.session.attentionStatus === "closed" ? (
                       <span className="history-badge">En historial</span>
                     ) : null}
                   </div>
@@ -524,7 +629,13 @@ export default function Home() {
 
                 <div className="message-feed" ref={messageFeedRef}>
                   {loadingChat ? <p className="feed-loading">Abriendo historial…</p> : null}
-                  {!loadingChat && !selected.messages.length ? <p className="feed-loading">No hay mensajes todavía.</p> : null}
+                  {!loadingChat && !selected.messages.length ? (
+                    <p className="feed-loading">
+                      {isInternalTest
+                        ? "Escribe como cliente para probar a Sofía. Esta prueba no envía mensajes por WhatsApp."
+                        : "No hay mensajes todavía."}
+                    </p>
+                  ) : null}
                   {selected.messages.map((item) => (
                     <div key={item.id ?? `${item.sessionId}-${item.createdAt}-${item.message}`} className={`message-row ${item.authorType}`}>
                       <div className="message-bubble">
@@ -538,7 +649,26 @@ export default function Home() {
                   ))}
                 </div>
 
-                {selected.session.attentionStatus === "human" ? (
+                {isInternalTest ? (
+                  <form className="reply-box" onSubmit={sendInternalTestMessage}>
+                    <textarea
+                      value={message}
+                      onChange={(event) => {
+                        setMessage(event.target.value);
+                        setQuickReplyOpen(false);
+                      }}
+                      placeholder="Escribe como cliente para probar a Sofía…"
+                      rows={3}
+                    />
+                    <button
+                      className="button primary"
+                      type="submit"
+                      disabled={internalTestLoading || !message.trim()}
+                    >
+                      {internalTestLoading ? "Probando…" : "Enviar a Sofía"}
+                    </button>
+                  </form>
+                ) : selected.session.attentionStatus === "human" ? (
                   <form className="reply-box" onSubmit={sendMessage}>
                     <div className="quick-reply-wrap">
                       <textarea
