@@ -72,14 +72,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const { apiBase, inboxKey } = config();
-    const company = request.nextUrl.searchParams.get('company')?.trim() ?? '';
+    const company = session.companySlug;
     const sessionId = request.nextUrl.searchParams.get('sessionId')?.trim() ?? '';
     const status = request.nextUrl.searchParams.get('status')?.trim() ?? 'all';
     const limit = request.nextUrl.searchParams.get('limit')?.trim() ?? '60';
-
-    if (!company) {
-      return NextResponse.json({ ok: false, error: 'Falta la empresa.' }, { status: 400 });
-    }
 
     const target = new URL(
       sessionId ? `${apiBase}/inbox/${encodeURIComponent(sessionId)}` : `${apiBase}/inbox`,
@@ -115,12 +111,12 @@ export async function POST(request: NextRequest) {
   try {
     const { apiBase, inboxKey } = config();
     const body = (await request.json()) as InboxRequestBody;
-    const company = text(body.company);
+    const company = session.companySlug;
     const sessionId = text(body.sessionId);
     const action = text(body.action);
 
-    if (!company || !sessionId) {
-      return NextResponse.json({ ok: false, error: 'Falta conversación o empresa.' }, { status: 400 });
+    if (!sessionId) {
+      return NextResponse.json({ ok: false, error: 'Falta la conversación.' }, { status: 400 });
     }
 
     const suffix =
