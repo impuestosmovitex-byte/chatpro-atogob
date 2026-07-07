@@ -269,7 +269,7 @@ export type CompanyCommerceProduct = {
   handle: string;
   status: string;
   publishedAt: string;
-  onlineStoreUrl: string;
+  onlineStoreUrl: string | null;
   imageUrl: string | null;
   imageAlt: string | null;
   variants: Array<{
@@ -1012,9 +1012,9 @@ async searchCommerceProducts(
       const product = variant.product;
       const active = product.status.toUpperCase() === 'ACTIVE';
       const published = Boolean(product.publishedAt);
-      const productUrl = product.onlineStoreUrl;
+      const productUrl = product.onlineStoreUrl || '';
 
-      if (!active || !published || !productUrl) {
+      if (!active || !published) {
         throw new Error(
           `El producto "${product.title}" ya no está disponible para vender en la tienda online.`,
         );
@@ -1078,7 +1078,7 @@ async searchCommerceProducts(
     const publishedAt = product.publishedAt || null;
     const onlineStoreUrl = product.onlineStoreUrl || null;
 
-    if (status !== 'ACTIVE' || !publishedAt || !onlineStoreUrl) {
+    if (status !== 'ACTIVE' || !publishedAt) {
       return null;
     }
 
