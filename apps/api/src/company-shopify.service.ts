@@ -216,6 +216,93 @@ export type CompanyShopifyCatalogDiagnostics = {
   }>;
 };
 
+type ShopifyCommerceVariantNode = {
+  id: string;
+  legacyResourceId: string;
+  title: string;
+  sku: string | null;
+  price: string;
+  availableForSale: boolean;
+  inventoryQuantity: number | null;
+  inventoryPolicy: string;
+  inventoryItem: {
+    tracked: boolean;
+  };
+  selectedOptions: Array<{ name: string; value: string }>;
+};
+
+type ShopifyCommerceProductNode = {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  publishedAt: string | null;
+  onlineStoreUrl: string | null;
+  featuredImage: {
+    url: string;
+    altText: string | null;
+  } | null;
+  variants: {
+    edges: Array<{ node: ShopifyCommerceVariantNode }>;
+  };
+};
+
+type ShopifyCommerceVariantWithProduct = ShopifyCommerceVariantNode & {
+  product: {
+    id: string;
+    title: string;
+    handle: string;
+    status: string;
+    publishedAt: string | null;
+    onlineStoreUrl: string | null;
+  };
+};
+
+export type CompanyCommerceCartLineInput = {
+  variantId: string;
+  quantity: number;
+};
+
+export type CompanyCommerceProduct = {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  publishedAt: string;
+  onlineStoreUrl: string;
+  imageUrl: string | null;
+  imageAlt: string | null;
+  variants: Array<{
+    id: string;
+    legacyResourceId: string;
+    title: string;
+    sku: string | null;
+    price: string;
+    inventoryQuantity: number | null;
+    inventoryPolicy: string;
+    tracked: boolean;
+    options: Array<{ name: string; value: string }>;
+  }>;
+};
+
+export type CompanyCommerceCartLinks = {
+  cartUrl: string;
+  checkoutUrl: string;
+  lines: Array<{
+    productId: string;
+    productTitle: string;
+    productHandle: string;
+    productUrl: string;
+    variantId: string;
+    variantLegacyId: string;
+    variantTitle: string;
+    sku: string | null;
+    unitPrice: string;
+    options: Array<{ name: string; value: string }>;
+    quantity: number;
+  }>;
+};
+
 @Injectable()
 export class CompanyShopifyService {
   constructor(
@@ -717,6 +804,365 @@ export class CompanyShopifyService {
     };
   }
 
+
+async searchCommerceProducts(
+    companyId: string,
+    searchText = '',
+    limit = 8,
+  ): Promise<CompanyCommerceProduct[]> {
+    const query = [
+      'status:active',
+      this.normalizeProductSearch(searchText),
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const data = await this.graphql<{
+      products: {
+        edges: Array<{ node: ShopifyCommerceProductNode }>;
+      };
+    }>(
+      companyId,
+      `
+        query ChatProCommerceSearch($first: Int!, $query: String!) {
+          products(first: $first, query: $query, sortKey: RELEVANCE) {
+            edges {
+              node {
+                id
+                title
+                handle
+                status
+                publishedAt
+                onlineStoreUrl
+                featuredImage {
+                  url
+                  altText
+                }
+                variants(first: 100) {
+                  edges {
+                    node {
+                      id
+                      legacyResourceId
+                      title
+                      sku
+                      price
+                      availableForSale
+                      inventoryQuantity
+                      inventoryPolicy
+                      inventoryItem {
+                        tracked
+                      }
+                      selectedOptions {
+                        name
+                        value
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      {
+        first: Math.min(Math.max(limit, 1), 10),
+        query,
+      },
+    );
+
+    return data.products.edges
+      .map(({ node }) => this.toCommerceProduct(node))
+      .filter(
+        (product): product is CompanyCommerceProduct => product !== null,
+      );
+  }
+
+  async getCommerceProductByHandle(
+    companyId: string,
+    handle: string,
+  ): Promise<CompanyCommerceProduct | null> {
+    const cleanHandle = this.text(handle).toLowerCase();
+
+    if (!cleanHandle) {
+      return null;
+    }
+
+    const data = await this.graphql<{
+      productByHandle: ShopifyCommerceProductNode | null;
+    }>(
+      companyId,
+      `
+        query ChatProCommerceProduct($handle: String!) {
+          productByHandle(handle: $handle) {
+            id
+            title
+            handle
+            status
+            publishedAt
+            onlineStoreUrl
+            featuredImage {
+              url
+              altText
+            }
+            variants(first: 100) {
+              edges {
+                node {
+                  id
+                  legacyResourceId
+                  title
+                  sku
+                  price
+                  availableForSale
+                  inventoryQuantity
+                  inventoryPolicy
+                  inventoryItem {
+                    tracked
+                  }
+                  selectedOptions {
+                    name
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      { handle: cleanHandle },
+    );
+
+    return data.productByHandle
+      ? this.toCommerceProduct(data.productByHandle)
+      : null;
+  }
+
+  async buildCommerceCartLinks(
+    companyId: string,
+    requestedLines: CompanyCommerceCartLineInput[],
+  ): Promise<CompanyCommerceCartLinks> {
+    const lines = this.normalizeCommerceCartLines(requestedLines);
+
+    const data = await this.graphql<{
+      nodes: Array<ShopifyCommerceVariantWithProduct | null>;
+      shop: {
+        primaryDomain: {
+          url: string;
+        };
+      };
+    }>(
+      companyId,
+      `
+        query ChatProCommerceCartValidation($ids: [ID!]!) {
+          nodes(ids: $ids) {
+            ... on ProductVariant {
+              id
+              legacyResourceId
+              title
+              sku
+              price
+              availableForSale
+              inventoryQuantity
+              inventoryPolicy
+              inventoryItem {
+                tracked
+              }
+              selectedOptions {
+                name
+                value
+              }
+              product {
+                id
+                title
+                handle
+                status
+                publishedAt
+                onlineStoreUrl
+              }
+            }
+          }
+          shop {
+            primaryDomain {
+              url
+            }
+          }
+        }
+      `,
+      {
+        ids: lines.map((line) => line.variantId),
+      },
+    );
+
+    const variants = new Map(
+      data.nodes
+        .filter(
+          (node): node is ShopifyCommerceVariantWithProduct => Boolean(node),
+        )
+        .map((node) => [node.id, node]),
+    );
+
+    const validatedLines = lines.map((line) => {
+      const variant = variants.get(line.variantId);
+
+      if (!variant) {
+        throw new Error(
+          'Una variante del carrito ya no existe en la tienda de esta empresa.',
+        );
+      }
+
+      const product = variant.product;
+      const active = product.status.toUpperCase() === 'ACTIVE';
+      const published = Boolean(product.publishedAt);
+      const productUrl = product.onlineStoreUrl;
+
+      if (!active || !published || !productUrl) {
+        throw new Error(
+          `El producto "${product.title}" ya no está disponible para vender en la tienda online.`,
+        );
+      }
+
+      if (!variant.availableForSale) {
+        throw new Error(
+          `La variante "${variant.title}" ya no está disponible para vender.`,
+        );
+      }
+
+      const availableQuantity = Math.max(
+        variant.inventoryQuantity ?? 0,
+        0,
+      );
+
+      if (
+        variant.inventoryItem.tracked &&
+        variant.inventoryPolicy !== 'CONTINUE' &&
+        line.quantity > availableQuantity
+      ) {
+        throw new Error(
+          `No hay inventario suficiente para la variante "${variant.title}".`,
+        );
+      }
+
+      return {
+        productId: product.id,
+        productTitle: product.title,
+        productHandle: product.handle,
+        productUrl,
+        variantId: variant.id,
+        variantLegacyId: variant.legacyResourceId,
+        variantTitle: variant.title,
+        sku: variant.sku,
+        unitPrice: variant.price,
+        options: variant.selectedOptions.map((option) => ({ ...option })),
+        quantity: line.quantity,
+      };
+    });
+
+    const storeUrl = this.normalizeCommerceStoreUrl(
+      data.shop.primaryDomain.url,
+    );
+
+    const cartPath = validatedLines
+      .map((line) => `${line.variantLegacyId}:${line.quantity}`)
+      .join(',');
+
+    return {
+      cartUrl: `${storeUrl}/cart/${cartPath}?storefront=true`,
+      checkoutUrl: `${storeUrl}/cart/${cartPath}`,
+      lines: validatedLines,
+    };
+  }
+
+  private toCommerceProduct(
+    product: ShopifyCommerceProductNode,
+  ): CompanyCommerceProduct | null {
+    const status = this.text(product.status).toUpperCase();
+    const publishedAt = product.publishedAt || null;
+    const onlineStoreUrl = product.onlineStoreUrl || null;
+
+    if (status !== 'ACTIVE' || !publishedAt || !onlineStoreUrl) {
+      return null;
+    }
+
+    const variants = product.variants.edges
+      .map(({ node }) => node)
+      .filter((variant) => variant.availableForSale)
+      .map((variant) => ({
+        id: variant.id,
+        legacyResourceId: variant.legacyResourceId,
+        title: variant.title,
+        sku: variant.sku,
+        price: variant.price,
+        inventoryQuantity: variant.inventoryQuantity,
+        inventoryPolicy: variant.inventoryPolicy,
+        tracked: variant.inventoryItem.tracked,
+        options: variant.selectedOptions.map((option) => ({ ...option })),
+      }));
+
+    if (!variants.length) {
+      return null;
+    }
+
+    return {
+      id: product.id,
+      title: product.title,
+      handle: product.handle,
+      status,
+      publishedAt,
+      onlineStoreUrl,
+      imageUrl: product.featuredImage?.url || null,
+      imageAlt: product.featuredImage?.altText || null,
+      variants,
+    };
+  }
+
+  private normalizeCommerceCartLines(
+    lines: CompanyCommerceCartLineInput[],
+  ): CompanyCommerceCartLineInput[] {
+    if (!Array.isArray(lines) || !lines.length) {
+      throw new Error('No hay productos para agregar al carrito.');
+    }
+
+    const merged = new Map<string, number>();
+
+    for (const line of lines) {
+      const variantId = this.text(line?.variantId);
+      const quantity = Number(line?.quantity);
+
+      if (!variantId.startsWith('gid://shopify/ProductVariant/')) {
+        throw new Error('La variante no tiene un identificador Shopify válido.');
+      }
+
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        throw new Error(
+          'La cantidad debe ser un número entero mayor a cero.',
+        );
+      }
+
+      merged.set(variantId, (merged.get(variantId) || 0) + quantity);
+    }
+
+    return Array.from(merged.entries()).map(([variantId, quantity]) => ({
+      variantId,
+      quantity,
+    }));
+  }
+
+  private normalizeCommerceStoreUrl(value: string): string {
+    const raw = this.text(value);
+
+    if (!raw) {
+      throw new Error('Shopify no devolvió el dominio de la tienda.');
+    }
+
+    try {
+      const url = new URL(
+        /^https?:\/\//i.test(raw) ? raw : `https://${raw}`,
+      );
+
+      return url.origin;
+    } catch {
+      throw new Error('El dominio Shopify de la empresa no es válido.');
+    }
+  }
 
   private async graphql<T>(
     companyId: string,
