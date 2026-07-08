@@ -14,6 +14,7 @@ import { CompanyIntegrationService } from './company-integration.service';
 import { CompanyShopifyService } from './company-shopify.service';
 import { CompanyCommerceService } from './company-commerce.service';
 import { CompanyProductsController } from './company-products.controller';
+import { CompanyStorefrontController } from './company-storefront.controller';
 import { CompanySettingsController } from './company-settings.controller';
 import { CompanyProfileController } from './company-profile.controller';
 import { ConversationMemoryService } from './conversation-memory.service';
@@ -51,6 +52,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     CompanySettingsController,
     CompanyProfileController,
     CompanyProductsController,
+    CompanyStorefrontController,
     UsersController,
     RolesController,
     QuickRepliesController,

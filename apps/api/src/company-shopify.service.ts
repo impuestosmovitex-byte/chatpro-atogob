@@ -396,6 +396,29 @@ export class CompanyShopifyService {
   }
 
 
+  async getStorefrontUrl(companyId: string): Promise<string> {
+    const data = await this.graphql<{
+      shop: {
+        primaryDomain: {
+          url: string;
+        };
+      };
+    }>(
+      companyId,
+      `
+        query ChatProCompanyStorefront {
+          shop {
+            primaryDomain {
+              url
+            }
+          }
+        }
+      `,
+    );
+
+    return this.normalizeCommerceStoreUrl(data.shop.primaryDomain.url);
+  }
+
   async listCommerceCollections(
     companyId: string,
     limit = 100,

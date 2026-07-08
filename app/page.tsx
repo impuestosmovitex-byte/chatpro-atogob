@@ -52,14 +52,10 @@ type QuickReply = {
   isActive: boolean;
 };
 
-type StorefrontProduct = {
-  onlineStoreUrl: string | null;
-};
-
 type StorefrontResponse = {
   ok?: boolean;
   error?: string;
-  products?: StorefrontProduct[];
+  storefrontUrl?: string;
 };
 
 type AdvisorStatus = "available" | "busy" | "away" | "offline";
@@ -146,16 +142,6 @@ function getCart(context: Record<string, unknown>) {
     (line): line is Record<string, unknown> =>
       Boolean(line) && typeof line === "object" && !Array.isArray(line),
   );
-}
-
-function storefrontOrigin(value: string | null | undefined) {
-  if (!value) return "";
-
-  try {
-    return new URL(value).origin;
-  } catch {
-    return "";
-  }
 }
 
 export default function Home() {
@@ -533,28 +519,17 @@ export default function Home() {
     setStorefrontError("");
 
     try {
-      const params = new URLSearchParams({
-        status: "active",
-        limit: "1",
-      });
-      const response = await fetch(`/api/products?${params.toString()}`, {
+      const response = await fetch("/api/storefront", {
         cache: "no-store",
       });
       const data = (await readJson(response)) as StorefrontResponse;
-
-      if (!response.ok || !data.ok || !data.products) {
-        throw new Error(data.error || "No se pudo abrir la tienda conectada.");
-      }
-
       const url =
-        data.products
-          .map((product) => storefrontOrigin(product.onlineStoreUrl))
-          .find(Boolean) || "";
+        typeof data.storefrontUrl === "string"
+          ? data.storefrontUrl.trim()
+          : "";
 
-      if (!url) {
-        throw new Error(
-          "No encontré una URL pública de tienda. Revisa que Shopify tenga productos activos y publicados.",
-        );
+      if (!response.ok || !data.ok || !url) {
+        throw new Error(data.error || "No se pudo abrir la tienda conectada.");
       }
 
       setStorefrontUrl(url);
