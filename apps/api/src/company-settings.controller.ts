@@ -1,3 +1,4 @@
+
 import {
   BadRequestException,
   Body,
@@ -13,14 +14,44 @@ import {
   type CompanyProfile,
 } from './conversation-memory.service';
 
+type CommercialFlow = {
+  welcomeMessage: string;
+  salesInstructions: string;
+  shippingInstructions: string;
+  paymentInstructions: string;
+  checkoutInstructions: string;
+};
+
 type SettingsBody = {
   assistantName?: unknown;
   tone?: unknown;
   aiInstructions?: unknown;
+  commercialFlow?: unknown;
 };
 
 function optionalText(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function cleanText(value: unknown): string {
+  return typeof value === 'string'
+    ? value.trim().slice(0, 6000)
+    : '';
+}
+
+function commercialFlowFrom(value: unknown): CommercialFlow {
+  const source =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+
+  return {
+    welcomeMessage: cleanText(source.welcome_message),
+    salesInstructions: cleanText(source.sales_instructions),
+    shippingInstructions: cleanText(source.shipping_instructions),
+    paymentInstructions: cleanText(source.payment_instructions),
+    checkoutInstructions: cleanText(source.checkout_instructions),
+  };
 }
 
 @Controller('settings')
@@ -66,6 +97,7 @@ export class CompanySettingsController {
         assistantName: optionalText(body?.assistantName),
         tone: optionalText(body?.tone),
         aiInstructions: optionalText(body?.aiInstructions),
+        commercialFlow: body?.commercialFlow,
       });
 
     return {
@@ -107,6 +139,7 @@ export class CompanySettingsController {
           ? configuredTone.trim()
           : 'Cercana, clara, breve y profesional',
       aiInstructions: profile.aiInstructions ?? '',
+      commercialFlow: commercialFlowFrom(profile.settings.commercial_flow),
     };
   }
 }

@@ -197,12 +197,13 @@ export class ChatAgentService {
     profile: CompanyProfile,
     hasRecoveryContext = false,
   ): string {
-    const assistantName = profile.assistantName ?? 'Sofía';
+    const assistantName = profile.assistantName?.trim() || 'Asistente virtual';
     const configuredTone =
       typeof profile.settings.ai_tone === 'string' &&
       profile.settings.ai_tone.trim()
         ? profile.settings.ai_tone.trim()
         : 'cercana, clara, breve y natural';
+    const commercialRules = this.getCommercialFlowRules(profile.settings);
 
     return [
       `Eres ${assistantName}, asesora comercial de ${profile.name}.`,
@@ -239,6 +240,9 @@ export class ChatAgentService {
       '- REGLA DE COMPRENSIÓN: no transfieras por un solo mensaje ambiguo. Pide una aclaración breve y concreta. Si después de esa aclaración la persona sigue sin permitir entender o resolver el caso, usa request_human_attention. No supongas que un número, documento, teléfono, talla, referencia, enlace o dato corto es incorrecto: interprétalo usando el contexto o pide aclaración.',
       '- Al transferir usa request_human_attention con un resumen interno MUY CORTO, máximo 3 líneas o 450 caracteres. Incluye solo: motivo de transferencia, qué necesita el cliente y el dato pendiente principal. No copies ni resumas todo el historial, carrito completo, precios ni mensajes anteriores; el asesor puede leer la conversación.',
       '',
+      'CONFIGURACIÓN COMERCIAL ESTRUCTURADA:',
+      commercialRules,
+      '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',
       ...(hasRecoveryContext
@@ -260,6 +264,35 @@ export class ChatAgentService {
           ]
         : []),
     ].join('\n');
+  }
+
+  private getCommercialFlowRules(settings: JsonObject): string {
+    const source =
+      settings.commercial_flow &&
+      typeof settings.commercial_flow === 'object' &&
+      !Array.isArray(settings.commercial_flow)
+        ? settings.commercial_flow as JsonObject
+        : {};
+
+    const labels: Array<[string, string]> = [
+      ['welcome_message', 'Saludo y menú inicial'],
+      ['sales_instructions', 'Proceso de ventas'],
+      ['shipping_instructions', 'Ciudades y envíos'],
+      ['payment_instructions', 'Medios de pago'],
+      ['checkout_instructions', 'Regla para entregar checkout'],
+    ];
+
+    const lines = labels
+      .map(([key, label]) => {
+        const value = source[key];
+        const text = typeof value === 'string' ? value.trim() : '';
+        return text ? `- ${label}: ${text}` : '';
+      })
+      .filter(Boolean);
+
+    return lines.length
+      ? lines.join('\n')
+      : '- No hay reglas comerciales estructuradas. Usa únicamente las instrucciones adicionales configuradas por la empresa.';
   }
 
   private getActiveRecoveryContext(

@@ -1,3 +1,4 @@
+
 .shell {
   min-height: 100vh;
   display: grid;
@@ -11,16 +12,22 @@
   padding: 28px 36px 48px;
 }
 
-.header {
+.header,
+.form {
   max-width: 1060px;
-  margin: 0 auto 24px;
+  margin: 0 auto;
+}
+
+.header {
+  margin-bottom: 24px;
   display: flex;
   justify-content: space-between;
   gap: 24px;
   align-items: flex-start;
 }
 
-.eyebrow {
+.eyebrow,
+.sectionHeading p {
   margin: 0 0 7px;
   color: #8a6b2c;
   font-size: 12px;
@@ -28,44 +35,64 @@
   letter-spacing: 0.1em;
 }
 
-.header h1 {
+.header h1,
+.sectionHeading h2 {
   margin: 0;
   color: #1b1c22;
-  font-size: clamp(34px, 4vw, 46px);
-  letter-spacing: -0.04em;
+  letter-spacing: -0.035em;
 }
 
-.header p:not(.eyebrow) {
+.header h1 {
+  font-size: clamp(34px, 4vw, 46px);
+}
+
+.sectionHeading h2 {
+  font-size: 23px;
+}
+
+.header > div > p:not(.eyebrow) {
   margin: 9px 0 0;
   color: #697282;
   font-size: 16px;
 }
 
-.back,
-.save {
-  border: 0;
-  border-radius: 10px;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 800;
-}
-
-.back {
-  padding: 12px 15px;
-  color: #313640;
-  background: #e8ebf0;
+.form {
+  display: grid;
+  gap: 18px;
 }
 
 .card {
-  max-width: 1060px;
-  margin: 0 auto;
-  padding: 28px;
+  padding: 26px;
   display: grid;
-  gap: 21px;
+  gap: 19px;
   border: 1px solid #e1e3e8;
   border-radius: 18px;
   background: #fff;
   box-shadow: 0 12px 30px rgba(25, 28, 37, 0.04);
+}
+
+.sectionHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.sectionHeading > span {
+  max-width: 230px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: #586273;
+  background: #f0f2f5;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .card label {
@@ -73,6 +100,13 @@
   gap: 8px;
   color: #2b3039;
   font-weight: 800;
+}
+
+.card label small {
+  color: #697282;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
 }
 
 .card input,
@@ -95,9 +129,55 @@
 }
 
 .card textarea {
-  min-height: 380px;
-  line-height: 1.55;
+  min-height: 108px;
+  line-height: 1.5;
   resize: vertical;
+}
+
+.menuNote {
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  border-radius: 12px;
+  color: #314467;
+  background: #eef3ff;
+}
+
+.menuNote strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.menuNote p {
+  max-width: 650px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.back,
+.save,
+.secondary {
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+}
+
+.back {
+  padding: 12px 15px;
+  color: #313640;
+  background: #e8ebf0;
+}
+
+.secondary {
+  padding: 11px 14px;
+  color: #fff;
+  background: #40527a;
+  white-space: nowrap;
 }
 
 .help {
@@ -106,11 +186,15 @@
   color: #40527a;
   background: #eef3ff;
   font-size: 14px;
+  line-height: 1.45;
 }
 
 .message {
   margin: 0;
+  padding: 13px 15px;
+  border-radius: 10px;
   color: #276d2c;
+  background: #edf8ee;
   font-weight: 750;
 }
 
@@ -122,7 +206,8 @@
 }
 
 .save:disabled,
-.back:disabled {
+.back:disabled,
+.secondary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -138,12 +223,19 @@
 }
 
 @media (max-width: 720px) {
-  .header {
+  .header,
+  .sectionHeading,
+  .menuNote {
     display: grid;
   }
 
-  .back {
+  .back,
+  .secondary {
     width: 100%;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
   }
 
   .card {

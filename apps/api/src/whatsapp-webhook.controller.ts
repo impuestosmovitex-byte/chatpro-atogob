@@ -359,14 +359,14 @@ export class WhatsappWebhookController {
         { stage: 'area_menu', context: nextContext },
       );
 
-      return this.buildServiceAreaMenu(activeAreas, resetSession);
+      return this.buildServiceAreaMenu(profile, activeAreas, resetSession);
     }
 
     if (session.stage === 'main' || session.stage === 'area_menu') {
       const selectedArea = this.resolveServiceAreaChoice(activeAreas, cleanText);
 
       if (!selectedArea) {
-        return this.buildServiceAreaMenu(activeAreas, session);
+        return this.buildServiceAreaMenu(profile, activeAreas, session);
       }
 
       const selectedSession = await this.conversationMemoryService.updateSession(
@@ -438,18 +438,55 @@ export class WhatsappWebhookController {
   }
 
   private buildServiceAreaMenu(
+    profile: CompanyProfile,
     areas: Array<{ id: string; name: string; description: string }>,
     _session: ConversationSession,
   ): string {
+    const assistantName =
+      profile.assistantName?.trim() || 'nuestro asistente';
+    const configuredWelcome = this.getCommercialWelcome(profile.settings);
+    const welcome = this.applyWelcomeTokens(
+      configuredWelcome ||
+        `Hola, soy ${assistantName} de ${profile.name}. ¿En qué te podemos ayudar?`,
+      profile,
+      assistantName,
+    );
+
     if (!areas.length) {
-      return 'Hola. Cuéntame en qué te podemos ayudar.';
+      return welcome;
     }
 
     const options = areas
       .map((area, index) => `${index + 1}. ${area.name}`)
       .join('\n');
 
-    return `Hola, soy Sofía. ¿En qué te podemos ayudar?\n\n${options}\n\nRespóndeme con el número o el nombre de la opción.`;
+    return `${welcome}\n\n${options}\n\nRespóndeme con el número o el nombre de la opción.`;
+  }
+
+  private getCommercialWelcome(
+    settings: Record<string, unknown>,
+  ): string {
+    const flow =
+      settings.commercial_flow &&
+      typeof settings.commercial_flow === 'object' &&
+      !Array.isArray(settings.commercial_flow)
+        ? settings.commercial_flow as Record<string, unknown>
+        : {};
+
+    return typeof flow.welcome_message === 'string'
+      ? flow.welcome_message.trim()
+      : '';
+  }
+
+  private applyWelcomeTokens(
+    value: string,
+    profile: CompanyProfile,
+    assistantName: string,
+  ): string {
+    return value
+      .replace(/\{asistente\}/gi, assistantName)
+      .replace(/\{empresa\}/gi, profile.name)
+      .trim();
   }
 
   private buildAreaWelcome(

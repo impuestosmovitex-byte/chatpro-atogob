@@ -205,6 +205,7 @@ export class ConversationMemoryService {
       assistantName?: string;
       tone?: string;
       aiInstructions?: string;
+      commercialFlow?: unknown;
     },
   ): Promise<CompanyProfile> {
     const profile = await this.getCompanyProfile(companySlug);
@@ -217,6 +218,18 @@ export class ConversationMemoryService {
         nextSettings.ai_tone = tone;
       } else {
         delete nextSettings.ai_tone;
+      }
+    }
+
+    if (input.commercialFlow !== undefined) {
+      const commercialFlow = this.normalizeCommercialFlow(
+        input.commercialFlow,
+      );
+
+      if (Object.keys(commercialFlow).length) {
+        nextSettings.commercial_flow = commercialFlow;
+      } else {
+        delete nextSettings.commercial_flow;
       }
     }
 
@@ -1715,6 +1728,35 @@ export class ConversationMemoryService {
     }
 
     return 'ai';
+  }
+
+  private normalizeCommercialFlow(value: unknown): JsonObject {
+    const source =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+
+    const mapping: Array<[string, string]> = [
+      ['welcome_message', 'welcomeMessage'],
+      ['sales_instructions', 'salesInstructions'],
+      ['shipping_instructions', 'shippingInstructions'],
+      ['payment_instructions', 'paymentInstructions'],
+      ['checkout_instructions', 'checkoutInstructions'],
+    ];
+
+    const result: JsonObject = {};
+
+    for (const [storedKey, inputKey] of mapping) {
+      const raw = source[inputKey];
+      const text =
+        typeof raw === 'string' ? raw.trim().slice(0, 6000) : '';
+
+      if (text) {
+        result[storedKey] = text;
+      }
+    }
+
+    return result;
   }
 
   private toJsonObject(value: unknown): JsonObject {
