@@ -11,6 +11,7 @@ type CompanyIntegrationRow = {
   config: unknown;
   credential_mode: 'environment' | 'encrypted';
   credential_reference: unknown;
+  credentials_encrypted: string | null;
 };
 
 export type CompanyIntegration = {
@@ -23,6 +24,7 @@ export type CompanyIntegration = {
   config: Record<string, unknown>;
   credentialMode: 'environment' | 'encrypted';
   credentialReference: Record<string, unknown>;
+  credentialsEncrypted: string | null;
 };
 
 @Injectable()
@@ -38,7 +40,7 @@ export class CompanyIntegrationService {
       .getClient()
       .from('company_integrations')
       .select(
-        'id, company_id, provider, integration_type, external_id, status, config, credential_mode, credential_reference',
+        'id, company_id, provider, integration_type, external_id, status, config, credential_mode, credential_reference, credentials_encrypted',
       )
       .eq('company_id', companyId)
       .eq('provider', provider)
@@ -66,7 +68,7 @@ export class CompanyIntegrationService {
       .getClient()
       .from('company_integrations')
       .select(
-        'id, company_id, provider, integration_type, external_id, status, config, credential_mode, credential_reference',
+        'id, company_id, provider, integration_type, external_id, status, config, credential_mode, credential_reference, credentials_encrypted',
       )
       .eq('provider', provider)
       .eq('integration_type', integrationType)
@@ -96,6 +98,7 @@ export class CompanyIntegrationService {
       config: this.toRecord(row.config),
       credentialMode: row.credential_mode,
       credentialReference: this.toRecord(row.credential_reference),
+      credentialsEncrypted: row.credentials_encrypted,
     };
   }
 

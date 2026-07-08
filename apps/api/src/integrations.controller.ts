@@ -1,12 +1,16 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Headers,
+  Post,
   Query,
   UnauthorizedException,
 } from '@nestjs/common';
+import { IntegrationCredentialsService } from './integration-credentials.service';
 import { SupabaseService } from './supabase.service';
+import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
 type IntegrationRow = {
   id: string;
@@ -21,6 +25,19 @@ type IntegrationRow = {
 };
 
 type JsonObject = Record<string, unknown>;
+
+type WhatsappConfigureBody = {
+  phoneNumberId?: unknown;
+  accessToken?: unknown;
+  apiVersion?: unknown;
+  displayName?: unknown;
+  businessAccountId?: unknown;
+};
+
+type WhatsappTestBody = {
+  to?: unknown;
+  message?: unknown;
+};
 
 const CATALOG = [
   {
@@ -67,7 +84,11 @@ const CATALOG = [
 
 @Controller('integrations')
 export class IntegrationsController {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly credentialsService: IntegrationCredentialsService,
+    private readonly whatsappMessagingService: WhatsappMessagingService,
+  ) {}
 
   @Get()
   async list(
@@ -148,6 +169,144 @@ export class IntegrationsController {
     };
   }
 
+  @Post('whatsapp/configure')
+  async configureWhatsapp(
+    @Headers('x-chatpro-inbox-key') accessKey: string | undefined,
+    @Query('company') companySlug: string | undefined,
+    @Body() body: WhatsappConfigureBody,
+  ) {
+    this.requireAccess(accessKey);
+    const company = await this.getCompany(companySlug);
+    const phoneNumberId = this.digits(body.phoneNumberId);
+    const accessToken = this.text(body.accessToken);
+    const apiVersion = this.apiVersion(body.apiVersion);
+    const displayName = this.text(body.displayName);
+    const businessAccountId = this.digits(body.businessAccountId);
+
+    if (!phoneNumberId || phoneNumberId.length < 6) {
+      throw new BadRequestException('Escribe un Phone Number ID válido.');
+    }
+
+    if (!accessToken || accessToken.length < 20) {
+      throw new BadRequestException('Escribe un access token válido de Meta.');
+    }
+
+    const client = this.supabaseService.getClient();
+
+    const { data: existing, error: existingError } = await client
+      .from('company_integrations')
+      .select('id, company_id')
+      .eq('provider', 'meta')
+      .eq('integration_type', 'whatsapp')
+      .eq('external_id', phoneNumberId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new BadRequestException(
+        `No se pudo validar el canal de WhatsApp: ${existingError.message}`,
+      );
+    }
+
+    if (existing && existing.company_id !== company.id) {
+      throw new BadRequestException(
+        'Este Phone Number ID ya está conectado a otra empresa en Chat Pro.',
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    const { error: saveError } = await client
+      .from('company_integrations')
+      .upsert(
+        {
+          company_id: company.id,
+          provider: 'meta',
+          integration_type: 'whatsapp',
+          external_id: phoneNumberId,
+          status: 'active',
+          config: {
+            api_version: apiVersion,
+            display_name: displayName || null,
+            business_account_id: businessAccountId || null,
+            setup_source: 'manual_meta_whatsapp',
+          },
+          credential_mode: 'encrypted',
+          credential_reference: {
+            token_format: 'meta_whatsapp_access_token',
+            phone_number_id: phoneNumberId,
+          },
+          credentials_encrypted: this.credentialsService.encrypt({
+            access_token: accessToken,
+          }),
+          updated_at: now,
+        },
+        { onConflict: 'provider,integration_type,external_id' },
+      );
+
+    if (saveError) {
+      throw new BadRequestException(
+        `No se pudo guardar WhatsApp: ${saveError.message}`,
+      );
+    }
+
+    const { error: disconnectError } = await client
+      .from('company_integrations')
+      .update({ status: 'disconnected', updated_at: now })
+      .eq('company_id', company.id)
+      .eq('provider', 'meta')
+      .eq('integration_type', 'whatsapp')
+      .neq('external_id', phoneNumberId)
+      .eq('status', 'active');
+
+    if (disconnectError) {
+      throw new BadRequestException(
+        `WhatsApp quedó guardado, pero no se pudo cerrar la conexión anterior: ${disconnectError.message}`,
+      );
+    }
+
+    return {
+      ok: true,
+      message: 'WhatsApp Business quedó conectado para esta empresa.',
+      company,
+      whatsapp: {
+        phoneNumberId,
+        apiVersion,
+        displayName: displayName || null,
+      },
+    };
+  }
+
+  @Post('whatsapp/test')
+  async testWhatsapp(
+    @Headers('x-chatpro-inbox-key') accessKey: string | undefined,
+    @Query('company') companySlug: string | undefined,
+    @Body() body: WhatsappTestBody,
+  ) {
+    this.requireAccess(accessKey);
+    const company = await this.getCompany(companySlug);
+    const recipient = this.digits(body.to);
+    const message =
+      this.text(body.message) ||
+      `Mensaje de prueba de Chat Pro para ${company.name}. Tu canal de WhatsApp está conectado.`;
+
+    if (!recipient || recipient.length < 8 || recipient.length > 15) {
+      throw new BadRequestException(
+        'Escribe el teléfono de prueba con indicativo de país.',
+      );
+    }
+
+    await this.whatsappMessagingService.sendText(
+      company.id,
+      recipient,
+      message.slice(0, 1000),
+    );
+
+    return {
+      ok: true,
+      message: 'Mensaje de prueba enviado por WhatsApp.',
+    };
+  }
+
   private requireAccess(accessKey: string | undefined) {
     const expected = process.env.CHATPRO_INBOX_KEY?.trim();
 
@@ -222,6 +381,11 @@ export class IntegrationsController {
       displayName: displayName || null,
       storeUrl: storeUrl || null,
       apiVersion: apiVersion || null,
+      phoneNumberId:
+        row.provider === 'meta' && row.integration_type === 'whatsapp'
+          ? row.external_id
+          : null,
+      businessAccountId: this.text(config.business_account_id) || null,
       setupSource:
         row.credential_mode === 'environment'
           ? 'Configuración técnica existente'
@@ -252,5 +416,19 @@ export class IntegrationsController {
 
   private text(value: unknown): string {
     return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private digits(value: unknown): string {
+    return this.text(value).replace(/\D/g, '');
+  }
+
+  private apiVersion(value: unknown): string {
+    const clean = this.text(value) || 'v25.0';
+
+    if (!/^v\d+\.\d+$/.test(clean)) {
+      throw new BadRequestException('La versión de Meta debe tener formato v25.0.');
+    }
+
+    return clean;
   }
 }

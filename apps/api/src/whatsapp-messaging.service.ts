@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CompanyIntegrationService } from './company-integration.service';
+import { IntegrationCredentialsService } from './integration-credentials.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -7,6 +8,7 @@ type JsonObject = Record<string, unknown>;
 export class WhatsappMessagingService {
   constructor(
     private readonly companyIntegrationService: CompanyIntegrationService,
+    private readonly credentialsService: IntegrationCredentialsService,
   ) {}
 
   async sendText(
@@ -90,27 +92,42 @@ export class WhatsappMessagingService {
       );
     }
 
-    if (integration.credentialMode !== 'environment') {
-      throw new Error(
-        'Esta integración de WhatsApp todavía no tiene un método de credenciales compatible.',
+    let accessToken = '';
+
+    if (integration.credentialMode === 'environment') {
+      const reference = integration.credentialReference as JsonObject;
+      const tokenEnv = this.readText(reference.access_token_env);
+
+      if (!tokenEnv) {
+        throw new Error(
+          'La integración de WhatsApp no tiene definida la referencia segura del token.',
+        );
+      }
+
+      accessToken = process.env[tokenEnv]?.trim() ?? '';
+
+      if (!accessToken) {
+        throw new Error(
+          `Falta la variable segura ${tokenEnv} para el WhatsApp de esta empresa.`,
+        );
+      }
+    } else if (integration.credentialMode === 'encrypted') {
+      if (!integration.credentialsEncrypted) {
+        throw new Error(
+          'La integración de WhatsApp no tiene credenciales cifradas.',
+        );
+      }
+
+      const credentials = this.credentialsService.decrypt(
+        integration.credentialsEncrypted,
       );
-    }
+      accessToken = this.readText(credentials.access_token);
 
-    const reference = integration.credentialReference as JsonObject;
-    const tokenEnv = this.readText(reference.access_token_env);
-
-    if (!tokenEnv) {
-      throw new Error(
-        'La integración de WhatsApp no tiene definida la referencia segura del token.',
-      );
-    }
-
-    const accessToken = process.env[tokenEnv]?.trim();
-
-    if (!accessToken) {
-      throw new Error(
-        `Falta la variable segura ${tokenEnv} para el WhatsApp de esta empresa.`,
-      );
+      if (!accessToken) {
+        throw new Error(
+          'No se encontró un token válido para el WhatsApp de esta empresa.',
+        );
+      }
     }
 
     const config = integration.config as JsonObject;

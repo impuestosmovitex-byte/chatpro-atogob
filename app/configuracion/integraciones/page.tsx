@@ -19,6 +19,8 @@ type Integration = {
     displayName?: string | null;
     storeUrl?: string | null;
     apiVersion?: string | null;
+    phoneNumberId?: string | null;
+    businessAccountId?: string | null;
     setupSource?: string | null;
   };
   connectedAt: string | null;
@@ -119,6 +121,16 @@ export default function IntegracionesPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [shopDomain, setShopDomain] = useState('');
+  const [whatsappForm, setWhatsappForm] = useState({
+    phoneNumberId: '',
+    accessToken: '',
+    apiVersion: 'v25.0',
+    displayName: '',
+    businessAccountId: '',
+  });
+  const [whatsappTestPhone, setWhatsappTestPhone] = useState('');
+  const [connectingWhatsapp, setConnectingWhatsapp] = useState(false);
+  const [testingWhatsapp, setTestingWhatsapp] = useState(false);
   const [connectingShopify, setConnectingShopify] = useState(false);
   const [testingShopify, setTestingShopify] = useState(false);
   const [shopifyTest, setShopifyTest] = useState<{
@@ -241,6 +253,81 @@ export default function IntegracionesPage() {
       );
     } finally {
       setTestingShopify(false);
+    }
+  }
+
+  async function configureWhatsapp() {
+    if (!whatsappForm.phoneNumberId.trim() || !whatsappForm.accessToken.trim()) {
+      setMessage('Escribe Phone Number ID y access token de Meta.');
+      return;
+    }
+
+    setMessage('');
+    setConnectingWhatsapp(true);
+
+    try {
+      const response = await fetch('/api/integrations/whatsapp/configure', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(whatsappForm),
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+      };
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'No se pudo conectar WhatsApp.');
+      }
+
+      setMessage(data.message || 'WhatsApp conectado correctamente.');
+      window.setTimeout(() => window.location.reload(), 900);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo conectar WhatsApp.',
+      );
+    } finally {
+      setConnectingWhatsapp(false);
+    }
+  }
+
+  async function testWhatsapp() {
+    if (!whatsappTestPhone.trim()) {
+      setMessage('Escribe un teléfono de prueba con indicativo de país.');
+      return;
+    }
+
+    setMessage('');
+    setTestingWhatsapp(true);
+
+    try {
+      const response = await fetch('/api/integrations/whatsapp/test', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ to: whatsappTestPhone }),
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+      };
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'No se pudo enviar la prueba.');
+      }
+
+      setMessage(data.message || 'Prueba enviada por WhatsApp.');
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo enviar la prueba.',
+      );
+    } finally {
+      setTestingWhatsapp(false);
     }
   }
 
@@ -399,6 +486,18 @@ export default function IntegracionesPage() {
                   <div>
                     <dt>Versión API</dt>
                     <dd>{selected.details.apiVersion}</dd>
+                  </div>
+                ) : null}
+                {selected.details.phoneNumberId ? (
+                  <div>
+                    <dt>Phone Number ID</dt>
+                    <dd>{selected.details.phoneNumberId}</dd>
+                  </div>
+                ) : null}
+                {selected.details.businessAccountId ? (
+                  <div>
+                    <dt>Business Account ID</dt>
+                    <dd>{selected.details.businessAccountId}</dd>
                   </div>
                 ) : null}
               </dl>
@@ -643,16 +742,132 @@ export default function IntegracionesPage() {
                     </div>
                   ) : null}
                 </div>
+              ) : selected.key === 'whatsapp' ? (
+                <div className={styles.connectBox}>
+                  <strong>
+                    {selected.status === 'active'
+                      ? 'WhatsApp Business conectado'
+                      : 'Conectar WhatsApp Business'}
+                  </strong>
+                  <p>
+                    Usa los datos de Meta Developers / WhatsApp Business.
+                    El token se guarda cifrado y nunca se muestra en Chat Pro.
+                  </p>
+
+                  <label htmlFor="wa-phone-id">Phone Number ID</label>
+                  <input
+                    id="wa-phone-id"
+                    value={whatsappForm.phoneNumberId}
+                    onChange={(event) =>
+                      setWhatsappForm((current) => ({
+                        ...current,
+                        phoneNumberId: event.target.value,
+                      }))
+                    }
+                    placeholder="Ejemplo: 123456789012345"
+                    disabled={connectingWhatsapp}
+                  />
+
+                  <label htmlFor="wa-token">Access token permanente</label>
+                  <input
+                    id="wa-token"
+                    type="password"
+                    value={whatsappForm.accessToken}
+                    onChange={(event) =>
+                      setWhatsappForm((current) => ({
+                        ...current,
+                        accessToken: event.target.value,
+                      }))
+                    }
+                    placeholder="Pega el token de Meta"
+                    disabled={connectingWhatsapp}
+                  />
+
+                  <label htmlFor="wa-version">Versión Graph API</label>
+                  <input
+                    id="wa-version"
+                    value={whatsappForm.apiVersion}
+                    onChange={(event) =>
+                      setWhatsappForm((current) => ({
+                        ...current,
+                        apiVersion: event.target.value,
+                      }))
+                    }
+                    placeholder="v25.0"
+                    disabled={connectingWhatsapp}
+                  />
+
+                  <label htmlFor="wa-display">Nombre visible opcional</label>
+                  <input
+                    id="wa-display"
+                    value={whatsappForm.displayName}
+                    onChange={(event) =>
+                      setWhatsappForm((current) => ({
+                        ...current,
+                        displayName: event.target.value,
+                      }))
+                    }
+                    placeholder="Ejemplo: WhatsApp principal"
+                    disabled={connectingWhatsapp}
+                  />
+
+                  <label htmlFor="wa-business">Business Account ID opcional</label>
+                  <input
+                    id="wa-business"
+                    value={whatsappForm.businessAccountId}
+                    onChange={(event) =>
+                      setWhatsappForm((current) => ({
+                        ...current,
+                        businessAccountId: event.target.value,
+                      }))
+                    }
+                    placeholder="Ejemplo: 9876543210"
+                    disabled={connectingWhatsapp}
+                  />
+
+                  <button
+                    type="button"
+                    className={styles.connectButton}
+                    onClick={() => void configureWhatsapp()}
+                    disabled={connectingWhatsapp}
+                  >
+                    {connectingWhatsapp ? 'Guardando WhatsApp…' : 'Guardar conexión WhatsApp'}
+                  </button>
+
+                  <small>
+                    En Meta configura el webhook público terminado en
+                    /webhook/whatsapp y usa el verify token definido en Railway.
+                  </small>
+
+                  {selected.status === 'active' ? (
+                    <div className={styles.testBox}>
+                      <strong>Enviar prueba</strong>
+                      <p>
+                        Envía un mensaje real al número indicado para validar
+                        token, Phone Number ID y permisos.
+                      </p>
+                      <label htmlFor="wa-test-phone">Teléfono con indicativo</label>
+                      <input
+                        id="wa-test-phone"
+                        value={whatsappTestPhone}
+                        onChange={(event) => setWhatsappTestPhone(event.target.value)}
+                        placeholder="Ejemplo: 573001234567"
+                        disabled={testingWhatsapp}
+                      />
+                      <button
+                        type="button"
+                        className={styles.testButton}
+                        onClick={() => void testWhatsapp()}
+                        disabled={testingWhatsapp}
+                      >
+                        {testingWhatsapp ? 'Enviando prueba…' : 'Enviar prueba'}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               ) : selected.status === 'active' ? (
                 <div className={styles.notice}>
                   Esta integración está activa. Las credenciales permanecen protegidas.
-                </div>
-              ) : selected.key === 'whatsapp' ? (
-                <div className={styles.notice}>
-                  WhatsApp será el siguiente canal real. Antes de activarlo,
-                  la empresa debe tener identidad, áreas, horarios, usuarios,
-                  IA y base de conocimiento configurados. La conexión se hará
-                  con Meta/WhatsApp Business, no con reglas fijas en código.
                 </div>
               ) : selected.connectionReady ? (
                 <div className={styles.notice}>
