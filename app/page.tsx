@@ -81,8 +81,6 @@ type ApiConversation = {
   contact?: Contact | null;
 };
 
-const COMPANY = process.env.NEXT_PUBLIC_CHATPRO_COMPANY || "atogob";
-
 const statusLabel: Record<AttentionStatus, string> = {
   ai: "IA atendiendo",
   waiting: "Pendiente de asesor",
@@ -162,7 +160,7 @@ export default function Home() {
       const me = await readJson(meResponse) as { ok?: boolean; error?: string; session?: CurrentUser };
       if (!meResponse.ok || !me.ok || !me.session?.userId) throw new Error(me.error || "No se pudo identificar al usuario.");
       setCurrentUser(me.session);
-      const presenceResponse = await fetch(`/api/advisor-presence?company=${encodeURIComponent(COMPANY)}`, { cache: "no-store" });
+      const presenceResponse = await fetch("/api/advisor-presence", { cache: "no-store" });
       const data = await readJson(presenceResponse) as { ok?: boolean; error?: string; advisor?: AdvisorPresence };
       if (!presenceResponse.ok || !data.ok || !data.advisor) throw new Error(data.error || "No se pudo cargar la disponibilidad.");
       setPresence(data.advisor);
@@ -174,7 +172,7 @@ export default function Home() {
   async function changePresence(status: AdvisorStatus) {
     setPresenceLoading(true);
     try {
-      const response = await fetch(`/api/advisor-presence?company=${encodeURIComponent(COMPANY)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+      const response = await fetch("/api/advisor-presence", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
       const data = await readJson(response) as { ok?: boolean; error?: string; advisor?: AdvisorPresence };
       if (!response.ok || !data.ok || !data.advisor) throw new Error(data.error || "No se pudo guardar la disponibilidad.");
       setPresence(data.advisor);
@@ -200,7 +198,7 @@ export default function Home() {
 
     try {
       const response = await fetch(
-        `/api/inbox?company=${encodeURIComponent(COMPANY)}&status=${filter}&limit=80`,
+        `/api/inbox?status=${filter}&limit=80`,
         { cache: "no-store" },
       );
       const data = (await readJson(response)) as ApiList;
@@ -221,7 +219,7 @@ export default function Home() {
   async function loadQuickReplies() {
     try {
       const response = await fetch(
-        `/api/quick-replies?company=${encodeURIComponent(COMPANY)}`,
+        "/api/quick-replies",
         { cache: "no-store" },
       );
       const data = (await readJson(response)) as {
@@ -244,7 +242,7 @@ export default function Home() {
 
     try {
       const response = await fetch(
-        `/api/inbox?company=${encodeURIComponent(COMPANY)}&sessionId=${encodeURIComponent(sessionId)}`,
+        `/api/inbox?sessionId=${encodeURIComponent(sessionId)}`,
         { cache: "no-store" },
       );
       const data = (await readJson(response)) as ApiConversation;
@@ -277,7 +275,6 @@ export default function Home() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          company: COMPANY,
           sessionId: selected.session.id,
           action,
           message,
@@ -310,7 +307,6 @@ export default function Home() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          company: COMPANY,
           action: "internal_test_start",
         }),
       });
@@ -350,7 +346,6 @@ export default function Home() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          company: COMPANY,
           action: "internal_test_message",
           sessionId: selected.session.id,
           message,
@@ -609,7 +604,7 @@ export default function Home() {
                           disabled={actionLoading}
                           onClick={() => void runAction("resume_ai")}
                         >
-                          {actionLoading ? "Actualizando…" : "Devolver a Sofía"}
+                          {actionLoading ? "Actualizando…" : "Devolver a IA"}
                         </button>
                         <button
                           className="button quiet"
@@ -632,7 +627,7 @@ export default function Home() {
                   {!loadingChat && !selected.messages.length ? (
                     <p className="feed-loading">
                       {isInternalTest
-                        ? "Escribe como cliente para probar a Sofía. Esta prueba no envía mensajes por WhatsApp."
+                        ? "Escribe como cliente para probar el agente. Esta prueba no envía mensajes por WhatsApp."
                         : "No hay mensajes todavía."}
                     </p>
                   ) : null}
@@ -657,7 +652,7 @@ export default function Home() {
                         setMessage(event.target.value);
                         setQuickReplyOpen(false);
                       }}
-                      placeholder="Escribe como cliente para probar a Sofía…"
+                      placeholder="Escribe como cliente para probar el agente…"
                       rows={3}
                     />
                     <button
@@ -665,7 +660,7 @@ export default function Home() {
                       type="submit"
                       disabled={internalTestLoading || !message.trim()}
                     >
-                      {internalTestLoading ? "Probando…" : "Enviar a Sofía"}
+                      {internalTestLoading ? "Probando…" : "Enviar al agente"}
                     </button>
                   </form>
                 ) : selected.session.attentionStatus === "human" ? (

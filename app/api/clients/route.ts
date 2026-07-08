@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  getInboxSession,
   INBOX_SESSION_COOKIE,
-  isInboxSessionValid,
 } from '../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
@@ -21,10 +21,8 @@ function config() {
   return { apiBase, inboxKey };
 }
 
-async function hasValidSession(request: NextRequest): Promise<boolean> {
-  return isInboxSessionValid(
-    request.cookies.get(INBOX_SESSION_COOKIE)?.value,
-  );
+async function currentSession(request: NextRequest) {
+  return getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
 }
 
 function unauthorized() {
@@ -35,42 +33,32 @@ function unauthorized() {
 }
 
 async function proxyResponse(response: Response) {
-  const contentType =
-    response.headers.get('content-type') ?? 'application/json';
-  const body = await response.text();
-
-  return new NextResponse(body, {
+  return new NextResponse(await response.text(), {
     status: response.status,
-    headers: { 'content-type': contentType },
+    headers: {
+      'content-type': response.headers.get('content-type') ?? 'application/json',
+    },
   });
 }
 
 export async function GET(request: NextRequest) {
-  if (!(await hasValidSession(request))) {
+  const session = await currentSession(request);
+
+  if (!session) {
     return unauthorized();
   }
 
   try {
     const { apiBase, inboxKey } = config();
-    const company = text(
-      request.nextUrl.searchParams.get('company'),
-    );
     const phone = text(request.nextUrl.searchParams.get('phone'));
     const search = text(request.nextUrl.searchParams.get('search'));
     const limit = text(request.nextUrl.searchParams.get('limit')) || '100';
-
-    if (!company) {
-      return NextResponse.json(
-        { ok: false, error: 'Falta la empresa.' },
-        { status: 400 },
-      );
-    }
 
     const target = new URL(
       phone ? `${apiBase}/clients/profile` : `${apiBase}/clients`,
     );
 
-    target.searchParams.set('company', company);
+    target.searchParams.set('company', session.companySlug);
 
     if (phone) {
       target.searchParams.set('phone', phone);
@@ -100,28 +88,18 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await hasValidSession(request))) {
+  const session = await currentSession(request);
+
+  if (!session) {
     return unauthorized();
   }
 
   try {
     const { apiBase, inboxKey } = config();
     const payload = await request.json();
-    const company = text(
-      typeof payload?.company === 'string'
-        ? payload.company
-        : request.nextUrl.searchParams.get('company'),
-    );
-
-    if (!company) {
-      return NextResponse.json(
-        { ok: false, error: 'Falta la empresa.' },
-        { status: 400 },
-      );
-    }
 
     const target = new URL(`${apiBase}/clients`);
-    target.searchParams.set('company', company);
+    target.searchParams.set('company', session.companySlug);
 
     const response = await fetch(target, {
       method: 'POST',
@@ -129,7 +107,7 @@ export async function POST(request: NextRequest) {
         'content-type': 'application/json',
         'x-chatpro-inbox-key': inboxKey,
       },
-      body: JSON.stringify({ ...payload, company }),
+      body: JSON.stringify({ ...payload, company: session.companySlug }),
       cache: 'no-store',
     });
 

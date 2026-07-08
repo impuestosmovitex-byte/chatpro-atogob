@@ -21,6 +21,12 @@ type AccessResponse = {
   session?: Omit<ChatProSession, 'expiresAt'>;
 };
 
+type LoginBody = {
+  identifier?: unknown;
+  password?: unknown;
+  company?: unknown;
+};
+
 function config() {
   const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
   const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
@@ -32,10 +38,27 @@ function config() {
   return { apiBase, inboxKey };
 }
 
-function company(): string {
-  return (process.env.NEXT_PUBLIC_CHATPRO_COMPANY || 'atogob')
-    .trim()
-    .toLowerCase();
+function cleanCompany(value: unknown): string {
+  return typeof value === 'string'
+    ? value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+    : '';
+}
+
+function companyFrom(body: LoginBody): string {
+  const legacyPublicKey = ['NEXT', 'PUBLIC', 'CHATPRO', 'COMPANY'].join('_');
+  const slug =
+    cleanCompany(body.company) ||
+    cleanCompany(process.env.CHATPRO_DEFAULT_COMPANY) ||
+    cleanCompany(process.env.CHATPRO_COMPANY_SLUG) ||
+    cleanCompany(process.env[legacyPublicKey]);
+
+  if (!slug) {
+    throw new Error(
+      'Falta seleccionar la empresa o configurar CHATPRO_DEFAULT_COMPANY.',
+    );
+  }
+
+  return slug;
 }
 
 function responseWithSession(session: Omit<ChatProSession, 'expiresAt'>) {
@@ -68,10 +91,7 @@ function responseWithSession(session: Omit<ChatProSession, 'expiresAt'>) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as {
-      identifier?: unknown;
-      password?: unknown;
-    };
+    const body = (await request.json()) as LoginBody;
     const identifier =
       typeof body.identifier === 'string' ? body.identifier.trim() : '';
     const password =
@@ -85,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { apiBase, inboxKey } = config();
-    const companySlug = company();
+    const companySlug = companyFrom(body);
 
     if (identifier) {
       const target = new URL(`${apiBase}/access/login`);

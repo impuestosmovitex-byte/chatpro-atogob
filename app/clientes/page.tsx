@@ -82,8 +82,6 @@ type SaveResponse = {
   session?: ConversationSession;
 };
 
-const COMPANY = process.env.NEXT_PUBLIC_CHATPRO_COMPANY || "atogob";
-
 const statusLabel: Record<AttentionStatus, string> = {
   ai: "IA atendiendo",
   waiting: "Pendiente de asesor",
@@ -142,6 +140,7 @@ export default function ClientsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [companyName, setCompanyName] = useState("Empresa");
 
   const [editName, setEditName] = useState("");
   const [editTags, setEditTags] = useState("");
@@ -169,7 +168,7 @@ export default function ClientsPage() {
   async function loadClients(nextSearch = search) {
     setLoadingList(true);
     try {
-      const params = new URLSearchParams({ company: COMPANY, limit: "120" });
+      const params = new URLSearchParams({ limit: "120" });
       if (nextSearch.trim()) params.set("search", nextSearch.trim());
 
       const response = await fetch(`/api/clients?${params.toString()}`, {
@@ -180,6 +179,7 @@ export default function ClientsPage() {
         throw new Error(data.error || "No se pudieron cargar los clientes.");
       }
       setClients(data.clients ?? []);
+      setCompanyName(data.company?.name || "Empresa");
       setError("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudieron cargar los clientes.");
@@ -191,7 +191,7 @@ export default function ClientsPage() {
   async function openClient(phone: string) {
     setLoadingProfile(true);
     try {
-      const params = new URLSearchParams({ company: COMPANY, phone });
+      const params = new URLSearchParams({ phone });
       const response = await fetch(`/api/clients?${params.toString()}`, {
         cache: "no-store",
       });
@@ -206,6 +206,7 @@ export default function ClientsPage() {
         messages: data.messages ?? [],
       };
       setSelected(profile);
+      setCompanyName(profile.company.name || "Empresa");
       syncEditor(profile);
       setMessage("");
       setError("");
@@ -228,7 +229,6 @@ export default function ClientsPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           action: "update",
-          company: COMPANY,
           phone: selected.client.customerPhone,
           displayName: editName,
           tags: editTags,
@@ -259,7 +259,6 @@ export default function ClientsPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           action: "create",
-          company: COMPANY,
           phone: newPhone,
           displayName: newName,
           tags: newTags,
@@ -301,7 +300,7 @@ export default function ClientsPage() {
 
   return (
     <main className={styles.shell}>
-      <AppSidebar companyName="ATOGOB" />
+      <AppSidebar companyName={companyName} />
 
       <section className={styles.workspace}>
         <header className={styles.header}>
