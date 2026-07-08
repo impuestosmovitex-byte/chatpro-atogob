@@ -124,3 +124,186 @@
     grid-template-columns: 1fr;
   }
 }
+
+.activation {
+  max-width: 1120px;
+  margin: 0 0 24px;
+  padding: 22px;
+  border: 1px solid #e1e3e8;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(25, 28, 37, 0.04);
+}
+
+.activationHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 22px;
+  align-items: flex-start;
+}
+
+.activationHeader h2 {
+  margin: 0;
+  font-size: 27px;
+  letter-spacing: -0.03em;
+}
+
+.activationHeader p:not(.eyebrow) {
+  margin: 8px 0 0;
+  color: #687080;
+  line-height: 1.5;
+}
+
+.score {
+  min-width: 118px;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  padding: 16px;
+  border-radius: 16px;
+  color: #1d2330;
+  background: #f5f6f8;
+}
+
+.score strong {
+  font-size: 34px;
+  letter-spacing: -0.05em;
+}
+
+.score span {
+  color: #687080;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.activationStatus {
+  margin-top: 17px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 15px;
+  border-radius: 12px;
+}
+
+.activationStatus span {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.activationReady {
+  color: #215e30;
+  background: #eaf7ec;
+}
+
+.activationPending {
+  color: #7a5a0e;
+  background: #fff5dc;
+}
+
+.checklistError,
+.checklistLoading {
+  margin: 16px 0 0;
+  padding: 14px;
+  border-radius: 12px;
+  color: #9a3434;
+  background: #fff0f0;
+  font-weight: 750;
+}
+
+.checklistLoading {
+  grid-column: 1 / -1;
+  color: #687080;
+  background: #f5f6f8;
+}
+
+.checklistGrid {
+  margin-top: 17px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.checkItem {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 15px;
+  border: 1px solid #edf0f4;
+  border-radius: 14px;
+  background: #fbfcfe;
+}
+
+.checkItem h3 {
+  margin: 0;
+  color: #1d2330;
+  font-size: 16px;
+}
+
+.checkItem p {
+  margin: 0;
+  color: #687080;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.checkItem button {
+  justify-self: start;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 11px;
+  cursor: pointer;
+  color: #fff;
+  background: #202126;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.checkBadge {
+  justify-self: start;
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.check_ready {
+  color: #215e30;
+  background: #eaf7ec;
+}
+
+.check_pending {
+  color: #9a3434;
+  background: #fff0f0;
+}
+
+.check_warning {
+  color: #7a5a0e;
+  background: #fff5dc;
+}
+
+@media (max-width: 1040px) {
+  .checklistGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .activationHeader,
+  .activationStatus {
+    display: grid;
+  }
+
+  .score {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .checklistGrid {
+    grid-template-columns: 1fr;
+  }
+}
