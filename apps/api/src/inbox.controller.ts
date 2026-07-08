@@ -30,6 +30,7 @@ export class InboxController {
     this.authorize(key);
     const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
     const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
+    if(conversation.session.attentionStatus==='closed') throw new BadRequestException('La conversación está finalizada. Si el cliente vuelve a escribir, la IA la reabrirá automáticamente.');
     this.assertView(actor,conversation.session);
     return {ok:true,...conversation};
   }

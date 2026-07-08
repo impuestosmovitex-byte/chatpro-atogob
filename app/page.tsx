@@ -153,6 +153,7 @@ export default function Home() {
   const [actionLoading, setActionLoading] = useState(false);
   const [internalTestLoading, setInternalTestLoading] = useState(false);
   const [error, setError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
 
   async function loadIdentityAndPresence() {
     try {
@@ -257,6 +258,9 @@ export default function Home() {
         contact: data.contact ?? null,
         messages: data.messages ?? [],
       });
+      setMessage("");
+      setQuickReplyOpen(false);
+      setActionMessage("");
       setError("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo abrir la conversación.");
@@ -268,7 +272,13 @@ export default function Home() {
   async function runAction(action: "take" | "close" | "resume_ai" | "message") {
     if (!selected) return;
 
+    const cleanMessage = message.trim();
+
+    if (action === "message" && !cleanMessage) return;
+
     setActionLoading(true);
+    setActionMessage("");
+    setError("");
 
     try {
       const response = await fetch("/api/inbox", {
@@ -277,22 +287,39 @@ export default function Home() {
         body: JSON.stringify({
           sessionId: selected.session.id,
           action,
-          message,
+          message: action === "message" ? cleanMessage : undefined,
         }),
       });
-      const data = (await readJson(response)) as ApiConversation;
+
+      const data = (await readJson(response)) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        session?: ConversationSession;
+      };
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || "No se pudo actualizar la conversación.");
+        throw new Error(data.error || data.message || "No se pudo completar la acción.");
       }
 
       if (action === "message") {
         setMessage("");
+        setQuickReplyOpen(false);
       }
 
       await loadList(false);
       await openConversation(selected.session.id);
+
+      const actionLabels: Record<"take" | "close" | "resume_ai" | "message", string> = {
+        take: "Conversación tomada. La IA queda pausada mientras respondes.",
+        message: "Mensaje enviado por WhatsApp.",
+        resume_ai: "Conversación devuelta a la IA.",
+        close: "Conversación finalizada.",
+      };
+
+      setActionMessage(actionLabels[action]);
     } catch (caught) {
+      setActionMessage("");
       setError(caught instanceof Error ? caught.message : "No se pudo completar la acción.");
     } finally {
       setActionLoading(false);
@@ -454,6 +481,12 @@ export default function Home() {
     setQuickReplyOpen(false);
   }
 
+  const selectedStatus = selected?.session.attentionStatus;
+  const showTakeButton =
+    !isInternalTest &&
+    (selectedStatus === "ai" || selectedStatus === "waiting");
+  const showHumanActions = !isInternalTest && selectedStatus === "human";
+
   return (
     <main className="chatpro-shell">
       <AppSidebar companyName={currentUser?.companyName ?? "Empresa"} />
@@ -497,6 +530,7 @@ export default function Home() {
         </div>
 
         {error ? <div className="error-banner">{error}</div> : null}
+        {actionMessage ? <div className="success-banner">{actionMessage}</div> : null}
 
         <div className="inbox-layout">
           <section className="conversation-list-panel">
@@ -586,7 +620,7 @@ export default function Home() {
                         {internalTestLoading ? "Reiniciando…" : "Nueva prueba"}
                       </button>
                     ) : null}
-                    {!isInternalTest && selected.session.attentionStatus !== "closed" ? (
+                    {showTakeButton ? (
                       <button
                         className="button primary"
                         type="button"
@@ -596,7 +630,7 @@ export default function Home() {
                         {actionLoading ? "Tomando…" : "Tomar conversación"}
                       </button>
                     ) : null}
-                    {!isInternalTest && selected.session.attentionStatus === "human" ? (
+                    {showHumanActions ? (
                       <>
                         <button
                           className="button quiet"
@@ -706,7 +740,9 @@ export default function Home() {
                   <div className="reply-disabled">
                     {selected.session.attentionStatus === "closed"
                       ? "Esta conversación está finalizada. Si el cliente vuelve a escribir, la IA retomará automáticamente desde el historial."
-                      : "Toma la conversación para responder como asesor. Mientras esté tomada, la IA queda pausada."}
+                      : selected.session.attentionStatus === "waiting"
+                        ? "Este chat está pendiente de asesor. Tómalo para responder como persona."
+                        : "La IA está atendiendo. Toma la conversación solo si necesitas intervenir como asesor."}
                   </div>
                 )}
               </>
