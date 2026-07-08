@@ -28,7 +28,7 @@ const CATALOG = [
     integrationType: 'whatsapp',
     key: 'whatsapp',
     name: 'WhatsApp Business',
-    description: 'Recibe conversaciones y permite responder desde Sofía y la Bandeja.',
+    description: 'Recibe conversaciones de WhatsApp y permite responder desde la Bandeja con asesor humano o agente IA cuando el plan lo permita.',
     connectionReady: true,
   },
   {
@@ -44,7 +44,7 @@ const CATALOG = [
     integrationType: 'instagram',
     key: 'instagram',
     name: 'Instagram',
-    description: 'Mensajes directos de Instagram dentro de la Bandeja.',
+    description: 'Mensajes directos de Instagram dentro de la Bandeja cuando el canal esté habilitado.',
     connectionReady: false,
   },
   {
@@ -52,7 +52,15 @@ const CATALOG = [
     integrationType: 'messenger',
     key: 'messenger',
     name: 'Messenger',
-    description: 'Mensajes de Facebook Messenger dentro de la Bandeja.',
+    description: 'Mensajes de Facebook Messenger dentro de la Bandeja cuando el canal esté habilitado.',
+    connectionReady: false,
+  },
+  {
+    provider: 'meta',
+    integrationType: 'ads',
+    key: 'meta-ads',
+    name: 'Meta Ads',
+    description: 'Publicidad, campañas, inversión y ROAS para reportes, alertas y análisis por empresa.',
     connectionReady: false,
   },
 ] as const;

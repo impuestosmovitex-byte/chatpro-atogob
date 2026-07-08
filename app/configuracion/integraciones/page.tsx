@@ -108,6 +108,7 @@ function icon(key: string) {
   if (key === 'shopify') return '⬡';
   if (key === 'instagram') return '◌';
   if (key === 'messenger') return '◍';
+  if (key === 'meta-ads') return '◇';
   return '◈';
 }
 
@@ -369,6 +370,14 @@ export default function IntegracionesPage() {
                 <div>
                   <dt>Tipo</dt>
                   <dd>{selected.integrationType}</dd>
+                </div>
+                <div>
+                  <dt>Disponibilidad</dt>
+                  <dd>
+                    {selected.connectionReady
+                      ? 'Disponible para conexión guiada'
+                      : 'Pendiente de habilitar'}
+                  </dd>
                 </div>
                 <div>
                   <dt>Origen de credenciales</dt>
@@ -637,6 +646,13 @@ export default function IntegracionesPage() {
               ) : selected.status === 'active' ? (
                 <div className={styles.notice}>
                   Esta integración está activa. Las credenciales permanecen protegidas.
+                </div>
+              ) : selected.key === 'whatsapp' ? (
+                <div className={styles.notice}>
+                  WhatsApp será el siguiente canal real. Antes de activarlo,
+                  la empresa debe tener identidad, áreas, horarios, usuarios,
+                  IA y base de conocimiento configurados. La conexión se hará
+                  con Meta/WhatsApp Business, no con reglas fijas en código.
                 </div>
               ) : selected.connectionReady ? (
                 <div className={styles.notice}>
