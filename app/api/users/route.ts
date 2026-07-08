@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  getInboxSession,
   INBOX_SESSION_COOKIE,
-  isInboxSessionValid,
 } from '../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
@@ -17,14 +17,20 @@ function config() {
   return { apiBase, inboxKey };
 }
 
-function companyFrom(request: NextRequest): string {
-  return request.nextUrl.searchParams.get('company')?.trim().toLowerCase() ?? '';
+function canManage(session: Awaited<ReturnType<typeof getInboxSession>>) {
+  if (!session) return false;
+
+  if (session.type === 'bootstrap') {
+    return session.roleKey === 'owner';
+  }
+
+  const role = session.roleKey?.trim().toLowerCase();
+
+  return session.type === 'user' && (role === 'owner' || role === 'admin');
 }
 
-async function hasValidSession(request: NextRequest): Promise<boolean> {
-  return isInboxSessionValid(
-    request.cookies.get(INBOX_SESSION_COOKIE)?.value,
-  );
+async function currentSession(request: NextRequest) {
+  return getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
 }
 
 function unauthorized() {
@@ -35,47 +41,53 @@ function unauthorized() {
 }
 
 async function proxyResponse(response: Response) {
-  const contentType =
-    response.headers.get('content-type') ?? 'application/json';
-  const body = await response.text();
-
-  return new NextResponse(body, {
+  return new NextResponse(await response.text(), {
     status: response.status,
-    headers: { 'content-type': contentType },
+    headers: {
+      'content-type': response.headers.get('content-type') ?? 'application/json',
+    },
   });
 }
 
-function usersTarget(
-  apiBase: string,
-  company: string,
-  suffix = '',
-): URL {
-  if (!company) {
-    throw new Error('Falta la empresa.');
-  }
-
+function usersTarget(apiBase: string, companySlug: string, suffix = '') {
   const target = new URL(`${apiBase}/users${suffix}`);
-  target.searchParams.set('company', company);
+  target.searchParams.set('company', companySlug);
 
   return target;
 }
 
-export async function GET(request: NextRequest) {
-  if (!(await hasValidSession(request))) {
-    return unauthorized();
+async function requireManager(request: NextRequest) {
+  const session = await currentSession(request);
+
+  if (!session) return { response: unauthorized() as NextResponse, session: null };
+
+  if (!canManage(session)) {
+    return {
+      response: NextResponse.json(
+        { ok: false, error: 'No tienes permiso para administrar usuarios.' },
+        { status: 403 },
+      ),
+      session: null,
+    };
   }
+
+  return { response: null, session };
+}
+
+export async function GET(request: NextRequest) {
+  const { response: denied, session } = await requireManager(request);
+
+  if (denied || !session) return denied;
 
   try {
     const { apiBase, inboxKey } = config();
-    const response = await fetch(
-      usersTarget(apiBase, companyFrom(request)),
-      {
+
+    return proxyResponse(
+      await fetch(usersTarget(apiBase, session.companySlug), {
         headers: { 'x-chatpro-inbox-key': inboxKey },
         cache: 'no-store',
-      },
+      }),
     );
-
-    return proxyResponse(response);
   } catch (error) {
     return NextResponse.json(
       {
@@ -91,9 +103,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await hasValidSession(request))) {
-    return unauthorized();
-  }
+  const { response: denied, session } = await requireManager(request);
+
+  if (denied || !session) return denied;
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
@@ -109,9 +121,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { action: _action, ...payload } = body;
-    const response = await fetch(
-      usersTarget(apiBase, companyFrom(request), suffix),
-      {
+
+    return proxyResponse(
+      await fetch(usersTarget(apiBase, session.companySlug, suffix), {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -119,10 +131,8 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify(payload),
         cache: 'no-store',
-      },
+      }),
     );
-
-    return proxyResponse(response);
   } catch (error) {
     return NextResponse.json(
       {
@@ -138,28 +148,24 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!(await hasValidSession(request))) {
-    return unauthorized();
-  }
+  const { response: denied, session } = await requireManager(request);
+
+  if (denied || !session) return denied;
 
   try {
     const { apiBase, inboxKey } = config();
-    const body = await request.json();
 
-    const response = await fetch(
-      usersTarget(apiBase, companyFrom(request)),
-      {
+    return proxyResponse(
+      await fetch(usersTarget(apiBase, session.companySlug), {
         method: 'PATCH',
         headers: {
           'content-type': 'application/json',
           'x-chatpro-inbox-key': inboxKey,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(await request.json()),
         cache: 'no-store',
-      },
+      }),
     );
-
-    return proxyResponse(response);
   } catch (error) {
     return NextResponse.json(
       {

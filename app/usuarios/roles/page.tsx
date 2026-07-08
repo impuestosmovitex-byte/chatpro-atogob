@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
 import styles from './page.module.css';
 
-const COMPANY = process.env.NEXT_PUBLIC_CHATPRO_COMPANY || 'atogob';
 
 type Permission = {
   key: string;
@@ -110,7 +109,7 @@ export default function RolesPage() {
 
     try {
       const response = await fetch(
-        `/api/roles?company=${encodeURIComponent(COMPANY)}`,
+        `/api/roles`,
         { cache: 'no-store' },
       );
       const data = (await response.json()) as ResponseData;
@@ -174,7 +173,7 @@ export default function RolesPage() {
 
     try {
       const response = await fetch(
-        `/api/roles?company=${encodeURIComponent(COMPANY)}`,
+        `/api/roles`,
         {
           method: editingKey ? 'PATCH' : 'POST',
           headers: { 'content-type': 'application/json' },

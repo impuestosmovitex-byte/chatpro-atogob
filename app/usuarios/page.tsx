@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AppSidebar } from '../components/AppSidebar';
 import styles from './page.module.css';
 
-const COMPANY = process.env.NEXT_PUBLIC_CHATPRO_COMPANY || 'atogob';
 
 type Permission = {
   key: string;
@@ -100,7 +99,7 @@ export default function UsuariosPage() {
 
     try {
       const response = await fetch(
-        `/api/users?company=${encodeURIComponent(COMPANY)}`,
+        `/api/users`,
         { cache: 'no-store' },
       );
       const data = (await response.json()) as ResponseData;
@@ -156,7 +155,7 @@ export default function UsuariosPage() {
 
     try {
       const response = await fetch(
-        `/api/users?company=${encodeURIComponent(COMPANY)}`,
+        `/api/users`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -190,7 +189,7 @@ export default function UsuariosPage() {
 
     try {
       const response = await fetch(
-        `/api/users?company=${encodeURIComponent(COMPANY)}`,
+        `/api/users`,
         {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
@@ -229,7 +228,7 @@ export default function UsuariosPage() {
 
     try {
       const response = await fetch(
-        `/api/users?company=${encodeURIComponent(COMPANY)}`,
+        `/api/users`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
