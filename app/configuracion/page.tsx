@@ -1,10 +1,15 @@
- 'use client';
+'use client';
 
+import { useEffect, useState } from 'react';
 import { AppSidebar } from '../components/AppSidebar';
 import styles from './page.module.css';
 
-const COMPANY_NAME =
-  (process.env.NEXT_PUBLIC_CHATPRO_COMPANY || 'ATOGOB').toUpperCase();
+type SessionResponse = {
+  ok?: boolean;
+  session?: {
+    companyName?: string;
+  };
+};
 
 const cards = [
   {
@@ -65,15 +70,36 @@ const cards = [
 ];
 
 export default function ConfiguracionPage() {
+  const [companyName, setCompanyName] = useState('Empresa');
+
+  useEffect(() => {
+    async function loadSession() {
+      try {
+        const response = await fetch('/api/auth/session', {
+          cache: 'no-store',
+        });
+        const data = (await response.json()) as SessionResponse;
+
+        if (response.ok && data.ok && data.session?.companyName) {
+          setCompanyName(data.session.companyName);
+        }
+      } catch {
+        setCompanyName('Empresa');
+      }
+    }
+
+    void loadSession();
+  }, []);
+
   return (
     <main className={styles.shell}>
-      <AppSidebar companyName={COMPANY_NAME} />
+      <AppSidebar companyName={companyName} />
 
       <section className={styles.workspace}>
         <header className={styles.header}>
           <div>
             <p className={styles.eyebrow}>CONFIGURACIÓN</p>
-            <h1>Configura {COMPANY_NAME}</h1>
+            <h1>Configura {companyName}</h1>
             <p>
               Administra los ajustes de tu empresa, equipo, canales y atención.
             </p>

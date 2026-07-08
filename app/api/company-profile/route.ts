@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  INBOX_SESSION_COOKIE,
+  getInboxSession,
+} from '../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,8 +17,26 @@ function config() {
   return { apiBase, inboxKey };
 }
 
-function companyFrom(request: NextRequest) {
-  return request.nextUrl.searchParams.get('company')?.trim().toLowerCase() ?? '';
+async function currentSession(request: NextRequest) {
+  return getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
+}
+
+function forbidden(message: string, status = 403) {
+  return NextResponse.json({ ok: false, error: message }, { status });
+}
+
+function canManageCompany(
+  session: Awaited<ReturnType<typeof getInboxSession>>,
+) {
+  if (!session) return false;
+
+  if (session.type === 'bootstrap') {
+    return session.roleKey === 'owner';
+  }
+
+  const role = session.roleKey?.trim().toLowerCase();
+
+  return session.type === 'user' && (role === 'owner' || role === 'admin');
 }
 
 async function proxyResponse(response: Response) {
@@ -28,19 +50,20 @@ async function proxyResponse(response: Response) {
 }
 
 export async function GET(request: NextRequest) {
+  const session = await currentSession(request);
+
+  if (!session) {
+    return forbidden('Sesión requerida.', 401);
+  }
+
+  if (!canManageCompany(session)) {
+    return forbidden('No tienes permiso para administrar esta empresa.');
+  }
+
   try {
-    const company = companyFrom(request);
-
-    if (!company) {
-      return NextResponse.json(
-        { ok: false, error: 'Falta la empresa.' },
-        { status: 400 },
-      );
-    }
-
     const { apiBase, inboxKey } = config();
     const target = new URL(`${apiBase}/company-profile`);
-    target.searchParams.set('company', company);
+    target.searchParams.set('company', session.companySlug);
 
     return proxyResponse(
       await fetch(target, {
@@ -63,20 +86,21 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const session = await currentSession(request);
+
+  if (!session) {
+    return forbidden('Sesión requerida.', 401);
+  }
+
+  if (!canManageCompany(session)) {
+    return forbidden('No tienes permiso para administrar esta empresa.');
+  }
+
   try {
-    const company = companyFrom(request);
-
-    if (!company) {
-      return NextResponse.json(
-        { ok: false, error: 'Falta la empresa.' },
-        { status: 400 },
-      );
-    }
-
     const body = await request.json();
     const { apiBase, inboxKey } = config();
     const target = new URL(`${apiBase}/company-profile`);
-    target.searchParams.set('company', company);
+    target.searchParams.set('company', session.companySlug);
 
     return proxyResponse(
       await fetch(target, {

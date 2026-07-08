@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
 import styles from './page.module.css';
 
-const COMPANY = process.env.NEXT_PUBLIC_CHATPRO_COMPANY || 'atogob';
 
 type Identity = {
   businessName: string;
@@ -51,10 +50,9 @@ export default function EmpresaIdentidadPage() {
   useEffect(() => {
     async function load() {
       try {
-        const response = await fetch(
-          `/api/company-profile?company=${encodeURIComponent(COMPANY)}`,
-          { cache: 'no-store' },
-        );
+        const response = await fetch('/api/company-profile', {
+          cache: 'no-store',
+        });
         const data = (await response.json()) as ResponseData;
 
         if (!response.ok || !data.ok || !data.identity) {
@@ -87,14 +85,11 @@ export default function EmpresaIdentidadPage() {
     setMessage('');
 
     try {
-      const response = await fetch(
-        `/api/company-profile?company=${encodeURIComponent(COMPANY)}`,
-        {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(identity),
-        },
-      );
+      const response = await fetch('/api/company-profile', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(identity),
+      });
       const data = (await response.json()) as ResponseData;
 
       if (!response.ok || !data.ok || !data.identity) {
