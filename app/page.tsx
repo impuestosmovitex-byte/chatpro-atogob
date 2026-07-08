@@ -154,6 +154,10 @@ export default function Home() {
   const [internalTestLoading, setInternalTestLoading] = useState(false);
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [contactTags, setContactTags] = useState("");
+  const [contactNotes, setContactNotes] = useState("");
+  const [contactSaving, setContactSaving] = useState(false);
 
   async function loadIdentityAndPresence() {
     try {
@@ -442,6 +446,26 @@ export default function Home() {
   );
 
 
+  const selectedContactTags = selected?.contact?.tags?.join(", ") ?? "";
+
+  useEffect(() => {
+    if (!selected) {
+      setContactName("");
+      setContactTags("");
+      setContactNotes("");
+      return;
+    }
+
+    setContactName(selected.contact?.displayName ?? "");
+    setContactTags(selectedContactTags);
+    setContactNotes(selected.contact?.notes ?? "");
+  }, [
+    selected?.session.id,
+    selected?.contact?.displayName,
+    selected?.contact?.notes,
+    selectedContactTags,
+  ]);
+
   const messageFeedRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -475,6 +499,62 @@ export default function Home() {
           )
           .slice(0, 7)
       : [];
+
+  async function saveContactFromInbox(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selected || isInternalTest) return;
+
+    setContactSaving(true);
+    setActionMessage("");
+    setError("");
+
+    try {
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          phone: selected.session.customerPhone,
+          displayName: contactName,
+          tags: contactTags,
+          notes: contactNotes,
+        }),
+      });
+
+      const data = (await readJson(response)) as {
+        ok?: boolean;
+        error?: string;
+        contact?: Contact;
+      };
+
+      if (!response.ok || !data.ok || !data.contact) {
+        throw new Error(data.error || "No se pudo guardar la ficha del cliente.");
+      }
+
+      const savedContact = data.contact;
+
+      setSelected((current) =>
+        current && current.session.id === selected.session.id
+          ? { ...current, contact: savedContact }
+          : current,
+      );
+
+      setSessions((current) =>
+        current.map((item) =>
+          item.id === selected.session.id
+            ? { ...item, contact: savedContact }
+            : item,
+        ),
+      );
+
+      setActionMessage("Ficha comercial del cliente guardada.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudo guardar la ficha del cliente.");
+    } finally {
+      setContactSaving(false);
+    }
+  }
 
   function chooseQuickReply(reply: QuickReply) {
     setMessage(reply.body);
@@ -780,6 +860,49 @@ export default function Home() {
                   </div>
                 </dl>
 
+                {!isInternalTest ? (
+                  <form className="contact-card-form" onSubmit={saveContactFromInbox}>
+                    <div className="contact-card-heading">
+                      <h3>Ficha comercial</h3>
+                      <button type="submit" disabled={contactSaving}>
+                        {contactSaving ? "Guardando…" : "Guardar"}
+                      </button>
+                    </div>
+
+                    <label>
+                      <span>Nombre visible</span>
+                      <input
+                        value={contactName}
+                        onChange={(event) => setContactName(event.target.value)}
+                        placeholder="Nombre del cliente"
+                      />
+                    </label>
+
+                    <label>
+                      <span>Etiquetas</span>
+                      <input
+                        value={contactTags}
+                        onChange={(event) => setContactTags(event.target.value)}
+                        placeholder="Ej. mayorista, seguimiento, VIP"
+                      />
+                    </label>
+
+                    <label>
+                      <span>Notas internas</span>
+                      <textarea
+                        value={contactNotes}
+                        onChange={(event) => setContactNotes(event.target.value)}
+                        placeholder="Datos útiles para vender y atender mejor. No lo ve el cliente."
+                        rows={4}
+                      />
+                    </label>
+
+                    <p className="contact-card-helper">
+                      Separa las etiquetas con comas. Las notas son solo para el equipo.
+                    </p>
+                  </form>
+                ) : null}
+
                 {typeof (selected.session.context as Record<string, unknown>).handoff === "object" ? (
                   <section className="contact-notes-context">
                     <h3>Resumen de transferencia</h3>
@@ -788,12 +911,6 @@ export default function Home() {
                   </section>
                 ) : null}
 
-                {selected.contact?.notes?.trim() ? (
-                  <section className="contact-notes-context">
-                    <h3>Notas internas</h3>
-                    <p>{selected.contact.notes}</p>
-                  </section>
-                ) : null}
 
                 <section className="cart-context">
                   <div className="cart-context-heading">
