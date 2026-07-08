@@ -206,6 +206,7 @@ export class ConversationMemoryService {
       tone?: string;
       aiInstructions?: string;
       commercialFlow?: unknown;
+      knowledgeBase?: unknown;
     },
   ): Promise<CompanyProfile> {
     const profile = await this.getCompanyProfile(companySlug);
@@ -230,6 +231,18 @@ export class ConversationMemoryService {
         nextSettings.commercial_flow = commercialFlow;
       } else {
         delete nextSettings.commercial_flow;
+      }
+    }
+
+    if (input.knowledgeBase !== undefined) {
+      const knowledgeBase = this.normalizeKnowledgeBase(
+        input.knowledgeBase,
+      );
+
+      if (Object.keys(knowledgeBase).length) {
+        nextSettings.knowledge_base = knowledgeBase;
+      } else {
+        delete nextSettings.knowledge_base;
       }
     }
 
@@ -1750,6 +1763,34 @@ export class ConversationMemoryService {
       const raw = source[inputKey];
       const text =
         typeof raw === 'string' ? raw.trim().slice(0, 6000) : '';
+
+      if (text) {
+        result[storedKey] = text;
+      }
+    }
+
+    return result;
+  }
+
+  private normalizeKnowledgeBase(value: unknown): JsonObject {
+    const source =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+
+    const mapping: Array<[string, string]> = [
+      ['terms_conditions', 'termsConditions'],
+      ['exchanges_returns', 'exchangesReturns'],
+      ['warranties', 'warranties'],
+      ['policies_faq', 'policiesFaq'],
+    ];
+
+    const result: JsonObject = {};
+
+    for (const [storedKey, inputKey] of mapping) {
+      const raw = source[inputKey];
+      const text =
+        typeof raw === 'string' ? raw.trim().slice(0, 8000) : '';
 
       if (text) {
         result[storedKey] = text;

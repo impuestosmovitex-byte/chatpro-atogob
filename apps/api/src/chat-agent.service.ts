@@ -204,6 +204,7 @@ export class ChatAgentService {
         ? profile.settings.ai_tone.trim()
         : 'cercana, clara, breve y natural';
     const commercialRules = this.getCommercialFlowRules(profile.settings);
+    const knowledgeRules = this.getKnowledgeBaseRules(profile.settings);
 
     return [
       `Eres ${assistantName}, asesora comercial de ${profile.name}.`,
@@ -218,7 +219,8 @@ export class ChatAgentService {
       '- ALCANCE OBLIGATORIO: responde solo temas relacionados con la empresa, sus productos, servicios, pedidos, pagos, envíos, políticas, herramientas conectadas o instrucciones configuradas. No respondas cultura general, noticias, historia, tecnología, personas famosas ni preguntas externas. En esos casos redirige amablemente al tema de la empresa.',
       '',
       'FORMA DE ATENDER:',
-      '- Las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA tienen prioridad y definen cómo conversar y vender.',
+      '- Las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA y la BASE DE CONOCIMIENTO APROBADA tienen prioridad y definen cómo conversar, vender y resolver políticas.',
+      '- OpenAI debe razonar con la base configurada; no respondas como plantilla fija ni como árbol de palabras clave.',
       '- Conversa de manera natural; no uses formularios ni secuencias rígidas de preguntas.',
       '- Entiende mensajes cortos, cambios de idea, errores de escritura y referencias como “esta”, “la lila”, “sí”, “dale”, “mejor no” o “quiero otra”.',
       '- Conserva el carrito real aunque la persona mire otro producto.',
@@ -226,6 +228,7 @@ export class ChatAgentService {
       '',
       'USO DE HERRAMIENTAS:',
       '- Consulta productos, colecciones, variantes y carrito con las herramientas antes de dar datos definitivos.',
+      '- Si preguntan por términos, cambios, devoluciones, garantías, pagos, envíos o políticas, responde usando la BASE DE CONOCIMIENTO APROBADA y las instrucciones de la empresa. Si falta una regla específica, dilo con claridad y escala si es necesario.',
       '- Cuando la persona comparta un enlace de producto, selecciónalo con select_product_by_url y responde usando sus datos reales.',
       '- Cuando pida una categoría amplia, usa open_collection o search_products según corresponda.',
       '- Cuando la persona confirme claramente una variante, valida con select_variant y agrega de inmediato con add_selected_variant_to_cart.',
@@ -242,6 +245,9 @@ export class ChatAgentService {
       '',
       'CONFIGURACIÓN COMERCIAL ESTRUCTURADA:',
       commercialRules,
+      '',
+      'BASE DE CONOCIMIENTO APROBADA POR LA EMPRESA:',
+      knowledgeRules,
       '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',
@@ -293,6 +299,34 @@ export class ChatAgentService {
     return lines.length
       ? lines.join('\n')
       : '- No hay reglas comerciales estructuradas. Usa únicamente las instrucciones adicionales configuradas por la empresa.';
+  }
+
+  private getKnowledgeBaseRules(settings: JsonObject): string {
+    const source =
+      settings.knowledge_base &&
+      typeof settings.knowledge_base === 'object' &&
+      !Array.isArray(settings.knowledge_base)
+        ? settings.knowledge_base as JsonObject
+        : {};
+
+    const labels: Array<[string, string]> = [
+      ['terms_conditions', 'Términos y condiciones'],
+      ['exchanges_returns', 'Cambios y devoluciones'],
+      ['warranties', 'Garantías'],
+      ['policies_faq', 'Preguntas frecuentes y políticas adicionales'],
+    ];
+
+    const lines = labels
+      .map(([key, label]) => {
+        const value = source[key];
+        const text = typeof value === 'string' ? value.trim() : '';
+        return text ? `- ${label}: ${text}` : '';
+      })
+      .filter(Boolean);
+
+    return lines.length
+      ? lines.join('\n')
+      : '- No hay base de conocimiento configurada. No inventes políticas; pide más información o escala a un asesor cuando haga falta.';
   }
 
   private getActiveRecoveryContext(

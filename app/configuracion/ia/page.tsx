@@ -13,11 +13,19 @@ type CommercialFlow = {
   checkoutInstructions: string;
 };
 
+type KnowledgeBase = {
+  termsConditions: string;
+  exchangesReturns: string;
+  warranties: string;
+  policiesFaq: string;
+};
+
 type Configuration = {
   assistantName: string;
   tone: string;
   aiInstructions: string;
   commercialFlow: CommercialFlow;
+  knowledgeBase: KnowledgeBase;
 };
 
 type ResponseData = {
@@ -35,11 +43,19 @@ const EMPTY_FLOW: CommercialFlow = {
   checkoutInstructions: '',
 };
 
+const EMPTY_KNOWLEDGE: KnowledgeBase = {
+  termsConditions: '',
+  exchangesReturns: '',
+  warranties: '',
+  policiesFaq: '',
+};
+
 const EMPTY: Configuration = {
   assistantName: '',
   tone: 'Cercana, clara, breve y profesional',
   aiInstructions: '',
   commercialFlow: EMPTY_FLOW,
+  knowledgeBase: EMPTY_KNOWLEDGE,
 };
 
 function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
@@ -50,6 +66,10 @@ function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
     commercialFlow: {
       ...EMPTY_FLOW,
       ...(value?.commercialFlow ?? {}),
+    },
+    knowledgeBase: {
+      ...EMPTY_KNOWLEDGE,
+      ...(value?.knowledgeBase ?? {}),
     },
   };
 }
@@ -102,6 +122,16 @@ export default function ConfiguracionPage() {
     }));
   }
 
+  function updateKnowledge(key: keyof KnowledgeBase, value: string) {
+    setConfiguration((current) => ({
+      ...current,
+      knowledgeBase: {
+        ...current.knowledgeBase,
+        [key]: value,
+      },
+    }));
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -122,7 +152,7 @@ export default function ConfiguracionPage() {
 
       setConfiguration(normalizeConfiguration(data.configuration));
       setMessage(
-        'Configuración guardada. La IA usará estas reglas en las nuevas conversaciones.',
+        'Configuración guardada. La IA usará estas reglas y políticas en las nuevas conversaciones.',
       );
     } catch (error) {
       setMessage(
@@ -143,7 +173,7 @@ export default function ConfiguracionPage() {
           <div>
             <p className={styles.eyebrow}>CONFIGURACIÓN COMERCIAL</p>
             <h1>Asistente y ventas · {companyName}</h1>
-            <p>Define cómo atiende, vende y cierra compras el asistente de esta empresa.</p>
+            <p>Define cómo atiende, vende y responde sobre políticas el asistente de esta empresa.</p>
           </div>
           <button
             type="button"
@@ -295,7 +325,69 @@ export default function ConfiguracionPage() {
           <section className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>3. INSTRUCCIONES ADICIONALES</p>
+                <p>3. BASE DE CONOCIMIENTO</p>
+                <h2>Políticas que la IA debe consultar</h2>
+              </div>
+              <span>No inventa respuestas</span>
+            </div>
+
+            <label>
+              <span>Términos y condiciones</span>
+              <textarea
+                value={configuration.knowledgeBase.termsConditions}
+                onChange={(event) =>
+                  updateKnowledge('termsConditions', event.target.value)
+                }
+                placeholder="Pega aquí condiciones generales, tiempos, restricciones, consentimiento, políticas de compra o reglas legales de la empresa."
+                rows={5}
+                disabled={loading}
+              />
+            </label>
+
+            <label>
+              <span>Cambios y devoluciones</span>
+              <textarea
+                value={configuration.knowledgeBase.exchangesReturns}
+                onChange={(event) =>
+                  updateKnowledge('exchangesReturns', event.target.value)
+                }
+                placeholder="Ejemplo: Cambios dentro de 30 días, producto sin uso, con etiquetas, aplica o no aplica a promociones, quién paga el envío."
+                rows={5}
+                disabled={loading}
+              />
+            </label>
+
+            <label>
+              <span>Garantías</span>
+              <textarea
+                value={configuration.knowledgeBase.warranties}
+                onChange={(event) =>
+                  updateKnowledge('warranties', event.target.value)
+                }
+                placeholder="Ejemplo: Tiempo de garantía, qué cubre, qué no cubre, cómo reportarla y cuándo debe pasar a un asesor."
+                rows={5}
+                disabled={loading}
+              />
+            </label>
+
+            <label>
+              <span>Preguntas frecuentes y políticas adicionales</span>
+              <textarea
+                value={configuration.knowledgeBase.policiesFaq}
+                onChange={(event) =>
+                  updateKnowledge('policiesFaq', event.target.value)
+                }
+                placeholder="Horarios, rastreos, estados de pedidos, condiciones especiales, mensajes que debe usar o casos que debe escalar."
+                rows={6}
+                disabled={loading}
+              />
+            </label>
+          </section>
+
+          <section className={styles.card}>
+            <div className={styles.sectionHeading}>
+              <div>
+                <p>4. INSTRUCCIONES ADICIONALES</p>
                 <h2>Promociones, estilo y casos especiales</h2>
               </div>
             </div>
@@ -317,7 +409,7 @@ export default function ConfiguracionPage() {
             </label>
 
             <div className={styles.help}>
-              El asistente usa estas reglas solo para {companyName}. La empresa debe mantenerlas actualizadas; el asistente no inventa ni cambia políticas por su cuenta.
+              OpenAI razona con estas reglas y políticas de {companyName}. No son respuestas fijas: son la base aprobada para responder, vender y saber cuándo escalar.
             </div>
           </section>
 

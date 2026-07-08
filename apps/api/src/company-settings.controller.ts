@@ -22,11 +22,19 @@ type CommercialFlow = {
   checkoutInstructions: string;
 };
 
+type KnowledgeBase = {
+  termsConditions: string;
+  exchangesReturns: string;
+  warranties: string;
+  policiesFaq: string;
+};
+
 type SettingsBody = {
   assistantName?: unknown;
   tone?: unknown;
   aiInstructions?: unknown;
   commercialFlow?: unknown;
+  knowledgeBase?: unknown;
 };
 
 function optionalText(value: unknown): string | undefined {
@@ -51,6 +59,20 @@ function commercialFlowFrom(value: unknown): CommercialFlow {
     shippingInstructions: cleanText(source.shipping_instructions),
     paymentInstructions: cleanText(source.payment_instructions),
     checkoutInstructions: cleanText(source.checkout_instructions),
+  };
+}
+
+function knowledgeBaseFrom(value: unknown): KnowledgeBase {
+  const source =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+
+  return {
+    termsConditions: cleanText(source.terms_conditions),
+    exchangesReturns: cleanText(source.exchanges_returns),
+    warranties: cleanText(source.warranties),
+    policiesFaq: cleanText(source.policies_faq),
   };
 }
 
@@ -98,6 +120,7 @@ export class CompanySettingsController {
         tone: optionalText(body?.tone),
         aiInstructions: optionalText(body?.aiInstructions),
         commercialFlow: body?.commercialFlow,
+        knowledgeBase: body?.knowledgeBase,
       });
 
     return {
@@ -140,6 +163,7 @@ export class CompanySettingsController {
           : 'Cercana, clara, breve y profesional',
       aiInstructions: profile.aiInstructions ?? '',
       commercialFlow: commercialFlowFrom(profile.settings.commercial_flow),
+      knowledgeBase: knowledgeBaseFrom(profile.settings.knowledge_base),
     };
   }
 }
