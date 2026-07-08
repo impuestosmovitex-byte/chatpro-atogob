@@ -52,6 +52,16 @@ type QuickReply = {
   isActive: boolean;
 };
 
+type StorefrontProduct = {
+  onlineStoreUrl: string | null;
+};
+
+type StorefrontResponse = {
+  ok?: boolean;
+  error?: string;
+  products?: StorefrontProduct[];
+};
+
 type AdvisorStatus = "available" | "busy" | "away" | "offline";
 type CurrentUser = { userId: string; companyName: string; fullName: string; roleName: string };
 type AdvisorPresence = { status: AdvisorStatus };
@@ -138,6 +148,16 @@ function getCart(context: Record<string, unknown>) {
   );
 }
 
+function storefrontOrigin(value: string | null | undefined) {
+  if (!value) return "";
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
+  }
+}
+
 export default function Home() {
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [sessions, setSessions] = useState<InboxSession[]>([]);
@@ -158,6 +178,9 @@ export default function Home() {
   const [contactTags, setContactTags] = useState("");
   const [contactNotes, setContactNotes] = useState("");
   const [contactSaving, setContactSaving] = useState(false);
+  const [storefrontUrl, setStorefrontUrl] = useState("");
+  const [storefrontLoading, setStorefrontLoading] = useState(false);
+  const [storefrontError, setStorefrontError] = useState("");
 
   async function loadIdentityAndPresence() {
     try {
@@ -499,6 +522,51 @@ export default function Home() {
           )
           .slice(0, 7)
       : [];
+
+  async function openStorefront() {
+    if (storefrontUrl) {
+      window.open(storefrontUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    setStorefrontLoading(true);
+    setStorefrontError("");
+
+    try {
+      const params = new URLSearchParams({
+        status: "active",
+        limit: "1",
+      });
+      const response = await fetch(`/api/products?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const data = (await readJson(response)) as StorefrontResponse;
+
+      if (!response.ok || !data.ok || !data.products) {
+        throw new Error(data.error || "No se pudo abrir la tienda conectada.");
+      }
+
+      const url =
+        data.products
+          .map((product) => storefrontOrigin(product.onlineStoreUrl))
+          .find(Boolean) || "";
+
+      if (!url) {
+        throw new Error(
+          "No encontré una URL pública de tienda. Revisa que Shopify tenga productos activos y publicados.",
+        );
+      }
+
+      setStorefrontUrl(url);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (caught) {
+      setStorefrontError(
+        caught instanceof Error ? caught.message : "No se pudo abrir la tienda conectada.",
+      );
+    } finally {
+      setStorefrontLoading(false);
+    }
+  }
 
   async function saveContactFromInbox(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -859,6 +927,19 @@ export default function Home() {
                     <dd>{statusLabel[selected.session.attentionStatus]}</dd>
                   </div>
                 </dl>
+
+                {!isInternalTest ? (
+                  <section className="storefront-card">
+                    <div>
+                      <h3>Tienda conectada</h3>
+                      <p>Abre la web pública de la empresa para copiar links y enviarlos al cliente.</p>
+                    </div>
+                    <button type="button" onClick={() => void openStorefront()} disabled={storefrontLoading}>
+                      {storefrontLoading ? "Abriendo…" : "Abrir tienda ↗"}
+                    </button>
+                    {storefrontError ? <small>{storefrontError}</small> : null}
+                  </section>
+                ) : null}
 
                 {!isInternalTest ? (
                   <form className="contact-card-form" onSubmit={saveContactFromInbox}>

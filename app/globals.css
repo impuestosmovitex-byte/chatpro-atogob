@@ -235,3 +235,55 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
   font-size: 11px;
   line-height: 1.35;
 }
+
+
+.storefront-card {
+  display: grid;
+  gap: 11px;
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid #dbe5f8;
+  border-radius: 14px;
+  background: #f7f9ff;
+}
+
+.storefront-card h3 {
+  margin: 0 0 4px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.storefront-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.storefront-card button {
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  background: #3157a3;
+  color: #fff;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.storefront-card button:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
+.storefront-card small {
+  display: block;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: #fff4f4;
+  color: #9b2e38;
+  font-size: 11px;
+  line-height: 1.35;
+}
