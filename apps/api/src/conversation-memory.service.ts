@@ -207,6 +207,7 @@ export class ConversationMemoryService {
       aiInstructions?: string;
       commercialFlow?: unknown;
       knowledgeBase?: unknown;
+      cartRecovery?: unknown;
     },
   ): Promise<CompanyProfile> {
     const profile = await this.getCompanyProfile(companySlug);
@@ -244,6 +245,24 @@ export class ConversationMemoryService {
       } else {
         delete nextSettings.knowledge_base;
       }
+    }
+
+    if (input.cartRecovery !== undefined) {
+      const cartRecovery = this.normalizeCartRecovery(
+        input.cartRecovery,
+      );
+
+      if (Object.keys(cartRecovery).length) {
+        nextSettings.cart_recovery = cartRecovery;
+      } else {
+        delete nextSettings.cart_recovery;
+      }
+
+      delete nextSettings.cart_recovery_default_country_code;
+      delete nextSettings.cart_recovery_reply_context_hours;
+      delete nextSettings.cart_recovery_test_mode;
+      delete nextSettings.cart_recovery_test_phones;
+      delete nextSettings.cart_recovery_fallback_message;
     }
 
     const assistantName =
@@ -1741,6 +1760,73 @@ export class ConversationMemoryService {
     }
 
     return 'ai';
+  }
+
+  private normalizeCartRecovery(value: unknown): JsonObject {
+    const source =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+
+    const result: JsonObject = {};
+
+    const fallbackMessage =
+      typeof source.fallbackMessage === 'string'
+        ? source.fallbackMessage.trim().slice(0, 2000)
+        : '';
+
+    if (fallbackMessage) {
+      result.fallback_message = fallbackMessage;
+    }
+
+    const defaultCountryCode =
+      typeof source.defaultCountryCode === 'string'
+        ? source.defaultCountryCode.replace(/\D/g, '').slice(0, 4)
+        : '';
+
+    if (defaultCountryCode) {
+      result.default_country_code = defaultCountryCode;
+    }
+
+    const replyContextHours =
+      typeof source.replyContextHours === 'number'
+        ? source.replyContextHours
+        : typeof source.replyContextHours === 'string'
+          ? Number(source.replyContextHours)
+          : Number.NaN;
+
+    if (
+      Number.isInteger(replyContextHours) &&
+      replyContextHours >= 1 &&
+      replyContextHours <= 168
+    ) {
+      result.reply_context_hours = replyContextHours;
+    }
+
+    if (source.testMode === true) {
+      result.test_mode = true;
+    } else if (source.testMode === false) {
+      result.test_mode = false;
+    }
+
+    const testPhonesSource = source.testPhones;
+    const testPhones = Array.isArray(testPhonesSource)
+      ? testPhonesSource
+      : typeof testPhonesSource === 'string'
+        ? testPhonesSource.split(/[\n,;]+/)
+        : [];
+
+    const cleanedPhones = testPhones
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.replace(/[^0-9+]/g, '').trim())
+      .filter(Boolean)
+      .slice(0, 50);
+
+    if (cleanedPhones.length) {
+      result.test_phones = cleanedPhones;
+    }
+
+    return result;
   }
 
   private normalizeCommercialFlow(value: unknown): JsonObject {

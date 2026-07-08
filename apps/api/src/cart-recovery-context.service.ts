@@ -94,9 +94,10 @@ export class CartRecoveryContextService {
       );
     }
 
-    const defaultCountryCode = this.text(
-      settings.cart_recovery_default_country_code,
-    );
+    const recoverySettings = this.object(settings.cart_recovery);
+    const defaultCountryCode =
+      this.text(recoverySettings.default_country_code) ??
+      this.text(settings.cart_recovery_default_country_code);
     const cart = ((data ?? []) as RecoveryCartRow[]).find((item) =>
       this.samePhone(item.customer_phone, customerPhone, defaultCountryCode),
     );
@@ -288,7 +289,10 @@ export class CartRecoveryContextService {
   }
 
   private getContextHours(settings: JsonObject): number {
-    const configured = settings.cart_recovery_reply_context_hours;
+    const recoverySettings = this.object(settings.cart_recovery);
+    const configured =
+      recoverySettings.reply_context_hours ??
+      settings.cart_recovery_reply_context_hours;
     const parsed =
       typeof configured === 'number'
         ? configured

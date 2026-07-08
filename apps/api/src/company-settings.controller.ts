@@ -29,12 +29,21 @@ type KnowledgeBase = {
   policiesFaq: string;
 };
 
+type CartRecoverySettings = {
+  fallbackMessage: string;
+  defaultCountryCode: string;
+  replyContextHours: number;
+  testMode: boolean;
+  testPhones: string;
+};
+
 type SettingsBody = {
   assistantName?: unknown;
   tone?: unknown;
   aiInstructions?: unknown;
   commercialFlow?: unknown;
   knowledgeBase?: unknown;
+  cartRecovery?: unknown;
 };
 
 function optionalText(value: unknown): string | undefined {
@@ -73,6 +82,54 @@ function knowledgeBaseFrom(value: unknown): KnowledgeBase {
     exchangesReturns: cleanText(source.exchanges_returns),
     warranties: cleanText(source.warranties),
     policiesFaq: cleanText(source.policies_faq),
+  };
+}
+
+function cartRecoveryFrom(
+  value: unknown,
+  settings: Record<string, unknown>,
+): CartRecoverySettings {
+  const nested =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+
+  const testPhonesValue =
+    nested.test_phones ?? settings.cart_recovery_test_phones;
+  const testPhones = Array.isArray(testPhonesValue)
+    ? testPhonesValue
+        .filter((item): item is string => typeof item === 'string')
+        .join('\n')
+    : cleanText(testPhonesValue);
+
+  const rawHours =
+    nested.reply_context_hours ??
+    settings.cart_recovery_reply_context_hours;
+  const parsedHours =
+    typeof rawHours === 'number'
+      ? rawHours
+      : typeof rawHours === 'string'
+        ? Number(rawHours)
+        : Number.NaN;
+
+  return {
+    fallbackMessage: cleanText(
+      nested.fallback_message ?? settings.cart_recovery_fallback_message,
+    ),
+    defaultCountryCode:
+      cleanText(
+        nested.default_country_code ??
+          settings.cart_recovery_default_country_code,
+      ) || '57',
+    replyContextHours:
+      Number.isInteger(parsedHours) && parsedHours >= 1 && parsedHours <= 168
+        ? parsedHours
+        : 72,
+    testMode:
+      typeof nested.test_mode === 'boolean'
+        ? nested.test_mode
+        : settings.cart_recovery_test_mode !== false,
+    testPhones,
   };
 }
 
@@ -121,6 +178,7 @@ export class CompanySettingsController {
         aiInstructions: optionalText(body?.aiInstructions),
         commercialFlow: body?.commercialFlow,
         knowledgeBase: body?.knowledgeBase,
+        cartRecovery: body?.cartRecovery,
       });
 
     return {
@@ -164,6 +222,10 @@ export class CompanySettingsController {
       aiInstructions: profile.aiInstructions ?? '',
       commercialFlow: commercialFlowFrom(profile.settings.commercial_flow),
       knowledgeBase: knowledgeBaseFrom(profile.settings.knowledge_base),
+      cartRecovery: cartRecoveryFrom(
+        profile.settings.cart_recovery,
+        profile.settings,
+      ),
     };
   }
 }

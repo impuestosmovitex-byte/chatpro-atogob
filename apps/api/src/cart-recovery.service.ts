@@ -344,11 +344,10 @@ export class CartRecoveryService {
       );
     }
 
-    return [
-      'Hola 👋 Vimos que dejaste productos en tu carrito.',
-      `Puedes retomar tu compra aquí:\n${cart.checkout_url}`,
-      'Si tienes dudas sobre talla, envío o pago, escríbenos y te ayudamos.',
-    ].join('\n\n');
+    return this.renderRecoveryFallbackMessage(
+      company.settings,
+      cart.checkout_url ?? '',
+    );
   }
 
   private async markRuleAsSent(
@@ -380,15 +379,11 @@ export class CartRecoveryService {
     recipient: string,
     settings: JsonObject,
   ): boolean {
-    if (settings.cart_recovery_test_mode !== true) {
+    if (!this.isCartRecoveryTestMode(settings)) {
       return true;
     }
 
-    const testPhones = Array.isArray(
-      settings.cart_recovery_test_phones,
-    )
-      ? settings.cart_recovery_test_phones
-      : [];
+    const testPhones = this.getCartRecoveryTestPhones(settings);
 
     return testPhones.some((value) => {
       if (typeof value !== 'string') {
@@ -416,9 +411,9 @@ export class CartRecoveryService {
       return digits;
     }
 
-    const countryCode = String(
-      settings.cart_recovery_default_country_code ?? '',
-    ).replace(/\D/g, '');
+    const countryCode = this.getCartRecoveryDefaultCountryCode(
+      settings,
+    );
 
     if (
       countryCode &&
@@ -429,6 +424,90 @@ export class CartRecoveryService {
     }
 
     return null;
+  }
+
+  private renderRecoveryFallbackMessage(
+    settings: JsonObject,
+    checkoutUrl: string,
+  ): string {
+    const configured = this.recoveryText(
+      settings,
+      'fallback_message',
+      'cart_recovery_fallback_message',
+    );
+    const template =
+      configured ||
+      [
+        'Hola 👋 Vimos que dejaste productos en tu carrito.',
+        'Puedes retomar tu compra aquí:\n{checkout_url}',
+        'Si tienes dudas sobre talla, envío o pago, escríbenos y te ayudamos.',
+      ].join('\n\n');
+
+    const rendered = template.includes('{checkout_url}')
+      ? template.split('{checkout_url}').join(checkoutUrl)
+      : `${template.trim()}\n\n${checkoutUrl}`;
+
+    return this.cleanMessage(rendered);
+  }
+
+  private isCartRecoveryTestMode(settings: JsonObject): boolean {
+    const value = this.recoveryValue(
+      settings,
+      'test_mode',
+      'cart_recovery_test_mode',
+    );
+
+    return value === true;
+  }
+
+  private getCartRecoveryTestPhones(settings: JsonObject): string[] {
+    const value = this.recoveryValue(
+      settings,
+      'test_phones',
+      'cart_recovery_test_phones',
+    );
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+
+  private getCartRecoveryDefaultCountryCode(settings: JsonObject): string {
+    return this.recoveryText(
+      settings,
+      'default_country_code',
+      'cart_recovery_default_country_code',
+    ).replace(/\D/g, '');
+  }
+
+  private recoveryValue(
+    settings: JsonObject,
+    key: string,
+    legacyKey: string,
+  ): unknown {
+    const recovery = this.toJsonObject(settings.cart_recovery);
+
+    return recovery[key] ?? settings[legacyKey];
+  }
+
+  private recoveryText(
+    settings: JsonObject,
+    key: string,
+    legacyKey: string,
+  ): string {
+    const value = this.recoveryValue(settings, key, legacyKey);
+
+    if (typeof value === 'string') {
+      return value.trim();
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+
+    return '';
   }
 
   private cleanMessage(value: string): string {

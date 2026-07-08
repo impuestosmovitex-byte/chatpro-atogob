@@ -20,12 +20,21 @@ type KnowledgeBase = {
   policiesFaq: string;
 };
 
+type CartRecoverySettings = {
+  fallbackMessage: string;
+  defaultCountryCode: string;
+  replyContextHours: number;
+  testMode: boolean;
+  testPhones: string;
+};
+
 type Configuration = {
   assistantName: string;
   tone: string;
   aiInstructions: string;
   commercialFlow: CommercialFlow;
   knowledgeBase: KnowledgeBase;
+  cartRecovery: CartRecoverySettings;
 };
 
 type ResponseData = {
@@ -50,13 +59,45 @@ const EMPTY_KNOWLEDGE: KnowledgeBase = {
   policiesFaq: '',
 };
 
+const EMPTY_CART_RECOVERY: CartRecoverySettings = {
+  fallbackMessage: '',
+  defaultCountryCode: '57',
+  replyContextHours: 72,
+  testMode: true,
+  testPhones: '',
+};
+
 const EMPTY: Configuration = {
   assistantName: '',
   tone: 'Cercana, clara, breve y profesional',
   aiInstructions: '',
   commercialFlow: EMPTY_FLOW,
   knowledgeBase: EMPTY_KNOWLEDGE,
+  cartRecovery: EMPTY_CART_RECOVERY,
 };
+
+function normalizeCartRecovery(
+  value?: Partial<CartRecoverySettings>,
+): CartRecoverySettings {
+  const hours = Number(
+    value?.replyContextHours ?? EMPTY_CART_RECOVERY.replyContextHours,
+  );
+
+  return {
+    fallbackMessage: value?.fallbackMessage ?? '',
+    defaultCountryCode:
+      value?.defaultCountryCode ?? EMPTY_CART_RECOVERY.defaultCountryCode,
+    replyContextHours:
+      Number.isInteger(hours) && hours >= 1 && hours <= 168
+        ? hours
+        : EMPTY_CART_RECOVERY.replyContextHours,
+    testMode:
+      typeof value?.testMode === 'boolean'
+        ? value.testMode
+        : EMPTY_CART_RECOVERY.testMode,
+    testPhones: value?.testPhones ?? '',
+  };
+}
 
 function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
   return {
@@ -71,6 +112,7 @@ function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
       ...EMPTY_KNOWLEDGE,
       ...(value?.knowledgeBase ?? {}),
     },
+    cartRecovery: normalizeCartRecovery(value?.cartRecovery),
   };
 }
 
@@ -127,6 +169,19 @@ export default function ConfiguracionPage() {
       ...current,
       knowledgeBase: {
         ...current.knowledgeBase,
+        [key]: value,
+      },
+    }));
+  }
+
+  function updateCartRecovery(
+    key: keyof CartRecoverySettings,
+    value: string | number | boolean,
+  ) {
+    setConfiguration((current) => ({
+      ...current,
+      cartRecovery: {
+        ...current.cartRecovery,
         [key]: value,
       },
     }));
@@ -325,7 +380,105 @@ export default function ConfiguracionPage() {
           <section className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>3. BASE DE CONOCIMIENTO</p>
+                <p>3. RECUPERACIÓN DE CARRITOS</p>
+                <h2>Mensajes y seguridad para carritos abandonados</h2>
+              </div>
+              <span>Configurable por empresa</span>
+            </div>
+
+            <label>
+              <span>Mensaje de respaldo si la IA no puede redactar</span>
+              <textarea
+                value={configuration.cartRecovery.fallbackMessage}
+                onChange={(event) =>
+                  updateCartRecovery('fallbackMessage', event.target.value)
+                }
+                placeholder={"Hola 👋 Vimos que dejaste productos en tu carrito.\n\nPuedes retomar tu compra aquí:\n{checkout_url}\n\nSi tienes dudas, escríbenos y te ayudamos."}
+                rows={6}
+                disabled={loading}
+              />
+              <small>
+                Usa {'{checkout_url}'} donde debe ir el enlace real. Si no lo
+                usas, Chat Pro agregará el enlace al final.
+              </small>
+            </label>
+
+            <div className={styles.grid}>
+              <label>
+                <span>Código país por defecto</span>
+                <input
+                  value={configuration.cartRecovery.defaultCountryCode}
+                  onChange={(event) =>
+                    updateCartRecovery(
+                      'defaultCountryCode',
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Ejemplo: 57"
+                  disabled={loading}
+                />
+                <small>
+                  Se usa para teléfonos nacionales sin indicativo.
+                </small>
+              </label>
+
+              <label>
+                <span>Horas para reconocer respuesta del cliente</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={configuration.cartRecovery.replyContextHours}
+                  onChange={(event) =>
+                    updateCartRecovery(
+                      'replyContextHours',
+                      Number(event.target.value) || 72,
+                    )
+                  }
+                  disabled={loading}
+                />
+                <small>
+                  Durante este tiempo, la IA sabe que el cliente responde a un carrito recuperado.
+                </small>
+              </label>
+            </div>
+
+            <label>
+              <span>Modo prueba de recuperación</span>
+              <input
+                type="checkbox"
+                checked={configuration.cartRecovery.testMode}
+                onChange={(event) =>
+                  updateCartRecovery('testMode', event.target.checked)
+                }
+                disabled={loading}
+              />
+              <small>
+                Activo recomendado antes de WhatsApp real. Solo envía recuperaciones a los teléfonos de prueba.
+              </small>
+            </label>
+
+            <label>
+              <span>Teléfonos de prueba</span>
+              <textarea
+                value={configuration.cartRecovery.testPhones}
+                onChange={(event) =>
+                  updateCartRecovery('testPhones', event.target.value)
+                }
+                placeholder="Ejemplo: 573001234567\n573209876543"
+                rows={4}
+                disabled={loading}
+              />
+              <small>
+                Un teléfono por línea o separados por coma. Con modo prueba apagado, no limita el envío.
+              </small>
+            </label>
+          </section>
+
+          <section className={styles.card}>
+            <div className={styles.sectionHeading}>
+              <div>
+                <p>4. BASE DE CONOCIMIENTO</p>
                 <h2>Políticas que la IA debe consultar</h2>
               </div>
               <span>No inventa respuestas</span>
@@ -387,7 +540,7 @@ export default function ConfiguracionPage() {
           <section className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>4. INSTRUCCIONES ADICIONALES</p>
+                <p>5. INSTRUCCIONES ADICIONALES</p>
                 <h2>Promociones, estilo y casos especiales</h2>
               </div>
             </div>
