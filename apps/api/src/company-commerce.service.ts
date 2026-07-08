@@ -3,6 +3,7 @@ import { CompanyIntegrationService } from './company-integration.service';
 import {
   CompanyShopifyService,
   type CompanyCommerceCartLineInput,
+  type CompanyCommerceCollection,
 } from './company-shopify.service';
 
 @Injectable()
@@ -21,6 +22,16 @@ export class CompanyCommerceService {
       );
 
     return integration?.credentialMode === 'encrypted';
+  }
+
+  async getCollections(
+    companyId: string,
+    limit = 100,
+  ): Promise<CompanyCommerceCollection[]> {
+    return this.companyShopifyService.listCommerceCollections(
+      companyId,
+      limit,
+    );
   }
 
   async searchProducts(

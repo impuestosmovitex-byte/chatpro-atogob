@@ -285,6 +285,13 @@ export type CompanyCommerceProduct = {
   }>;
 };
 
+export type CompanyCommerceCollection = {
+  id: string;
+  title: string;
+  handle: string;
+  onlineStoreUrl: string;
+};
+
 export type CompanyCommerceCartLinks = {
   cartUrl: string;
   checkoutUrl: string;
@@ -388,6 +395,64 @@ export class CompanyShopifyService {
       );
   }
 
+
+  async listCommerceCollections(
+    companyId: string,
+    limit = 100,
+  ): Promise<CompanyCommerceCollection[]> {
+    const data = await this.graphql<{
+      shop: {
+        primaryDomain: {
+          url: string;
+        };
+      };
+      collections: {
+        edges: Array<{
+          node: {
+            id: string;
+            title: string;
+            handle: string;
+          };
+        }>;
+      };
+    }>(
+      companyId,
+      `
+        query ChatProCompanyCollections($first: Int!) {
+          shop {
+            primaryDomain {
+              url
+            }
+          }
+          collections(first: $first, sortKey: TITLE) {
+            edges {
+              node {
+                id
+                title
+                handle
+              }
+            }
+          }
+        }
+      `,
+      {
+        first: Math.min(Math.max(limit, 1), 100),
+      },
+    );
+
+    const storeUrl = this.normalizeCommerceStoreUrl(
+      data.shop.primaryDomain.url,
+    );
+
+    return data.collections.edges
+      .map(({ node }) => ({
+        id: node.id,
+        title: node.title,
+        handle: node.handle,
+        onlineStoreUrl: `${storeUrl}/collections/${node.handle}`,
+      }))
+      .filter((collection) => Boolean(collection.handle));
+  }
 
 
   async listProducts(

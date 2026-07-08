@@ -238,6 +238,7 @@ export class ChatAgentService {
       '- Usa create_checkout_link únicamente cuando la persona confirme que desea finalizar la compra.',
       '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para finalizar el pago. Nunca sustituyas ese enlace por un cart_url.',
       '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
+      '- Al usar request_human_attention, customer_message debe ser el mensaje exacto que verá la persona: natural, breve, útil y alineado al tono/configuración de la empresa. No uses una frase fija si la empresa configuró otra forma de atención.',
       '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
       '- Atiende primero el caso con la información disponible. Usa request_human_attention solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa, o las instrucciones específicas indiquen escalar.',
       '- REGLA DE COMPRENSIÓN: no transfieras por un solo mensaje ambiguo. Pide una aclaración breve y concreta. Si después de esa aclaración la persona sigue sin permitir entender o resolver el caso, usa request_human_attention. No supongas que un número, documento, teléfono, talla, referencia, enlace o dato corto es incorrecto: interprétalo usando el contexto o pide aclaración.',
@@ -836,8 +837,12 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         type: 'string',
         description: 'Resumen interno: necesidad, datos revisados, acciones realizadas y pendiente.',
       },
+      customer_message: {
+        type: 'string',
+        description: 'Mensaje exacto que recibirá el cliente al transferir. Debe respetar el tono y las instrucciones de la empresa.',
+      },
     },
-    required: ['reason', 'summary'],
+    required: ['reason', 'summary', 'customer_message'],
   },
 },
 {
@@ -960,8 +965,12 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             : {};
         const handoffStatus =
           typeof handoff.status === 'string' ? handoff.status : '';
+        const customCustomerMessage =
+          typeof args.customer_message === 'string'
+            ? args.customer_message.trim().slice(0, 700)
+            : '';
 
-        const customerMessage =
+        const fallbackCustomerMessage =
           updatedSession.attentionStatus === 'human'
             ? 'Listo, te voy a comunicar con un asesor para que te ayude.'
             : handoffStatus === 'waiting_outside_hours'
@@ -969,6 +978,9 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
               : handoffStatus === 'waiting_no_advisor'
                 ? 'En este momento todos nuestros asesores están ocupados. Dejé tu solicitud pendiente para que te atiendan apenas estén disponibles.'
                 : 'Dejé tu solicitud pendiente para que un asesor la revise y te responda lo antes posible.';
+
+        const customerMessage =
+          customCustomerMessage || fallbackCustomerMessage;
 
         return {
           ok: true,
@@ -1002,15 +1014,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     session: ConversationSession,
     collectionId: string,
   ) {
-    if (await this.usesCompanyCommerce(session)) {
-      return {
-        ok: false,
-        error:
-          'Las colecciones todavía no están disponibles para esta tienda. Busca el producto por nombre.',
-      };
-    }
-
-    const collections = await this.shopifyService.getCollections();
+    const collections = await this.getCollectionsForSession(session);
 
     const collection =
       collections.find((item) => item.id === collectionId) ?? null;
@@ -1414,7 +1418,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
   private async getCollectionsForSession(session: ConversationSession) {
     if (await this.usesCompanyCommerce(session)) {
-      return [];
+      return this.companyCommerceService.getCollections(
+        session.companyId,
+        100,
+      );
     }
 
     return this.shopifyService.getCollections();
