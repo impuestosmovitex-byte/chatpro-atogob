@@ -52,6 +52,42 @@ type QuickReply = {
   isActive: boolean;
 };
 
+type InboxProductVariant = {
+  legacyResourceId: string;
+  title: string;
+  sku: string | null;
+  price: string;
+  availableForSale: boolean;
+  inventoryQuantity: number | null;
+  tracked: boolean;
+};
+
+type InboxProduct = {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  onlineStoreUrl: string | null;
+  imageUrl: string | null;
+  imageAlt: string | null;
+  saleReady: boolean;
+  variants: {
+    total: number;
+    shown: number;
+    sellable: number;
+    withoutStock: number;
+    notTracked: number;
+    hasMore: boolean;
+  };
+  previewVariants: InboxProductVariant[];
+};
+
+type ProductsApiResponse = {
+  ok?: boolean;
+  error?: string;
+  products?: InboxProduct[];
+};
+
 type AdvisorStatus = "available" | "busy" | "away" | "offline";
 type CurrentUser = { userId: string; companyName: string; fullName: string; roleName: string };
 type AdvisorPresence = { status: AdvisorStatus };
@@ -138,6 +174,71 @@ function getCart(context: Record<string, unknown>) {
   );
 }
 
+function buildVariantUrl(product: InboxProduct, variant: InboxProductVariant) {
+  if (!product.onlineStoreUrl) return "";
+
+  try {
+    const url = new URL(product.onlineStoreUrl);
+    url.searchParams.set("variant", variant.legacyResourceId);
+    return url.toString();
+  } catch {
+    return product.onlineStoreUrl;
+  }
+}
+
+function buildCheckoutUrl(product: InboxProduct, variant: InboxProductVariant) {
+  if (!product.onlineStoreUrl || !variant.legacyResourceId) return "";
+
+  try {
+    const url = new URL(product.onlineStoreUrl);
+    return `${url.origin}/cart/${variant.legacyResourceId}:1`;
+  } catch {
+    return "";
+  }
+}
+
+function cleanVariantTitle(value: string) {
+  const title = value.trim();
+
+  return title && title.toLowerCase() !== "default title" ? title : "";
+}
+
+function variantStockLabel(variant: InboxProductVariant) {
+  if (!variant.availableForSale) return "No disponible";
+
+  if (!variant.tracked) return "Disponible";
+
+  const quantity = Number(variant.inventoryQuantity ?? 0);
+
+  if (quantity <= 0) return "Sin stock";
+
+  return `${quantity.toLocaleString("es-CO")} disponible${quantity === 1 ? "" : "s"}`;
+}
+
+function productMessage(
+  product: InboxProduct,
+  variant: InboxProductVariant,
+  mode: "product" | "checkout",
+) {
+  const variantTitle = cleanVariantTitle(variant.title);
+  const link =
+    mode === "checkout"
+      ? buildCheckoutUrl(product, variant)
+      : buildVariantUrl(product, variant);
+  const lines = [
+    mode === "checkout"
+      ? "Te dejo el link para comprar este producto:"
+      : "Te comparto este producto:",
+    "",
+    product.title,
+    variantTitle ? `Variante: ${variantTitle}` : "",
+    `Precio: ${formatMoney(variant.price)}`,
+    link ? `Link: ${link}` : "",
+  ].filter(Boolean);
+
+  return lines.join("\n");
+}
+
 export default function Home() {
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [sessions, setSessions] = useState<InboxSession[]>([]);
@@ -158,6 +259,10 @@ export default function Home() {
   const [contactTags, setContactTags] = useState("");
   const [contactNotes, setContactNotes] = useState("");
   const [contactSaving, setContactSaving] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [productResults, setProductResults] = useState<InboxProduct[]>([]);
+  const [productLoading, setProductLoading] = useState(false);
+  const [productError, setProductError] = useState("");
 
   async function loadIdentityAndPresence() {
     try {
@@ -499,6 +604,71 @@ export default function Home() {
           )
           .slice(0, 7)
       : [];
+
+  async function searchInboxProducts(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+
+    const query = productSearch.trim();
+
+    if (!query) {
+      setProductError("Escribe qué producto quieres buscar.");
+      return;
+    }
+
+    setProductLoading(true);
+    setProductError("");
+
+    try {
+      const params = new URLSearchParams({
+        search: query,
+        status: "active",
+        limit: "8",
+      });
+      const response = await fetch(`/api/products?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const data = (await readJson(response)) as ProductsApiResponse;
+
+      if (!response.ok || !data.ok || !data.products) {
+        throw new Error(data.error || "No se pudieron buscar productos.");
+      }
+
+      setProductResults(data.products.filter((product) => product.saleReady));
+      if (!data.products.filter((product) => product.saleReady).length) {
+        setProductError("No encontré productos disponibles con esa búsqueda.");
+      }
+    } catch (caught) {
+      setProductResults([]);
+      setProductError(caught instanceof Error ? caught.message : "No se pudieron buscar productos.");
+    } finally {
+      setProductLoading(false);
+    }
+  }
+
+  function prepareProductForReply(
+    product: InboxProduct,
+    variant: InboxProductVariant,
+    mode: "product" | "checkout",
+  ) {
+    const preparedMessage = productMessage(product, variant, mode);
+
+    setMessage((current) =>
+      current.trim()
+        ? `${current.trim()}\n\n${preparedMessage}`
+        : preparedMessage,
+    );
+    setQuickReplyOpen(false);
+
+    if (selected?.session.attentionStatus === "human") {
+      setActionMessage(
+        mode === "checkout"
+          ? "Checkout preparado. Revisa el mensaje y envíalo."
+          : "Producto preparado. Revisa el mensaje y envíalo.",
+      );
+    } else {
+      setActionMessage("Producto preparado. Toma la conversación para poder enviarlo.");
+    }
+  }
 
   async function saveContactFromInbox(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -901,6 +1071,90 @@ export default function Home() {
                       Separa las etiquetas con comas. Las notas son solo para el equipo.
                     </p>
                   </form>
+                ) : null}
+
+                {!isInternalTest ? (
+                  <section className="seller-product-panel">
+                    <div className="seller-product-heading">
+                      <h3>Vender producto</h3>
+                      <span>Shopify</span>
+                    </div>
+
+                    <form className="seller-product-search" onSubmit={searchInboxProducts}>
+                      <input
+                        value={productSearch}
+                        onChange={(event) => setProductSearch(event.target.value)}
+                        placeholder="Buscar producto, referencia o SKU"
+                      />
+                      <button type="submit" disabled={productLoading}>
+                        {productLoading ? "Buscando…" : "Buscar"}
+                      </button>
+                    </form>
+
+                    {productError ? (
+                      <p className="seller-product-error">{productError}</p>
+                    ) : null}
+
+                    {productResults.length ? (
+                      <div className="seller-product-results">
+                        {productResults.map((product) => (
+                          <article className="seller-product-card" key={product.id}>
+                            <div className="seller-product-top">
+                              {product.imageUrl ? (
+                                <img src={product.imageUrl} alt={product.imageAlt || product.title} />
+                              ) : (
+                                <span className="seller-product-empty-image">Sin foto</span>
+                              )}
+                              <div>
+                                <strong>{product.title}</strong>
+                                <small>
+                                  {product.previewVariants.length} variante
+                                  {product.previewVariants.length === 1 ? "" : "s"}
+                                  {product.variants.hasMore ? " · hay más en Shopify" : ""}
+                                </small>
+                              </div>
+                            </div>
+
+                            <div className="seller-variant-list">
+                              {product.previewVariants.slice(0, 4).map((variant) => {
+                                const canSell = variant.availableForSale;
+                                return (
+                                  <div className="seller-variant-row" key={variant.legacyResourceId}>
+                                    <div>
+                                      <span>{cleanVariantTitle(variant.title) || "Producto"}</span>
+                                      <small>
+                                        {formatMoney(variant.price)} · {variantStockLabel(variant)}
+                                      </small>
+                                    </div>
+                                    <div className="seller-variant-actions">
+                                      <button
+                                        type="button"
+                                        disabled={!canSell}
+                                        onClick={() => prepareProductForReply(product, variant, "product")}
+                                      >
+                                        Producto
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={!canSell || !buildCheckoutUrl(product, variant)}
+                                        onClick={() => prepareProductForReply(product, variant, "checkout")}
+                                      >
+                                        Checkout
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <p className="seller-product-helper">
+                      El botón Producto prepara el mensaje con link del producto. Checkout prepara un link directo de carrito por 1 unidad.
+                    </p>
+                  </section>
                 ) : null}
 
                 {typeof (selected.session.context as Record<string, unknown>).handoff === "object" ? (
