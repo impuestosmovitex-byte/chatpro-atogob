@@ -278,7 +278,7 @@ export default function IntegracionesPage() {
       };
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudo conectar WhatsApp.');
+        throw new Error(data.message || data.error || 'No se pudo conectar WhatsApp.');
       }
 
       setMessage(data.message || 'WhatsApp conectado correctamente.');
@@ -316,7 +316,7 @@ export default function IntegracionesPage() {
       };
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudo enviar la prueba.');
+        throw new Error(data.message || data.error || 'No se pudo enviar la prueba.');
       }
 
       setMessage(data.message || 'Prueba enviada por WhatsApp.');
