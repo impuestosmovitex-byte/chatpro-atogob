@@ -59,13 +59,31 @@ export class CustomerOrderService {
       };
     }
 
+    const found = orders.length > 0;
+    const identifierCount = [orderReference, email, phone].filter(Boolean).length;
+    const shouldAskAlternateIdentifier = !found && identifierCount < 2;
+
     return {
       ok: true,
-      found: orders.length > 0,
+      found,
+      requires_human: !found && !shouldAskAlternateIdentifier,
+      next_action: found
+        ? 'answer_order'
+        : shouldAskAlternateIdentifier
+          ? 'ask_alternate_identifier'
+          : 'offer_human_attention',
+      lookup_identifiers: {
+        order_reference: Boolean(orderReference),
+        email: Boolean(email),
+        phone: Boolean(phone),
+        count: identifierCount,
+      },
       orders: orders.map((order) => this.toPayload(order)),
-      message: orders.length
+      message: found
         ? 'Pedido encontrado con información real de la tienda.'
-        : 'No encontré un pedido con esos datos. Pide otro dato o transfiere a asesor si el cliente necesita revisión manual.',
+        : shouldAskAlternateIdentifier
+          ? 'No encontré el pedido con ese dato. Pide un dato diferente, como correo o celular usado en la compra. No transfieras todavía.'
+          : 'No encontré el pedido con los datos enviados. No inventes información; ofrece dejar el caso con un asesor.',
     };
   }
 
