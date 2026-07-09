@@ -40,12 +40,24 @@ export class CustomerOrderService {
       };
     }
 
-    const orders = await this.lookupFromProvider(companyId, {
-      orderReference,
-      email,
-      phone,
-      limit: input.limit ?? 3,
-    });
+    let orders: OrderLookupResult[];
+
+    try {
+      orders = await this.lookupFromProvider(companyId, {
+        orderReference,
+        email,
+        phone,
+        limit: input.limit ?? 3,
+      });
+    } catch {
+      return {
+        ok: false,
+        found: false,
+        requires_human: true,
+        error:
+          'No pude consultar el pedido en este momento. No inventes el estado del pedido; ofrece dejar el caso con un asesor y pide confirmar número de pedido, correo o celular.',
+      };
+    }
 
     return {
       ok: true,
@@ -61,15 +73,15 @@ export class CustomerOrderService {
     companyId: string,
     input: OrderLookupInput,
   ): Promise<OrderLookupResult[]> {
+    if (await this.companyCommerceService.isLegacyEnvironmentEnabled(companyId)) {
+      return this.shopifyService.lookupCustomerOrders(input);
+    }
+
     if (await this.companyCommerceService.isEnabled(companyId)) {
       return this.companyShopifyService.lookupCustomerOrders(
         companyId,
         input,
       );
-    }
-
-    if (await this.companyCommerceService.isLegacyEnvironmentEnabled(companyId)) {
-      return this.shopifyService.lookupCustomerOrders(input);
     }
 
     return [];
