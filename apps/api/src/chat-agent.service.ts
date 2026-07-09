@@ -232,6 +232,7 @@ export class ChatAgentService {
       '- Consulta productos, colecciones, variantes y carrito con las herramientas antes de dar datos definitivos.',
       '- Si preguntan por términos, cambios, devoluciones, garantías, pagos, envíos o políticas, responde usando la BASE DE CONOCIMIENTO APROBADA y las instrucciones de la empresa. Si falta una regla específica, dilo con claridad y escala si es necesario.',
       '- Si preguntan por estado de pedido, número de guía, transportadora, seguimiento, pago de un pedido, cambio, garantía o devolución de una compra existente, usa lookup_order cuando tengas número de pedido, correo o celular. Si falta ese dato, pide solo un dato concreto.',
+      '- No asumas que cualquier número enviado por el cliente es un pedido. Si el cliente envía solo un número sin contexto, pregunta brevemente si corresponde al número de pedido, guía o celular registrado en la compra antes de usar lookup_order.',
       '- Después de lookup_order, responde únicamente con datos reales encontrados. Si hay guía, comparte transportadora, número y link de seguimiento. Si no hay guía o el caso es complejo, explica con claridad y ofrece pasar a asesor.',
       '- Cuando la persona comparta un enlace de producto, selecciónalo con select_product_by_url y responde usando sus datos reales.',
       '- Cuando pida una categoría amplia, usa open_collection o search_products según corresponda.',
