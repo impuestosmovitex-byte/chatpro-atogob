@@ -10,6 +10,7 @@ import {
 import type { Response } from 'express';
 import { ChatAgentService } from './chat-agent.service';
 import { CartRecoveryContextService } from './cart-recovery-context.service';
+import { CustomerOrderService } from './customer-order.service';
 import { CompanyIntegrationService } from './company-integration.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import {
@@ -29,6 +30,7 @@ export class WhatsappWebhookController {
     private readonly companyIntegrationService: CompanyIntegrationService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
     private readonly cartRecoveryContextService: CartRecoveryContextService,
+    private readonly customerOrderService: CustomerOrderService,
   ) {}
 
   @Get()
@@ -385,6 +387,10 @@ export class WhatsappWebhookController {
         },
       );
 
+      if (this.isCustomerServiceSession(selectedSession)) {
+        return this.startCustomerServiceMenu(selectedSession);
+      }
+
       return this.chatAgentService.reply(profile, selectedSession, text);
     }
 
@@ -412,6 +418,16 @@ export class WhatsappWebhookController {
       return this.chatAgentService.reply(profile, nextSession, text);
     }
 
+    const customerServiceReply = await this.resolveCustomerServiceReply(
+      session,
+      cleanText,
+      text,
+    );
+
+    if (customerServiceReply) {
+      return customerServiceReply;
+    }
+
     return this.chatAgentService.reply(profile, session, text);
   }
 
@@ -436,6 +452,405 @@ export class WhatsappWebhookController {
       }) ?? null
     );
   }
+
+
+  private async startCustomerServiceMenu(session: ConversationSession) {
+    await this.conversationMemoryService.updateSession(session.id, {
+      stage: 'active',
+      context: {
+        ...session.context,
+        customer_service_flow: {
+          type: 'menu',
+          updated_at: new Date().toISOString(),
+        },
+      },
+    });
+
+    return this.buildCustomerServiceMenu();
+  }
+
+  private async resolveCustomerServiceReply(
+    session: ConversationSession,
+    cleanText: string,
+    originalText: string,
+  ): Promise<string | null> {
+    if (!this.isCustomerServiceSession(session)) {
+      return null;
+    }
+
+    const flow = this.readCustomerServiceFlow(session.context);
+
+    if (['menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
+      return this.startCustomerServiceMenu(session);
+    }
+
+    if (
+      cleanText === '1' ||
+      this.includesAny(cleanText, [
+        'consultar estado',
+        'estado de mi pedido',
+        'estado pedido',
+        'seguimiento pedido',
+        'rastrear pedido',
+        'guia',
+        'guía',
+      ])
+    ) {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'active',
+        context: {
+          ...session.context,
+          customer_service_flow: {
+            type: 'order_lookup',
+            identifiers: {},
+            attempts: 0,
+            updated_at: new Date().toISOString(),
+          },
+        },
+      });
+
+      return 'Perfecto 😊 ¿Me puedes enviar el número de pedido o el celular que usaste en la compra para consultarlo?';
+    }
+
+    if (cleanText === '2') {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'active',
+        context: {
+          ...session.context,
+          customer_service_flow: {
+            type: 'order_problem',
+            updated_at: new Date().toISOString(),
+          },
+        },
+      });
+
+      return 'Claro 😊 Cuéntame qué problema tienes con tu pedido y envíame el número de pedido o celular registrado en la compra. Si aplica, también puedes enviar foto o video.';
+    }
+
+    if (cleanText === '3') {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'active',
+        context: {
+          ...session.context,
+          customer_service_flow: {
+            type: 'exchange_warranty',
+            updated_at: new Date().toISOString(),
+          },
+        },
+      });
+
+      return 'Claro 😊 Para revisar cambios, garantías o devoluciones, envíame el número de pedido o celular usado en la compra y cuéntame brevemente qué necesitas.';
+    }
+
+    if (cleanText === '4') {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'active',
+        context: {
+          ...session.context,
+          customer_service_flow: {
+            type: 'payment_problem',
+            updated_at: new Date().toISOString(),
+          },
+        },
+      });
+
+      return 'Claro 😊 ¿Qué medio de pago estás usando y cuál es el inconveniente? No envíes claves, códigos de seguridad ni datos bancarios sensibles.';
+    }
+
+    if (
+      cleanText === '5' ||
+      this.includesAny(cleanText, ['asesor', 'persona', 'humano'])
+    ) {
+      return this.requestCustomerServiceHuman(
+        session,
+        'Cliente solicitó asesor desde el menú de servicio al cliente.',
+        'El cliente pidió hablar con un asesor humano.',
+      );
+    }
+
+    if (flow.type === 'order_lookup') {
+      return this.resolveOrderLookup(session, originalText, flow);
+    }
+
+    return null;
+  }
+
+  private async resolveOrderLookup(
+    session: ConversationSession,
+    originalText: string,
+    flow: Record<string, unknown>,
+  ) {
+    const identifier = this.parseOrderIdentifier(originalText);
+
+    if (!identifier.orderReference && !identifier.email && !identifier.phone) {
+      return 'Para revisarlo necesito un dato concreto 😊 Envíame el número de pedido, el celular o el correo usado en la compra.';
+    }
+
+    const previousIdentifiers =
+      flow.identifiers &&
+      typeof flow.identifiers === 'object' &&
+      !Array.isArray(flow.identifiers)
+        ? flow.identifiers as Record<string, unknown>
+        : {};
+
+    const lookupIdentifiers = {
+      orderReference:
+        identifier.orderReference ||
+        this.cleanFlowString(previousIdentifiers.orderReference),
+      email:
+        identifier.email ||
+        this.cleanFlowString(previousIdentifiers.email),
+      phone:
+        identifier.phone ||
+        this.cleanFlowString(previousIdentifiers.phone),
+    };
+
+    let result: Record<string, any>;
+
+    try {
+      result = await this.customerOrderService.lookup(
+        session.companyId,
+        lookupIdentifiers,
+      ) as Record<string, any>;
+    } catch {
+      return this.requestCustomerServiceHuman(
+        session,
+        'Error técnico al consultar pedido.',
+        `Falló la consulta de pedido. Datos usados: pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}.`,
+      );
+    }
+
+    const nextContext = {
+      ...session.context,
+      customer_service_flow: {
+        type: 'order_lookup',
+        identifiers: lookupIdentifiers,
+        attempts: Number(flow.attempts ?? 0) + 1,
+        updated_at: new Date().toISOString(),
+      },
+    };
+
+    await this.conversationMemoryService.updateSession(session.id, {
+      stage: 'active',
+      context: nextContext,
+    });
+
+    if (
+      result.ok &&
+      result.found &&
+      Array.isArray(result.orders) &&
+      result.orders.length
+    ) {
+      await this.conversationMemoryService.updateSession(session.id, {
+        stage: 'active',
+        context: {
+          ...nextContext,
+          customer_service_flow: {
+            type: 'menu',
+            updated_at: new Date().toISOString(),
+          },
+          last_order_lookup: {
+            order_name: result.orders[0].name,
+            found_at: new Date().toISOString(),
+          },
+        },
+      });
+
+      return this.formatOrderLookupReply(result.orders[0]);
+    }
+
+    if (result.next_action === 'ask_alternate_identifier') {
+      if (identifier.orderReference) {
+        return 'No encontré el pedido con ese número 😕 ¿Me confirmas el celular o correo usado en la compra para revisarlo mejor?';
+      }
+
+      return 'No encontré el pedido con ese dato 😕 ¿Me confirmas el número de pedido o algún otro dato de la compra?';
+    }
+
+    return this.requestCustomerServiceHuman(
+      session,
+      'No se pudo encontrar el pedido con los datos enviados.',
+      `Consulta de pedido sin resultado. Datos usados: pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}.`,
+    );
+  }
+
+  private formatOrderLookupReply(order: Record<string, any>) {
+    const items = Array.isArray(order.items) ? order.items : [];
+    const tracking = Array.isArray(order.tracking) ? order.tracking : [];
+    const firstTracking = tracking.find(
+      (item) => item?.number || item?.url || item?.company,
+    );
+    const lines: string[] = [];
+
+    lines.push(`Encontré tu pedido ${order.name || ''} 😊`.trim());
+
+    if (order.financial_status) {
+      lines.push(
+        `Estado de pago: ${this.humanizeOrderStatus(order.financial_status)}.`,
+      );
+    }
+
+    if (order.fulfillment_status) {
+      lines.push(
+        `Estado de envío/preparación: ${this.humanizeOrderStatus(order.fulfillment_status)}.`,
+      );
+    }
+
+    if (items.length) {
+      const productSummary = items
+        .slice(0, 4)
+        .map((item) => {
+          const title = item.title || 'Producto';
+          const quantity = Number(item.quantity ?? 1);
+          const variant = item.variant_title ? ` (${item.variant_title})` : '';
+          return `• ${title}${variant} x${quantity}`;
+        })
+        .join('\n');
+
+      lines.push(`Productos:\n${productSummary}`);
+    }
+
+    if (firstTracking) {
+      const company = firstTracking.company ? ` por ${firstTracking.company}` : '';
+      const number = firstTracking.number ? `\nGuía: ${firstTracking.number}` : '';
+      const url = firstTracking.url ? `\nSeguimiento: ${firstTracking.url}` : '';
+
+      lines.push(`Tu pedido ya tiene información de envío${company}.${number}${url}`);
+    } else {
+      lines.push(
+        'Aún no veo una guía registrada en el pedido. Si necesitas que revisemos más detalle, puedo dejar tu caso con un asesor.',
+      );
+    }
+
+    return lines.join('\n\n').trim();
+  }
+
+  private async requestCustomerServiceHuman(
+    session: ConversationSession,
+    reason: string,
+    summary: string,
+  ) {
+    await this.conversationMemoryService.requestHumanAttention(session.id, {
+      reason,
+      summary,
+    });
+
+    return 'Claro, voy a dejar tu solicitud para que un asesor continúe contigo. Ya queda con el contexto de lo que revisamos 😊';
+  }
+
+  private buildCustomerServiceMenu() {
+    return [
+      'Hola, cuéntame cómo puedo ayudarte 😊',
+      '',
+      '1️⃣ Consultar estado de mi pedido',
+      '2️⃣ Tengo un problema con mi pedido',
+      '3️⃣ Cambios, garantías o devoluciones',
+      '4️⃣ Problemas con pago',
+      '5️⃣ Hablar con un asesor',
+    ].join('\n');
+  }
+
+  private isCustomerServiceSession(session: ConversationSession) {
+    const context = session.context && typeof session.context === 'object'
+      ? session.context as Record<string, unknown>
+      : {};
+    const area =
+      context.service_area &&
+      typeof context.service_area === 'object' &&
+      !Array.isArray(context.service_area)
+        ? context.service_area as Record<string, unknown>
+        : {};
+    const value = this.normalizeText(
+      `${area.name ?? ''} ${area.description ?? ''}`,
+    );
+
+    return (
+      value.includes('servicio') ||
+      value.includes('soporte') ||
+      value.includes('pedido') ||
+      value.includes('seguimiento') ||
+      value.includes('post compra')
+    );
+  }
+
+  private readCustomerServiceFlow(context: Record<string, unknown>) {
+    const flow = context.customer_service_flow;
+
+    return flow && typeof flow === 'object' && !Array.isArray(flow)
+      ? flow as Record<string, unknown>
+      : {};
+  }
+
+  private parseOrderIdentifier(value: string) {
+    const text = value.trim();
+    const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    const digits = text.replace(/\D/g, '');
+    const normalized = this.normalizeText(text);
+
+    if (emailMatch) {
+      return {
+        orderReference: '',
+        email: emailMatch[0].toLowerCase(),
+        phone: '',
+      };
+    }
+
+    if (
+      digits.length >= 10 ||
+      this.includesAny(normalized, ['celular', 'telefono', 'teléfono', 'whatsapp'])
+    ) {
+      return {
+        orderReference: '',
+        email: '',
+        phone: digits,
+      };
+    }
+
+    if (digits.length >= 3) {
+      return {
+        orderReference: digits,
+        email: '',
+        phone: '',
+      };
+    }
+
+    return {
+      orderReference: '',
+      email: '',
+      phone: '',
+    };
+  }
+
+  private cleanFlowString(value: unknown) {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private includesAny(value: string, needles: string[]) {
+    return needles.some((needle) => value.includes(this.normalizeText(needle)));
+  }
+
+  private humanizeOrderStatus(value: unknown) {
+    const status = typeof value === 'string' ? value.trim() : '';
+
+    if (!status) {
+      return 'Sin dato';
+    }
+
+    return status
+      .toLowerCase()
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+  }
+
+  private normalizeText(value: string) {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es-CO')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
 
   private buildServiceAreaMenu(
     profile: CompanyProfile,
