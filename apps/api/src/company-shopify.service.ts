@@ -258,6 +258,115 @@ type ShopifyCommerceVariantWithProduct = ShopifyCommerceVariantNode & {
   };
 };
 
+
+export type CompanyShopifyOrderLookupInput = {
+  orderReference?: string;
+  email?: string;
+  phone?: string;
+  limit?: number;
+};
+
+type CompanyShopifyOrderMoney = {
+  amount: string;
+  currencyCode: string;
+};
+
+type CompanyShopifyOrderTracking = {
+  company: string | null;
+  number: string | null;
+  url: string | null;
+};
+
+type CompanyShopifyOrderLine = {
+  title: string;
+  quantity: number;
+  variantTitle: string | null;
+  originalUnitPriceSet: {
+    shopMoney: CompanyShopifyOrderMoney;
+  };
+};
+
+type CompanyShopifyOrderFulfillment = {
+  status: string | null;
+  displayStatus: string | null;
+  createdAt: string | null;
+  deliveredAt: string | null;
+  trackingInfo: CompanyShopifyOrderTracking[];
+};
+
+type CompanyShopifyOrderNode = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  createdAt: string | null;
+  processedAt: string | null;
+  cancelledAt: string | null;
+  displayFinancialStatus: string | null;
+  displayFulfillmentStatus: string | null;
+  currentTotalPriceSet: {
+    shopMoney: CompanyShopifyOrderMoney;
+  } | null;
+  customer: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  shippingAddress: {
+    name: string | null;
+    phone: string | null;
+    city: string | null;
+    province: string | null;
+    country: string | null;
+    address1: string | null;
+    address2: string | null;
+  } | null;
+  lineItems: {
+    edges: Array<{ node: CompanyShopifyOrderLine }>;
+  };
+  fulfillments: CompanyShopifyOrderFulfillment[];
+};
+
+export type CompanyShopifyCustomerOrder = {
+  id: string;
+  name: string;
+  createdAt: string | null;
+  processedAt: string | null;
+  cancelledAt: string | null;
+  financialStatus: string | null;
+  fulfillmentStatus: string | null;
+  total: CompanyShopifyOrderMoney | null;
+  customer: {
+    name: string;
+    email: string | null;
+    phone: string | null;
+  };
+  shippingAddress: {
+    name: string | null;
+    phone: string | null;
+    city: string | null;
+    province: string | null;
+    country: string | null;
+    address1: string | null;
+    address2: string | null;
+  } | null;
+  lineItems: Array<{
+    title: string;
+    quantity: number;
+    variantTitle: string | null;
+    unitPrice: CompanyShopifyOrderMoney;
+  }>;
+  fulfillments: Array<{
+    status: string | null;
+    displayStatus: string | null;
+    createdAt: string | null;
+    deliveredAt: string | null;
+    tracking: CompanyShopifyOrderTracking[];
+  }>;
+  tracking: CompanyShopifyOrderTracking[];
+};
+
 export type CompanyCommerceCartLineInput = {
   variantId: string;
   quantity: number;
@@ -477,6 +586,220 @@ export class CompanyShopifyService {
       .filter((collection) => Boolean(collection.handle));
   }
 
+
+
+  async lookupCustomerOrders(
+    companyId: string,
+    input: CompanyShopifyOrderLookupInput,
+  ): Promise<CompanyShopifyCustomerOrder[]> {
+    const queries = this.buildOrderSearchQueries(input);
+    const limit = Math.min(Math.max(Number(input.limit ?? 3), 1), 5);
+    const seen = new Set<string>();
+    const orders: CompanyShopifyCustomerOrder[] = [];
+
+    for (const query of queries) {
+      const found = await this.lookupOrdersByQuery(companyId, query, limit);
+
+      for (const order of found) {
+        if (seen.has(order.id)) {
+          continue;
+        }
+
+        seen.add(order.id);
+        orders.push(order);
+
+        if (orders.length >= limit) {
+          return orders;
+        }
+      }
+    }
+
+    return orders;
+  }
+
+  private async lookupOrdersByQuery(
+    companyId: string,
+    query: string,
+    limit: number,
+  ): Promise<CompanyShopifyCustomerOrder[]> {
+    const data = await this.graphql<{
+      orders: {
+        edges: Array<{ node: CompanyShopifyOrderNode }>;
+      };
+    }>(
+      companyId,
+      `
+        query ChatProLookupOrders($first: Int!, $query: String!) {
+          orders(first: $first, query: $query, sortKey: PROCESSED_AT, reverse: true) {
+            edges {
+              node {
+                id
+                name
+                email
+                phone
+                createdAt
+                processedAt
+                cancelledAt
+                displayFinancialStatus
+                displayFulfillmentStatus
+                currentTotalPriceSet {
+                  shopMoney {
+                    amount
+                    currencyCode
+                  }
+                }
+                customer {
+                  firstName
+                  lastName
+                  email
+                  phone
+                }
+                shippingAddress {
+                  name
+                  phone
+                  city
+                  province
+                  country
+                  address1
+                  address2
+                }
+                lineItems(first: 20) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      variantTitle
+                      originalUnitPriceSet {
+                        shopMoney {
+                          amount
+                          currencyCode
+                        }
+                      }
+                    }
+                  }
+                }
+                fulfillments(first: 10) {
+                  status
+                  displayStatus
+                  createdAt
+                  deliveredAt
+                  trackingInfo(first: 10) {
+                    company
+                    number
+                    url
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      {
+        first: limit,
+        query,
+      },
+    );
+
+    return data.orders.edges.map(({ node }) => this.toCustomerOrder(node));
+  }
+
+  private buildOrderSearchQueries(input: CompanyShopifyOrderLookupInput): string[] {
+    const queries: string[] = [];
+    const rawReference = String(input.orderReference ?? '').trim();
+    const email = String(input.email ?? '').trim().toLowerCase();
+    const phone = this.normalizeOrderPhone(input.phone);
+
+    if (rawReference) {
+      const clean = rawReference.replace(/^#/, '').trim();
+      const compact = clean.replace(/\s+/g, '');
+      const digits = compact.replace(/\D/g, '');
+
+      if (compact) {
+        queries.push(`name:#${compact}`);
+        queries.push(`name:${compact}`);
+      }
+
+      if (digits && digits !== compact) {
+        queries.push(`name:#${digits}`);
+        queries.push(`name:${digits}`);
+      }
+    }
+
+    if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      queries.push(`email:${email}`);
+    }
+
+    if (phone) {
+      queries.push(`phone:${phone}`);
+
+      if (phone.length > 10) {
+        queries.push(`phone:${phone.slice(-10)}`);
+      }
+    }
+
+    return Array.from(new Set(queries)).slice(0, 8);
+  }
+
+  private normalizeOrderPhone(value: unknown): string {
+    return String(value ?? '').replace(/\D/g, '').slice(0, 20);
+  }
+
+  private toCustomerOrder(node: CompanyShopifyOrderNode): CompanyShopifyCustomerOrder {
+    const customerName = [
+      node.customer?.firstName,
+      node.customer?.lastName,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    const fulfillments = (node.fulfillments ?? []).map((fulfillment) => ({
+      status: fulfillment.status ?? null,
+      displayStatus: fulfillment.displayStatus ?? null,
+      createdAt: fulfillment.createdAt ?? null,
+      deliveredAt: fulfillment.deliveredAt ?? null,
+      tracking: (fulfillment.trackingInfo ?? []).map((tracking) => ({
+        company: tracking.company ?? null,
+        number: tracking.number ?? null,
+        url: tracking.url ?? null,
+      })),
+    }));
+
+    return {
+      id: node.id,
+      name: node.name,
+      createdAt: node.createdAt ?? null,
+      processedAt: node.processedAt ?? null,
+      cancelledAt: node.cancelledAt ?? null,
+      financialStatus: node.displayFinancialStatus ?? null,
+      fulfillmentStatus: node.displayFulfillmentStatus ?? null,
+      total: node.currentTotalPriceSet?.shopMoney ?? null,
+      customer: {
+        name: customerName || node.shippingAddress?.name || '',
+        email: node.customer?.email ?? node.email ?? null,
+        phone: node.customer?.phone ?? node.phone ?? null,
+      },
+      shippingAddress: node.shippingAddress
+        ? {
+            name: node.shippingAddress.name ?? null,
+            phone: node.shippingAddress.phone ?? null,
+            city: node.shippingAddress.city ?? null,
+            province: node.shippingAddress.province ?? null,
+            country: node.shippingAddress.country ?? null,
+            address1: node.shippingAddress.address1 ?? null,
+            address2: node.shippingAddress.address2 ?? null,
+          }
+        : null,
+      lineItems: node.lineItems.edges.map(({ node: line }) => ({
+        title: line.title,
+        quantity: line.quantity,
+        variantTitle: line.variantTitle ?? null,
+        unitPrice: line.originalUnitPriceSet.shopMoney,
+      })),
+      fulfillments,
+      tracking: fulfillments.flatMap((fulfillment) => fulfillment.tracking),
+    };
+  }
 
   async listProducts(
     companyId: string,

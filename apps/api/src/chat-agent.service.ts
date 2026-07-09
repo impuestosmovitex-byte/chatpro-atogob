@@ -1,4 +1,5 @@
 import { CartService } from './cart.service';
+import { CustomerOrderService } from './customer-order.service';
 import { CompanyCommerceService } from './company-commerce.service';
 import { type CompanyCommerceProduct } from './company-shopify.service';
 import { Injectable } from '@nestjs/common';
@@ -52,6 +53,7 @@ export class ChatAgentService {
 
   constructor(
     private readonly cartService: CartService,
+    private readonly customerOrderService: CustomerOrderService,
     private readonly companyCommerceService: CompanyCommerceService,
     private readonly shopifyService: ShopifyService,
     private readonly supabaseService: SupabaseService,
@@ -229,6 +231,8 @@ export class ChatAgentService {
       'USO DE HERRAMIENTAS:',
       '- Consulta productos, colecciones, variantes y carrito con las herramientas antes de dar datos definitivos.',
       '- Si preguntan por términos, cambios, devoluciones, garantías, pagos, envíos o políticas, responde usando la BASE DE CONOCIMIENTO APROBADA y las instrucciones de la empresa. Si falta una regla específica, dilo con claridad y escala si es necesario.',
+      '- Si preguntan por estado de pedido, número de guía, transportadora, seguimiento, pago de un pedido, cambio, garantía o devolución de una compra existente, usa lookup_order cuando tengas número de pedido, correo o celular. Si falta ese dato, pide solo un dato concreto.',
+      '- Después de lookup_order, responde únicamente con datos reales encontrados. Si hay guía, comparte transportadora, número y link de seguimiento. Si no hay guía o el caso es complejo, explica con claridad y ofrece pasar a asesor.',
       '- Cuando la persona comparta un enlace de producto, selecciónalo con select_product_by_url y responde usando sus datos reales.',
       '- Cuando pida una categoría amplia, usa open_collection o search_products según corresponda.',
       '- Cuando la persona confirme claramente una variante, valida con select_variant y agrega de inmediato con add_selected_variant_to_cart.',
@@ -821,6 +825,32 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 },
 {
   type: 'function',
+  name: 'lookup_order',
+  description:
+    'Consulta un pedido real de la empresa por número de pedido, correo o celular. Úsala para estado del pedido, guía, transportadora, seguimiento, cambios, garantías o problemas posteriores a la compra.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      order_reference: {
+        type: 'string',
+        description: 'Número o referencia del pedido. Usa cadena vacía si no se conoce.',
+      },
+      email: {
+        type: 'string',
+        description: 'Correo usado en la compra. Usa cadena vacía si no se conoce.',
+      },
+      phone: {
+        type: 'string',
+        description: 'Celular usado en la compra. Usa cadena vacía si no se conoce.',
+      },
+    },
+    required: ['order_reference', 'email', 'phone'],
+  },
+},
+{
+  type: 'function',
   name: 'request_human_attention',
   description:
     'Transfiere la conversación a la cola de un asesor humano conservando el área que eligió el cliente. Úsala cuando pida asesor, no puedas resolver o tras una aclaración fallida. Incluye motivo y resumen interno. Antes de usarla, responde al cliente con el mensaje definido por la empresa.',
@@ -940,6 +970,18 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (name === 'get_cart') {
         return this.cartService.getCart(session);
+      }
+
+      if (name === 'lookup_order') {
+        return this.customerOrderService.lookup(session.companyId, {
+          orderReference:
+            typeof args.order_reference === 'string'
+              ? args.order_reference
+              : '',
+          email: typeof args.email === 'string' ? args.email : '',
+          phone: typeof args.phone === 'string' ? args.phone : '',
+          limit: 3,
+        });
       }
 
       if (name === 'request_human_attention') {

@@ -13,6 +13,7 @@ import { ClientsController } from './clients.controller';
 import { CompanyIntegrationService } from './company-integration.service';
 import { CompanyShopifyService } from './company-shopify.service';
 import { CompanyCommerceService } from './company-commerce.service';
+import { CustomerOrderService } from './customer-order.service';
 import { CompanyProductsController } from './company-products.controller';
 import { CompanyStorefrontController } from './company-storefront.controller';
 import { CompanySettingsController } from './company-settings.controller';
@@ -65,6 +66,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     CompanyIntegrationService,
     CompanyShopifyService,
     CompanyCommerceService,
+    CustomerOrderService,
     IntegrationCredentialsService,
     WhatsappMessagingService,
     AppService,

@@ -34,6 +34,17 @@ export class CompanyCommerceService {
     );
   }
 
+  async isLegacyEnvironmentEnabled(companyId: string): Promise<boolean> {
+    const integration =
+      await this.companyIntegrationService.getActiveIntegration(
+        companyId,
+        'shopify',
+        'store',
+      );
+
+    return integration?.credentialMode === 'environment';
+  }
+
   async searchProducts(
     companyId: string,
     searchText = '',
