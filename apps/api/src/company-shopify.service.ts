@@ -717,11 +717,15 @@ export class CompanyShopifyService {
       if (compact) {
         queries.push(`name:#${compact}`);
         queries.push(`name:${compact}`);
+        queries.push(compact);
+        queries.push(`#${compact}`);
       }
 
-      if (digits && digits !== compact) {
+      if (digits) {
         queries.push(`name:#${digits}`);
         queries.push(`name:${digits}`);
+        queries.push(digits);
+        queries.push(`#${digits}`);
       }
     }
 
