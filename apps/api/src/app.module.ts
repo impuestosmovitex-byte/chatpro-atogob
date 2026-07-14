@@ -37,11 +37,13 @@ import { ServiceAreasController } from './service-areas.controller';
 import { UsersController } from './users.controller';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { InternalDiagnosticsController } from './internal-diagnostics.controller';
+import { ShopifyOrderDetailDiagnosticsController } from './shopify-order-detail-diagnostics.controller';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
   controllers: [InternalDiagnosticsController,
+    ShopifyOrderDetailDiagnosticsController,
     AppController,
     WhatsappWebhookController,
     InboxController,
