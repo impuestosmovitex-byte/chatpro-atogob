@@ -676,33 +676,49 @@ export class WhatsappWebhookController {
 
   private formatOrderLookupReply(order: Record<string, any>) {
     const items = Array.isArray(order.items) ? order.items : [];
-    const tracking = Array.isArray(order.tracking) ? order.tracking : [];
-    const firstTracking = tracking.find(
-      (item) => item?.number || item?.url || item?.company,
-    );
+    const firstTracking = this.getFirstOrderTracking(order);
+    const hasTracking = Boolean(firstTracking);
+    const orderName = order.name ? ` ${order.name}` : '';
+    const customerName = this.getOrderCustomerName(order);
     const lines: string[] = [];
 
-    lines.push(`Encontré tu pedido ${order.name || ''} 😊`.trim());
-
-    if (order.financial_status) {
+    if (customerName) {
       lines.push(
-        `Estado de pago: ${this.humanizeOrderStatus(order.financial_status)}.`,
+        `Perfecto 😊 encontré tu pedido${orderName} a nombre de ${customerName}.`,
       );
+    } else {
+      lines.push(`Perfecto 😊 encontré tu pedido${orderName}.`);
     }
 
-    if (order.fulfillment_status) {
-      lines.push(
-        `Estado de envío/preparación: ${this.humanizeOrderStatus(order.fulfillment_status)}.`,
-      );
+    const paymentMessage = this.customerPaymentStatusMessage(
+      order.financial_status,
+    );
+
+    if (paymentMessage) {
+      lines.push(paymentMessage);
     }
+
+    const fulfillmentMessage = this.customerFulfillmentStatusMessage(
+      order.fulfillment_status,
+      hasTracking,
+    );
+
+    if (fulfillmentMessage) {
+      lines.push(fulfillmentMessage);
+    }
+
+    const total = this.formatOrderMoney(order.total);
 
     if (items.length) {
       const productSummary = items
-        .slice(0, 4)
+        .slice(0, 6)
         .map((item) => {
-          const title = item.title || 'Producto';
+          const title = this.cleanCustomerText(item.title || 'Producto');
           const quantity = Number(item.quantity ?? 1);
-          const variant = item.variant_title ? ` (${item.variant_title})` : '';
+          const variant = item.variant_title
+            ? ` - ${this.cleanCustomerText(item.variant_title)}`
+            : '';
+
           return `• ${title}${variant} x${quantity}`;
         })
         .join('\n');
@@ -710,20 +726,130 @@ export class WhatsappWebhookController {
       lines.push(`Productos:\n${productSummary}`);
     }
 
-    if (firstTracking) {
-      const company = firstTracking.company ? ` por ${firstTracking.company}` : '';
-      const number = firstTracking.number ? `\nGuía: ${firstTracking.number}` : '';
-      const url = firstTracking.url ? `\nSeguimiento: ${firstTracking.url}` : '';
+    if (total) {
+      lines.push(`Total del pedido: ${total}`);
+    }
 
-      lines.push(`Tu pedido ya tiene información de envío${company}.${number}${url}`);
+    if (firstTracking) {
+      const trackingLines = ['Información de envío:'];
+
+      if (firstTracking.company) {
+        trackingLines.push(
+          `Transportadora: ${this.cleanCustomerText(firstTracking.company)}`,
+        );
+      }
+
+      if (firstTracking.number) {
+        trackingLines.push(`Guía: ${this.cleanCustomerText(firstTracking.number)}`);
+      }
+
+      if (firstTracking.url) {
+        trackingLines.push(`Seguimiento: ${firstTracking.url}`);
+      }
+
+      lines.push(trackingLines.join('\n'));
+    } else if (this.normalizeOrderStatus(order.fulfillment_status) === 'fulfilled') {
+      lines.push(
+        'Tu pedido aparece como despachado, pero en este momento no tengo la guía disponible en la información recibida. Puedo dejarlo con un asesor para revisarla.',
+      );
     } else {
       lines.push(
-        'Aún no veo una guía registrada en el pedido. Si necesitas que revisemos más detalle, puedo dejar tu caso con un asesor.',
+        'Cuando el pedido sea despachado, se registrará la guía de seguimiento.',
       );
     }
 
     return lines.join('\n\n').trim();
   }
+
+  private getFirstOrderTracking(order: Record<string, any>) {
+    const tracking = Array.isArray(order.tracking) ? order.tracking : [];
+
+    return tracking.find(
+      (item) => item?.number || item?.url || item?.company,
+    );
+  }
+
+  private getOrderCustomerName(order: Record<string, any>) {
+    const customerName = this.cleanCustomerText(order.customer?.name || '');
+    const shippingName = this.cleanCustomerText(order.shipping_address?.name || '');
+    const name = customerName || shippingName;
+
+    return name.length > 70 ? name.slice(0, 70).trim() : name;
+  }
+
+  private customerPaymentStatusMessage(status: unknown) {
+    switch (this.normalizeOrderStatus(status)) {
+      case 'paid':
+        return 'Tu pago ya aparece confirmado.';
+      case 'pending':
+        return 'Tu pago todavía aparece pendiente de confirmación.';
+      case 'authorized':
+        return 'Tu pago aparece autorizado y está en proceso de confirmación.';
+      case 'partially_paid':
+        return 'El pedido aparece con pago parcial.';
+      case 'refunded':
+        return 'El pedido aparece reembolsado.';
+      case 'partially_refunded':
+        return 'El pedido aparece con un reembolso parcial.';
+      case 'voided':
+        return 'El pago aparece anulado.';
+      default:
+        return '';
+    }
+  }
+
+  private customerFulfillmentStatusMessage(status: unknown, hasTracking: boolean) {
+    switch (this.normalizeOrderStatus(status)) {
+      case 'fulfilled':
+        return hasTracking
+          ? 'Tu pedido ya fue despachado.'
+          : 'Tu pedido aparece como despachado.';
+      case 'partial':
+      case 'partially_fulfilled':
+        return 'Tu pedido aparece parcialmente despachado.';
+      case 'unfulfilled':
+      case 'restocked':
+        return 'Tu pedido está en preparación.';
+      case 'on_hold':
+        return 'Tu pedido está en revisión antes del despacho.';
+      case 'scheduled':
+        return 'Tu pedido está programado para despacho.';
+      case 'request_declined':
+        return 'El despacho del pedido requiere revisión.';
+      default:
+        return '';
+    }
+  }
+
+  private formatOrderMoney(value: unknown) {
+    if (!value || typeof value !== 'object') {
+      return '';
+    }
+
+    const money = value as { amount?: unknown; currencyCode?: unknown };
+    const amount = Number(money.amount);
+    const currency = String(money.currencyCode || 'COP').trim() || 'COP';
+
+    if (!Number.isFinite(amount)) {
+      return '';
+    }
+
+    return `${new Intl.NumberFormat('es-CO', {
+      maximumFractionDigits: 0,
+    }).format(amount)} ${currency}`;
+  }
+
+  private normalizeOrderStatus(status: unknown) {
+    return String(status || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+  }
+
+  private cleanCustomerText(value: unknown) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
 
   private async requestCustomerServiceHuman(
     session: ConversationSession,

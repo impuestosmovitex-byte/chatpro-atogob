@@ -606,7 +606,7 @@ export class CompanyShopifyService {
         }
 
         seen.add(order.id);
-        orders.push(order);
+        orders.push(await this.enrichOrderDetails(companyId, order));
 
         if (orders.length >= limit) {
           return orders;
@@ -777,6 +777,139 @@ export class CompanyShopifyService {
       fulfillments,
       tracking: fulfillments.flatMap((fulfillment) => fulfillment.tracking),
     };
+  }
+
+
+  private async enrichOrderDetails(
+    companyId: string,
+    order: CompanyShopifyCustomerOrder,
+  ): Promise<CompanyShopifyCustomerOrder> {
+    try {
+      const data = await this.graphql<{
+        node: {
+          customer?: {
+            firstName?: string | null;
+            lastName?: string | null;
+            email?: string | null;
+            phone?: string | null;
+          } | null;
+          shippingAddress?: {
+            name?: string | null;
+            phone?: string | null;
+            city?: string | null;
+            province?: string | null;
+            country?: string | null;
+            address1?: string | null;
+            address2?: string | null;
+          } | null;
+          fulfillments?: Array<{
+            status?: string | null;
+            displayStatus?: string | null;
+            createdAt?: string | null;
+            deliveredAt?: string | null;
+            trackingInfo?: CompanyShopifyOrderTracking[] | null;
+          }> | null;
+        } | null;
+      }>(
+        companyId,
+        `
+          query ChatProOrderTracking($id: ID!) {
+            node(id: $id) {
+              ... on Order {
+                customer {
+                  firstName
+                  lastName
+                  email
+                  phone
+                }
+                shippingAddress {
+                  name
+                  phone
+                  city
+                  province
+                  country
+                  address1
+                  address2
+                }
+                fulfillments(first: 10) {
+                  status
+                  displayStatus
+                  createdAt
+                  deliveredAt
+                  trackingInfo(first: 10) {
+                    company
+                    number
+                    url
+                  }
+                }
+              }
+            }
+          }
+        `,
+        { id: order.id },
+      );
+
+      const detail = data.node;
+
+      if (!detail) {
+        return order;
+      }
+
+      const customerName = [
+        detail.customer?.firstName,
+        detail.customer?.lastName,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      const fulfillments = (detail.fulfillments ?? []).map((fulfillment) => ({
+        status: fulfillment.status ?? null,
+        displayStatus: fulfillment.displayStatus ?? null,
+        createdAt: fulfillment.createdAt ?? null,
+        deliveredAt: fulfillment.deliveredAt ?? null,
+        tracking: (fulfillment.trackingInfo ?? []).map((tracking) => ({
+          company: tracking.company ?? null,
+          number: tracking.number ?? null,
+          url: tracking.url ?? null,
+        })),
+      }));
+
+      return {
+        ...order,
+        customer: {
+          ...order.customer,
+          name:
+            customerName ||
+            detail.shippingAddress?.name ||
+            order.customer?.name ||
+            '',
+          email: detail.customer?.email ?? order.customer?.email ?? null,
+          phone:
+            detail.customer?.phone ??
+            order.customer?.phone ??
+            detail.shippingAddress?.phone ??
+            null,
+        },
+        shippingAddress: detail.shippingAddress
+          ? {
+              name: detail.shippingAddress.name ?? null,
+              phone: detail.shippingAddress.phone ?? null,
+              city: detail.shippingAddress.city ?? null,
+              province: detail.shippingAddress.province ?? null,
+              country: detail.shippingAddress.country ?? null,
+              address1: detail.shippingAddress.address1 ?? null,
+              address2: detail.shippingAddress.address2 ?? null,
+            }
+          : order.shippingAddress,
+        fulfillments: fulfillments.length ? fulfillments : order.fulfillments,
+        tracking: fulfillments.length
+          ? fulfillments.flatMap((fulfillment) => fulfillment.tracking)
+          : order.tracking,
+      };
+    } catch {
+      return order;
+    }
   }
 
   async listProducts(
