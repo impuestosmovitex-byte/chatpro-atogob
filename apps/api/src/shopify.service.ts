@@ -1007,7 +1007,18 @@ billingAddress: {
     return decodeURIComponent(match[1]).trim().toLowerCase();
   }
 
-  private async getAccessToken() {
+  private async getAccessToken(): Promise<string> {
+    const directToken =
+      process.env.SHOPIFY_ACCESS_TOKEN?.trim() ||
+      process.env.SHOPIFY_ADMIN_ACCESS_TOKEN?.trim() ||
+      process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN?.trim() ||
+      process.env.SHOPIFY_API_ACCESS_TOKEN?.trim() ||
+      '';
+
+    if (directToken) {
+      return directToken;
+    }
+
     if (this.accessToken && Date.now() < this.tokenExpiresAt - 60_000) {
       return this.accessToken;
     }
