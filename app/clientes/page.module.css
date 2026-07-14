@@ -761,3 +761,31 @@
     grid-column: auto;
   }
 }
+
+.tagFilter {
+  margin-top: 12px;
+}
+
+.tagFilter select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #d9dde3;
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: #fff;
+  color: #1f2227;
+  font: inherit;
+  outline: none;
+  cursor: pointer;
+}
+
+.tagFilter select:focus {
+  border-color: #a9843e;
+  box-shadow: 0 0 0 3px rgba(169, 132, 62, 0.16);
+}
+
+.tagFilter select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

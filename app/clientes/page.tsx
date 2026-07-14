@@ -132,6 +132,8 @@ function tagInput(tags: string[]) {
 
 export default function ClientsPage() {
   const [search, setSearch] = useState("");
+
+  const [selectedTag, setSelectedTag] = useState("");
   const [clients, setClients] = useState<ClientSummary[]>([]);
   const [selected, setSelected] = useState<ClientProfile | null>(null);
   const [loadingList, setLoadingList] = useState(true);
@@ -298,6 +300,34 @@ export default function ClientsPage() {
     [selected],
   );
 
+  const availableTags = useMemo(() => {
+    const uniqueTags = new Map<string, string>();
+
+    for (const client of clients) {
+      for (const rawTag of client.contact?.tags ?? []) {
+        const tag = rawTag.trim();
+        if (!tag) continue;
+        const key = tag.toLocaleLowerCase("es");
+        if (!uniqueTags.has(key)) uniqueTags.set(key, tag);
+      }
+    }
+
+    return Array.from(uniqueTags.values()).sort((left, right) =>
+      left.localeCompare(right, "es", { sensitivity: "base" }),
+    );
+  }, [clients]);
+
+  const visibleClients = useMemo(() => {
+    const normalizedTag = selectedTag.trim().toLocaleLowerCase("es");
+    if (!normalizedTag) return clients;
+
+    return clients.filter((client) =>
+      (client.contact?.tags ?? []).some(
+        (tag) => tag.trim().toLocaleLowerCase("es") === normalizedTag,
+      ),
+    );
+  }, [clients, selectedTag]);
+
   return (
     <main className={styles.shell}>
       <AppSidebar companyName={companyName} />
@@ -375,18 +405,34 @@ export default function ClientsPage() {
                 />
                 <button type="submit">Buscar</button>
               </div>
+          <div className={styles.tagFilter}>
+            <label htmlFor="client-tag-filter">Filtrar por etiqueta</label>
+            <select
+              id="client-tag-filter"
+              value={selectedTag}
+              onChange={(event) => setSelectedTag(event.target.value)}
+              disabled={!availableTags.length}
+            >
+              <option value="">Todas las etiquetas</option>
+              {availableTags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+          </div>
             </form>
 
             <div className={styles.listHeader}>
               <div>
                 <h2>Base de contactos</h2>
-                <p>{loadingList ? "Cargando…" : `${clients.length} contactos encontrados`}</p>
+                <p>{loadingList ? "Cargando…" : `${visibleClients.length} contactos encontrados`}</p>
               </div>
             </div>
 
             <div className={styles.clientList}>
-              {!loadingList && !clients.length ? <div className={styles.empty}>No encontramos contactos con esa búsqueda.</div> : null}
-              {clients.map((client) => (
+              {!loadingList && !visibleClients.length ? <div className={styles.empty}>No encontramos contactos con esa búsqueda.</div> : null}
+              {visibleClients.map((client) => (
                 <button
                   className={`${styles.clientRow} ${selected?.client.customerPhone === client.customerPhone ? styles.selectedRow : ""}`}
                   key={client.customerPhone}
