@@ -91,6 +91,7 @@ export type ClientSummary = {
   firstMessageAt: string | null;
   lastMessageAt: string;
   attentionStatus: AttentionStatus;
+  assignedToUserId: string | null;
   assignedToName: string | null;
   totalMessages: number;
   lastMessage: InboxMessage | null;
@@ -1715,6 +1716,7 @@ export class ConversationMemoryService {
       firstMessageAt: firstMessage?.createdAt ?? null,
       lastMessageAt: session.lastMessageAt,
       attentionStatus: session.attentionStatus,
+      assignedToUserId: session.assignedToUserId,
       assignedToName: session.assignedToName,
       totalMessages: messages.length,
       lastMessage,

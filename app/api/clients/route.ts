@@ -25,6 +25,25 @@ async function currentSession(request: NextRequest) {
   return getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
 }
 
+function trustedHeaders(
+  inboxKey: string,
+  session: NonNullable<Awaited<ReturnType<typeof currentSession>>>,
+) {
+  const headers: Record<string, string> = {
+    'x-chatpro-inbox-key': inboxKey,
+    'x-chatpro-session-type': session.type,
+    'x-chatpro-user-name': session.fullName,
+    'x-chatpro-company-id': session.companyId,
+    'x-chatpro-role-key': session.roleKey,
+  };
+
+  if (session.type === 'user' && session.userId) {
+    headers['x-chatpro-user-id'] = session.userId;
+  }
+
+  return headers;
+}
+
 function unauthorized() {
   return NextResponse.json(
     { ok: false, error: 'Sesión requerida.' },
@@ -68,7 +87,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response = await fetch(target, {
-      headers: { 'x-chatpro-inbox-key': inboxKey },
+      headers: trustedHeaders(inboxKey, session),
       cache: 'no-store',
     });
 
@@ -105,7 +124,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-chatpro-inbox-key': inboxKey,
+        ...trustedHeaders(inboxKey, session),
       },
       body: JSON.stringify({ ...payload, company: session.companySlug }),
       cache: 'no-store',
