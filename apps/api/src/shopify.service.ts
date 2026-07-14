@@ -592,12 +592,6 @@ export class ShopifyService {
           query ChatProOrderTracking($id: ID!) {
             node(id: $id) {
               ... on Order {
-                customer {
-                  firstName
-                  lastName
-                  email
-                  phone
-                }
                 shippingAddress {
                   name
                   phone
