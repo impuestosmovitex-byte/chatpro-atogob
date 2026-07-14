@@ -1218,7 +1218,8 @@ export class ConversationMemoryService {
   }> {
     const profile = await this.getCompanyProfile(companySlug);
     const max = Math.min(Math.max(Math.trunc(limit) || 100, 1), 150);
-    const normalizedSearch = search.trim().replace(/[^\d+]/g, '');
+    const searchText = search.trim();
+    const normalizedPhoneSearch = this.normalizePhone(searchText);
     const client = this.supabaseService.getClient();
 
     let query = client
@@ -1228,11 +1229,57 @@ export class ConversationMemoryService {
       .order('last_message_at', { ascending: false })
       .limit(max);
 
-    if (normalizedSearch) {
-      query = query.ilike(
-        'customer_phone',
-        `%${normalizedSearch}%`,
-      );
+    if (searchText) {
+      const matchedPhones = new Set<string>();
+
+      if (normalizedPhoneSearch) {
+        const { data: phoneRows, error: phoneError } = await client
+          .from('conversation_sessions')
+          .select('customer_phone')
+          .eq('company_id', profile.id)
+          .ilike('customer_phone', `%${normalizedPhoneSearch}%`)
+          .limit(max);
+
+        if (phoneError) {
+          throw new Error(
+            `No se pudieron buscar clientes por teléfono: ${phoneError.message}`,
+          );
+        }
+
+        for (const row of phoneRows ?? []) {
+          if (typeof row.customer_phone === 'string' && row.customer_phone) {
+            matchedPhones.add(row.customer_phone);
+          }
+        }
+      }
+
+      const { data: contactRows, error: contactError } = await client
+        .from('contacts')
+        .select('phone')
+        .eq('company_id', profile.id)
+        .ilike('display_name', `%${searchText}%`)
+        .limit(max);
+
+      if (contactError) {
+        throw new Error(
+          `No se pudieron buscar clientes por nombre: ${contactError.message}`,
+        );
+      }
+
+      for (const row of contactRows ?? []) {
+        if (typeof row.phone === 'string' && row.phone) {
+          matchedPhones.add(row.phone);
+        }
+      }
+
+      if (!matchedPhones.size) {
+        return {
+          company: { id: profile.id, slug: profile.slug, name: profile.name },
+          clients: [],
+        };
+      }
+
+      query = query.in('customer_phone', Array.from(matchedPhones));
     }
 
     const { data: sessionRows, error: sessionError } = await query;
