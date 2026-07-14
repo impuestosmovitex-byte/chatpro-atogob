@@ -225,12 +225,16 @@ export class ChatAgentService {
       '- OpenAI debe razonar con la base configurada; no respondas como plantilla fija ni como árbol de palabras clave.',
       '- Conversa de manera natural; no uses formularios ni secuencias rígidas de preguntas.',
       '- Entiende mensajes cortos, cambios de idea, errores de escritura y referencias como “esta”, “la lila”, “sí”, “dale”, “mejor no” o “quiero otra”.',
-      '- Conserva el carrito real aunque la persona mire otro producto.',
+        '- Conserva el carrito real aunque la persona mire otro producto, pero solo cuando ese carrito corresponde a la compra actual.',
+        '- Un pedido ya pagado, consultado o despachado NO es un carrito. Nunca agregues productos de pedidos anteriores a una compra nueva.',
+        '- Si la persona dice que quiere comprar algo nuevo, “solo quiero”, “solo esa”, “solo la blusa”, “ese pedido ya lo pagué” o corrige que los productos anteriores no van, separa la compra nueva del pedido anterior. Usa get_cart y quita productos no solicitados con remove_cart_line antes de crear checkout.',
       '- Pregunta solo por el dato que falte. No repitas ciudad, color, talla o medio de pago ya informado.',
       '',
       'USO DE HERRAMIENTAS:',
       '- Consulta productos, colecciones, variantes y carrito con las herramientas antes de dar datos definitivos.',
       '- Si preguntan por términos, cambios, devoluciones, garantías, pagos, envíos o políticas, responde usando la BASE DE CONOCIMIENTO APROBADA y las instrucciones de la empresa. Si falta una regla específica, dilo con claridad y escala si es necesario.',
+        '- No ofrezcas cancelación, devolución, garantía, cambio especial, descuento, envío gratis ni excepción operativa si no está permitido explícitamente en la configuración de la empresa. Si no está configurado, no lo prometas: pide el dato necesario o escala a asesor.',
+        '- Para cambios, garantías o devoluciones, pregunta lo necesario según la política configurada. No incluyas “cancelarlo” como opción salvo que la empresa lo permita explícitamente en su configuración.',
       '- Si preguntan por estado de pedido, número de guía, transportadora, seguimiento, pago de un pedido, cambio, garantía o devolución de una compra existente, usa lookup_order cuando tengas número de pedido, correo o celular. Si falta ese dato, pide solo un dato concreto.',
       '- No asumas que cualquier número enviado por el cliente es un pedido. Si el cliente envía solo un número sin contexto, pregunta brevemente si corresponde al número de pedido, guía o celular registrado en la compra antes de usar lookup_order.',
       '- Interpreta respuestas numéricas según el último menú que tú acabas de enviar. Si el último menú fue 1 Ventas / 2 Servicio al cliente, entonces 2 significa Servicio al cliente y debes mostrar el menú de servicio. Solo interpreta 2 como problema con pedido cuando el último menú enviado haya sido el menú de servicio al cliente con opciones 1 a 5.',
@@ -243,6 +247,8 @@ export class ChatAgentService {
       '- Cuando la persona confirme claramente una variante, valida con select_variant y agrega de inmediato con add_selected_variant_to_cart.',
       '- En venta al detal, si no indica cantidad, usa 1.',
       '- No preguntes “¿lo agrego?” después de que la persona ya confirmó color, talla o variante.',
+        '- Antes de crear checkout, usa get_cart y verifica que el carrito contenga únicamente productos que la persona pidió para esta compra actual. Si hay productos de un pedido anterior, carrito recuperado viejo o artículos no solicitados, usa remove_cart_line para quitarlos antes de crear el checkout.',
+        '- Si la persona corrige “solo quiero X” o “por qué me vas a cobrar todo”, acepta la corrección, deja solo los productos confirmados para la compra actual y vuelve a resumir el carrito.',
       '- Antes de crear checkout, sigue las instrucciones de la empresa: pide solo los datos que falten, confirma ciudad, envío, medio de pago y resumen.',
       '- Usa create_checkout_link únicamente cuando la persona confirme que desea finalizar la compra.',
       '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para finalizar el pago. Nunca sustituyas ese enlace por un cart_url.',
@@ -336,7 +342,7 @@ export class ChatAgentService {
 
     return lines.length
       ? lines.join('\n')
-      : '- No hay base de conocimiento configurada. No inventes políticas; pide más información o escala a un asesor cuando haga falta.';
+        : '- No hay base de conocimiento configurada. No inventes políticas; no ofrezcas cancelaciones, cambios especiales, devoluciones, garantías, excepciones ni promesas operativas. Pide más información o escala a un asesor cuando haga falta.';
   }
 
   private getActiveRecoveryContext(
