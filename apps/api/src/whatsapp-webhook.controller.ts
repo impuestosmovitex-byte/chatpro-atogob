@@ -656,7 +656,7 @@ export class WhatsappWebhookController {
         },
       });
 
-      return this.formatOrderLookupReply(result.orders[0]);
+      return this.formatOrderLookupReply(result.orders[0], session);
     }
 
     if (result.next_action === 'ask_alternate_identifier') {
@@ -674,13 +674,14 @@ export class WhatsappWebhookController {
     );
   }
 
-  private formatOrderLookupReply(order: Record<string, any>) {
+  private async formatOrderLookupReply(order: Record<string, any>, session?: ConversationSession) {
     const items = Array.isArray(order.items) ? order.items : [];
     const firstTracking = this.getFirstOrderTracking(order);
     const hasTracking = Boolean(firstTracking);
     const orderName = order.name ? ` ${order.name}` : '';
     const customerName = this.getOrderCustomerName(order);
     const lines: string[] = [];
+    const profile = await this.getSessionCompanyProfile(session);
 
     if (customerName) {
       lines.push(
@@ -731,23 +732,7 @@ export class WhatsappWebhookController {
     }
 
     if (firstTracking) {
-      const trackingLines = ['Información de envío:'];
-
-      if (firstTracking.company) {
-        trackingLines.push(
-          `Transportadora: ${this.cleanCustomerText(firstTracking.company)}`,
-        );
-      }
-
-      if (firstTracking.number) {
-        trackingLines.push(`Guía: ${this.cleanCustomerText(firstTracking.number)}`);
-      }
-
-      if (firstTracking.url) {
-        trackingLines.push(`Seguimiento: ${firstTracking.url}`);
-      }
-
-      lines.push(trackingLines.join('\n'));
+      lines.push(this.formatConfiguredTrackingReply(firstTracking, profile));
     } else if (this.normalizeOrderStatus(order.fulfillment_status) === 'fulfilled') {
       lines.push(
         'Tu pedido aparece como despachado, pero en este momento no tengo la guía disponible en la información recibida. Puedo dejarlo con un asesor para revisarla.',
@@ -759,6 +744,179 @@ export class WhatsappWebhookController {
     }
 
     return lines.join('\n\n').trim();
+  }
+
+
+  private async getSessionCompanyProfile(session?: ConversationSession) {
+    const companyId =
+      (session as any)?.companyId ||
+      (session as any)?.company_id ||
+      '';
+
+    if (!companyId) {
+      return undefined;
+    }
+
+    try {
+      return await this.conversationMemoryService.getCompanyProfileById(companyId);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private formatConfiguredTrackingReply(
+    tracking: Record<string, any>,
+    profile?: CompanyProfile,
+  ) {
+    const config = this.findConfiguredCarrier(tracking.company, profile);
+    const rawCompany = this.cleanCustomerText(tracking.company || '');
+    const trackingNumber = this.cleanCustomerText(tracking.number || '');
+    const visibleCompany = config?.displayName || rawCompany;
+    const configuredUrl = config?.trackingUrl || '';
+    const trackingUrl =
+      configuredUrl || this.extractBaseTrackingUrl(String(tracking.url || ''));
+    const instructions =
+      config?.instructions ||
+      this.getShippingTrackingFallbackInstructions(profile);
+
+    const trackingLines = ['Información de envío:'];
+
+    if (visibleCompany) {
+      trackingLines.push(`Transportadora: ${visibleCompany}`);
+    } else {
+      trackingLines.push('Transportadora registrada por la tienda.');
+    }
+
+    if (trackingNumber) {
+      trackingLines.push(`Guía: ${trackingNumber}`);
+    }
+
+    if (trackingUrl) {
+      trackingLines.push('', 'Para hacer seguimiento, ingresa aquí:', trackingUrl);
+    }
+
+    if (instructions) {
+      trackingLines.push('', instructions);
+    }
+
+    if (trackingNumber) {
+      trackingLines.push('', 'Copia esta guía y consulta:', trackingNumber);
+    }
+
+    return trackingLines.join('\n');
+  }
+
+  private findConfiguredCarrier(company: unknown, profile?: CompanyProfile) {
+    const rawCompany = this.cleanCustomerText(String(company || ''));
+    const companyKey = this.normalizeCarrierKey(rawCompany);
+
+    if (!companyKey || !profile) {
+      return null;
+    }
+
+    const settings = profile.settings?.shipping_tracking;
+
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return null;
+    }
+
+    const source = settings as Record<string, any>;
+
+    if (source.enabled !== true) {
+      return null;
+    }
+
+    const carriers = Array.isArray(source.carriers) ? source.carriers : [];
+
+    for (const item of carriers) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        continue;
+      }
+
+      const carrier = item as Record<string, any>;
+
+      if (carrier.isActive === false) {
+        continue;
+      }
+
+      const displayName = this.cleanCustomerText(carrier.displayName || '');
+      const trackingUrl = this.cleanCustomerText(carrier.trackingUrl || '');
+      const instructions = this.cleanCustomerText(carrier.instructions || '');
+      const aliases = this.splitCarrierAliases(carrier.aliases);
+
+      const possibleNames = [displayName, ...aliases]
+        .map((value) => this.normalizeCarrierKey(value))
+        .filter(Boolean);
+
+      if (possibleNames.includes(companyKey)) {
+        return {
+          displayName,
+          trackingUrl: this.extractBaseTrackingUrl(trackingUrl) || trackingUrl,
+          instructions,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  private splitCarrierAliases(value: unknown) {
+    if (Array.isArray(value)) {
+      return value
+        .filter((item): item is string => typeof item === 'string')
+        .flatMap((item) => this.splitCarrierAliases(item));
+    }
+
+    if (typeof value !== 'string') {
+      return [];
+    }
+
+    return value
+      .split(/[\n,;]+/g)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  private getShippingTrackingFallbackInstructions(profile?: CompanyProfile) {
+    const defaultInstructions =
+      'Ingresa al enlace principal de la transportadora, busca seguimiento o rastreo, copia la guía y consulta el estado.';
+
+    const settings = profile?.settings?.shipping_tracking;
+
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return defaultInstructions;
+    }
+
+    const source = settings as Record<string, any>;
+    const configured =
+      typeof source.fallbackInstructions === 'string'
+        ? source.fallbackInstructions.trim()
+        : '';
+
+    return configured || defaultInstructions;
+  }
+
+  private extractBaseTrackingUrl(value: string) {
+    const raw = value.trim();
+
+    if (!raw) {
+      return '';
+    }
+
+    try {
+      const url = new URL(raw);
+      return url.origin;
+    } catch {
+      return raw.replace(/\/+$/, '');
+    }
+  }
+
+  private normalizeCarrierKey(value: unknown) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '');
   }
 
   private getFirstOrderTracking(order: Record<string, any>) {
