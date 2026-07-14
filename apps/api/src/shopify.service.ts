@@ -397,6 +397,8 @@ export class ShopifyService {
     return orders;
   }
 
+  // Consulta base de pedidos intencionalmente simple: evita campos de cliente/envío/fulfillment
+  // para no romper por permisos de datos protegidos. Guías se agregan en un bloque separado.
   private async lookupOrdersByQuery(
     query: string,
     limit: number,
@@ -413,8 +415,6 @@ export class ShopifyService {
               node {
                 id
                 name
-                email
-                phone
                 createdAt
                 processedAt
                 cancelledAt
@@ -425,21 +425,6 @@ export class ShopifyService {
                     amount
                     currencyCode
                   }
-                }
-                customer {
-                  firstName
-                  lastName
-                  email
-                  phone
-                }
-                shippingAddress {
-                  name
-                  phone
-                  city
-                  province
-                  country
-                  address1
-                  address2
                 }
                 lineItems(first: 20) {
                   edges {
@@ -454,17 +439,6 @@ export class ShopifyService {
                         }
                       }
                     }
-                  }
-                }
-                fulfillments(first: 10) {
-                  status
-                  displayStatus
-                  createdAt
-                  deliveredAt
-                  trackingInfo(first: 10) {
-                    company
-                    number
-                    url
                   }
                 }
               }
