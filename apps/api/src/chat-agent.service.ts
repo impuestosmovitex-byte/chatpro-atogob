@@ -207,6 +207,7 @@ export class ChatAgentService {
         : 'cercana, clara, breve y natural';
     const commercialRules = this.getCommercialFlowRules(profile.settings);
     const knowledgeRules = this.getKnowledgeBaseRules(profile.settings);
+    const shippingTrackingRules = this.getShippingTrackingRules(profile.settings);
 
     return [
       `Eres ${assistantName}, asesora comercial de ${profile.name}.`,
@@ -265,6 +266,9 @@ export class ChatAgentService {
       'BASE DE CONOCIMIENTO APROBADA POR LA EMPRESA:',
       knowledgeRules,
       '',
+      'TRANSPORTADORAS Y SEGUIMIENTO CONFIGURADOS:',
+      shippingTrackingRules,
+      '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',
       ...(hasRecoveryContext
@@ -315,6 +319,68 @@ export class ChatAgentService {
     return lines.length
       ? lines.join('\n')
       : '- No hay reglas comerciales estructuradas. Usa únicamente las instrucciones adicionales configuradas por la empresa.';
+  }
+
+  private getShippingTrackingRules(settings: JsonObject): string {
+    const source =
+      settings.shipping_tracking &&
+      typeof settings.shipping_tracking === 'object' &&
+      !Array.isArray(settings.shipping_tracking)
+        ? (settings.shipping_tracking as JsonObject)
+        : {};
+
+    const enabled = source.enabled === true;
+    const fallback =
+      typeof source.fallbackInstructions === 'string' &&
+      source.fallbackInstructions.trim()
+        ? source.fallbackInstructions.trim()
+        : 'Cuando haya guía, comparte transportadora, número de guía y explica cómo consultar en el enlace principal de la transportadora.';
+
+    const carriers = Array.isArray(source.carriers) ? source.carriers : [];
+    const lines = carriers
+      .map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          return '';
+        }
+
+        const carrier = item as JsonObject;
+        if (carrier.isActive === false) {
+          return '';
+        }
+
+        const displayName =
+          typeof carrier.displayName === 'string' ? carrier.displayName.trim() : '';
+        const aliases =
+          typeof carrier.aliases === 'string' ? carrier.aliases.trim() : '';
+        const trackingUrl =
+          typeof carrier.trackingUrl === 'string' ? carrier.trackingUrl.trim() : '';
+        const instructions =
+          typeof carrier.instructions === 'string' ? carrier.instructions.trim() : '';
+
+        if (!displayName && !aliases && !trackingUrl && !instructions) {
+          return '';
+        }
+
+        return [
+          `- Transportadora: ${displayName || aliases || 'Sin nombre visible'}`,
+          aliases ? `  Códigos/Alias: ${aliases}` : '',
+          trackingUrl ? `  URL principal: ${trackingUrl}` : '',
+          instructions ? `  Instrucción: ${instructions}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+      })
+      .filter(Boolean);
+
+    if (!enabled && !lines.length) {
+      return '- No hay transportadoras configuradas. Si Shopify entrega guía, responde de forma genérica sin inventar enlaces ni nombres visibles.';
+    }
+
+    return [
+      `- Seguimiento con transportadoras: ${enabled ? 'activo' : 'inactivo'}.`,
+      `- Instrucción general: ${fallback}`,
+      ...lines,
+    ].join('\n');
   }
 
   private getKnowledgeBaseRules(settings: JsonObject): string {

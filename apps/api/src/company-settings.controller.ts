@@ -37,6 +37,20 @@ type CartRecoverySettings = {
   testPhones: string;
 };
 
+type ShippingCarrier = {
+  displayName: string;
+  aliases: string;
+  trackingUrl: string;
+  instructions: string;
+  isActive: boolean;
+};
+
+type ShippingTracking = {
+  enabled: boolean;
+  fallbackInstructions: string;
+  carriers: ShippingCarrier[];
+};
+
 type SettingsBody = {
   assistantName?: unknown;
   tone?: unknown;
@@ -44,6 +58,7 @@ type SettingsBody = {
   commercialFlow?: unknown;
   knowledgeBase?: unknown;
   cartRecovery?: unknown;
+  shippingTracking?: unknown;
 };
 
 function optionalText(value: unknown): string | undefined {
@@ -133,6 +148,54 @@ function cartRecoveryFrom(
   };
 }
 
+
+function shippingTrackingFrom(value: unknown): ShippingTracking {
+  const source =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+
+  const rawCarriers = Array.isArray(source.carriers) ? source.carriers : [];
+
+  const carriers = rawCarriers
+    .map((item): ShippingCarrier => {
+      const carrier =
+        item && typeof item === 'object' && !Array.isArray(item)
+          ? item as Record<string, unknown>
+          : {};
+
+      return {
+        displayName: cleanText(carrier.displayName ?? carrier.display_name),
+        aliases: cleanText(carrier.aliases),
+        trackingUrl: cleanText(carrier.trackingUrl ?? carrier.tracking_url),
+        instructions: cleanText(carrier.instructions),
+        isActive:
+          typeof carrier.isActive === 'boolean'
+            ? carrier.isActive
+            : carrier.is_active !== false,
+      };
+    })
+    .filter(
+      (carrier) =>
+        carrier.displayName ||
+        carrier.aliases ||
+        carrier.trackingUrl ||
+        carrier.instructions,
+    );
+
+  return {
+    enabled:
+      typeof source.enabled === 'boolean'
+        ? source.enabled
+        : carriers.length > 0,
+    fallbackInstructions:
+      cleanText(source.fallbackInstructions ?? source.fallback_instructions) ||
+      'Ingresa al enlace principal de la transportadora, busca seguimiento o rastreo, copia la guía y consulta el estado.',
+    carriers,
+  };
+}
+
+
 @Controller('settings')
 export class CompanySettingsController {
   constructor(
@@ -179,6 +242,7 @@ export class CompanySettingsController {
         commercialFlow: body?.commercialFlow,
         knowledgeBase: body?.knowledgeBase,
         cartRecovery: body?.cartRecovery,
+        shippingTracking: body?.shippingTracking,
       });
 
     return {
@@ -226,6 +290,7 @@ export class CompanySettingsController {
         profile.settings.cart_recovery,
         profile.settings,
       ),
+      shippingTracking: shippingTrackingFrom(profile.settings.shipping_tracking),
     };
   }
 }

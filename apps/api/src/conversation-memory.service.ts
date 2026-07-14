@@ -208,6 +208,7 @@ export class ConversationMemoryService {
       commercialFlow?: unknown;
       knowledgeBase?: unknown;
       cartRecovery?: unknown;
+      shippingTracking?: unknown;
     },
   ): Promise<CompanyProfile> {
     const profile = await this.getCompanyProfile(companySlug);
@@ -263,6 +264,16 @@ export class ConversationMemoryService {
       delete nextSettings.cart_recovery_test_mode;
       delete nextSettings.cart_recovery_test_phones;
       delete nextSettings.cart_recovery_fallback_message;
+    }
+
+    if (input.shippingTracking !== undefined) {
+      const shippingTracking = this.toJsonObject(input.shippingTracking);
+
+      if (Object.keys(shippingTracking).length) {
+        nextSettings.shipping_tracking = shippingTracking;
+      } else {
+        delete nextSettings.shipping_tracking;
+      }
     }
 
     const assistantName =

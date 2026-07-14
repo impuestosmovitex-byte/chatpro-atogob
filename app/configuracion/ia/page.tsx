@@ -28,6 +28,20 @@ type CartRecoverySettings = {
   testPhones: string;
 };
 
+type ShippingCarrier = {
+  displayName: string;
+  aliases: string;
+  trackingUrl: string;
+  instructions: string;
+  isActive: boolean;
+};
+
+type ShippingTrackingSettings = {
+  enabled: boolean;
+  fallbackInstructions: string;
+  carriers: ShippingCarrier[];
+};
+
 type Configuration = {
   assistantName: string;
   tone: string;
@@ -35,6 +49,7 @@ type Configuration = {
   commercialFlow: CommercialFlow;
   knowledgeBase: KnowledgeBase;
   cartRecovery: CartRecoverySettings;
+  shippingTracking: ShippingTrackingSettings;
 };
 
 type ResponseData = {
@@ -67,6 +82,13 @@ const EMPTY_CART_RECOVERY: CartRecoverySettings = {
   testPhones: '',
 };
 
+const EMPTY_SHIPPING_TRACKING: ShippingTrackingSettings = {
+  enabled: false,
+  fallbackInstructions:
+    'Ingresa al enlace principal de la transportadora, busca la opción de seguimiento o rastreo, copia la guía y consulta el estado del envío.',
+  carriers: [],
+};
+
 const EMPTY: Configuration = {
   assistantName: '',
   tone: 'Cercana, clara, breve y profesional',
@@ -74,6 +96,7 @@ const EMPTY: Configuration = {
   commercialFlow: EMPTY_FLOW,
   knowledgeBase: EMPTY_KNOWLEDGE,
   cartRecovery: EMPTY_CART_RECOVERY,
+  shippingTracking: EMPTY_SHIPPING_TRACKING,
 };
 
 function normalizeCartRecovery(
@@ -99,6 +122,32 @@ function normalizeCartRecovery(
   };
 }
 
+function normalizeShippingTracking(
+  value?: Partial<ShippingTrackingSettings>,
+): ShippingTrackingSettings {
+  const carriers = Array.isArray(value?.carriers)
+    ? value.carriers.map((carrier) => ({
+        displayName: carrier?.displayName ?? '',
+        aliases: carrier?.aliases ?? '',
+        trackingUrl: carrier?.trackingUrl ?? '',
+        instructions: carrier?.instructions ?? '',
+        isActive:
+          typeof carrier?.isActive === 'boolean' ? carrier.isActive : true,
+      }))
+    : [];
+
+  return {
+    enabled:
+      typeof value?.enabled === 'boolean'
+        ? value.enabled
+        : carriers.length > 0,
+    fallbackInstructions:
+      value?.fallbackInstructions ??
+      EMPTY_SHIPPING_TRACKING.fallbackInstructions,
+    carriers,
+  };
+}
+
 function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
   return {
     assistantName: value?.assistantName ?? '',
@@ -113,6 +162,7 @@ function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
       ...(value?.knowledgeBase ?? {}),
     },
     cartRecovery: normalizeCartRecovery(value?.cartRecovery),
+    shippingTracking: normalizeShippingTracking(value?.shippingTracking),
   };
 }
 
@@ -183,6 +233,67 @@ export default function ConfiguracionPage() {
       cartRecovery: {
         ...current.cartRecovery,
         [key]: value,
+      },
+    }));
+  }
+
+  function updateShippingTracking(
+    key: 'enabled' | 'fallbackInstructions',
+    value: string | boolean,
+  ) {
+    setConfiguration((current) => ({
+      ...current,
+      shippingTracking: {
+        ...current.shippingTracking,
+        [key]: value,
+      },
+    }));
+  }
+
+  function addCarrier() {
+    setConfiguration((current) => ({
+      ...current,
+      shippingTracking: {
+        ...current.shippingTracking,
+        enabled: true,
+        carriers: [
+          ...current.shippingTracking.carriers,
+          {
+            displayName: '',
+            aliases: '',
+            trackingUrl: '',
+            instructions: '',
+            isActive: true,
+          },
+        ],
+      },
+    }));
+  }
+
+  function updateCarrier(
+    index: number,
+    key: keyof ShippingCarrier,
+    value: string | boolean,
+  ) {
+    setConfiguration((current) => ({
+      ...current,
+      shippingTracking: {
+        ...current.shippingTracking,
+        carriers: current.shippingTracking.carriers.map((carrier, itemIndex) =>
+          itemIndex === index ? { ...carrier, [key]: value } : carrier,
+        ),
+      },
+    }));
+  }
+
+  function removeCarrier(index: number) {
+    setConfiguration((current) => ({
+      ...current,
+      shippingTracking: {
+        ...current.shippingTracking,
+        carriers: current.shippingTracking.carriers.filter(
+          (_carrier, itemIndex) => itemIndex !== index,
+        ),
       },
     }));
   }
@@ -475,10 +586,147 @@ export default function ConfiguracionPage() {
             </label>
           </section>
 
+            <section className={styles.card}>
+              <div className={styles.sectionHeading}>
+                <div>
+                  <p>4. TRANSPORTADORAS Y SEGUIMIENTO</p>
+                  <h2>Cómo responder guías y rastreos</h2>
+                </div>
+                <span>Configurable por empresa</span>
+              </div>
+
+              <label>
+                <span>Activar seguimiento con transportadoras</span>
+                <input
+                  type="checkbox"
+                  checked={configuration.shippingTracking.enabled}
+                  onChange={(event) =>
+                    updateShippingTracking('enabled', event.target.checked)
+                  }
+                  disabled={loading}
+                />
+                <small>
+                  Si la empresa no maneja envíos con transportadora, déjalo apagado y sin transportadoras.
+                </small>
+              </label>
+
+              <label>
+                <span>Instrucción general de seguimiento</span>
+                <textarea
+                  value={configuration.shippingTracking.fallbackInstructions}
+                  onChange={(event) =>
+                    updateShippingTracking(
+                      'fallbackInstructions',
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Ejemplo: Ingresa al enlace principal de la transportadora, busca seguimiento, copia la guía y consulta el estado."
+                  rows={4}
+                  disabled={loading}
+                />
+              </label>
+
+              <div className={styles.menuNote}>
+                <div>
+                  <strong>Transportadoras configuradas</strong>
+                  <p>
+                    Agrega los nombres como deben verlos los clientes, los códigos que llegan desde Shopify y la URL principal de seguimiento.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={addCarrier}
+                  disabled={loading}
+                >
+                  Agregar transportadora
+                </button>
+              </div>
+
+              {configuration.shippingTracking.carriers.map((carrier, index) => (
+                <div className={styles.menuNote} key={index}>
+                  <div>
+                    <div className={styles.grid}>
+                      <label>
+                        <span>Nombre visible</span>
+                        <input
+                          value={carrier.displayName}
+                          onChange={(event) =>
+                            updateCarrier(index, 'displayName', event.target.value)
+                          }
+                          placeholder="Ejemplo: Interrapidísimo"
+                          disabled={loading}
+                        />
+                      </label>
+
+                      <label>
+                        <span>Códigos o nombres desde Shopify</span>
+                        <input
+                          value={carrier.aliases}
+                          onChange={(event) =>
+                            updateCarrier(index, 'aliases', event.target.value)
+                          }
+                          placeholder="Ejemplo: interrapidisimo_co, interrapidisimo"
+                          disabled={loading}
+                        />
+                        <small>Separados por coma o salto de línea.</small>
+                      </label>
+
+                      <label>
+                        <span>URL principal</span>
+                        <input
+                          value={carrier.trackingUrl}
+                          onChange={(event) =>
+                            updateCarrier(index, 'trackingUrl', event.target.value)
+                          }
+                          placeholder="https://www.transportadora.com"
+                          disabled={loading}
+                        />
+                      </label>
+
+                      <label>
+                        <span>Activa</span>
+                        <input
+                          type="checkbox"
+                          checked={carrier.isActive}
+                          onChange={(event) =>
+                            updateCarrier(index, 'isActive', event.target.checked)
+                          }
+                          disabled={loading}
+                        />
+                      </label>
+                    </div>
+
+                    <label>
+                      <span>Instrucción específica</span>
+                      <textarea
+                        value={carrier.instructions}
+                        onChange={(event) =>
+                          updateCarrier(index, 'instructions', event.target.value)
+                        }
+                        placeholder="Ejemplo: Entra al enlace, busca Rastrea tu envío, copia la guía y consulta."
+                        rows={3}
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={styles.secondary}
+                    onClick={() => removeCarrier(index)}
+                    disabled={loading}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ))}
+            </section>
+
           <section className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>4. BASE DE CONOCIMIENTO</p>
+                <p>5. BASE DE CONOCIMIENTO</p>
                 <h2>Políticas que la IA debe consultar</h2>
               </div>
               <span>No inventa respuestas</span>
@@ -540,7 +788,7 @@ export default function ConfiguracionPage() {
           <section className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>5. INSTRUCCIONES ADICIONALES</p>
+                <p>6. INSTRUCCIONES ADICIONALES</p>
                 <h2>Promociones, estilo y casos especiales</h2>
               </div>
             </div>
