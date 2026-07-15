@@ -401,6 +401,42 @@ export type CompanyCommerceCollection = {
   onlineStoreUrl: string;
 };
 
+export type CompanyShopifyAbandonedCheckout = {
+  externalId: string;
+  createdAt: string;
+  updatedAt: string;
+  checkoutUrl: string;
+  customerPhone: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  total: {
+    amount: string;
+    currencyCode: string;
+  };
+  lines: Array<{
+    title: string | null;
+    variantTitle: string | null;
+    quantity: number;
+    product: {
+      id: string;
+      handle: string;
+      title: string;
+      url: string | null;
+    } | null;
+    variant: {
+      id: string;
+      legacyResourceId: string;
+      title: string;
+      price: string;
+      options: Array<{ name: string; value: string }>;
+    } | null;
+    unitPrice: {
+      amount: string;
+      currencyCode: string;
+    };
+  }>;
+};
+
 export type CompanyCommerceCartLinks = {
   cartUrl: string;
   checkoutUrl: string;
@@ -1660,6 +1696,211 @@ async searchCommerceProducts(
       variantId,
       quantity,
     }));
+  }
+
+  async listOpenAbandonedCheckoutsCreatedSince(
+    companyId: string,
+    createdSince: string,
+    limit = 50,
+  ): Promise<CompanyShopifyAbandonedCheckout[]> {
+    const normalizedCreatedSince = new Date(createdSince).toISOString();
+    const data = await this.graphql<{
+      abandonedCheckouts: {
+        edges: Array<{
+          node: {
+            id: string;
+            createdAt: string;
+            updatedAt: string;
+            abandonedCheckoutUrl: string;
+            shippingAddress: {
+              firstName: string | null;
+              lastName: string | null;
+              phone: string | null;
+            } | null;
+            billingAddress: {
+              firstName: string | null;
+              lastName: string | null;
+              phone: string | null;
+            } | null;
+            totalPriceSet: {
+              shopMoney: {
+                amount: string;
+                currencyCode: string;
+              };
+            };
+            lineItems: {
+              edges: Array<{
+                node: {
+                  title: string | null;
+                  variantTitle: string | null;
+                  quantity: number;
+                  product: {
+                    id: string;
+                    handle: string;
+                    title: string;
+                    onlineStoreUrl: string | null;
+                  } | null;
+                  variant: {
+                    id: string;
+                    legacyResourceId: string;
+                    title: string;
+                    price: string;
+                    selectedOptions: Array<{
+                      name: string;
+                      value: string;
+                    }>;
+                  } | null;
+                  originalUnitPriceSet: {
+                    shopMoney: {
+                      amount: string;
+                      currencyCode: string;
+                    };
+                  };
+                };
+              }>;
+            };
+          };
+        }>;
+      };
+    }>(
+      companyId,
+      `
+        query OpenAbandonedCheckoutsForRecovery(
+          $first: Int!
+          $query: String!
+        ) {
+          abandonedCheckouts(
+            first: $first
+            query: $query
+            sortKey: CREATED_AT
+            reverse: false
+          ) {
+            edges {
+              node {
+                id
+                createdAt
+                updatedAt
+                abandonedCheckoutUrl
+                shippingAddress {
+                  firstName
+                  lastName
+                  phone
+                }
+                billingAddress {
+                  firstName
+                  lastName
+                  phone
+                }
+                totalPriceSet {
+                  shopMoney {
+                    amount
+                    currencyCode
+                  }
+                }
+                lineItems(first: 50) {
+                  edges {
+                    node {
+                      title
+                      variantTitle
+                      quantity
+                      product {
+                        id
+                        handle
+                        title
+                        onlineStoreUrl
+                      }
+                      variant {
+                        id
+                        legacyResourceId
+                        title
+                        price
+                        selectedOptions {
+                          name
+                          value
+                        }
+                      }
+                      originalUnitPriceSet {
+                        shopMoney {
+                          amount
+                          currencyCode
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      {
+        first: Math.min(Math.max(limit, 1), 50),
+        query: [
+          'status:open',
+          'recovery_state:not_recovered',
+          `created_at:>='${normalizedCreatedSince}'`,
+        ].join(' '),
+      },
+    );
+
+    return data.abandonedCheckouts.edges.map(({ node }) => {
+      const nameFrom = (
+        address:
+          | {
+              firstName: string | null;
+              lastName: string | null;
+            }
+          | null
+          | undefined,
+      ) =>
+        [address?.firstName, address?.lastName]
+          .filter(
+            (value): value is string =>
+              typeof value === 'string' && Boolean(value.trim()),
+          )
+          .join(' ')
+          .trim();
+
+      const shippingName = nameFrom(node.shippingAddress);
+      const billingName = nameFrom(node.billingAddress);
+
+      return {
+        externalId: node.id,
+        createdAt: node.createdAt,
+        updatedAt: node.updatedAt,
+        checkoutUrl: node.abandonedCheckoutUrl,
+        customerPhone:
+          node.shippingAddress?.phone ||
+          node.billingAddress?.phone ||
+          null,
+        customerName: shippingName || billingName || null,
+        customerEmail: null,
+        total: node.totalPriceSet.shopMoney,
+        lines: node.lineItems.edges.map(({ node: line }) => ({
+          title: line.title,
+          variantTitle: line.variantTitle,
+          quantity: line.quantity,
+          product: line.product
+            ? {
+                id: line.product.id,
+                handle: line.product.handle,
+                title: line.product.title,
+                url: line.product.onlineStoreUrl,
+              }
+            : null,
+          variant: line.variant
+            ? {
+                id: line.variant.id,
+                legacyResourceId: line.variant.legacyResourceId,
+                title: line.variant.title,
+                price: line.variant.price,
+                options: line.variant.selectedOptions,
+              }
+            : null,
+          unitPrice: line.originalUnitPriceSet.shopMoney,
+        })),
+      };
+    });
   }
 
   private normalizeCommerceStoreUrl(value: string): string {

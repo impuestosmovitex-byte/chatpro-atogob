@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ShopifyService } from './shopify.service';
+import { CompanyShopifyService } from './company-shopify.service';
 import { SupabaseService } from './supabase.service';
 
 type JsonObject = Record<string, unknown>;
@@ -19,7 +19,7 @@ export class ShopifyAbandonedCheckoutSyncService {
   private isRunning = false;
 
   constructor(
-    private readonly shopifyService: ShopifyService,
+    private readonly companyShopifyService: CompanyShopifyService,
     private readonly supabaseService: SupabaseService,
   ) {}
 
@@ -149,7 +149,8 @@ export class ShopifyAbandonedCheckoutSyncService {
 
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 50);
     const checkouts =
-      await this.shopifyService.listOpenAbandonedCheckoutsCreatedSince(
+      await this.companyShopifyService.listOpenAbandonedCheckoutsCreatedSince(
+        cleanCompanyId,
         cleanCreatedSince,
         safeLimit,
       );

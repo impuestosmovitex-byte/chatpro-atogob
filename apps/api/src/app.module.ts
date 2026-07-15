@@ -3,6 +3,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AccessAuthService } from './access-auth.service';
 import { AccessController } from './access.controller';
 import { AiService } from './ai.service';
+import { AutomationRuntimeService } from './automation-runtime.service';
+import { AutomationsController } from './automations.controller';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CartRecoveryService } from './cart-recovery.service';
@@ -45,6 +47,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
   controllers: [InternalDiagnosticsController,
     ShopifyOrderDetailDiagnosticsController,
     AppController,
+    AutomationsController,
     WhatsappWebhookController,
     InboxController,
     IntegrationsController,
@@ -73,6 +76,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     IntegrationCredentialsService,
     WhatsappMessagingService,
     AppService,
+    AutomationRuntimeService,
     ShopifyService,
     ShopifyAbandonedCheckoutSyncService,
     AiService,

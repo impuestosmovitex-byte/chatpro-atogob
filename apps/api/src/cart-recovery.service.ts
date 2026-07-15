@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import OpenAI from 'openai';
+import { AutomationRuntimeService } from './automation-runtime.service';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
@@ -49,6 +50,7 @@ export class CartRecoveryService {
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly shopifyAbandonedCheckoutSyncService: ShopifyAbandonedCheckoutSyncService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
+    private readonly automationRuntimeService: AutomationRuntimeService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -126,6 +128,19 @@ export class CartRecoveryService {
     rule: RecoveryRule,
     isLastRule: boolean,
   ): Promise<void> {
+    const automation =
+      await this.automationRuntimeService.getDefinition(
+        rule.company_id,
+        'abandoned_cart',
+      );
+
+    if (
+      !automation.enabled ||
+      !this.automationRuntimeService.isInsideWindow(automation)
+    ) {
+      return;
+    }
+
     const dueBefore = new Date(
       Date.now() - rule.delay_minutes * 60 * 1000,
     ).toISOString();
@@ -151,7 +166,14 @@ export class CartRecoveryService {
     const carts = (data ?? []) as AbandonedCart[];
 
     for (const cart of carts) {
-      await this.processCart(rule, cart, isLastRule);
+      try {
+        await this.processCart(rule, cart, isLastRule);
+      } catch (error) {
+        this.logger.error(
+          `Falló la recuperación del carrito ${cart.id}.`,
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
     }
   }
 
@@ -189,50 +211,97 @@ export class CartRecoveryService {
       return;
     }
 
-    if (rule.delivery_mode === 'session') {
-      const isInsideCustomerWindow = await this.isInsideCustomerWindow(
-        cart.session_id,
-      );
+    if (
+      rule.delivery_mode === 'session' &&
+      !(await this.isInsideCustomerWindow(cart.session_id))
+    ) {
+      return;
+    }
 
-      if (!isInsideCustomerWindow) {
-        return;
+    if (
+      rule.delivery_mode === 'template' &&
+      !rule.template_name?.trim()
+    ) {
+      return;
+    }
+
+    const claim = await this.automationRuntimeService.claim({
+      companyId: cart.company_id,
+      automationKey: 'abandoned_cart',
+      eventKey: `cart:${cart.id}:step:${rule.sequence}`,
+      recipient,
+      payload: {
+        cartId: cart.id,
+        recoveryStep: rule.sequence,
+        deliveryMode: rule.delivery_mode,
+      },
+    });
+
+    if (!claim.claimed) {
+      if (claim.reason === 'sent') {
+        await this.markRuleAsSent(
+          cart,
+          rule.sequence,
+          isLastRule,
+        );
       }
+      return;
+    }
 
-      const message = await this.buildSessionMessage(
-        company,
-        rule,
-        cart,
-      );
+    try {
+      if (rule.delivery_mode === 'session') {
+        const message = await this.buildSessionMessage(
+          company,
+          rule,
+          cart,
+        );
 
-      await this.whatsappMessagingService.sendText(cart.company_id, recipient, message);
-
-      if (cart.session_id) {
-        await this.conversationMemoryService.saveMessage({
-          companyId: cart.company_id,
-          sessionId: cart.session_id,
-          customerPhone: cart.customer_phone,
+        await this.whatsappMessagingService.sendText(
+          cart.company_id,
+          recipient,
           message,
-          sender: 'assistant',
-          aiResponse: message,
-        });
-      }
-    }
+        );
 
-    if (rule.delivery_mode === 'template') {
-      if (!rule.template_name?.trim()) {
-        return;
+        if (cart.session_id) {
+          await this.conversationMemoryService.saveMessage({
+            companyId: cart.company_id,
+            sessionId: cart.session_id,
+            customerPhone: cart.customer_phone,
+            message,
+            sender: 'assistant',
+            aiResponse: message,
+          });
+        }
       }
 
-      await this.whatsappMessagingService.sendTemplate(
-        cart.company_id,
-        recipient,
-        rule.template_name,
-        rule.template_language,
-        [cart.checkout_url],
+      if (rule.delivery_mode === 'template') {
+        await this.whatsappMessagingService.sendTemplate(
+          cart.company_id,
+          recipient,
+          rule.template_name as string,
+          rule.template_language,
+          [cart.checkout_url],
+        );
+      }
+
+      await this.automationRuntimeService.markSent(
+        claim.executionId as string,
       );
+      await this.markRuleAsSent(
+        cart,
+        rule.sequence,
+        isLastRule,
+      );
+    } catch (error) {
+      await this.automationRuntimeService.markFailed(
+        claim.executionId as string,
+        error,
+        claim.attemptCount,
+        claim.maxAttempts,
+        claim.retryDelayMinutes,
+      );
+      throw error;
     }
-
-    await this.markRuleAsSent(cart, rule.sequence, isLastRule);
   }
 
   private async isInsideCustomerWindow(

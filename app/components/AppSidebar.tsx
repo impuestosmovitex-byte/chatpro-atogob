@@ -27,12 +27,7 @@ type Session = {
 const baseNavigation = [
   { href: '/', label: 'Bandeja', icon: '◉', exact: true },
   { href: '/clientes', label: 'Clientes', icon: '◌' },
-  {
-    href: '/automatizaciones',
-    label: 'Automatizaciones',
-    icon: '◈',
-    disabled: true,
-  },
+  { href: '/automatizaciones', label: 'Automatizaciones', icon: '◈' },
 ];
 
 function isActive(pathname: string, href: string, exact?: boolean): boolean {
