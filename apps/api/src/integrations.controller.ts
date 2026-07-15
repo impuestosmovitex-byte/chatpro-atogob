@@ -119,11 +119,27 @@ export class IntegrationsController {
     await this.refreshWhatsappHealth(rows);
 
     const known = CATALOG.map((item) => {
-      const row = rows.find(
-        (candidate) =>
-          candidate.provider === item.provider &&
-          candidate.integration_type === item.integrationType,
-      );
+      const matches = (candidate: IntegrationRow) =>
+        candidate.provider === item.provider &&
+        candidate.integration_type === item.integrationType;
+
+      const row =
+        rows.find(
+          (candidate) =>
+            matches(candidate) &&
+            candidate.status === 'active' &&
+            candidate.credential_mode === 'encrypted',
+        ) ??
+        rows.find(
+          (candidate) =>
+            matches(candidate) && candidate.status === 'active',
+        ) ??
+        rows.find(
+          (candidate) =>
+            matches(candidate) &&
+            candidate.credential_mode === 'encrypted',
+        ) ??
+        rows.find(matches);
 
       return row
         ? this.toIntegration(item, row)
