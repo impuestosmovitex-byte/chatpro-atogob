@@ -11,6 +11,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import type { Response } from 'express';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { SupabaseService } from './supabase.service';
+import { ShopifyWebhookSubscriptionService } from './shopify-webhook-subscription.service';
 
 type TokenResponse = { access_token?: string };
 
@@ -19,6 +20,7 @@ export class ShopifyOauthController {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly credentials: IntegrationCredentialsService,
+    private readonly webhookSubscriptions: ShopifyWebhookSubscriptionService,
   ) {}
 
   @Get('connect')
@@ -49,7 +51,10 @@ export class ShopifyOauthController {
 
     const url = new URL(`https://${shop}/admin/oauth/authorize`);
     url.searchParams.set('client_id', this.env('SHOPIFY_PLATFORM_CLIENT_ID'));
-    url.searchParams.set('scope', 'read_products,read_orders');
+    url.searchParams.set(
+      'scope',
+      'read_products,read_orders,read_fulfillments',
+    );
     url.searchParams.set('redirect_uri', this.callbackUrl());
     url.searchParams.set('state', state);
 
@@ -122,6 +127,15 @@ export class ShopifyOauthController {
 
       const token = await this.exchange(shop, code);
       const now = new Date().toISOString();
+      const apiVersion =
+        process.env.SHOPIFY_PLATFORM_API_VERSION?.trim() || '2026-04';
+      const webhookResult =
+        await this.webhookSubscriptions.ensureSubscriptions({
+          shop,
+          accessToken: token.access_token,
+          apiVersion,
+          endpoint: this.webhookUrl(),
+        });
 
       const { error: saveError } = await client
         .from('company_integrations')
@@ -133,9 +147,16 @@ export class ShopifyOauthController {
             external_id: shop,
             status: 'active',
             config: {
-              api_version: process.env.SHOPIFY_PLATFORM_API_VERSION?.trim() || '2026-04',
+              api_version: apiVersion,
               shop_domain: shop,
               store_url: `https://${shop}`,
+              webhooks: {
+                status: 'active',
+                endpoint: webhookResult.endpoint,
+                topics: webhookResult.topics,
+                created: webhookResult.created,
+                registered_at: now,
+              },
             },
             credential_mode: 'encrypted',
             credential_reference: {
@@ -174,7 +195,11 @@ export class ShopifyOauthController {
         .update({ used_at: now })
         .eq('id', stateRow.id);
 
-      return this.page(response, true, 'Shopify quedó conectada. Regresa a Chat Pro y actualiza Canales e integraciones.');
+      return this.page(
+        response,
+        true,
+        'Shopify quedó conectada y los eventos automáticos quedaron preparados. Regresa a Chat Pro y actualiza Canales e integraciones.',
+      );
     } catch (error) {
       return this.page(
         response,
@@ -276,6 +301,10 @@ export class ShopifyOauthController {
 
   private callbackUrl() {
     return `${this.env('CHATPRO_PUBLIC_API_URL').replace(/\/$/, '')}/integrations/shopify/callback`;
+  }
+
+  private webhookUrl() {
+    return `${this.env('CHATPRO_PUBLIC_API_URL').replace(/\/$/, '')}/webhook/shopify`;
   }
 
   private queryValues(query: Record<string, string | string[] | undefined>) {

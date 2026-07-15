@@ -30,6 +30,9 @@ import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkou
 import { ShopifyService } from './shopify.service';
 import { ShopifyOauthController } from './shopify-oauth.controller';
 import { ShopifyIntegrationTestController } from './shopify-integration-test.controller';
+import { ShopifyWebhookController } from './shopify-webhook.controller';
+import { ShopifyWebhookEventService } from './shopify-webhook-event.service';
+import { ShopifyWebhookSubscriptionService } from './shopify-webhook-subscription.service';
 import { CompanyCommerceTestController } from './company-commerce-test.controller';
 import { ShopifyCatalogPreviewController } from './shopify-catalog-preview.controller';
 import { SupabaseService } from './supabase.service';
@@ -53,6 +56,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     IntegrationsController,
     ShopifyOauthController,
     ShopifyIntegrationTestController,
+    ShopifyWebhookController,
     CompanyCommerceTestController,
     ShopifyCatalogPreviewController,
     ClientsController,
@@ -79,6 +83,8 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     AutomationRuntimeService,
     ShopifyService,
     ShopifyAbandonedCheckoutSyncService,
+    ShopifyWebhookEventService,
+    ShopifyWebhookSubscriptionService,
     AiService,
     SupabaseService,
     ConversationMemoryService,
