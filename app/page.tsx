@@ -265,8 +265,10 @@ export default function Home() {
     }
   }
 
-  async function openConversation(sessionId: string) {
-    setLoadingChat(true);
+  async function openConversation(sessionId: string, silent = false) {
+    if (!silent) {
+      setLoadingChat(true);
+    }
 
     try {
       const response = await fetch(
@@ -285,14 +287,26 @@ export default function Home() {
         contact: data.contact ?? null,
         messages: data.messages ?? [],
       });
-      setMessage("");
-      setQuickReplyOpen(false);
-      setActionMessage("");
+
+      if (!silent) {
+        setMessage("");
+        setQuickReplyOpen(false);
+        setActionMessage("");
+      }
+
       setError("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudo abrir la conversación.");
+      if (!silent) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "No se pudo abrir la conversación.",
+        );
+      }
     } finally {
-      setLoadingChat(false);
+      if (!silent) {
+        setLoadingChat(false);
+      }
     }
   }
 
@@ -539,6 +553,27 @@ export default function Home() {
 
     return () => window.clearInterval(timer);
   }, [filter]);
+
+  useEffect(() => {
+    const sessionId = selected?.session.id;
+    const isInternal =
+      selected?.session.context?.internal_test === true;
+
+    if (!sessionId || isInternal) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void openConversation(sessionId, true);
+      }
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [
+    selected?.session.id,
+    selected?.session.context?.internal_test,
+  ]);
 
   const isInternalTest = Boolean(
     selected?.session.context?.internal_test === true,
@@ -1028,6 +1063,19 @@ export default function Home() {
                         onFocus={() =>
                           setQuickReplyOpen(message.trimStart().startsWith("/"))
                         }
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            !event.shiftKey &&
+                            !event.nativeEvent.isComposing
+                          ) {
+                            event.preventDefault();
+
+                            if (!actionLoading && message.trim()) {
+                              void runAction("message");
+                            }
+                          }
+                        }}
                         placeholder="Escribe una respuesta o usa / para atajos…"
                         rows={3}
                       />
