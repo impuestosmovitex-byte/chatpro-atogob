@@ -1,0 +1,712 @@
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { SupabaseService } from './supabase.service';
+
+type JsonObject = Record<string, unknown>;
+type AutomationKey = 'order_created' | 'fulfillment_created';
+
+type WebhookRow = {
+  id: string;
+  webhook_id: string;
+  company_id: string;
+  shop_domain: string;
+  topic: string;
+  status: 'received' | 'processing' | 'processed' | 'failed' | 'ignored';
+  payload: unknown;
+  attempt_count: number | null;
+  next_retry_at: string | null;
+  received_at: string;
+};
+
+type MessageConfig = {
+  automationId: string | null;
+  body: string;
+  deliveryMode: 'session' | 'template';
+  templateName: string | null;
+  templateLanguage: string;
+};
+
+type PreparedAutomation = {
+  companyId: string;
+  automationId: string | null;
+  automationKey: AutomationKey;
+  eventKey: string;
+  recipient: string | null;
+  rawRecipient: string;
+  message: string;
+  orderId: string;
+  orderNumber: string;
+  sourceEventId: string;
+  sourceWebhookId: string;
+  sourceTopic: string;
+  deliveryMode: 'session' | 'template';
+  templateName: string | null;
+  templateLanguage: string;
+  variables: JsonObject;
+};
+
+const DEFAULT_ORDER_MESSAGE = [
+  'Hola {{nombre_cliente}}, gracias por tu compra.',
+  'Tu pedido {{numero_pedido}} fue recibido correctamente.',
+  '{{resumen_compra}}',
+  'Total: {{total_pedido}}',
+  'Consulta tu pedido aquí:',
+  '{{enlace_pedido}}',
+].join('\n\n');
+
+const DEFAULT_FULFILLMENT_MESSAGE = [
+  'Hola {{nombre_cliente}} 👋',
+  'Tu pedido {{numero_pedido}} ya tiene información de envío.',
+  'Transportadora: {{transportadora}}',
+  'Guía: {{numero_guia}}',
+  'Haz seguimiento aquí:',
+  '{{enlace_seguimiento}}',
+].join('\n\n');
+
+@Injectable()
+export class ShopifyAutomationProcessorService implements OnModuleInit {
+  private readonly logger = new Logger(ShopifyAutomationProcessorService.name);
+  private processing = false;
+
+  constructor(private readonly supabaseService: SupabaseService) {}
+
+  onModuleInit(): void {
+    const timer = setTimeout(() => {
+      void this.processPending();
+    }, 5000);
+    timer.unref();
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async processPending(): Promise<void> {
+    if (this.processing) {
+      return;
+    }
+
+    this.processing = true;
+
+    try {
+      const rows = await this.pendingRows();
+
+      for (const row of rows) {
+        await this.processOne(row);
+      }
+    } catch (error) {
+      this.logger.error(
+        `No se pudieron procesar eventos Shopify: ${this.errorMessage(error)}`,
+      );
+    } finally {
+      this.processing = false;
+    }
+  }
+
+  private async pendingRows(): Promise<WebhookRow[]> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('shopify_webhook_events')
+      .select(
+        'id, webhook_id, company_id, shop_domain, topic, status, payload, attempt_count, next_retry_at, received_at',
+      )
+      .in('status', ['received', 'failed'])
+      .order('received_at', { ascending: true })
+      .limit(40);
+
+    if (error) {
+      throw new Error(
+        `No se pudieron consultar los eventos pendientes: ${error.message}`,
+      );
+    }
+
+    const now = Date.now();
+
+    return ((data ?? []) as WebhookRow[]).filter((row) => {
+      if (row.status === 'received') {
+        return true;
+      }
+
+      const nextRetry = Date.parse(row.next_retry_at ?? '');
+      return Number.isFinite(nextRetry) && nextRetry <= now;
+    });
+  }
+
+  private async processOne(row: WebhookRow): Promise<void> {
+    const claimed = await this.claim(row);
+
+    if (!claimed) {
+      return;
+    }
+
+    try {
+      const prepared =
+        claimed.topic === 'orders/create'
+          ? await this.prepareOrder(claimed)
+          : await this.prepareFulfillment(claimed);
+
+      if (!prepared) {
+        await this.markIgnored(
+          claimed.id,
+          'El evento todavía no tiene una guía o enlace de seguimiento.',
+        );
+        return;
+      }
+
+      await this.savePreparedExecution(prepared);
+      await this.markProcessed(claimed.id);
+    } catch (error) {
+      await this.markFailed(claimed, error);
+    }
+  }
+
+  private async claim(row: WebhookRow): Promise<WebhookRow | null> {
+    const now = new Date().toISOString();
+    const nextAttempt = Number(row.attempt_count ?? 0) + 1;
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('shopify_webhook_events')
+      .update({
+        status: 'processing',
+        processing_started_at: now,
+        attempt_count: nextAttempt,
+        error_message: null,
+        updated_at: now,
+      })
+      .eq('id', row.id)
+      .eq('status', row.status)
+      .select(
+        'id, webhook_id, company_id, shop_domain, topic, status, payload, attempt_count, next_retry_at, received_at',
+      )
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`No se pudo tomar el evento ${row.id}: ${error.message}`);
+    }
+
+    return data ? (data as WebhookRow) : null;
+  }
+
+  private async prepareOrder(row: WebhookRow): Promise<PreparedAutomation> {
+    const payload = this.object(row.payload);
+    const orderId = this.firstText(payload.id, payload.order_id);
+
+    if (!orderId) {
+      throw new Error('El pedido de Shopify no tiene identificador.');
+    }
+
+    const orderNumber =
+      this.firstText(payload.name) ||
+      (this.firstText(payload.order_number)
+        ? `#${this.firstText(payload.order_number)}`
+        : orderId);
+    const customer = this.object(payload.customer);
+    const shipping = this.object(payload.shipping_address);
+    const billing = this.object(payload.billing_address);
+    const defaultAddress = this.object(customer.default_address);
+    const customerName =
+      this.fullName(customer) ||
+      this.fullName(shipping) ||
+      this.fullName(billing) ||
+      'cliente';
+    const rawRecipient = this.firstText(
+      payload.phone,
+      shipping.phone,
+      billing.phone,
+      customer.phone,
+      defaultAddress.phone,
+    );
+    const recipient = await this.normalizeRecipient(
+      row.company_id,
+      rawRecipient,
+    );
+    const variables: JsonObject = {
+      nombre_cliente: customerName,
+      numero_pedido: orderNumber,
+      resumen_compra: this.orderSummary(payload),
+      total_pedido: this.money(
+        payload.total_price,
+        payload.currency,
+      ),
+      enlace_pedido: this.firstText(
+        payload.order_status_url,
+        payload.status_url,
+      ),
+    };
+    const config = await this.messageConfig(
+      row.company_id,
+      'order_created',
+    );
+
+    return {
+      companyId: row.company_id,
+      automationId: config.automationId,
+      automationKey: 'order_created',
+      eventKey: `shopify-order:${orderId}`,
+      recipient,
+      rawRecipient,
+      message: this.render(config.body, variables),
+      orderId,
+      orderNumber,
+      sourceEventId: row.id,
+      sourceWebhookId: row.webhook_id,
+      sourceTopic: row.topic,
+      deliveryMode: config.deliveryMode,
+      templateName: config.templateName,
+      templateLanguage: config.templateLanguage,
+      variables,
+    };
+  }
+
+  private async prepareFulfillment(
+    row: WebhookRow,
+  ): Promise<PreparedAutomation | null> {
+    const payload = this.object(row.payload);
+    const fulfillmentId = this.firstText(payload.id) || row.webhook_id;
+    const orderId = this.firstText(payload.order_id);
+    const trackingNumbers = this.stringArray(payload.tracking_numbers);
+    const trackingUrls = this.stringArray(payload.tracking_urls);
+    const trackingNumber = this.firstText(
+      payload.tracking_number,
+      trackingNumbers[0],
+    );
+    const trackingUrl = this.firstText(
+      payload.tracking_url,
+      trackingUrls[0],
+    );
+
+    if (!trackingNumber && !trackingUrl) {
+      return null;
+    }
+
+    if (!orderId) {
+      throw new Error('La guía de Shopify no tiene pedido relacionado.');
+    }
+
+    const orderPayload = await this.findOrderPayload(
+      row.company_id,
+      orderId,
+    );
+
+    if (!orderPayload) {
+      throw new Error(
+        `Todavía no se encontró el evento del pedido ${orderId}.`,
+      );
+    }
+
+    const customer = this.object(orderPayload.customer);
+    const shipping = this.object(orderPayload.shipping_address);
+    const billing = this.object(orderPayload.billing_address);
+    const defaultAddress = this.object(customer.default_address);
+    const customerName =
+      this.fullName(customer) ||
+      this.fullName(shipping) ||
+      this.fullName(billing) ||
+      'cliente';
+    const rawRecipient = this.firstText(
+      orderPayload.phone,
+      shipping.phone,
+      billing.phone,
+      customer.phone,
+      defaultAddress.phone,
+    );
+    const recipient = await this.normalizeRecipient(
+      row.company_id,
+      rawRecipient,
+    );
+    const orderNumber =
+      this.firstText(orderPayload.name) ||
+      (this.firstText(orderPayload.order_number)
+        ? `#${this.firstText(orderPayload.order_number)}`
+        : orderId);
+    const variables: JsonObject = {
+      nombre_cliente: customerName,
+      numero_pedido: orderNumber,
+      transportadora:
+        this.firstText(payload.tracking_company) ||
+        'Transportadora registrada por la tienda',
+      numero_guia: trackingNumber,
+      enlace_seguimiento: trackingUrl,
+    };
+    const config = await this.messageConfig(
+      row.company_id,
+      'fulfillment_created',
+    );
+
+    return {
+      companyId: row.company_id,
+      automationId: config.automationId,
+      automationKey: 'fulfillment_created',
+      eventKey: `shopify-fulfillment:${fulfillmentId}`,
+      recipient,
+      rawRecipient,
+      message: this.render(config.body, variables),
+      orderId,
+      orderNumber,
+      sourceEventId: row.id,
+      sourceWebhookId: row.webhook_id,
+      sourceTopic: row.topic,
+      deliveryMode: config.deliveryMode,
+      templateName: config.templateName,
+      templateLanguage: config.templateLanguage,
+      variables,
+    };
+  }
+
+  private async findOrderPayload(
+    companyId: string,
+    orderId: string,
+  ): Promise<JsonObject | null> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('shopify_webhook_events')
+      .select('payload')
+      .eq('company_id', companyId)
+      .eq('topic', 'orders/create')
+      .order('received_at', { ascending: false })
+      .limit(250);
+
+    if (error) {
+      throw new Error(
+        `No se pudo buscar el pedido de la guía: ${error.message}`,
+      );
+    }
+
+    for (const row of data ?? []) {
+      const payload = this.object((row as { payload?: unknown }).payload);
+
+      if (this.firstText(payload.id, payload.order_id) === orderId) {
+        return payload;
+      }
+    }
+
+    return null;
+  }
+
+  private async messageConfig(
+    companyId: string,
+    key: AutomationKey,
+  ): Promise<MessageConfig> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('company_automations')
+      .select('id, config')
+      .eq('company_id', companyId)
+      .eq('automation_key', key)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo consultar el mensaje configurado: ${error.message}`,
+      );
+    }
+
+    const config = this.object(data?.config);
+    const message = this.object(config.message);
+    const body =
+      this.firstText(message.body) ||
+      (key === 'order_created'
+        ? DEFAULT_ORDER_MESSAGE
+        : DEFAULT_FULFILLMENT_MESSAGE);
+    const deliveryMode =
+      this.firstText(message.delivery_mode) === 'template'
+        ? 'template'
+        : 'session';
+
+    return {
+      automationId: data?.id ?? null,
+      body,
+      deliveryMode,
+      templateName:
+        deliveryMode === 'template'
+          ? this.firstText(message.template_name) || null
+          : null,
+      templateLanguage:
+        this.firstText(message.template_language) || 'es_CO',
+    };
+  }
+
+  private async savePreparedExecution(
+    prepared: PreparedAutomation,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const status = prepared.recipient ? 'pending' : 'skipped';
+    const payload: JsonObject = {
+      prepared_only: true,
+      prepared_message: prepared.message,
+      source_event_id: prepared.sourceEventId,
+      source_webhook_id: prepared.sourceWebhookId,
+      source_topic: prepared.sourceTopic,
+      order_id: prepared.orderId,
+      order_number: prepared.orderNumber,
+      raw_recipient: prepared.rawRecipient,
+      variables: prepared.variables,
+      delivery_mode: prepared.deliveryMode,
+      template_name: prepared.templateName,
+      template_language: prepared.templateLanguage,
+      send_blocked_reason:
+        'Shopify Eventos 1B prepara el mensaje, pero no lo envía.',
+    };
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('automation_executions')
+      .upsert(
+        {
+          company_id: prepared.companyId,
+          automation_id: prepared.automationId,
+          automation_key: prepared.automationKey,
+          event_key: prepared.eventKey,
+          channel: 'whatsapp',
+          recipient: prepared.recipient,
+          status,
+          attempt_count: 0,
+          scheduled_for: now,
+          error_message: prepared.recipient
+            ? null
+            : 'No se encontró un teléfono válido para preparar el envío.',
+          payload,
+          updated_at: now,
+        },
+        {
+          onConflict: 'company_id,automation_key,event_key',
+          ignoreDuplicates: true,
+        },
+      );
+
+    if (error) {
+      throw new Error(
+        `No se pudo guardar el mensaje preparado: ${error.message}`,
+      );
+    }
+  }
+
+  private async normalizeRecipient(
+    companyId: string,
+    rawValue: string,
+  ): Promise<string | null> {
+    const raw = rawValue.trim();
+    const digits = raw.replace(/\D/g, '');
+
+    if (!digits || digits.length < 8 || digits.length > 15) {
+      return null;
+    }
+
+    if (raw.startsWith('+') || digits.length > 10) {
+      return digits;
+    }
+
+    const settings = await this.companySettings(companyId);
+    const recovery = this.object(settings.cart_recovery);
+    const countryCode = (
+      this.firstText(
+        recovery.default_country_code,
+        settings.cart_recovery_default_country_code,
+      ) || '57'
+    ).replace(/\D/g, '');
+
+    if (digits.length === 10 && countryCode) {
+      return `${countryCode}${digits}`;
+    }
+
+    return null;
+  }
+
+  private async companySettings(companyId: string): Promise<JsonObject> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('company_settings')
+      .select('settings')
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo consultar el código de país: ${error.message}`,
+      );
+    }
+
+    return this.object(data?.settings);
+  }
+
+  private render(body: string, variables: JsonObject): string {
+    let rendered = body;
+
+    for (const [key, value] of Object.entries(variables)) {
+      rendered = rendered
+        .split(`{{${key}}}`)
+        .join(this.firstText(value));
+    }
+
+    const unresolved = rendered.match(/{{[a-z0-9_]+}}/gi);
+
+    if (unresolved?.length) {
+      throw new Error(
+        `No se pudieron completar estas variables: ${Array.from(
+          new Set(unresolved),
+        ).join(', ')}.`,
+      );
+    }
+
+    return rendered.trim().slice(0, 4000);
+  }
+
+  private orderSummary(payload: JsonObject): string {
+    const items = Array.isArray(payload.line_items)
+      ? payload.line_items
+      : [];
+    const lines = items.slice(0, 20).map((value) => {
+      const item = this.object(value);
+      const quantity = Math.max(
+        Math.floor(Number(item.quantity) || 1),
+        1,
+      );
+      const title = this.firstText(item.title, item.name) || 'Producto';
+      const variant = this.firstText(item.variant_title);
+      const visibleVariant =
+        variant && variant.toLowerCase() !== 'default title'
+          ? ` · ${variant}`
+          : '';
+
+      return `• ${quantity} x ${title}${visibleVariant}`;
+    });
+
+    return lines.join('\n') || '• Compra registrada en Shopify';
+  }
+
+  private money(amountValue: unknown, currencyValue: unknown): string {
+    const amount = Number(amountValue);
+    const currency = this.firstText(currencyValue).toUpperCase() || 'COP';
+
+    if (!Number.isFinite(amount)) {
+      return this.firstText(amountValue);
+    }
+
+    try {
+      return new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency,
+        maximumFractionDigits: 0,
+      }).format(amount);
+    } catch {
+      return `${amount} ${currency}`;
+    }
+  }
+
+  private fullName(value: JsonObject): string {
+    return [
+      this.firstText(value.first_name),
+      this.firstText(value.last_name),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  }
+
+  private stringArray(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value
+          .map((item) => this.firstText(item))
+          .filter(Boolean)
+      : [];
+  }
+
+  private object(value: unknown): JsonObject {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as JsonObject)
+      : {};
+  }
+
+  private firstText(...values: unknown[]): string {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value);
+      }
+    }
+
+    return '';
+  }
+
+  private async markProcessed(eventId: string): Promise<void> {
+    const now = new Date().toISOString();
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('shopify_webhook_events')
+      .update({
+        status: 'processed',
+        processed_at: now,
+        failed_at: null,
+        next_retry_at: null,
+        error_message: null,
+        updated_at: now,
+      })
+      .eq('id', eventId);
+
+    if (error) {
+      throw new Error(
+        `No se pudo cerrar el evento procesado: ${error.message}`,
+      );
+    }
+  }
+
+  private async markIgnored(
+    eventId: string,
+    reason: string,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('shopify_webhook_events')
+      .update({
+        status: 'ignored',
+        processed_at: now,
+        next_retry_at: null,
+        error_message: reason,
+        updated_at: now,
+      })
+      .eq('id', eventId);
+
+    if (error) {
+      throw new Error(
+        `No se pudo omitir el evento sin guía: ${error.message}`,
+      );
+    }
+  }
+
+  private async markFailed(
+    row: WebhookRow,
+    errorValue: unknown,
+  ): Promise<void> {
+    const now = new Date();
+    const attempts = Number(row.attempt_count ?? 0);
+    const retry = attempts < 5;
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('shopify_webhook_events')
+      .update({
+        status: 'failed',
+        failed_at: now.toISOString(),
+        next_retry_at: retry
+          ? new Date(now.getTime() + 2 * 60 * 1000).toISOString()
+          : null,
+        error_message: this.errorMessage(errorValue),
+        updated_at: now.toISOString(),
+      })
+      .eq('id', row.id);
+
+    if (error) {
+      this.logger.error(
+        `No se pudo registrar el error del evento ${row.id}: ${error.message}`,
+      );
+    }
+  }
+
+  private errorMessage(value: unknown): string {
+    return (value instanceof Error ? value.message : 'Error desconocido.')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 700);
+  }
+}

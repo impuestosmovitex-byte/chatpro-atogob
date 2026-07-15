@@ -90,7 +90,7 @@ export class AutomationRuntimeService {
       client
         .from('automation_executions')
         .select(
-          'id, automation_key, event_key, channel, recipient, status, attempt_count, scheduled_for, next_retry_at, sent_at, failed_at, error_message, created_at',
+          'id, automation_key, event_key, channel, recipient, status, attempt_count, scheduled_for, next_retry_at, sent_at, failed_at, error_message, payload, created_at',
         )
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
@@ -124,21 +124,30 @@ export class AutomationRuntimeService {
     const automations = (automationResult.data ?? []).map((row) =>
       this.mapDefinition(row),
     );
-    const executions = (executionResult.data ?? []).map((row: any) => ({
-      id: row.id,
-      automationKey: row.automation_key,
-      eventKey: row.event_key,
-      channel: row.channel,
-      recipient: row.recipient,
-      status: row.status,
-      attemptCount: Number(row.attempt_count ?? 0),
-      scheduledFor: row.scheduled_for,
-      nextRetryAt: row.next_retry_at,
-      sentAt: row.sent_at,
-      failedAt: row.failed_at,
-      error: this.text(row.error_message) || null,
-      createdAt: row.created_at,
-    }));
+    const executions = (executionResult.data ?? []).map((row: any) => {
+      const payload = this.object(row.payload);
+
+      return {
+        id: row.id,
+        automationKey: row.automation_key,
+        eventKey: row.event_key,
+        channel: row.channel,
+        recipient: row.recipient,
+        status: row.status,
+        attemptCount: Number(row.attempt_count ?? 0),
+        scheduledFor: row.scheduled_for,
+        nextRetryAt: row.next_retry_at,
+        sentAt: row.sent_at,
+        failedAt: row.failed_at,
+        error: this.text(row.error_message) || null,
+        preparedOnly: payload.prepared_only === true,
+        preparedMessage:
+          this.text(payload.prepared_message) || null,
+        orderNumber: this.text(payload.order_number) || null,
+        sourceTopic: this.text(payload.source_topic) || null,
+        createdAt: row.created_at,
+      };
+    });
 
     return {
       automations,

@@ -31,6 +31,10 @@ type Execution = {
   nextRetryAt: string | null;
   sentAt: string | null;
   error: string | null;
+  preparedOnly: boolean;
+  preparedMessage: string | null;
+  orderNumber: string | null;
+  sourceTopic: string | null;
   createdAt: string;
 };
 
@@ -386,7 +390,12 @@ export default function AutomationsPage() {
                   {executions.map((execution) => (
                     <tr key={execution.id}>
                       <td>{dateTime(execution.createdAt)}</td>
-                      <td>{execution.automationKey}</td>
+                      <td>
+                        {execution.automationKey}
+                        {execution.orderNumber
+                          ? ` · ${execution.orderNumber}`
+                          : ''}
+                      </td>
                       <td>{execution.recipient || '—'}</td>
                       <td>
                         <span
@@ -394,20 +403,29 @@ export default function AutomationsPage() {
                             styles[`status_${execution.status}`] || ''
                           }`}
                         >
-                          {statusLabels[execution.status] ||
-                            execution.status}
+                          {execution.preparedOnly
+                            ? 'Preparado · sin envío'
+                            : statusLabels[execution.status] ||
+                              execution.status}
                         </span>
                       </td>
                       <td>{execution.attemptCount}</td>
                       <td>
-                        {execution.error ||
+                        {execution.preparedMessage ? (
+                          <details className={styles.preparedMessage}>
+                            <summary>Ver mensaje preparado</summary>
+                            <pre>{execution.preparedMessage}</pre>
+                          </details>
+                        ) : (
+                          execution.error ||
                           (execution.sentAt
                             ? `Enviado ${dateTime(execution.sentAt)}`
                             : execution.nextRetryAt
                               ? `Reintento ${dateTime(
                                   execution.nextRetryAt,
                                 )}`
-                              : '—')}
+                              : '—')
+                        )}
                       </td>
                     </tr>
                   ))}
