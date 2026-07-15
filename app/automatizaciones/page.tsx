@@ -211,6 +211,16 @@ export default function AutomationsPage() {
               enviar.
             </p>
           </div>
+
+          <button
+            type="button"
+            className={styles.messageSettings}
+            onClick={() =>
+              window.location.assign('/automatizaciones/mensajes')
+            }
+          >
+            Configurar mensajes
+          </button>
         </header>
 
         <section className={styles.metrics}>

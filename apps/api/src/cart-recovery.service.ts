@@ -15,6 +15,7 @@ type RecoveryRule = {
   sequence: number;
   delay_minutes: number;
   message_instructions: string;
+  message_body: string | null;
   delivery_mode: 'session' | 'template';
   template_name: string | null;
   template_language: string;
@@ -109,7 +110,7 @@ export class CartRecoveryService {
       .getClient()
       .from('company_cart_recovery_rules')
       .select(
-        'id, company_id, sequence, delay_minutes, message_instructions, delivery_mode, template_name, template_language, active',
+        'id, company_id, sequence, delay_minutes, message_instructions, message_body, delivery_mode, template_name, template_language, active',
       )
       .eq('active', true)
       .order('company_id', { ascending: true })
@@ -373,6 +374,15 @@ export class CartRecoveryService {
     rule: RecoveryRule,
     cart: AbandonedCart,
   ): Promise<string> {
+    const configuredBody = this.recoveryString(rule.message_body);
+
+    if (configuredBody) {
+      return this.renderConfiguredRecoveryMessage(
+        configuredBody,
+        cart,
+      );
+    }
+
     try {
       const response = await this.getClient().responses.create({
         model: this.getModel(),
@@ -490,6 +500,97 @@ export class CartRecoveryService {
     }
 
     return null;
+  }
+
+  private renderConfiguredRecoveryMessage(
+    template: string,
+    cart: AbandonedCart,
+  ): string {
+    const snapshot = this.toJsonObject(cart.cart_snapshot);
+    const customer = this.toJsonObject(snapshot.customer);
+    const replacements: Record<string, string> = {
+      '{{nombre_cliente}}':
+        this.recoveryString(customer.name),
+      '{{resumen_carrito}}':
+        this.recoveryCartSummary(snapshot),
+      '{{total_carrito}}':
+        this.recoveryMoney(
+          snapshot.total_amount,
+          snapshot.currency,
+        ),
+      '{{enlace_checkout}}': cart.checkout_url ?? '',
+      '{checkout_url}': cart.checkout_url ?? '',
+    };
+
+    let rendered = template;
+
+    for (const [variable, value] of Object.entries(replacements)) {
+      rendered = rendered.split(variable).join(value);
+    }
+
+    return this.cleanMessage(rendered);
+  }
+
+  private recoveryCartSummary(snapshot: JsonObject): string {
+    const lines = Array.isArray(snapshot.lines)
+      ? snapshot.lines
+      : [];
+
+    const rendered = lines
+      .slice(0, 20)
+      .map((value) => {
+        const line = this.toJsonObject(value);
+        const title =
+          this.recoveryString(line.product_title) ||
+          'Producto';
+        const variant = this.recoveryString(line.variant_title);
+        const quantity = Math.max(
+          Math.floor(Number(line.quantity) || 1),
+          1,
+        );
+
+        return `• ${quantity} x ${title}${
+          variant ? ` · ${variant}` : ''
+        }`;
+      })
+      .filter(Boolean);
+
+    return rendered.join('\n') || 'Tu selección está lista.';
+  }
+
+  private recoveryMoney(
+    amountValue: unknown,
+    currencyValue: unknown,
+  ): string {
+    const amount = Number(amountValue);
+    const currency =
+      this.recoveryString(currencyValue).toUpperCase() || 'COP';
+
+    if (!Number.isFinite(amount)) {
+      return this.recoveryString(amountValue);
+    }
+
+    try {
+      return new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency,
+        maximumFractionDigits: 0,
+      }).format(amount);
+    } catch {
+      return `${amount} ${currency}`.trim();
+    }
+  }
+
+  private recoveryString(value: unknown): string {
+    if (typeof value === 'string') {
+      return value.trim();
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+
+    return '';
   }
 
   private renderRecoveryFallbackMessage(
