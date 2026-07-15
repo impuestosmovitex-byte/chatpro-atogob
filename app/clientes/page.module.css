@@ -789,3 +789,36 @@
   cursor: not-allowed;
   opacity: 0.6;
 }
+
+
+.restrictedBadge {
+  flex: 0 0 auto;
+  border: 1px solid #e0c989;
+  border-radius: 999px;
+  padding: 9px 13px;
+  background: #fff7de;
+  color: #785916;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.restrictedNotice {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  border: 1px solid #e6d39f;
+  border-radius: 12px;
+  padding: 18px;
+  background: #fff9e8;
+  color: #604a1d;
+}
+
+.restrictedNotice strong {
+  color: #3c3018;
+  font-size: 15px;
+}
+
+.restrictedNotice p {
+  margin: 0;
+  line-height: 1.55;
+}

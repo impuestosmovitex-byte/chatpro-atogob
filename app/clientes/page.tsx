@@ -50,6 +50,7 @@ type ClientSummary = {
   assignedToName: string | null;
   totalMessages: number;
   lastMessage: InboxMessage | null;
+  historyRestricted?: boolean;
 };
 
 type ClientProfile = {
@@ -57,6 +58,7 @@ type ClientProfile = {
   client: ClientSummary;
   session: ConversationSession;
   messages: InboxMessage[];
+  historyRestricted: boolean;
 };
 
 type ClientsResponse = {
@@ -73,6 +75,7 @@ type ClientProfileResponse = {
   client?: ClientSummary;
   session?: ConversationSession;
   messages?: InboxMessage[];
+  historyRestricted?: boolean;
 };
 
 type SaveResponse = {
@@ -201,11 +204,13 @@ export default function ClientsPage() {
       if (!response.ok || !data.ok || !data.company || !data.client || !data.session) {
         throw new Error(data.error || "No se pudo abrir el cliente.");
       }
-      const profile = {
+      const profile: ClientProfile = {
         company: data.company,
         client: data.client,
         session: data.session,
         messages: data.messages ?? [],
+        historyRestricted:
+          data.historyRestricted ?? data.client.historyRestricted ?? false,
       };
       setSelected(profile);
       setCompanyName(profile.company.name || "Empresa");
@@ -446,7 +451,15 @@ export default function ClientsPage() {
                       <time>{formatDate(client.lastMessageAt)}</time>
                     </span>
                     <span className={styles.phone}>{client.customerPhone}</span>
-                    <span className={styles.preview}>{client.lastMessage?.message || "Sin mensajes todavía"}</span>
+                    <span className={styles.preview}>
+                      {client.historyRestricted
+                        ? client.assignedToName
+                          ? `Historial restringido · Asignado a ${client.assignedToName}`
+                          : client.attentionStatus === "ai"
+                            ? "Historial restringido · IA atendiendo"
+                            : "Historial restringido"
+                        : client.lastMessage?.message || "Sin mensajes todavía"}
+                    </span>
                     <span className={`${styles.status} ${styles[`status_${client.attentionStatus}`]}`}>
                       {statusLabel[client.attentionStatus]}
                     </span>
@@ -471,15 +484,34 @@ export default function ClientsPage() {
                     <h2>{customerLabel(selected.client)}</h2>
                     <p>{channelLabel[selected.client.contact?.primaryChannel ?? "whatsapp"]} · {selected.client.customerPhone}</p>
                   </div>
-                  <button className={styles.inboxButton} type="button" onClick={() => window.location.assign(`/?session=${encodeURIComponent(selected.session.id)}`)}>
-                    Abrir conversación
-                  </button>
+                  {selected.historyRestricted ? (
+                    <span className={styles.restrictedBadge}>
+                      Acceso restringido
+                    </span>
+                  ) : (
+                    <button
+                      className={styles.inboxButton}
+                      type="button"
+                      onClick={() =>
+                        window.location.assign(
+                          `/?session=${encodeURIComponent(selected.session.id)}`,
+                        )
+                      }
+                    >
+                      Abrir conversación
+                    </button>
+                  )}
                 </header>
 
                 <div className={styles.profileData}>
                   <article><span>Canal</span><strong>{channelLabel[selected.client.contact?.primaryChannel ?? "whatsapp"]}</strong></article>
                   <article><span>Estado</span><strong>{statusLabel[selected.client.attentionStatus]}</strong></article>
-                  <article><span>Mensajes</span><strong>{totalMessages}</strong></article>
+                  <article>
+                    <span>Mensajes</span>
+                    <strong>
+                      {selected.historyRestricted ? "Restringido" : totalMessages}
+                    </strong>
+                  </article>
                   <article><span>Primera interacción</span><strong>{formatDate(selected.client.firstMessageAt)}</strong></article>
                   <article><span>Última actividad</span><strong>{formatDate(selected.client.lastMessageAt)}</strong></article>
                   <article><span>Asignado a</span><strong>{selected.client.assignedToName || "Sin asignar"}</strong></article>
@@ -522,14 +554,44 @@ export default function ClientsPage() {
                   </div>
 
                   <div className={styles.messageFeed}>
-                    {!loadingProfile && !selected.messages.length ? <p className={styles.empty}>No hay mensajes todavía.</p> : null}
-                    {selected.messages.map((item) => (
-                      <article className={`${styles.message} ${styles[`message_${item.authorType}`]}`} key={item.id ?? `${item.sessionId}-${item.createdAt}-${item.message}`}>
-                        <span>{item.authorType === "customer" ? "Cliente" : item.authorType === "advisor" ? "Asesor" : "IA"}</span>
-                        <p>{item.message}</p>
-                        <time>{formatDate(item.createdAt)}</time>
-                      </article>
-                    ))}
+                    {!loadingProfile && selected.historyRestricted ? (
+                      <div className={styles.restrictedNotice}>
+                        <strong>Historial restringido</strong>
+                        <p>
+                          {selected.client.assignedToName
+                            ? `Esta conversación está asignada a ${selected.client.assignedToName}. Debe transferírtela para que puedas ver el historial y responder.`
+                            : selected.client.attentionStatus === "ai"
+                              ? "La IA está atendiendo esta conversación. Cuando esté disponible podrás tomarla desde la Bandeja."
+                              : "No tienes acceso al historial de esta conversación."}
+                        </p>
+                      </div>
+                    ) : null}
+                    {!loadingProfile &&
+                    !selected.historyRestricted &&
+                    !selected.messages.length ? (
+                      <p className={styles.empty}>No hay mensajes todavía.</p>
+                    ) : null}
+                    {!selected.historyRestricted
+                      ? selected.messages.map((item) => (
+                          <article
+                            className={`${styles.message} ${styles[`message_${item.authorType}`]}`}
+                            key={
+                              item.id ??
+                              `${item.sessionId}-${item.createdAt}-${item.message}`
+                            }
+                          >
+                            <span>
+                              {item.authorType === "customer"
+                                ? "Cliente"
+                                : item.authorType === "advisor"
+                                  ? "Asesor"
+                                  : "IA"}
+                            </span>
+                            <p>{item.message}</p>
+                            <time>{formatDate(item.createdAt)}</time>
+                          </article>
+                        ))
+                      : null}
                   </div>
                 </section>
               </>
