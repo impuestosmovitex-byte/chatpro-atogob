@@ -135,6 +135,42 @@ function icon(key: string) {
   return '◈';
 }
 
+
+function responseError(
+  value: { error?: unknown; message?: unknown },
+  fallback: string,
+): string {
+  const rawMessage = value.message;
+  const message = Array.isArray(rawMessage)
+    ? rawMessage
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join(' ')
+    : typeof rawMessage === 'string'
+      ? rawMessage.trim()
+      : '';
+
+  const rawError =
+    typeof value.error === 'string' ? value.error.trim() : '';
+
+  return (
+    message ||
+    (rawError && rawError.toLowerCase() !== 'bad request'
+      ? rawError
+      : '') ||
+    fallback
+  );
+}
+
+function normalizeShopDomain(value: string | null | undefined): string {
+  return (value || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .toLowerCase();
+}
+
 export default function IntegracionesPage() {
   const [companyName, setCompanyName] = useState('Empresa');
   const [integrations, setIntegrations] = useState<Integration[]>([]);
@@ -185,6 +221,13 @@ export default function IntegracionesPage() {
         setCompanyName(data.company?.name || 'Empresa');
         setIntegrations(data.integrations);
         setSelectedKey(data.integrations[0]?.key || '');
+
+        const connectedShopify = data.integrations.find(
+          (integration) => integration.key === 'shopify',
+        );
+        setShopDomain(
+          normalizeShopDomain(connectedShopify?.details.storeUrl),
+        );
       } catch (error) {
         setMessage(
           error instanceof Error
@@ -222,11 +265,17 @@ export default function IntegracionesPage() {
       const data = (await response.json()) as {
         ok?: boolean;
         error?: string;
+        message?: string | string[];
         authorizationUrl?: string;
       };
 
       if (!response.ok || !data.ok || !data.authorizationUrl) {
-        throw new Error(data.error || 'No se pudo iniciar la conexión con Shopify.');
+        throw new Error(
+          responseError(
+            data,
+            'No se pudo iniciar la conexión con Shopify.',
+          ),
+        );
       }
 
       window.location.assign(data.authorizationUrl);
@@ -253,12 +302,15 @@ export default function IntegracionesPage() {
       const data = (await response.json()) as {
         ok?: boolean;
         error?: string;
+        message?: string | string[];
         shop?: { name?: string; domain?: string };
         products?: { count?: number };
       };
 
       if (!response.ok || !data.ok || !data.shop || !data.products) {
-        throw new Error(data.error || 'La prueba de Shopify no fue exitosa.');
+        throw new Error(
+          responseError(data, 'La prueba de Shopify no fue exitosa.'),
+        );
       }
 
       setShopifyTest({
@@ -590,6 +642,42 @@ export default function IntegracionesPage() {
                 </div>
               ) : selected.key === 'shopify' && selected.status === 'active' ? (
                 <div className={styles.testBox}>
+                  <div className={styles.connectBox}>
+                    <strong>Actualizar permisos y eventos</strong>
+                    <p>
+                      Vuelve a autorizar esta misma tienda para aceptar los
+                      permisos nuevos y registrar los eventos automáticos de
+                      pedidos y guías.
+                    </p>
+                    <label htmlFor="shop-reconnect-domain">
+                      Dominio Shopify
+                    </label>
+                    <input
+                      id="shop-reconnect-domain"
+                      value={shopDomain}
+                      onChange={(event) => setShopDomain(event.target.value)}
+                      placeholder="mitienda.myshopify.com"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      disabled={connectingShopify}
+                    />
+                    <button
+                      type="button"
+                      className={styles.connectButton}
+                      onClick={() => void connectShopify()}
+                      disabled={connectingShopify}
+                    >
+                      {connectingShopify
+                        ? 'Abriendo Shopify…'
+                        : 'Reconectar Shopify'}
+                    </button>
+                    <small>
+                      No se elimina la conexión actual antes de terminar la
+                      autorización.
+                    </small>
+                  </div>
+
                   <strong>Verificar conexión</strong>
                   <p>
                     Comprueba que Chat Pro puede leer los datos básicos de esta
