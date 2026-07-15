@@ -18,11 +18,60 @@ export class InboxController {
   ) {}
 
   @Get()
-  async list(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Query('status') status='all', @Query('limit') limit='60') {
+  async list(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Query('status') status = 'all',
+    @Query('limit') limit = '60',
+  ) {
     this.authorize(key);
-    const payload=await this.conversationMemoryService.listInboxSessions(this.requiredCompany(company),status,Number(limit));
-    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,payload.company.id);
-    return {ok:true,...payload,sessions:payload.sessions.filter(session=>!this.isInternalTestSession(session)&&this.canView(actor,session))};
+
+    const payload =
+      await this.conversationMemoryService.listInboxSessions(
+        this.requiredCompany(company),
+        status,
+        Number(limit),
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      payload.company.id,
+    );
+    const settings = await this.getAiTakeSettings(
+      payload.company.id,
+    );
+
+    const sessions = payload.sessions
+      .filter(
+        (session) => !this.isInternalTestSession(session),
+      )
+      .map((session) => ({
+        ...session,
+        ...this.takeAvailability(
+          actor,
+          session,
+          settings,
+        ),
+      }))
+      .filter(
+        (session) =>
+          this.canView(actor, session) ||
+          session.takeAvailable === true,
+      );
+
+    return {
+      ok: true,
+      ...payload,
+      sessions,
+    };
   }
 
   @Get('transfer-targets')
@@ -55,13 +104,77 @@ export class InboxController {
   }
 
   @Get(':sessionId')
-  async getConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
+  async getConversation(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+  ) {
     this.authorize(key);
-    const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
-    if(conversation.session.attentionStatus==='closed') throw new BadRequestException('La conversación está finalizada. Si el cliente vuelve a escribir, la IA la reabrirá automáticamente.');
-    this.assertView(actor,conversation.session);
-    return {ok:true,...conversation};
+
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+
+    if (
+      conversation.session.attentionStatus === 'closed'
+    ) {
+      throw new BadRequestException(
+        'La conversación está finalizada. Si el cliente vuelve a escribir, la IA la reabrirá automáticamente.',
+      );
+    }
+
+    const settings = await this.getAiTakeSettings(
+      conversation.company.id,
+    );
+    const availability = this.takeAvailability(
+      actor,
+      conversation.session,
+      settings,
+    );
+    const session = {
+      ...conversation.session,
+      ...availability,
+    };
+
+    if (this.canView(actor, conversation.session)) {
+      return {
+        ok: true,
+        ...conversation,
+        session,
+        historyRestricted: false,
+      };
+    }
+
+    if (availability.takeAvailable) {
+      return {
+        ok: true,
+        company: conversation.company,
+        session,
+        contact: conversation.contact ?? null,
+        messages: [],
+        historyRestricted: true,
+      };
+    }
+
+    throw new ForbiddenException(
+      availability.takeBlockedReason ||
+        'No tienes permiso para ver esta conversación.',
+    );
   }
 
   @Post('internal-test') @HttpCode(200)
@@ -227,19 +340,66 @@ export class InboxController {
     };
   }
 
-  @Post(':sessionId/take') @HttpCode(200)
-  async takeConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
+  @Post(':sessionId/take')
+  @HttpCode(200)
+  async takeConversation(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+  ) {
     this.authorize(key);
-    const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
-    if(!actor.isFullAccess&&!actor.permissions.has('inbox.take')) throw new ForbiddenException('No tienes permiso para tomar conversaciones.');
-    if(!actor.isFullAccess&&!this.canView(actor,conversation.session)) throw new ForbiddenException('No tienes permiso para tomar esta conversación.');
+
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+    const settings = await this.getAiTakeSettings(
+      conversation.company.id,
+    );
+    const availability = this.takeAvailability(
+      actor,
+      conversation.session,
+      settings,
+    );
+
+    if (!availability.takeAvailable) {
+      throw new ForbiddenException(
+        availability.takeBlockedReason ||
+          'No puedes tomar esta conversación.',
+      );
+    }
 
     const advisor = actor.userId
-      ? { userId: actor.userId, fullName: actor.fullName }
-      : await this.resolveBootstrapOwner(conversation.company.id);
+      ? {
+          userId: actor.userId,
+          fullName: actor.fullName,
+        }
+      : await this.resolveBootstrapOwner(
+          conversation.company.id,
+        );
 
-    return {ok:true,session:await this.conversationMemoryService.takeConversation(sessionId,advisor)};
+    return {
+      ok: true,
+      session:
+        await this.conversationMemoryService.takeConversation(
+          sessionId,
+          advisor,
+        ),
+    };
   }
 
   @Post(':sessionId/transfer') @HttpCode(200)
@@ -595,6 +755,152 @@ export class InboxController {
     }
 
     return target;
+  }
+
+  private async getAiTakeSettings(
+    companyId: string,
+  ): Promise<{
+    advisorsCanTakeAi: boolean;
+    aiTakeAfterMinutes: number;
+  }> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('company_support_settings')
+      .select(
+        'advisors_can_take_ai,ai_take_after_minutes',
+      )
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        `No se pudo cargar la configuración de chats de IA: ${error.message}`,
+      );
+    }
+
+    const settings = data as {
+      advisors_can_take_ai?: boolean | null;
+      ai_take_after_minutes?: number | null;
+    } | null;
+    const configuredMinutes = Number(
+      settings?.ai_take_after_minutes,
+    );
+
+    return {
+      advisorsCanTakeAi:
+        settings?.advisors_can_take_ai === true,
+      aiTakeAfterMinutes:
+        Number.isInteger(configuredMinutes)
+          ? configuredMinutes
+          : 60,
+    };
+  }
+
+  private takeAvailability(
+    actor: Actor,
+    session:
+      | ConversationSession
+      | InboxSessionSummary,
+    settings: {
+      advisorsCanTakeAi: boolean;
+      aiTakeAfterMinutes: number;
+    },
+  ): {
+    takeAvailable: boolean;
+    takeBlockedReason: string | null;
+  } {
+    if (session.attentionStatus === 'closed') {
+      return {
+        takeAvailable: false,
+        takeBlockedReason:
+          'La conversación está finalizada.',
+      };
+    }
+
+    if (session.attentionStatus === 'human') {
+      return {
+        takeAvailable: false,
+        takeBlockedReason:
+          session.assignedToUserId
+            ? 'La conversación ya está asignada a un asesor. Debe transferirse.'
+            : 'La conversación ya está siendo atendida por una persona.',
+      };
+    }
+
+    if (
+      !actor.isFullAccess &&
+      !actor.permissions.has('inbox.take')
+    ) {
+      return {
+        takeAvailable: false,
+        takeBlockedReason:
+          'No tienes permiso para tomar conversaciones.',
+      };
+    }
+
+    if (session.attentionStatus === 'waiting') {
+      return {
+        takeAvailable: true,
+        takeBlockedReason: null,
+      };
+    }
+
+    if (session.attentionStatus !== 'ai') {
+      return {
+        takeAvailable: false,
+        takeBlockedReason:
+          'Esta conversación no está disponible.',
+      };
+    }
+
+    if (actor.isFullAccess) {
+      return {
+        takeAvailable: true,
+        takeBlockedReason: null,
+      };
+    }
+
+    if (!settings.advisorsCanTakeAi) {
+      return {
+        takeAvailable: false,
+        takeBlockedReason:
+          'La empresa no permite que los asesores tomen chats atendidos por la IA.',
+      };
+    }
+
+    const lastActivity = new Date(
+      session.lastMessageAt,
+    ).getTime();
+
+    if (!Number.isFinite(lastActivity)) {
+      return {
+        takeAvailable: false,
+        takeBlockedReason:
+          'No se pudo validar la última actividad.',
+      };
+    }
+
+    const elapsedMinutes = Math.floor(
+      (Date.now() - lastActivity) / 60000,
+    );
+    const remainingMinutes = Math.max(
+      0,
+      settings.aiTakeAfterMinutes -
+        elapsedMinutes,
+    );
+
+    if (remainingMinutes > 0) {
+      return {
+        takeAvailable: false,
+        takeBlockedReason:
+          `La IA sigue activa. Podrás tomar esta conversación en ${remainingMinutes} minuto${remainingMinutes === 1 ? '' : 's'}.`,
+      };
+    }
+
+    return {
+      takeAvailable: true,
+      takeBlockedReason: null,
+    };
   }
 
   private isInternalTestSession(session:ConversationSession|InboxSessionSummary){return session.customerPhone===INTERNAL_TEST_PHONE;}

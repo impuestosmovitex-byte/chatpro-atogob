@@ -36,6 +36,8 @@ type ConversationSession = {
   assignedToName: string | null;
   takenAt: string | null;
   closedAt: string | null;
+  takeAvailable?: boolean;
+  takeBlockedReason?: string | null;
 };
 
 type InboxSession = ConversationSession & {
@@ -78,6 +80,7 @@ type InboxConversation = {
   session: ConversationSession;
   contact?: Contact | null;
   messages: InboxMessage[];
+  historyRestricted?: boolean;
 };
 
 type ApiList = {
@@ -95,6 +98,7 @@ type ApiConversation = {
   messages?: InboxMessage[];
   conversation?: InboxConversation;
   contact?: Contact | null;
+  historyRestricted?: boolean;
 };
 
 const statusLabel: Record<AttentionStatus, string> = {
@@ -286,6 +290,8 @@ export default function Home() {
         session: data.session,
         contact: data.contact ?? null,
         messages: data.messages ?? [],
+        historyRestricted:
+          data.historyRestricted === true,
       });
 
       if (!silent) {
@@ -747,7 +753,7 @@ export default function Home() {
   const selectedStatus = selected?.session.attentionStatus;
   const showTakeButton =
     !isInternalTest &&
-    (selectedStatus === "ai" || selectedStatus === "waiting");
+    selected?.session.takeAvailable === true;
   const showHumanActions = !isInternalTest && selectedStatus === "human";
 
   return (
@@ -921,7 +927,10 @@ export default function Home() {
                     </span>
                     <span className="conversation-preview">{session.lastMessage?.message || "Sin mensajes todavía"}</span>
                     <span className={`status-pill ${session.attentionStatus}`}>
-                      {statusLabel[session.attentionStatus]}
+                      {session.attentionStatus === "ai" &&
+                      session.takeAvailable
+                        ? "IA inactiva · disponible"
+                        : statusLabel[session.attentionStatus]}
                     </span>
                   </span>
                 </button>
@@ -1015,7 +1024,9 @@ export default function Home() {
                     <p className="feed-loading">
                       {isInternalTest
                         ? "Escribe como cliente para probar el agente. Esta prueba no envía mensajes por WhatsApp."
-                        : "No hay mensajes todavía."}
+                        : selected.historyRestricted
+                          ? "Esta conversación está disponible para tomar. El historial se habilitará cuando la asignes a tu usuario."
+                          : "No hay mensajes todavía."}
                     </p>
                   ) : null}
                   {selected.messages.map((item) => (
@@ -1108,7 +1119,8 @@ export default function Home() {
                       ? "Esta conversación está finalizada. Si el cliente vuelve a escribir, la IA retomará automáticamente desde el historial."
                       : selected.session.attentionStatus === "waiting"
                         ? "Este chat está pendiente de asesor. Tómalo para responder como persona."
-                        : "La IA está atendiendo. Toma la conversación solo si necesitas intervenir como asesor."}
+                        : selected.session.takeBlockedReason ||
+                          "La IA está atendiendo. Cuando el chat quede inactivo podrá quedar disponible para seguimiento."}
                   </div>
                 )}
               </>
