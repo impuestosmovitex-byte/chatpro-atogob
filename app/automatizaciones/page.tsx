@@ -69,6 +69,13 @@ function delayLabel(minutes: number): string {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
+function cartStepLabel(sequence: number): string {
+  if (sequence === 1) return 'Primer recordatorio';
+  if (sequence === 2) return 'Segundo recordatorio';
+  if (sequence === 3) return 'Bono final';
+  return `Mensaje ${sequence}`;
+}
+
 function dateTime(value: string | null): string {
   if (!value) return '—';
   const date = new Date(value);
@@ -200,8 +207,8 @@ export default function AutomationsPage() {
             <p className={styles.eyebrow}>OPERACIÓN AUTOMÁTICA</p>
             <h1>Automatizaciones · {companyName}</h1>
             <p>
-              Activa cada flujo, define horarios y revisa todo lo que
-              ChatPro intenta enviar.
+              Activa cada flujo y revisa todo lo que ChatPro intenta
+              enviar.
             </p>
           </div>
         </header>
@@ -277,7 +284,8 @@ export default function AutomationsPage() {
                           className={styles.scheduleChip}
                           key={rule.sequence}
                         >
-                          Mensaje {rule.sequence}: {delayLabel(rule.delayMinutes)}
+                          {cartStepLabel(rule.sequence)}:{' '}
+                          {delayLabel(rule.delayMinutes)}
                         </span>
                       ))}
                     </div>
