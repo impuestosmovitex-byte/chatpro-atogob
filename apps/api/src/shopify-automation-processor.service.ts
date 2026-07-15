@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from './supabase.service';
+import { ShopifyAutomaticTestSendService } from './shopify-automatic-test-send.service';
 
 type JsonObject = Record<string, unknown>;
 type AutomationKey = 'order_created' | 'fulfillment_created';
@@ -68,7 +69,10 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
   private readonly logger = new Logger(ShopifyAutomationProcessorService.name);
   private processing = false;
 
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly automaticTestSendService: ShopifyAutomaticTestSendService,
+  ) {}
 
   onModuleInit(): void {
     const timer = setTimeout(() => {
@@ -150,7 +154,14 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
         return;
       }
 
-      await this.savePreparedExecution(prepared);
+      const executionId =
+        await this.savePreparedExecution(prepared);
+
+      await this.automaticTestSendService.sendIfAllowed(
+        prepared.companyId,
+        executionId,
+      );
+
       await this.markProcessed(claimed.id);
     } catch (error) {
       await this.markFailed(claimed, error);
@@ -426,7 +437,7 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
 
   private async savePreparedExecution(
     prepared: PreparedAutomation,
-  ): Promise<void> {
+  ): Promise<string> {
     const now = new Date().toISOString();
     const status = prepared.recipient ? 'pending' : 'skipped';
     const payload: JsonObject = {
@@ -442,12 +453,13 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
       delivery_mode: prepared.deliveryMode,
       template_name: prepared.templateName,
       template_language: prepared.templateLanguage,
+      automatic_test_pending: true,
       send_blocked_reason:
-        'Shopify Eventos 1B prepara el mensaje, pero no lo envía.',
+        'Pendiente de validación del modo de prueba automático.',
     };
 
-    const { error } = await this.supabaseService
-      .getClient()
+    const client = this.supabaseService.getClient();
+    const { data, error } = await client
       .from('automation_executions')
       .upsert(
         {
@@ -470,13 +482,37 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
           onConflict: 'company_id,automation_key,event_key',
           ignoreDuplicates: true,
         },
-      );
+      )
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       throw new Error(
         `No se pudo guardar el mensaje preparado: ${error.message}`,
       );
     }
+
+    if (data?.id) {
+      return String(data.id);
+    }
+
+    const { data: existing, error: existingError } = await client
+      .from('automation_executions')
+      .select('id')
+      .eq('company_id', prepared.companyId)
+      .eq('automation_key', prepared.automationKey)
+      .eq('event_key', prepared.eventKey)
+      .maybeSingle();
+
+    if (existingError || !existing?.id) {
+      throw new Error(
+        `No se pudo recuperar la ejecución preparada: ${
+          existingError?.message ?? 'registro no encontrado'
+        }`,
+      );
+    }
+
+    return String(existing.id);
   }
 
   private async normalizeRecipient(

@@ -36,6 +36,7 @@ import { ShopifyIntegrationTestController } from './shopify-integration-test.con
 import { ShopifyWebhookController } from './shopify-webhook.controller';
 import { ShopifyWebhookEventService } from './shopify-webhook-event.service';
 import { ShopifyAutomationProcessorService } from './shopify-automation-processor.service';
+import { ShopifyAutomaticTestSendService } from './shopify-automatic-test-send.service';
 import { ShopifyWebhookSubscriptionService } from './shopify-webhook-subscription.service';
 import { CompanyCommerceTestController } from './company-commerce-test.controller';
 import { ShopifyCatalogPreviewController } from './shopify-catalog-preview.controller';
@@ -92,6 +93,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     ShopifyAbandonedCheckoutSyncService,
     ShopifyWebhookEventService,
     ShopifyAutomationProcessorService,
+    ShopifyAutomaticTestSendService,
     ShopifyWebhookSubscriptionService,
     AiService,
     SupabaseService,
