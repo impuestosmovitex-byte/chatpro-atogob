@@ -23,6 +23,15 @@ type Integration = {
     businessAccountId?: string | null;
     setupSource?: string | null;
   };
+  health?: {
+    status: 'healthy' | 'error' | 'not_checked';
+    statusLabel: string;
+    checkedAt: string | null;
+    error: string | null;
+    verifiedName: string | null;
+    displayPhoneNumber: string | null;
+    qualityRating: string | null;
+  };
   connectedAt: string | null;
   updatedAt: string | null;
 };
@@ -103,6 +112,18 @@ function catalogStatusLabel(status: string): string {
   if (status === 'ARCHIVED') return 'Archivado';
   if (status === 'UNLISTED') return 'No listado';
   return status;
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return 'Sin verificar';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Sin verificar';
+
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
 }
 
 function icon(key: string) {
@@ -502,6 +523,41 @@ export default function IntegracionesPage() {
                 ) : null}
               </dl>
 
+              {selected.key === 'whatsapp' && selected.id ? (
+                <div className={styles.testBox}>
+                  <strong>
+                    Estado técnico de Meta:{' '}
+                    {selected.health?.statusLabel || 'Sin verificar'}
+                  </strong>
+                  <p>
+                    {selected.health?.status === 'healthy'
+                      ? 'El token, el Phone Number ID y los permisos fueron aceptados por Meta.'
+                      : selected.health?.error ||
+                        'Todavía no se ha comprobado esta conexión con Meta.'}
+                  </p>
+                  {selected.health?.verifiedName ? (
+                    <span>Nombre verificado: {selected.health.verifiedName}</span>
+                  ) : null}
+                  {selected.health?.displayPhoneNumber ? (
+                    <span>Número: {selected.health.displayPhoneNumber}</span>
+                  ) : null}
+                  {selected.health?.qualityRating ? (
+                    <span>Calidad: {selected.health.qualityRating}</span>
+                  ) : null}
+                  <small>
+                    Última verificación:{' '}
+                    {formatDateTime(selected.health?.checkedAt)}
+                  </small>
+                  <button
+                    type="button"
+                    className={styles.testButton}
+                    onClick={() => window.location.reload()}
+                  >
+                    Verificar ahora
+                  </button>
+                </div>
+              ) : null}
+
               {selected.key === 'shopify' && selected.status !== 'active' ? (
                 <div className={styles.connectBox}>
                   <strong>Conectar una tienda Shopify</strong>
@@ -747,7 +803,9 @@ export default function IntegracionesPage() {
                   <strong>
                     {selected.status === 'active'
                       ? 'WhatsApp Business conectado'
-                      : 'Conectar WhatsApp Business'}
+                      : selected.status === 'error'
+                        ? 'Revisar conexión de WhatsApp'
+                        : 'Conectar WhatsApp Business'}
                   </strong>
                   <p>
                     Usa los datos de Meta Developers / WhatsApp Business.

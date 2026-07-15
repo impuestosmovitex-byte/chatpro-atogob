@@ -20,6 +20,8 @@ type IntegrationRow = {
   status: 'pending' | 'active' | 'disconnected' | 'error';
   config: unknown;
   credential_mode: 'environment' | 'encrypted';
+  credential_reference: unknown;
+  credentials_encrypted: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -102,7 +104,7 @@ export class IntegrationsController {
       .getClient()
       .from('company_integrations')
       .select(
-        'id, provider, integration_type, external_id, status, config, credential_mode, created_at, updated_at',
+        'id, provider, integration_type, external_id, status, config, credential_mode, credential_reference, credentials_encrypted, created_at, updated_at',
       )
       .eq('company_id', company.id)
       .order('created_at', { ascending: true });
@@ -114,6 +116,8 @@ export class IntegrationsController {
     }
 
     const rows = (data ?? []) as IntegrationRow[];
+    await this.refreshWhatsappHealth(rows);
+
     const known = CATALOG.map((item) => {
       const row = rows.find(
         (candidate) =>
@@ -134,6 +138,15 @@ export class IntegrationsController {
             connectionReady: item.connectionReady,
             credentialMode: null,
             details: {},
+            health: {
+              status: 'not_checked',
+              statusLabel: 'Sin verificar',
+              checkedAt: null,
+              error: null,
+              verifiedName: null,
+              displayPhoneNumber: null,
+              qualityRating: null,
+            },
             connectedAt: null,
             updatedAt: null,
           };
@@ -351,6 +364,14 @@ export class IntegrationsController {
     row: IntegrationRow,
   ) {
     const config = this.toRecord(row.config);
+    const health = this.healthDetails(row, config);
+    const displayStatus =
+      row.provider === 'meta' &&
+      row.integration_type === 'whatsapp' &&
+      row.status === 'active' &&
+      health.status === 'error'
+        ? 'error'
+        : row.status;
 
     return {
       id: row.id,
@@ -359,11 +380,12 @@ export class IntegrationsController {
       integrationType: row.integration_type,
       name: item.name,
       description: item.description,
-      status: row.status,
-      statusLabel: this.statusLabel(row.status),
+      status: displayStatus,
+      statusLabel: this.statusLabel(displayStatus),
       connectionReady: item.connectionReady,
       credentialMode: row.credential_mode,
       details: this.safeDetails(row, config),
+      health,
       connectedAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -391,6 +413,167 @@ export class IntegrationsController {
           ? 'Configuración técnica existente'
           : 'Credenciales protegidas',
     };
+  }
+
+  private async refreshWhatsappHealth(
+    rows: IntegrationRow[],
+  ): Promise<void> {
+    const row = rows.find(
+      (candidate) =>
+        candidate.provider === 'meta' &&
+        candidate.integration_type === 'whatsapp' &&
+        candidate.status === 'active',
+    );
+
+    if (!row) return;
+
+    const currentConfig = this.toRecord(row.config);
+    const checkedAt = new Date().toISOString();
+    let nextConfig: JsonObject;
+
+    try {
+      const accessToken = this.integrationAccessToken(row);
+      const apiVersion = this.text(currentConfig.api_version) || 'v25.0';
+      const response = await fetch(
+        `https://graph.facebook.com/${apiVersion}/${row.external_id}?fields=id,display_phone_number,verified_name,quality_rating`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: 'no-store',
+        },
+      );
+      const raw = await response.text();
+
+      if (!response.ok) {
+        throw new Error(this.metaErrorMessage(raw, response.status));
+      }
+
+      const payload = this.parseJsonObject(raw);
+      nextConfig = {
+        ...currentConfig,
+        meta_health_status: 'healthy',
+        meta_health_checked_at: checkedAt,
+        meta_health_error: null,
+        display_phone_number:
+          this.text(payload.display_phone_number) ||
+          this.text(currentConfig.display_phone_number) ||
+          null,
+        verified_name:
+          this.text(payload.verified_name) ||
+          this.text(currentConfig.verified_name) ||
+          null,
+        quality_rating:
+          this.text(payload.quality_rating) ||
+          this.text(currentConfig.quality_rating) ||
+          null,
+      };
+    } catch (error) {
+      nextConfig = {
+        ...currentConfig,
+        meta_health_status: 'error',
+        meta_health_checked_at: checkedAt,
+        meta_health_error: this.safeError(error),
+      };
+    }
+
+    row.config = nextConfig;
+
+    const { error: saveError } = await this.supabaseService
+      .getClient()
+      .from('company_integrations')
+      .update({ config: nextConfig })
+      .eq('id', row.id);
+
+    if (saveError) {
+      console.error(
+        `No se pudo guardar el estado técnico de WhatsApp: ${saveError.message}`,
+      );
+    }
+  }
+
+  private integrationAccessToken(row: IntegrationRow): string {
+    if (row.credential_mode === 'environment') {
+      const reference = this.toRecord(row.credential_reference);
+      const tokenEnv = this.text(reference.access_token_env);
+      const accessToken = tokenEnv
+        ? process.env[tokenEnv]?.trim() ?? ''
+        : '';
+
+      if (!accessToken) {
+        throw new Error(
+          tokenEnv
+            ? `Falta la variable segura ${tokenEnv}.`
+            : 'Falta la referencia segura del token de WhatsApp.',
+        );
+      }
+
+      return accessToken;
+    }
+
+    if (!row.credentials_encrypted) {
+      throw new Error('La integración no tiene un token cifrado guardado.');
+    }
+
+    const credentials = this.credentialsService.decrypt(
+      row.credentials_encrypted,
+    );
+    const accessToken = this.text(credentials.access_token);
+
+    if (!accessToken) {
+      throw new Error('No se encontró el token guardado de WhatsApp.');
+    }
+
+    return accessToken;
+  }
+
+  private healthDetails(row: IntegrationRow, config: JsonObject) {
+    const configuredStatus = this.text(config.meta_health_status);
+    const status =
+      row.status === 'active' && configuredStatus === 'healthy'
+        ? 'healthy'
+        : row.status === 'active' && configuredStatus === 'error'
+          ? 'error'
+          : 'not_checked';
+    const labels = {
+      healthy: 'Conexión verificada',
+      error: 'Meta requiere revisión',
+      not_checked: 'Sin verificar',
+    } as const;
+
+    return {
+      status,
+      statusLabel: labels[status],
+      checkedAt: this.text(config.meta_health_checked_at) || null,
+      error: this.text(config.meta_health_error) || null,
+      verifiedName: this.text(config.verified_name) || null,
+      displayPhoneNumber: this.text(config.display_phone_number) || null,
+      qualityRating: this.text(config.quality_rating) || null,
+    };
+  }
+
+  private metaErrorMessage(raw: string, status: number): string {
+    const payload = this.parseJsonObject(raw);
+    const metaError = this.toRecord(payload.error);
+    const message = this.text(metaError.message);
+    const code = Number(metaError.code);
+
+    return `${message || `Meta respondió HTTP ${status}`}${
+      Number.isFinite(code) ? ` (código ${code})` : ''
+    }`;
+  }
+
+  private parseJsonObject(value: string): JsonObject {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return this.toRecord(parsed);
+    } catch {
+      return {};
+    }
+  }
+
+  private safeError(value: unknown): string {
+    const message =
+      value instanceof Error ? value.message : 'No se pudo validar Meta.';
+    return message.replace(/\s+/g, ' ').trim().slice(0, 500);
   }
 
   private statusLabel(
