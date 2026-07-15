@@ -362,3 +362,45 @@
   line-height: 1.45;
   white-space: pre-wrap;
 }
+
+
+.testSafety {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 22px 0 14px;
+  border: 1px solid #efd58f;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: #fff9e9;
+  color: #604b17;
+}
+
+.testSafety span {
+  font-size: 13px;
+}
+
+.preparedActions {
+  display: grid;
+  gap: 10px;
+}
+
+.testSendButton {
+  width: fit-content;
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 13px;
+  background: #244f9e;
+  color: #fff;
+  font-weight: 850;
+}
+
+.testSendButton:disabled {
+  opacity: .55;
+}
+
+.testBlocked {
+  color: #9a3f3f;
+  font-weight: 750;
+}

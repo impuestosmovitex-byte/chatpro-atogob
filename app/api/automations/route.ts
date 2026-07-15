@@ -157,3 +157,69 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+
+export async function POST(request: NextRequest) {
+  const current = await session(request);
+
+  if (!current) {
+    return NextResponse.json(
+      { ok: false, error: 'Sesión requerida.' },
+      { status: 401 },
+    );
+  }
+
+  if (!canManage(current)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'No tienes permiso para enviar pruebas.',
+      },
+      { status: 403 },
+    );
+  }
+
+  try {
+    const body = (await request.json()) as Record<string, unknown>;
+    const executionId =
+      typeof body.executionId === 'string'
+        ? body.executionId.trim()
+        : '';
+
+    if (body.action !== 'send-test' || !executionId) {
+      return NextResponse.json(
+        { ok: false, error: 'Falta la ejecución de prueba.' },
+        { status: 400 },
+      );
+    }
+
+    const { apiBase, inboxKey } = config();
+    const target = new URL(
+      `${apiBase}/automations/executions/${encodeURIComponent(
+        executionId,
+      )}/test-send`,
+    );
+    target.searchParams.set('company', current.companySlug);
+
+    return proxy(
+      await fetch(target, {
+        method: 'POST',
+        headers: {
+          'x-chatpro-inbox-key': inboxKey,
+        },
+        cache: 'no-store',
+      }),
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'No se pudo enviar la prueba.',
+      },
+      { status: 500 },
+    );
+  }
+}

@@ -4,6 +4,7 @@ import { AccessAuthService } from './access-auth.service';
 import { AccessController } from './access.controller';
 import { AiService } from './ai.service';
 import { AutomationRuntimeService } from './automation-runtime.service';
+import { AutomationTestSendService } from './automation-test-send.service';
 import { AutomationMessageConfigController } from './automation-message-config.controller';
 import { AutomationMessageConfigService } from './automation-message-config.service';
 import { AutomationsController } from './automations.controller';
@@ -85,6 +86,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     WhatsappMessagingService,
     AppService,
     AutomationRuntimeService,
+    AutomationTestSendService,
     AutomationMessageConfigService,
     ShopifyService,
     ShopifyAbandonedCheckoutSyncService,

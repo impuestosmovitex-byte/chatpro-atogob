@@ -5,11 +5,13 @@ import {
   Get,
   Headers,
   Param,
+  Post,
   Put,
   Query,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AutomationRuntimeService } from './automation-runtime.service';
+import { AutomationTestSendService } from './automation-test-send.service';
 import { ConversationMemoryService } from './conversation-memory.service';
 
 @Controller('automations')
@@ -17,6 +19,7 @@ export class AutomationsController {
   constructor(
     private readonly automationRuntimeService: AutomationRuntimeService,
     private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly automationTestSendService: AutomationTestSendService,
   ) {}
 
   @Get()
@@ -41,6 +44,24 @@ export class AutomationsController {
       },
       ...dashboard,
     };
+  }
+
+  @Post('executions/:executionId/test-send')
+  async sendTest(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('company') company = '',
+    @Param('executionId') executionId = '',
+  ) {
+    this.authorize(key);
+    const profile =
+      await this.conversationMemoryService.getCompanyProfile(
+        this.requiredCompany(company),
+      );
+
+    return this.automationTestSendService.sendPrepared(
+      profile.id,
+      executionId,
+    );
   }
 
   @Put(':automationKey')

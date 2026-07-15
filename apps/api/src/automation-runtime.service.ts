@@ -78,8 +78,12 @@ export class AutomationRuntimeService {
     await this.ensureDefaults(companyId);
     const client = this.supabaseService.getClient();
 
-    const [automationResult, executionResult, recoveryResult] =
-      await Promise.all([
+    const [
+      automationResult,
+      executionResult,
+      recoveryResult,
+      settingsResult,
+    ] = await Promise.all([
       client
         .from('company_automations')
         .select(
@@ -101,6 +105,11 @@ export class AutomationRuntimeService {
         .eq('company_id', companyId)
         .eq('active', true)
         .order('sequence', { ascending: true }),
+      client
+        .from('company_settings')
+        .select('settings')
+        .eq('company_id', companyId)
+        .maybeSingle(),
     ]);
 
     if (automationResult.error) {
@@ -120,6 +129,15 @@ export class AutomationRuntimeService {
         `No se pudo consultar la programación del carrito: ${recoveryResult.error.message}`,
       );
     }
+
+    if (settingsResult.error) {
+      throw new BadRequestException(
+        `No se pudo consultar el modo de prueba: ${settingsResult.error.message}`,
+      );
+    }
+
+    const settings = this.object(settingsResult.data?.settings);
+    const allowedTestPhones = this.testPhones(settings);
 
     const automations = (automationResult.data ?? []).map((row) =>
       this.mapDefinition(row),
@@ -143,6 +161,11 @@ export class AutomationRuntimeService {
         preparedOnly: payload.prepared_only === true,
         preparedMessage:
           this.text(payload.prepared_message) || null,
+        testSendAllowed:
+          payload.prepared_only === true &&
+          typeof row.recipient === 'string' &&
+          allowedTestPhones.includes(row.recipient) &&
+          row.status !== 'sent',
         orderNumber: this.text(payload.order_number) || null,
         sourceTopic: this.text(payload.source_topic) || null,
         createdAt: row.created_at,
@@ -152,6 +175,10 @@ export class AutomationRuntimeService {
     return {
       automations,
       executions,
+      testSafety: {
+        enabled: allowedTestPhones.length > 0,
+        allowedPhones: allowedTestPhones,
+      },
       abandonedCartSchedule: (recoveryResult.data ?? []).map(
         (row: any) => ({
           sequence: Number(row.sequence ?? 0),
@@ -722,6 +749,51 @@ export class AutomationRuntimeService {
     }
 
     return Math.min(Math.max(Math.floor(parsed), minimum), maximum);
+  }
+
+  private testPhones(settings: JsonObject): string[] {
+    const recovery = this.object(settings.cart_recovery);
+    const value =
+      recovery.test_phones ??
+      settings.cart_recovery_test_phones;
+    const countryCode = (
+      this.text(
+        recovery.default_country_code ??
+          settings.cart_recovery_default_country_code,
+      ) || '57'
+    ).replace(/\D/g, '');
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        value
+          .map((phone) => this.normalizeTestPhone(phone, countryCode))
+          .filter((phone): phone is string => Boolean(phone)),
+      ),
+    );
+  }
+
+  private normalizeTestPhone(
+    value: unknown,
+    countryCode: string,
+  ): string | null {
+    const raw = this.text(value);
+    const digits = raw.replace(/\D/g, '');
+
+    if (!digits || digits.length < 8 || digits.length > 15) {
+      return null;
+    }
+
+    if (raw.startsWith('+') || digits.length > 10) {
+      return digits;
+    }
+
+    return digits.length === 10 && countryCode
+      ? `${countryCode}${digits}`
+      : null;
   }
 
   private object(value: unknown): JsonObject {

@@ -33,6 +33,7 @@ type Execution = {
   error: string | null;
   preparedOnly: boolean;
   preparedMessage: string | null;
+  testSendAllowed: boolean;
   orderNumber: string | null;
   sourceTopic: string | null;
   createdAt: string;
@@ -56,6 +57,10 @@ type ResponseData = {
     delayMinutes: number;
   }>;
   automation?: Automation;
+  testSafety?: {
+    enabled: boolean;
+    allowedPhones: string[];
+  };
 };
 
 const statusLabels: Record<string, string> = {
@@ -106,6 +111,8 @@ export default function AutomationsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState('');
+  const [sendingExecutionId, setSendingExecutionId] = useState('');
+  const [testPhones, setTestPhones] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -129,6 +136,7 @@ export default function AutomationsPage() {
       setAutomations(data.automations || []);
       setExecutions(data.executions || []);
       setAbandonedCartSchedule(data.abandonedCartSchedule || []);
+      setTestPhones(data.testSafety?.allowedPhones || []);
       setSummary(
         data.summary || {
           enabled: 0,
@@ -198,6 +206,41 @@ export default function AutomationsPage() {
       );
     } finally {
       setSavingKey('');
+    }
+  }
+
+  async function sendTest(execution: Execution) {
+    setSendingExecutionId(execution.id);
+    setMessage('');
+    setError('');
+
+    try {
+      const response = await fetch('/api/automations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send-test',
+          executionId: execution.id,
+        }),
+      });
+      const data = (await response.json()) as ResponseData;
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || 'No se pudo enviar la prueba.',
+        );
+      }
+
+      setMessage(data.message || 'Mensaje de prueba enviado.');
+      await load();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'No se pudo enviar la prueba.',
+      );
+    } finally {
+      setSendingExecutionId('');
     }
   }
 
@@ -358,6 +401,15 @@ export default function AutomationsPage() {
           )}
         </section>
 
+        <div className={styles.testSafety}>
+          <strong>Modo de prueba protegido</strong>
+          <span>
+            {testPhones.length
+              ? `Solo se permite enviar a: ${testPhones.join(', ')}`
+              : 'No hay teléfonos autorizados. Configúralos en Configuración → IA.'}
+          </span>
+        </div>
+
         <section className={styles.history}>
           <div className={styles.historyHeading}>
             <div>
@@ -412,10 +464,31 @@ export default function AutomationsPage() {
                       <td>{execution.attemptCount}</td>
                       <td>
                         {execution.preparedMessage ? (
-                          <details className={styles.preparedMessage}>
-                            <summary>Ver mensaje preparado</summary>
-                            <pre>{execution.preparedMessage}</pre>
-                          </details>
+                          <div className={styles.preparedActions}>
+                            <details className={styles.preparedMessage}>
+                              <summary>Ver mensaje preparado</summary>
+                              <pre>{execution.preparedMessage}</pre>
+                            </details>
+
+                            {execution.testSendAllowed ? (
+                              <button
+                                type="button"
+                                className={styles.testSendButton}
+                                disabled={
+                                  sendingExecutionId === execution.id
+                                }
+                                onClick={() => void sendTest(execution)}
+                              >
+                                {sendingExecutionId === execution.id
+                                  ? 'Enviando prueba…'
+                                  : 'Enviar prueba'}
+                              </button>
+                            ) : execution.status !== 'sent' ? (
+                              <small className={styles.testBlocked}>
+                                Número no autorizado para pruebas
+                              </small>
+                            ) : null}
+                          </div>
                         ) : (
                           execution.error ||
                           (execution.sentAt
