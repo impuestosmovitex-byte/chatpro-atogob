@@ -72,6 +72,45 @@ const statusLabels: Record<string, string> = {
   skipped: 'Omitido',
 };
 
+function executionStatusLabel(execution: Execution): string {
+  if (execution.status === 'sent') {
+    return 'Enviado';
+  }
+
+  if (execution.status === 'failed') {
+    return 'Fallido';
+  }
+
+  if (execution.status === 'running') {
+    return 'Procesando';
+  }
+
+  if (execution.status === 'cancelled') {
+    return 'Cancelado';
+  }
+
+  if (execution.status === 'skipped') {
+    const reason = (execution.error || '').toLowerCase();
+
+    if (
+      reason.includes('modo de prueba') ||
+      reason.includes('autorizado') ||
+      reason.includes('bloqueado') ||
+      reason.includes('solo se permite enviar')
+    ) {
+      return 'Bloqueado por prueba';
+    }
+
+    return 'Omitido';
+  }
+
+  if (execution.status === 'pending' && execution.preparedOnly) {
+    return 'Preparado · sin envío';
+  }
+
+  return statusLabels[execution.status] || execution.status;
+}
+
 function delayLabel(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;
   if (minutes % 60 === 0) return `${minutes / 60} h`;
@@ -422,10 +461,7 @@ export default function AutomationsPage() {
                             styles[`status_${execution.status}`] || ''
                           }`}
                         >
-                          {execution.preparedOnly
-                            ? 'Preparado · sin envío'
-                            : statusLabels[execution.status] ||
-                              execution.status}
+                          {executionStatusLabel(execution)}
                         </span>
                       </td>
                       <td>{execution.attemptCount}</td>
@@ -433,7 +469,11 @@ export default function AutomationsPage() {
                         {execution.preparedMessage ? (
                           <div className={styles.preparedActions}>
                             <details className={styles.preparedMessage}>
-                              <summary>Ver mensaje preparado</summary>
+                              <summary>
+                                {execution.status === 'sent'
+                                  ? 'Ver mensaje enviado'
+                                  : 'Ver mensaje preparado'}
+                              </summary>
                               <pre>{execution.preparedMessage}</pre>
                             </details>
 
