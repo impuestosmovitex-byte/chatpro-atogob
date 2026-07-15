@@ -404,3 +404,11 @@
   color: #9a3f3f;
   font-weight: 750;
 }
+
+
+.technicalNote {
+  margin: 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.45;
+}

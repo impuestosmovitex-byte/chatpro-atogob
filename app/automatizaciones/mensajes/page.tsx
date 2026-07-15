@@ -219,7 +219,7 @@ export default function AutomationMessagesPage() {
 
       if (!response.ok || !data.ok || !data.configuration) {
         throw new Error(
-          data.error || 'No se pudieron cargar los mensajes.',
+          data.message || data.error || 'No se pudieron cargar los mensajes.',
         );
       }
 
@@ -298,7 +298,7 @@ export default function AutomationMessagesPage() {
 
       if (!response.ok || !data.ok || !data.configuration) {
         throw new Error(
-          data.error || 'No se pudieron guardar los mensajes.',
+          data.message || data.error || 'No se pudieron guardar los mensajes.',
         );
       }
 

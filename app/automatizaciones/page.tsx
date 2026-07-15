@@ -349,42 +349,9 @@ export default function AutomationsPage() {
                   ) : null}
                 </div>
 
-                <div className={styles.grid}>
-                  <label>
-                    <span>Reintentos máximos por error</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={automation.maxAttempts}
-                      onChange={(event) =>
-                        change(automation.key, {
-                          maxAttempts:
-                            Number(event.target.value) || 1,
-                        })
-                      }
-                    />
-                  </label>
-
-                  <label>
-                    <span>Reintentar después de</span>
-                    <div className={styles.inlineInput}>
-                      <input
-                        type="number"
-                        min={1}
-                        max={1440}
-                        value={automation.retryDelayMinutes}
-                        onChange={(event) =>
-                          change(automation.key, {
-                            retryDelayMinutes:
-                              Number(event.target.value) || 1,
-                          })
-                        }
-                      />
-                      <small>min</small>
-                    </div>
-                  </label>
-                </div>
+                <p className={styles.technicalNote}>
+                  Los reintentos por errores se administran automáticamente.
+                </p>
 
                 <button
                   type="button"
