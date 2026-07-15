@@ -32,37 +32,55 @@ export class ShopifyAbandonedCheckoutSyncService {
 
     try {
       const client = this.supabaseService.getClient();
-      const { data, error } = await client
-        .from('company_settings')
-        .select('company_id, settings');
+      const [settingsResult, automationsResult] = await Promise.all([
+        client
+          .from('company_settings')
+          .select('company_id, settings'),
+        client
+          .from('company_automations')
+          .select('company_id, enabled, updated_at')
+          .eq('automation_key', 'abandoned_cart')
+          .eq('enabled', true),
+      ]);
 
-      if (error) {
+      if (settingsResult.error) {
         throw new Error(
-          `No se pudo consultar la configuración de recuperación: ${error.message}`,
+          `No se pudo consultar la configuración de recuperación: ${settingsResult.error.message}`,
         );
       }
 
-      for (const row of (data ?? []) as Array<{
-        company_id: string;
-        settings: unknown;
-      }>) {
-        const settings = this.toJsonObject(row.settings);
-
-        if (settings.cart_recovery_enabled !== true) {
-          continue;
-        }
-
-        const activationFrom = this.toDate(
-          settings.cart_recovery_activation_from,
+      if (automationsResult.error) {
+        throw new Error(
+          `No se pudo consultar la automatización de carritos: ${automationsResult.error.message}`,
         );
+      }
 
-        if (!activationFrom) {
+      const settingsByCompany = new Map(
+        ((settingsResult.data ?? []) as Array<{
+          company_id: string;
+          settings: unknown;
+        }>).map((row) => [row.company_id, row]),
+      );
+
+      for (const automation of (automationsResult.data ?? []) as Array<{
+        company_id: string;
+        enabled: boolean;
+        updated_at: string | null;
+      }>) {
+        const row = settingsByCompany.get(automation.company_id);
+
+        if (!row) {
           this.logger.warn(
-            `La empresa ${row.company_id} tiene recuperación activa sin fecha de activación.`,
+            `La empresa ${automation.company_id} no tiene company_settings para sincronizar carritos.`,
           );
           continue;
         }
 
+        const settings = this.toJsonObject(row.settings);
+        const activationFrom =
+          this.toDate(settings.cart_recovery_activation_from) ??
+          this.toDate(automation.updated_at) ??
+          new Date();
         const lastSyncAt = this.toDate(
           settings.cart_recovery_last_sync_at,
         );
@@ -71,8 +89,6 @@ export class ShopifyAbandonedCheckoutSyncService {
             ? lastSyncAt
             : activationFrom;
 
-        // Retrocede un minuto: si Shopify responde justo en un límite,
-        // el upsert evita duplicados y no se pierde el checkout.
         const createdSince = new Date(
           Math.max(
             activationFrom.getTime(),
@@ -89,40 +105,37 @@ export class ShopifyAbandonedCheckoutSyncService {
 
         try {
           const result = await this.syncCompany(
-            row.company_id,
+            automation.company_id,
             createdSince,
             limit,
           );
 
           const nextCheckpoint =
             result.latestCheckoutCreatedAt ?? new Date().toISOString();
-
           const { error: updateError } = await client
             .from('company_settings')
             .update({
               settings: {
                 ...settings,
+                cart_recovery_enabled: true,
+                cart_recovery_activation_from:
+                  activationFrom.toISOString(),
                 cart_recovery_last_sync_at: nextCheckpoint,
               },
               updated_at: new Date().toISOString(),
             })
-            .eq('company_id', row.company_id);
+            .eq('company_id', automation.company_id);
 
           if (updateError) {
             throw new Error(
               `No se pudo guardar el punto de sincronización: ${updateError.message}`,
             );
           }
-
-          if (result.received > 0) {
-            this.logger.log(
-              `Shopify recuperación ${row.company_id}: ${result.received} recibidos, ${result.inserted} nuevos, ${result.updated} actualizados.`,
-            );
-          }
         } catch (error) {
           this.logger.error(
-            `No se pudieron sincronizar abandonos de Shopify para ${row.company_id}.`,
-            error instanceof Error ? error.stack : undefined,
+            `No se pudieron sincronizar carritos de ${automation.company_id}: ${
+              error instanceof Error ? error.message : 'error desconocido'
+            }`,
           );
         }
       }

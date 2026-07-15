@@ -246,6 +246,14 @@ export class AutomationRuntimeService {
       );
     }
 
+    if (automationKey === 'abandoned_cart') {
+      await this.syncCartRecoverySettings(
+        companyId,
+        enabled,
+        now,
+      );
+    }
+
     return this.mapDefinition(data);
   }
 
@@ -575,6 +583,54 @@ export class AutomationRuntimeService {
     if (error) {
       throw new Error(
         `No se pudo registrar el error de automatización: ${error.message}`,
+      );
+    }
+  }
+
+  private async syncCartRecoverySettings(
+    companyId: string,
+    enabled: boolean,
+    now: string,
+  ): Promise<void> {
+    const client = this.supabaseService.getClient();
+    const { data, error } = await client
+      .from('company_settings')
+      .select('settings')
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        `No se pudo sincronizar la activación del carrito: ${error.message}`,
+      );
+    }
+
+    const settings = this.object(data?.settings);
+    const wasEnabled = settings.cart_recovery_enabled === true;
+    const nextSettings: JsonObject = {
+      ...settings,
+      cart_recovery_enabled: enabled,
+    };
+
+    if (enabled && !wasEnabled) {
+      nextSettings.cart_recovery_activation_from = now;
+      nextSettings.cart_recovery_last_sync_at = null;
+    }
+
+    const { error: saveError } = await client
+      .from('company_settings')
+      .upsert(
+        {
+          company_id: companyId,
+          settings: nextSettings,
+          updated_at: now,
+        },
+        { onConflict: 'company_id' },
+      );
+
+    if (saveError) {
+      throw new BadRequestException(
+        `No se pudo guardar la activación del carrito: ${saveError.message}`,
       );
     }
   }
