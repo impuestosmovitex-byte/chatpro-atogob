@@ -4,112 +4,126 @@ import {
   INBOX_SESSION_COOKIE,
 } from './app/lib/inbox-auth';
 
-const RESTRICTED_PAGES = [
-  '/configuracion',
-  '/usuarios',
+const PUBLIC_PATHS = new Set([
+  '/login',
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/health',
+  '/api/integrations/shopify/callback',
+]);
+
+const ADVISOR_ALLOWED_PAGES = [
+  '/',
+  '/clientes',
 ];
 
-const RESTRICTED_APIS = [
-  '/api/settings',
-  '/api/company-profile',
-  '/api/integrations',
-  '/api/users',
-  '/api/roles',
-  '/api/service-areas',
-  '/api/support-settings',
+const ADVISOR_ALLOWED_APIS = [
+  '/api/auth/session',
+  '/api/auth/companies',
+  '/api/auth/switch-company',
+  '/api/inbox',
+  '/api/clients',
+  '/api/advisor-presence',
+  '/api/quick-replies',
 ];
 
-function isRestrictedPath(pathname: string): boolean {
-  return RESTRICTED_PAGES.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`),
-  ) || RESTRICTED_APIS.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`),
+function matchesPath(pathname: string, allowedPath: string): boolean {
+  if (allowedPath === '/') {
+    return pathname === '/';
+  }
+
+  return (
+    pathname === allowedPath ||
+    pathname.startsWith(`${allowedPath}/`)
   );
 }
 
-function canManageConfiguration(roleKey: string): boolean {
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.has(pathname);
+}
+
+function canManagePlatform(roleKey: string): boolean {
   return roleKey === 'owner' || roleKey === 'admin';
+}
+
+function isAllowedForAdvisor(pathname: string): boolean {
+  const allowed = pathname.startsWith('/api/')
+    ? ADVISOR_ALLOWED_APIS
+    : ADVISOR_ALLOWED_PAGES;
+
+  return allowed.some((path) => matchesPath(pathname, path));
+}
+
+function secureResponse(response: NextResponse): NextResponse {
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Referrer-Policy', 'same-origin');
+  return response;
 }
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  if (isPublicPath(pathname)) {
+    return secureResponse(NextResponse.next());
+  }
+
   const session = await getInboxSession(
     request.cookies.get(INBOX_SESSION_COOKIE)?.value,
   );
 
   if (pathname === '/login') {
     if (session) {
-      return NextResponse.redirect(new URL('/', request.url));
+      return secureResponse(
+        NextResponse.redirect(new URL('/', request.url)),
+      );
     }
 
-    return NextResponse.next();
-  }
-
-  if (
-    pathname === '/api/auth/login' ||
-    pathname === '/api/auth/logout'
-  ) {
-    return NextResponse.next();
+    return secureResponse(NextResponse.next());
   }
 
   if (!session) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { ok: false, error: 'Sesión requerida.' },
-        { status: 401 },
+      return secureResponse(
+        NextResponse.json(
+          { ok: false, error: 'Sesión requerida.' },
+          { status: 401 },
+        ),
       );
     }
 
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('next', pathname);
 
-    return NextResponse.redirect(loginUrl);
+    return secureResponse(NextResponse.redirect(loginUrl));
   }
 
   if (
-    isRestrictedPath(pathname) &&
-    !canManageConfiguration(session.roleKey)
+    !canManagePlatform(session.roleKey) &&
+    !isAllowedForAdvisor(pathname)
   ) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { ok: false, error: 'No tienes permiso para acceder a esta sección.' },
-        { status: 403 },
+      return secureResponse(
+        NextResponse.json(
+          {
+            ok: false,
+            error: 'No tienes permiso para acceder a esta sección.',
+          },
+          { status: 403 },
+        ),
       );
     }
 
-    return NextResponse.redirect(new URL('/', request.url));
+    return secureResponse(
+      NextResponse.redirect(new URL('/', request.url)),
+    );
   }
 
-  return NextResponse.next();
+  return secureResponse(NextResponse.next());
 }
 
 export const config = {
   matcher: [
-    '/',
-    '/login',
-    '/clientes',
-    '/configuracion',
-    '/configuracion/:path*',
-    '/usuarios',
-    '/usuarios/:path*',
-    '/api/auth/session',
-    '/api/inbox',
-    '/api/inbox/:path*',
-    '/api/clients',
-    '/api/clients/:path*',
-    '/api/settings',
-    '/api/settings/:path*',
-    '/api/company-profile',
-    '/api/company-profile/:path*',
-    '/api/integrations',
-    '/api/integrations/:path*',
-    '/api/users',
-    '/api/users/:path*',
-    '/api/roles',
-    '/api/roles/:path*',
-    '/api/service-areas',
-    '/api/service-areas/:path*',
-    '/api/support-settings',
-    '/api/support-settings/:path*',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
