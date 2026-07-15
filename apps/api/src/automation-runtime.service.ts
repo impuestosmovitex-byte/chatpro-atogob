@@ -78,7 +78,8 @@ export class AutomationRuntimeService {
     await this.ensureDefaults(companyId);
     const client = this.supabaseService.getClient();
 
-    const [automationResult, executionResult] = await Promise.all([
+    const [automationResult, executionResult, recoveryResult] =
+      await Promise.all([
       client
         .from('company_automations')
         .select(
@@ -94,6 +95,12 @@ export class AutomationRuntimeService {
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(80),
+      client
+        .from('company_cart_recovery_rules')
+        .select('sequence, delay_minutes, active')
+        .eq('company_id', companyId)
+        .eq('active', true)
+        .order('sequence', { ascending: true }),
     ]);
 
     if (automationResult.error) {
@@ -105,6 +112,12 @@ export class AutomationRuntimeService {
     if (executionResult.error) {
       throw new BadRequestException(
         `No se pudo consultar el historial: ${executionResult.error.message}`,
+      );
+    }
+
+    if (recoveryResult.error) {
+      throw new BadRequestException(
+        `No se pudo consultar la programación del carrito: ${recoveryResult.error.message}`,
       );
     }
 
@@ -130,6 +143,12 @@ export class AutomationRuntimeService {
     return {
       automations,
       executions,
+      abandonedCartSchedule: (recoveryResult.data ?? []).map(
+        (row: any) => ({
+          sequence: Number(row.sequence ?? 0),
+          delayMinutes: Number(row.delay_minutes ?? 0),
+        }),
+      ),
       summary: {
         enabled: automations.filter((item) => item.enabled).length,
         sent: executions.filter((item) => item.status === 'sent').length,
@@ -149,15 +168,9 @@ export class AutomationRuntimeService {
     const automationKey = this.validKey(key);
     await this.ensureDefaults(companyId);
 
-    const timezone = this.validTimezone(input.timezone);
-    const sendWindowStart = this.validTime(
-      input.sendWindowStart,
-      'Hora inicial no válida.',
-    );
-    const sendWindowEnd = this.validTime(
-      input.sendWindowEnd,
-      'Hora final no válida.',
-    );
+    const timezone = 'America/Bogota';
+    const sendWindowStart = '00:00';
+    const sendWindowEnd = '00:00';
     const maxAttempts = this.boundedInt(input.maxAttempts, 3, 1, 10);
     const retryDelayMinutes = this.boundedInt(
       input.retryDelayMinutes,
@@ -165,7 +178,7 @@ export class AutomationRuntimeService {
       1,
       1440,
     );
-    const allowedDays = this.allowedDays(input.allowedDays);
+    const allowedDays = [0, 1, 2, 3, 4, 5, 6];
     const enabled = input.enabled === true;
     const now = new Date().toISOString();
 
@@ -298,10 +311,6 @@ export class AutomationRuntimeService {
 
     if (!definition.enabled) {
       return this.emptyClaim('disabled', definition);
-    }
-
-    if (!this.isInsideWindow(definition)) {
-      return this.emptyClaim('outside_window', definition);
     }
 
     const client = this.supabaseService.getClient();

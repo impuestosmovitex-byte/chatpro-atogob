@@ -134,10 +134,7 @@ export class CartRecoveryService {
         'abandoned_cart',
       );
 
-    if (
-      !automation.enabled ||
-      !this.automationRuntimeService.isInsideWindow(automation)
-    ) {
+    if (!automation.enabled) {
       return;
     }
 

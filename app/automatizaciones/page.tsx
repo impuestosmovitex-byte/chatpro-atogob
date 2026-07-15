@@ -47,18 +47,12 @@ type ResponseData = {
     failed: number;
     pending: number;
   };
+  abandonedCartSchedule?: Array<{
+    sequence: number;
+    delayMinutes: number;
+  }>;
   automation?: Automation;
 };
-
-const dayLabels = [
-  { value: 1, label: 'L' },
-  { value: 2, label: 'M' },
-  { value: 3, label: 'X' },
-  { value: 4, label: 'J' },
-  { value: 5, label: 'V' },
-  { value: 6, label: 'S' },
-  { value: 0, label: 'D' },
-];
 
 const statusLabels: Record<string, string> = {
   pending: 'Pendiente',
@@ -68,6 +62,12 @@ const statusLabels: Record<string, string> = {
   cancelled: 'Cancelado',
   skipped: 'Omitido',
 };
+
+function delayLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes % 60 === 0) return `${minutes / 60} h`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
 
 function dateTime(value: string | null): string {
   if (!value) return '—';
@@ -84,6 +84,9 @@ export default function AutomationsPage() {
   const [companyName, setCompanyName] = useState('Empresa');
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [executions, setExecutions] = useState<Execution[]>([]);
+  const [abandonedCartSchedule, setAbandonedCartSchedule] = useState<
+    Array<{ sequence: number; delayMinutes: number }>
+  >([]);
   const [summary, setSummary] = useState({
     enabled: 0,
     sent: 0,
@@ -114,6 +117,7 @@ export default function AutomationsPage() {
       setCompanyName(data.company?.name || 'Empresa');
       setAutomations(data.automations || []);
       setExecutions(data.executions || []);
+      setAbandonedCartSchedule(data.abandonedCartSchedule || []);
       setSummary(
         data.summary || {
           enabled: 0,
@@ -148,18 +152,6 @@ export default function AutomationsPage() {
     );
   }
 
-  function toggleDay(key: Automation['key'], day: number) {
-    const automation = automations.find((item) => item.key === key);
-    if (!automation) return;
-
-    const allowedDays = automation.allowedDays.includes(day)
-      ? automation.allowedDays.filter((item) => item !== day)
-      : [...automation.allowedDays, day].sort((a, b) => a - b);
-
-    if (!allowedDays.length) return;
-    change(key, { allowedDays });
-  }
-
   async function save(automation: Automation) {
     setSavingKey(automation.key);
     setMessage('');
@@ -172,10 +164,6 @@ export default function AutomationsPage() {
         body: JSON.stringify({
           automationKey: automation.key,
           enabled: automation.enabled,
-          timezone: automation.timezone,
-          allowedDays: automation.allowedDays,
-          sendWindowStart: automation.sendWindowStart,
-          sendWindowEnd: automation.sendWindowEnd,
           maxAttempts: automation.maxAttempts,
           retryDelayMinutes: automation.retryDelayMinutes,
         }),
@@ -244,7 +232,12 @@ export default function AutomationsPage() {
           {loading ? (
             <div className={styles.empty}>Cargando automatizaciones…</div>
           ) : (
-            automations.map((automation) => (
+            automations
+              .filter(
+                (automation) =>
+                  automation.key !== 'payment_confirmed',
+              )
+              .map((automation) => (
               <article className={styles.card} key={automation.key}>
                 <div className={styles.cardHeading}>
                   <div>
@@ -267,54 +260,33 @@ export default function AutomationsPage() {
                   </label>
                 </div>
 
-                <div className={styles.days}>
-                  {dayLabels.map((day) => (
-                    <button
-                      type="button"
-                      key={day.value}
-                      className={
-                        automation.allowedDays.includes(day.value)
-                          ? styles.dayActive
-                          : ''
-                      }
-                      onClick={() =>
-                        toggleDay(automation.key, day.value)
-                      }
-                    >
-                      {day.label}
-                    </button>
-                  ))}
+                <div className={styles.operation}>
+                  <strong>Funcionamiento 24/7</strong>
+                  <p>
+                    {automation.key === 'abandoned_cart'
+                      ? 'Se envía según los tiempos configurados después de detectar el abandono.'
+                      : automation.key === 'order_created'
+                        ? 'Se enviará inmediatamente cuando Shopify cree el pedido.'
+                        : 'Se enviará inmediatamente cuando Shopify genere la guía o el envío.'}
+                  </p>
+
+                  {automation.key === 'abandoned_cart' ? (
+                    <div className={styles.schedule}>
+                      {abandonedCartSchedule.map((rule) => (
+                        <span
+                          className={styles.scheduleChip}
+                          key={rule.sequence}
+                        >
+                          Mensaje {rule.sequence}: {delayLabel(rule.delayMinutes)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className={styles.grid}>
                   <label>
-                    <span>Desde</span>
-                    <input
-                      type="time"
-                      value={automation.sendWindowStart}
-                      onChange={(event) =>
-                        change(automation.key, {
-                          sendWindowStart: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-
-                  <label>
-                    <span>Hasta</span>
-                    <input
-                      type="time"
-                      value={automation.sendWindowEnd}
-                      onChange={(event) =>
-                        change(automation.key, {
-                          sendWindowEnd: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-
-                  <label>
-                    <span>Reintentos máximos</span>
+                    <span>Reintentos máximos por error</span>
                     <input
                       type="number"
                       min={1}
@@ -348,18 +320,6 @@ export default function AutomationsPage() {
                     </div>
                   </label>
                 </div>
-
-                <label className={styles.timezone}>
-                  <span>Zona horaria</span>
-                  <input
-                    value={automation.timezone}
-                    onChange={(event) =>
-                      change(automation.key, {
-                        timezone: event.target.value,
-                      })
-                    }
-                  />
-                </label>
 
                 <button
                   type="button"
