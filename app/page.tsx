@@ -61,6 +61,16 @@ type StorefrontResponse = {
 type AdvisorStatus = "available" | "busy" | "away" | "offline";
 type CurrentUser = { userId: string; companyName: string; fullName: string; roleName: string };
 type AdvisorPresence = { status: AdvisorStatus };
+type TransferTarget = {
+  userId: string;
+  fullName: string;
+  roleName: string;
+};
+type TransferTargetsResponse = {
+  ok?: boolean;
+  error?: string;
+  targets?: TransferTarget[];
+};
 const advisorStatusLabel: Record<AdvisorStatus, string> = { available: "Disponible", busy: "Ocupado", away: "Ausente", offline: "Desconectado" };
 
 type InboxConversation = {
@@ -157,6 +167,10 @@ export default function Home() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferTargets, setTransferTargets] = useState<TransferTarget[]>([]);
+  const [transferTargetUserId, setTransferTargetUserId] = useState("");
   const [internalTestLoading, setInternalTestLoading] = useState(false);
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
@@ -336,6 +350,97 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "No se pudo completar la acción.");
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  async function openTransferDialog() {
+    if (!selected) return;
+
+    setTransferLoading(true);
+    setTransferOpen(true);
+    setTransferTargets([]);
+    setTransferTargetUserId("");
+    setError("");
+
+    try {
+      const response = await fetch("/api/inbox?mode=transfer-targets", {
+        cache: "no-store",
+      });
+      const data = (await readJson(response)) as TransferTargetsResponse;
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || "No se pudieron cargar los asesores disponibles.",
+        );
+      }
+
+      const targets = (data.targets ?? []).filter(
+        (target) => target.userId !== selected.session.assignedToUserId,
+      );
+
+      setTransferTargets(targets);
+      setTransferTargetUserId(targets[0]?.userId ?? "");
+    } catch (caught) {
+      setTransferOpen(false);
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudieron cargar los asesores disponibles.",
+      );
+    } finally {
+      setTransferLoading(false);
+    }
+  }
+
+  async function confirmTransfer() {
+    if (!selected || !transferTargetUserId) return;
+
+    const target = transferTargets.find(
+      (item) => item.userId === transferTargetUserId,
+    );
+
+    setTransferLoading(true);
+    setActionMessage("");
+    setError("");
+
+    try {
+      const response = await fetch("/api/inbox", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId: selected.session.id,
+          action: "transfer",
+          targetUserId: transferTargetUserId,
+        }),
+      });
+      const data = (await readJson(response)) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+      };
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || data.message || "No se pudo transferir la conversación.",
+        );
+      }
+
+      setTransferOpen(false);
+      setTransferTargets([]);
+      setTransferTargetUserId("");
+      setSelected(null);
+      await loadList(false);
+      setActionMessage(
+        `Conversación transferida a ${target?.fullName ?? "otro asesor"}.`,
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo transferir la conversación.",
+      );
+    } finally {
+      setTransferLoading(false);
     }
   }
 
@@ -655,7 +760,89 @@ export default function Home() {
         {error ? <div className="error-banner">{error}</div> : null}
         {actionMessage ? <div className="success-banner">{actionMessage}</div> : null}
 
-        <div className="inbox-layout">
+        {transferOpen ? (
+        <div
+          className="transfer-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !transferLoading) {
+              setTransferOpen(false);
+            }
+          }}
+        >
+          <section
+            className="transfer-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="transfer-dialog-title"
+          >
+            <div className="transfer-dialog-heading">
+              <div>
+                <p className="eyebrow">Transferencia</p>
+                <h2 id="transfer-dialog-title">Transferir conversación</h2>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar"
+                disabled={transferLoading}
+                onClick={() => setTransferOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="transfer-dialog-copy">
+              El nuevo asesor podrá ver inmediatamente todo el historial y
+              responder. Tú dejarás de tener acceso a esta conversación.
+            </p>
+
+            {transferTargets.length ? (
+              <label className="transfer-field">
+                <span>Nuevo asesor</span>
+                <select
+                  value={transferTargetUserId}
+                  disabled={transferLoading}
+                  onChange={(event) =>
+                    setTransferTargetUserId(event.target.value)
+                  }
+                >
+                  {transferTargets.map((target) => (
+                    <option key={target.userId} value={target.userId}>
+                      {target.fullName} · {target.roleName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className="transfer-empty">
+                No hay otro asesor activo con permisos para recibir esta
+                conversación.
+              </p>
+            )}
+
+            <div className="transfer-dialog-actions">
+              <button
+                className="button quiet"
+                type="button"
+                disabled={transferLoading}
+                onClick={() => setTransferOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="button primary"
+                type="button"
+                disabled={transferLoading || !transferTargetUserId}
+                onClick={() => void confirmTransfer()}
+              >
+                {transferLoading ? "Transfiriendo…" : "Confirmar transferencia"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      <div className="inbox-layout">
           <section className="conversation-list-panel">
             <div className="list-panel-heading">
               <div>
@@ -762,6 +949,14 @@ export default function Home() {
                           onClick={() => void runAction("resume_ai")}
                         >
                           {actionLoading ? "Actualizando…" : "Devolver a IA"}
+                        </button>
+                        <button
+                          className="button quiet"
+                          type="button"
+                          disabled={actionLoading || transferLoading}
+                          onClick={() => void openTransferDialog()}
+                        >
+                          {transferLoading ? "Cargando…" : "Transferir conversación"}
                         </button>
                         <button
                           className="button quiet"

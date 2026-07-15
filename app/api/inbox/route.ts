@@ -12,6 +12,7 @@ type InboxRequestBody = {
   action?: unknown;
   agentName?: unknown;
   message?: unknown;
+  targetUserId?: unknown;
 };
 
 function text(value: unknown): string {
@@ -74,15 +75,20 @@ export async function GET(request: NextRequest) {
     const { apiBase, inboxKey } = config();
     const company = session.companySlug;
     const sessionId = request.nextUrl.searchParams.get('sessionId')?.trim() ?? '';
+    const mode = request.nextUrl.searchParams.get('mode')?.trim() ?? '';
     const status = request.nextUrl.searchParams.get('status')?.trim() ?? 'all';
     const limit = request.nextUrl.searchParams.get('limit')?.trim() ?? '60';
 
     const target = new URL(
-      sessionId ? `${apiBase}/inbox/${encodeURIComponent(sessionId)}` : `${apiBase}/inbox`,
+      mode === 'transfer-targets'
+        ? `${apiBase}/inbox/transfer-targets`
+        : sessionId
+          ? `${apiBase}/inbox/${encodeURIComponent(sessionId)}`
+          : `${apiBase}/inbox`,
     );
     target.searchParams.set('company', company);
 
-    if (!sessionId) {
+    if (!sessionId && mode !== 'transfer-targets') {
       target.searchParams.set('status', status);
       target.searchParams.set('limit', limit);
     }
@@ -154,13 +160,15 @@ export async function POST(request: NextRequest) {
     const suffix =
       action === 'take'
         ? 'take'
-        : action === 'close'
-          ? 'close'
-          : action === 'resume_ai'
-            ? 'resume-ai'
-            : action === 'message'
-              ? 'messages'
-              : '';
+        : action === 'transfer'
+          ? 'transfer'
+          : action === 'close'
+            ? 'close'
+            : action === 'resume_ai'
+              ? 'resume-ai'
+              : action === 'message'
+                ? 'messages'
+                : '';
 
     if (!suffix) {
       return NextResponse.json({ ok: false, error: 'Acción no válida.' }, { status: 400 });
@@ -179,6 +187,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         message: text(body.message),
+        targetUserId: text(body.targetUserId),
       }),
       cache: 'no-store',
     });

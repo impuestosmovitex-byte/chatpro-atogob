@@ -287,3 +287,87 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
   font-size: 11px;
   line-height: 1.35;
 }
+
+
+/* CRM 1D - Transferencia de conversaciones */
+.transfer-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 24, 36, 0.5);
+}
+
+.transfer-dialog {
+  width: min(460px, 100%);
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 22px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(17, 24, 39, 0.24);
+}
+
+.transfer-dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.transfer-dialog-heading h2 {
+  font-size: 20px;
+}
+
+.transfer-dialog-heading > button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.transfer-dialog-copy,
+.transfer-empty {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.transfer-empty {
+  border: 1px solid #ead9a5;
+  border-radius: 11px;
+  padding: 13px;
+  background: #fff9e8;
+  color: #73591e;
+}
+
+.transfer-field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.transfer-field select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.transfer-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}

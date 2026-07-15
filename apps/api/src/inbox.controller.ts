@@ -4,7 +4,7 @@ import { ConversationMemoryService, type ConversationSession, type InboxSessionS
 import { SupabaseService } from './supabase.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
-type InboxBody = { message?: unknown; action?: unknown; sessionId?: unknown };
+type InboxBody = { message?: unknown; action?: unknown; sessionId?: unknown; targetUserId?: unknown };
 const INTERNAL_TEST_PHONE = '000000000000000';
 type Actor = { userId:string; fullName:string; permissions:Set<string>; isFullAccess:boolean };
 
@@ -23,6 +23,35 @@ export class InboxController {
     const payload=await this.conversationMemoryService.listInboxSessions(this.requiredCompany(company),status,Number(limit));
     const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,payload.company.id);
     return {ok:true,...payload,sessions:payload.sessions.filter(session=>!this.isInternalTestSession(session)&&this.canView(actor,session))};
+  }
+
+  @Get('transfer-targets')
+  async transferTargets(
+    @Headers('x-chatpro-inbox-key') key='',
+    @Headers('x-chatpro-session-type') sessionType='',
+    @Headers('x-chatpro-user-id') userId='',
+    @Headers('x-chatpro-user-name') fullName='',
+    @Headers('x-chatpro-company-id') headerCompanyId='',
+    @Headers('x-chatpro-role-key') roleKey='',
+    @Query('company') company='',
+  ) {
+    this.authorize(key);
+    const profile = await this.conversationMemoryService.getCompanyProfile(
+      this.requiredCompany(company),
+    );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      profile.id,
+    );
+
+    return {
+      ok: true,
+      targets: await this.listTransferTargets(profile.id, actor.userId),
+    };
   }
 
   @Get(':sessionId')
@@ -213,6 +242,84 @@ export class InboxController {
     return {ok:true,session:await this.conversationMemoryService.takeConversation(sessionId,advisor)};
   }
 
+  @Post(':sessionId/transfer') @HttpCode(200)
+  async transferConversation(
+    @Headers('x-chatpro-inbox-key') key='',
+    @Headers('x-chatpro-session-type') sessionType='',
+    @Headers('x-chatpro-user-id') userId='',
+    @Headers('x-chatpro-user-name') fullName='',
+    @Headers('x-chatpro-company-id') headerCompanyId='',
+    @Headers('x-chatpro-role-key') roleKey='',
+    @Query('company') company='',
+    @Param('sessionId') sessionId='',
+    @Body() body:InboxBody={},
+  ) {
+    this.authorize(key);
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+
+    if (conversation.session.attentionStatus !== 'human') {
+      throw new BadRequestException(
+        'Solo se puede transferir una conversación tomada por un asesor.',
+      );
+    }
+
+    if (!actor.isFullAccess) {
+      if (!actor.permissions.has('inbox.reply')) {
+        throw new ForbiddenException(
+          'No tienes permiso para transferir conversaciones.',
+        );
+      }
+
+      if (conversation.session.assignedToUserId !== actor.userId) {
+        throw new ForbiddenException(
+          'Solo puedes transferir conversaciones asignadas a tu usuario.',
+        );
+      }
+    }
+
+    const targetUserId = this.readText(body.targetUserId);
+
+    if (!targetUserId) {
+      throw new BadRequestException('Selecciona el nuevo asesor.');
+    }
+
+    if (targetUserId === conversation.session.assignedToUserId) {
+      throw new BadRequestException(
+        'La conversación ya está asignada a este asesor.',
+      );
+    }
+
+    const target = await this.resolveTransferTarget(
+      conversation.company.id,
+      targetUserId,
+    );
+    const session = await this.conversationMemoryService.takeConversation(
+      sessionId,
+      {
+        userId: target.userId,
+        fullName: target.fullName,
+      },
+    );
+
+    return {
+      ok: true,
+      session,
+      transferredTo: target,
+    };
+  }
+
   @Post(':sessionId/close') @HttpCode(200)
   async closeConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
     this.authorize(key);
@@ -316,6 +423,178 @@ export class InboxController {
         ? profile.full_name.trim()
         : 'Propietario',
     };
+  }
+
+  private async listTransferTargets(
+    companyId:string,
+    excludeUserId:string='',
+  ):Promise<Array<{userId:string;fullName:string;roleName:string}>>{
+    const client=this.supabaseService.getClient();
+    const {data:memberships,error:membershipsError}=await client
+      .from('company_memberships')
+      .select('user_id,role_id')
+      .eq('company_id',companyId)
+      .eq('active',true);
+
+    if(membershipsError){
+      throw new BadRequestException(
+        `No se pudieron consultar los asesores: ${membershipsError.message}`,
+      );
+    }
+
+    const membershipRows=(memberships??[]).filter(
+      (item:any)=>
+        typeof item?.user_id==='string'&&
+        typeof item?.role_id==='string'&&
+        item.user_id!==excludeUserId,
+    );
+
+    if(!membershipRows.length)return [];
+
+    const roleIds=Array.from(
+      new Set(membershipRows.map((item:any)=>item.role_id)),
+    );
+    const userIds=membershipRows.map((item:any)=>item.user_id);
+
+    const {data:roles,error:rolesError}=await client
+      .from('app_roles')
+      .select('id,key,name')
+      .in('id',roleIds);
+
+    if(rolesError){
+      throw new BadRequestException(
+        `No se pudieron consultar los roles: ${rolesError.message}`,
+      );
+    }
+
+    const {data:links,error:linksError}=await client
+      .from('app_role_permissions')
+      .select('role_id,permission_id')
+      .in('role_id',roleIds);
+
+    if(linksError){
+      throw new BadRequestException(
+        `No se pudieron consultar los permisos: ${linksError.message}`,
+      );
+    }
+
+    const permissionIds=Array.from(
+      new Set(
+        (links??[])
+          .map((item:any)=>item.permission_id)
+          .filter((value:unknown):value is string=>typeof value==='string'),
+      ),
+    );
+
+    const permissionResult=permissionIds.length
+      ? await client.from('app_permissions').select('id,key').in('id',permissionIds)
+      : {data:[],error:null};
+
+    if(permissionResult.error){
+      throw new BadRequestException(
+        `No se pudieron cargar los permisos: ${permissionResult.error.message}`,
+      );
+    }
+
+    const permissionKeyById=new Map<string,string>(
+      (permissionResult.data??[])
+        .filter(
+          (item:any)=>
+            typeof item?.id==='string'&&typeof item?.key==='string',
+        )
+        .map((item:any)=>[item.id,item.key]),
+    );
+    const permissionKeysByRole=new Map<string,Set<string>>();
+
+    for(const link of links??[]){
+      const roleId=typeof (link as any).role_id==='string'
+        ? (link as any).role_id
+        : '';
+      const permissionId=typeof (link as any).permission_id==='string'
+        ? (link as any).permission_id
+        : '';
+      const permissionKey=permissionKeyById.get(permissionId);
+
+      if(!roleId||!permissionKey)continue;
+
+      const current=permissionKeysByRole.get(roleId)??new Set<string>();
+      current.add(permissionKey);
+      permissionKeysByRole.set(roleId,current);
+    }
+
+    const roleById=new Map<string,{key:string;name:string}>(
+      (roles??[])
+        .filter(
+          (item:any)=>
+            typeof item?.id==='string'&&
+            typeof item?.key==='string'&&
+            typeof item?.name==='string',
+        )
+        .map((item:any)=>[
+          item.id,
+          {key:item.key.trim().toLowerCase(),name:item.name.trim()},
+        ]),
+    );
+
+    const {data:profiles,error:profilesError}=await client
+      .from('app_profiles')
+      .select('user_id,full_name')
+      .in('user_id',userIds);
+
+    if(profilesError){
+      throw new BadRequestException(
+        `No se pudieron consultar los perfiles: ${profilesError.message}`,
+      );
+    }
+
+    const nameByUserId=new Map<string,string>(
+      (profiles??[])
+        .filter(
+          (item:any)=>
+            typeof item?.user_id==='string'&&
+            typeof item?.full_name==='string'&&
+            item.full_name.trim(),
+        )
+        .map((item:any)=>[item.user_id,item.full_name.trim()]),
+    );
+
+    return membershipRows
+      .filter((membership:any)=>{
+        const role=roleById.get(membership.role_id);
+        if(!role)return false;
+        if(role.key==='owner'||role.key==='admin')return true;
+        const permissions=permissionKeysByRole.get(membership.role_id);
+        return Boolean(
+          permissions?.has('inbox.view')&&permissions.has('inbox.reply'),
+        );
+      })
+      .map((membership:any)=>{
+        const role=roleById.get(membership.role_id)!;
+        return {
+          userId:membership.user_id,
+          fullName:nameByUserId.get(membership.user_id)??'Usuario sin nombre',
+          roleName:role.name||'Asesor',
+        };
+      })
+      .sort((left,right)=>
+        left.fullName.localeCompare(right.fullName,'es-CO'),
+      );
+  }
+
+  private async resolveTransferTarget(
+    companyId:string,
+    targetUserId:string,
+  ):Promise<{userId:string;fullName:string;roleName:string}>{
+    const targets=await this.listTransferTargets(companyId);
+    const target=targets.find((item)=>item.userId===targetUserId);
+
+    if(!target){
+      throw new BadRequestException(
+        'El asesor seleccionado no está activo o no tiene permisos para recibir conversaciones.',
+      );
+    }
+
+    return target;
   }
 
   private isInternalTestSession(session:ConversationSession|InboxSessionSummary){return session.customerPhone===INTERNAL_TEST_PHONE;}
