@@ -89,10 +89,12 @@ export class ShopifyAbandonedCheckoutSyncService {
             ? lastSyncAt
             : activationFrom;
 
+        // Shopify puede tardar en mostrar un checkout como abandonado.
+        // Revisamos seis horas hacia atrás; el upsert evita duplicados.
         const createdSince = new Date(
           Math.max(
             activationFrom.getTime(),
-            checkpoint.getTime() - 60 * 1000,
+            checkpoint.getTime() - 6 * 60 * 60 * 1000,
           ),
         ).toISOString();
 
@@ -110,8 +112,10 @@ export class ShopifyAbandonedCheckoutSyncService {
             limit,
           );
 
+          // Si Shopify todavía no devuelve resultados, no adelantamos
+          // el punto de control para no perder checkouts que aparezcan tarde.
           const nextCheckpoint =
-            result.latestCheckoutCreatedAt ?? new Date().toISOString();
+            result.latestCheckoutCreatedAt ?? checkpoint.toISOString();
           const { error: updateError } = await client
             .from('company_settings')
             .update({
@@ -129,6 +133,12 @@ export class ShopifyAbandonedCheckoutSyncService {
           if (updateError) {
             throw new Error(
               `No se pudo guardar el punto de sincronización: ${updateError.message}`,
+            );
+          }
+
+          if (result.received > 0) {
+            this.logger.log(
+              `Carritos Shopify ${automation.company_id}: ${result.received} recibidos, ${result.inserted} nuevos, ${result.updated} actualizados.`,
             );
           }
         } catch (error) {
