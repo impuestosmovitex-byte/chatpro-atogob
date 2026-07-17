@@ -37,6 +37,52 @@ export class WhatsappMessagingService {
     private readonly credentialsService: IntegrationCredentialsService,
   ) {}
 
+  async checkConnection(companyId: string): Promise<{
+    phoneNumberId: string;
+    displayPhoneNumber: string | null;
+    verifiedName: string | null;
+    qualityRating: string | null;
+    apiVersion: string;
+  }> {
+    const channel = await this.resolveChannel(companyId);
+    const response = await fetch(
+      `https://graph.facebook.com/${channel.apiVersion}/${channel.phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`,
+      {
+        headers: {
+          Authorization: `Bearer ${channel.accessToken}`,
+        },
+        signal: AbortSignal.timeout(10000),
+        cache: 'no-store',
+      },
+    );
+    const raw = await response.text();
+    let data: JsonObject = {};
+
+    try {
+      data = raw ? (JSON.parse(raw) as JsonObject) : {};
+    } catch {
+      data = {};
+    }
+
+    if (!response.ok) {
+      const error = this.object(data.error);
+      const message =
+        this.readText(error.message) ||
+        `Meta rechazó la verificación (${response.status}).`;
+
+      throw new Error(message);
+    }
+
+    return {
+      phoneNumberId: channel.phoneNumberId,
+      displayPhoneNumber:
+        this.readText(data.display_phone_number) || null,
+      verifiedName: this.readText(data.verified_name) || null,
+      qualityRating: this.readText(data.quality_rating) || null,
+      apiVersion: channel.apiVersion,
+    };
+  }
+
   async sendText(
     companyId: string,
     to: string,

@@ -15,6 +15,7 @@ type CapabilityKey =
   | 'startConversations'
   | 'storefront'
   | 'sendAudio'
+  | 'health'
   | 'automations'
   | 'configuration'
   | 'testAgent';
@@ -153,6 +154,7 @@ export class AccessCapabilitiesController {
         fullAccess || permissionKeys.includes('storefront.open'),
       sendAudio:
         fullAccess || permissionKeys.includes('inbox.audio'),
+      health: fullAccess,
       automations:
         fullAccess || hasPrefix('automation', 'automations'),
       configuration:

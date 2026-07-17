@@ -30,6 +30,7 @@ type Capabilities = {
   automations: boolean;
   configuration: boolean;
   testAgent: boolean;
+  health: boolean;
 };
 
 const baseNavigation: Array<{
@@ -57,6 +58,12 @@ const baseNavigation: Array<{
     label: 'Automatizaciones',
     icon: '◈',
     capability: 'automations',
+  },
+  {
+    href: '/salud',
+    label: 'Salud y alertas',
+    icon: '!',
+    capability: 'health',
   },
 ];
 
@@ -131,6 +138,7 @@ export function AppSidebar({
               automations: fullAccess,
               configuration: fullAccess,
               testAgent: fullAccess,
+              health: fullAccess,
             });
           }
         }
@@ -167,6 +175,7 @@ export function AppSidebar({
     automations: fullAccess,
     configuration: fullAccess,
     testAgent: fullAccess,
+    health: fullAccess,
   };
 
   const navigation: Array<{
