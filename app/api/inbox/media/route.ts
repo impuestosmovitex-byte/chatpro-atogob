@@ -70,18 +70,35 @@ export async function GET(request: NextRequest) {
     target.searchParams.set('company', session.companySlug);
 
     const response = await fetch(target, {
-      headers: trustedHeaders(inboxKey, session),
+      headers: {
+        ...trustedHeaders(inboxKey, session),
+        accept: 'audio/*',
+      },
       cache: 'no-store',
     });
 
     if (!response.ok) {
+      const raw = await response.text();
+      let detail = raw || 'No se pudo cargar el audio.';
+
+      try {
+        const parsed = JSON.parse(raw) as {
+          error?: unknown;
+          message?: unknown;
+        };
+
+        detail =
+          typeof parsed.error === 'string'
+            ? parsed.error
+            : typeof parsed.message === 'string'
+              ? parsed.message
+              : detail;
+      } catch {
+        // El detalle ya contiene la respuesta original.
+      }
+
       return NextResponse.json(
-        {
-          ok: false,
-          error:
-            (await response.text()) ||
-            'No se pudo cargar el audio.',
-        },
+        { ok: false, error: detail },
         { status: response.status },
       );
     }

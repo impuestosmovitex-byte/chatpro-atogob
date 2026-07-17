@@ -88,8 +88,36 @@ export async function POST(request: NextRequest) {
     });
     const contentType =
       response.headers.get('content-type') ?? 'application/json';
+    const body = await response.arrayBuffer();
 
-    return new NextResponse(await response.arrayBuffer(), {
+    if (
+      !response.ok &&
+      contentType.includes('application/json')
+    ) {
+      try {
+        const parsed = JSON.parse(
+          new TextDecoder().decode(body),
+        ) as {
+          error?: unknown;
+          message?: unknown;
+        };
+        const detail =
+          typeof parsed.error === 'string'
+            ? parsed.error
+            : typeof parsed.message === 'string'
+              ? parsed.message
+              : 'No se pudo enviar el audio.';
+
+        return NextResponse.json(
+          { ok: false, error: detail },
+          { status: response.status },
+        );
+      } catch {
+        // Se conserva la respuesta original.
+      }
+    }
+
+    return new NextResponse(body, {
       status: response.status,
       headers: { 'content-type': contentType },
     });

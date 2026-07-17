@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { CompanyIntegrationService } from './company-integration.service';
@@ -138,13 +144,15 @@ export class WhatsappMessagingService {
       );
     }
 
-    return {
+    const downloaded = {
       buffer: Buffer.from(await mediaResponse.arrayBuffer()),
       mimeType:
         mediaResponse.headers.get('content-type')?.trim() ||
         mimeType,
       filename: `audio-${id}.${this.extensionForMime(mimeType)}`,
     };
+
+    return this.transcodeToMp3(downloaded);
   }
 
   async sendTemplate(
@@ -205,7 +213,7 @@ export class WhatsappMessagingService {
       'audio/ogg',
     ]);
 
-    if (supported.has(cleanMime)) {
+    if (supported.has(cleanMime) && cleanMime !== 'audio/ogg') {
       return {
         buffer: input.buffer,
         mimeType: cleanMime,
@@ -227,11 +235,76 @@ export class WhatsappMessagingService {
     mimeType: string;
     filename: string;
   }> {
+    return this.transcodeAudio(input, {
+      outputFilename: 'audio.ogg',
+      outputMimeType: 'audio/ogg; codecs=opus',
+      arguments: [
+        '-vn',
+        '-ac',
+        '1',
+        '-ar',
+        '48000',
+        '-c:a',
+        'libopus',
+        '-b:a',
+        '32k',
+        '-application',
+        'voip',
+      ],
+    });
+  }
+
+  private async transcodeToMp3(input: {
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+  }): Promise<WhatsappMediaDownload> {
+    return this.transcodeAudio(input, {
+      outputFilename: 'audio.mp3',
+      outputMimeType: 'audio/mpeg',
+      arguments: [
+        '-vn',
+        '-ac',
+        '1',
+        '-ar',
+        '44100',
+        '-c:a',
+        'libmp3lame',
+        '-b:a',
+        '64k',
+      ],
+    });
+  }
+
+  private async transcodeAudio(
+    input: {
+      buffer: Buffer;
+      mimeType: string;
+      filename: string;
+    },
+    output: {
+      outputFilename: string;
+      outputMimeType: string;
+      arguments: string[];
+    },
+  ): Promise<{
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+  }> {
     const ffmpegPath = require('ffmpeg-static') as string | null;
 
     if (!ffmpegPath) {
       throw new Error(
-        'No se encontró el conversor de audio en el servidor.',
+        'El conversor de audio no está instalado en el servidor.',
+      );
+    }
+
+    try {
+      await access(ffmpegPath);
+    } catch {
+      throw new Error(
+        'El conversor de audio no quedó instalado correctamente en Railway.',
       );
     }
 
@@ -240,7 +313,7 @@ export class WhatsappMessagingService {
       extname(input.filename) ||
       `.${this.extensionForMime(input.mimeType)}`;
     const source = join(directory, `source${extension}`);
-    const target = join(directory, 'audio.ogg');
+    const target = join(directory, output.outputFilename);
 
     try {
       await writeFile(source, input.buffer);
@@ -252,17 +325,7 @@ export class WhatsappMessagingService {
           '-y',
           '-i',
           source,
-          '-vn',
-          '-ac',
-          '1',
-          '-ar',
-          '48000',
-          '-c:a',
-          'libopus',
-          '-b:a',
-          '32k',
-          '-application',
-          'voip',
+          ...output.arguments,
           target,
         ]);
         let errorOutput = '';
@@ -270,7 +333,13 @@ export class WhatsappMessagingService {
         process.stderr.on('data', (chunk: Buffer) => {
           errorOutput += chunk.toString('utf8');
         });
-        process.on('error', reject);
+        process.on('error', (error) => {
+          reject(
+            new Error(
+              `No se pudo iniciar el conversor de audio: ${error.message}`,
+            ),
+          );
+        });
         process.on('close', (code) => {
           if (code === 0) {
             resolve();
@@ -281,7 +350,7 @@ export class WhatsappMessagingService {
             new Error(
               `No se pudo convertir el audio${
                 errorOutput.trim()
-                  ? `: ${errorOutput.trim().slice(0, 500)}`
+                  ? `: ${errorOutput.trim().slice(0, 700)}`
                   : '.'
               }`,
             ),
@@ -289,10 +358,16 @@ export class WhatsappMessagingService {
         });
       });
 
+      const buffer = await readFile(target);
+
+      if (!buffer.length) {
+        throw new Error('El conversor generó un audio vacío.');
+      }
+
       return {
-        buffer: await readFile(target),
-        mimeType: 'audio/ogg',
-        filename: 'audio.ogg',
+        buffer,
+        mimeType: output.outputMimeType,
+        filename: output.outputFilename,
       };
     } finally {
       await rm(directory, { recursive: true, force: true });

@@ -177,6 +177,121 @@ function getCart(context: Record<string, unknown>) {
   );
 }
 
+function AudioMessagePlayer({
+  item,
+}: {
+  item: InboxMessage;
+}) {
+  const [source, setSource] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [playbackError, setPlaybackError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = "";
+
+    async function loadAudio() {
+      if (!item.id) {
+        setPlaybackError("El audio no tiene identificador.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setPlaybackError("");
+
+        const response = await fetch(
+          `/api/inbox/media?sessionId=${encodeURIComponent(
+            item.sessionId,
+          )}&messageId=${encodeURIComponent(item.id)}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          const contentType =
+            response.headers.get("content-type") ?? "";
+          let detail = "No se pudo cargar el audio.";
+
+          if (contentType.includes("application/json")) {
+            const data = (await response.json()) as {
+              error?: string;
+              message?: string;
+            };
+            detail = data.error || data.message || detail;
+          } else {
+            detail = (await response.text()) || detail;
+          }
+
+          throw new Error(detail);
+        }
+
+        const blob = await response.blob();
+
+        if (!blob.size) {
+          throw new Error("El audio recibido está vacío.");
+        }
+
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+
+        setPlaybackError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo cargar el audio.",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadAudio();
+
+    return () => {
+      controller.abort();
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [item.id, item.sessionId]);
+
+  return (
+    <div className="wa-audio-message">
+      {loading ? (
+        <span className="wa-audio-loading">Cargando audio…</span>
+      ) : playbackError ? (
+        <span className="wa-audio-error">{playbackError}</span>
+      ) : (
+        <audio
+          controls
+          preload="metadata"
+          src={source}
+          onError={() =>
+            setPlaybackError(
+              "El navegador no pudo reproducir este audio.",
+            )
+          }
+        >
+          Tu navegador no permite reproducir este audio.
+        </audio>
+      )}
+      <small>
+        {item.authorType === "customer"
+          ? "Audio del cliente"
+          : "Audio enviado"}
+      </small>
+    </div>
+  );
+}
+
 export default function Home() {
   const [canTestAgent, setCanTestAgent] = useState(false);
   const [canOpenStorefront, setCanOpenStorefront] = useState(false);
@@ -724,10 +839,16 @@ export default function Home() {
         method: "POST",
         body: form,
       });
-      const data = (await readJson(response)) as ApiConversation;
+      const data = (await readJson(response)) as ApiConversation & {
+        message?: string;
+      };
 
       if (!response.ok || !data.ok || !data.conversation) {
-        throw new Error(data.error || "No se pudo enviar el audio.");
+        throw new Error(
+          data.error ||
+            data.message ||
+            "No se pudo enviar el audio.",
+        );
       }
 
       setSelected(data.conversation);
@@ -759,6 +880,34 @@ export default function Home() {
 
     await runAction("message");
   }
+
+  useEffect(() => {
+    if (!audioBlob || recording || audioSending) {
+      return;
+    }
+
+    const handleEnter = (event: KeyboardEvent) => {
+      if (
+        event.key === "Enter" &&
+        !event.shiftKey &&
+        !event.isComposing
+      ) {
+        event.preventDefault();
+        void sendAudioRecording();
+      }
+    };
+
+    window.addEventListener("keydown", handleEnter);
+
+    return () => {
+      window.removeEventListener("keydown", handleEnter);
+    };
+  }, [
+    audioBlob,
+    recording,
+    audioSending,
+    selected?.session.id,
+  ]);
 
   useEffect(() => {
     let alive = true;
@@ -1329,22 +1478,7 @@ export default function Home() {
                           {item.authorType === "customer" ? "Cliente" : item.authorType === "advisor" ? "Asesor" : "IA"}
                         </span>
                         {item.messageType === "audio" && item.id ? (
-                          <div className="audio-message">
-                            <audio
-                              controls
-                              preload="none"
-                              src={`/api/inbox/media?sessionId=${encodeURIComponent(
-                                item.sessionId,
-                              )}&messageId=${encodeURIComponent(item.id)}`}
-                            >
-                              Tu navegador no permite reproducir este audio.
-                            </audio>
-                            <small>
-                              {item.authorType === "customer"
-                                ? "Audio del cliente"
-                                : "Audio enviado"}
-                            </small>
-                          </div>
+                          <AudioMessagePlayer item={item} />
                         ) : (
                           <p>{item.message}</p>
                         )}
@@ -1375,116 +1509,159 @@ export default function Home() {
                   </form>
                 ) : selected.session.attentionStatus === "human" ? (
                   <form className="reply-box" onSubmit={sendMessage}>
-                    {recording ? (
-                      <div className="audio-recorder active">
-                        <span className="recording-dot" />
-                        <strong>
-                          Grabando {formatRecordingTime(recordingSeconds)}
-                        </strong>
+                    {recording || (audioBlob && audioPreviewUrl) ? (
+                      <div
+                        className={`wa-audio-composer ${
+                          recording ? "recording" : "preview"
+                        }`}
+                      >
                         <button
                           type="button"
-                          className="button quiet"
-                          onClick={stopAudioRecording}
-                        >
-                          Detener
-                        </button>
-                        <button
-                          type="button"
-                          className="button quiet danger"
+                          className="wa-audio-icon danger"
                           onClick={cancelAudioRecording}
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    ) : audioBlob && audioPreviewUrl ? (
-                      <div className="audio-recorder preview">
-                        <audio controls src={audioPreviewUrl} />
-                        <button
-                          type="button"
-                          className="button quiet"
-                          onClick={clearAudioDraft}
                           disabled={audioSending}
+                          aria-label="Eliminar grabación"
+                          title="Eliminar grabación"
                         >
-                          Borrar
+                          <span aria-hidden="true">⌫</span>
                         </button>
-                        <button
-                          type="button"
-                          className="button primary"
-                          onClick={() => void sendAudioRecording()}
-                          disabled={audioSending}
-                        >
-                          {audioSending ? "Enviando audio…" : "Enviar audio"}
-                        </button>
-                      </div>
-                    ) : null}
-                    <div className="reply-compose">
-                      {canSendAudio ? (
-                        <button
-                          type="button"
-                          className="audio-record-button"
-                          onClick={() => void startAudioRecording()}
-                          disabled={
-                            actionLoading ||
-                            audioSending ||
-                            recording ||
-                            Boolean(audioBlob)
-                          }
-                          aria-label="Grabar audio"
-                          title="Grabar audio"
-                        >
-                          🎙
-                        </button>
-                      ) : null}
-                      <div className="quick-reply-wrap">
-                      <textarea
-                        value={message}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setMessage(next);
-                          setQuickReplyOpen(next.trimStart().startsWith("/"));
-                        }}
-                        onFocus={() =>
-                          setQuickReplyOpen(message.trimStart().startsWith("/"))
-                        }
-                        onKeyDown={(event) => {
-                          if (
-                            event.key === "Enter" &&
-                            !event.shiftKey &&
-                            !event.nativeEvent.isComposing
-                          ) {
-                            event.preventDefault();
 
-                            if (!actionLoading && message.trim()) {
-                              void runAction("message");
-                            }
-                          }
-                        }}
-                        placeholder="Escribe una respuesta o usa / para atajos…"
-                        rows={3}
-                      />
-                      {visibleQuickReplies.length ? (
-                        <div className="quick-reply-menu">
-                          {visibleQuickReplies.map((reply) => (
-                            <button
-                              key={reply.id}
-                              type="button"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => chooseQuickReply(reply)}
-                            >
-                              <code>/{reply.shortcut}</code>
-                              <span>
-                                <b>{reply.title}</b>
-                                <small>{reply.category}</small>
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
+                        {recording ? (
+                          <div className="wa-recording-progress">
+                            <strong>
+                              {formatRecordingTime(recordingSeconds)}
+                            </strong>
+                            <span className="wa-wave-line" aria-hidden="true">
+                              <i />
+                              <i />
+                              <i />
+                              <i />
+                              <i />
+                              <i />
+                              <i />
+                              <i />
+                              <i />
+                              <i />
+                              <i />
+                              <i />
+                            </span>
+                          </div>
+                        ) : (
+                          <audio
+                            controls
+                            preload="metadata"
+                            src={audioPreviewUrl}
+                          />
+                        )}
+
+                        {recording ? (
+                          <button
+                            type="button"
+                            className="wa-audio-icon stop"
+                            onClick={stopAudioRecording}
+                            aria-label="Detener grabación"
+                            title="Detener grabación"
+                          >
+                            <span aria-hidden="true">■</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="wa-audio-icon send"
+                            onClick={() => void sendAudioRecording()}
+                            disabled={audioSending}
+                            aria-label="Enviar audio"
+                            title="Enviar audio"
+                          >
+                            <span aria-hidden="true">
+                              {audioSending ? "…" : "➤"}
+                            </span>
+                          </button>
+                        )}
                       </div>
-                    </div>
-                    <button className="button primary" type="submit" disabled={actionLoading || audioSending || recording || Boolean(audioBlob) || !message.trim()}>
-                      {actionLoading ? "Enviando…" : "Enviar"}
-                    </button>
+                    ) : (
+                      <>
+                        <div className="reply-compose">
+                          <div className="quick-reply-wrap">
+                            <textarea
+                              value={message}
+                              onChange={(event) => {
+                                const next = event.target.value;
+                                setMessage(next);
+                                setQuickReplyOpen(
+                                  next.trimStart().startsWith("/"),
+                                );
+                              }}
+                              onFocus={() =>
+                                setQuickReplyOpen(
+                                  message.trimStart().startsWith("/"),
+                                )
+                              }
+                              onKeyDown={(event) => {
+                                if (
+                                  event.key === "Enter" &&
+                                  !event.shiftKey &&
+                                  !event.nativeEvent.isComposing
+                                ) {
+                                  event.preventDefault();
+
+                                  if (!actionLoading && message.trim()) {
+                                    void runAction("message");
+                                  }
+                                }
+                              }}
+                              placeholder="Escribe una respuesta o usa / para atajos…"
+                              rows={2}
+                            />
+                            {visibleQuickReplies.length ? (
+                              <div className="quick-reply-menu">
+                                {visibleQuickReplies.map((reply) => (
+                                  <button
+                                    key={reply.id}
+                                    type="button"
+                                    onMouseDown={(event) =>
+                                      event.preventDefault()
+                                    }
+                                    onClick={() => chooseQuickReply(reply)}
+                                  >
+                                    <code>/{reply.shortcut}</code>
+                                    <span>
+                                      <b>{reply.title}</b>
+                                      <small>{reply.category}</small>
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {canSendAudio ? (
+                            <button
+                              type="button"
+                              className="wa-idle-icon"
+                              onClick={() => void startAudioRecording()}
+                              disabled={actionLoading || audioSending}
+                              aria-label="Grabar audio"
+                              title="Grabar audio"
+                            >
+                              <span aria-hidden="true">🎙</span>
+                            </button>
+                          ) : null}
+                        </div>
+
+                        <button
+                          className="wa-text-send"
+                          type="submit"
+                          disabled={actionLoading || !message.trim()}
+                          aria-label="Enviar mensaje"
+                          title="Enviar mensaje"
+                        >
+                          <span aria-hidden="true">
+                            {actionLoading ? "…" : "➤"}
+                          </span>
+                        </button>
+                      </>
+                    )}
                   </form>
                 ) : (
                   <div className="reply-disabled">

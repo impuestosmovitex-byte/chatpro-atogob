@@ -563,15 +563,28 @@ export class InboxController {
       );
     }
 
-    const sent = await this.whatsappMessagingService.sendAudio(
-      conversation.company.id,
-      conversation.session.customerPhone,
-      {
-        buffer: file.buffer,
-        mimeType: file.mimetype || 'audio/webm',
-        filename: file.originalname || 'audio.webm',
-      },
-    );
+    let sent;
+
+    try {
+      sent = await this.whatsappMessagingService.sendAudio(
+        conversation.company.id,
+        conversation.session.customerPhone,
+        {
+          buffer: file.buffer,
+          mimeType: file.mimetype || 'audio/webm',
+          filename: file.originalname || 'audio.webm',
+        },
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? error.message
+          : 'Meta rechazó el audio.';
+
+      console.error('No se pudo enviar el audio del asesor:', error);
+
+      throw new BadRequestException(detail.slice(0, 900));
+    }
 
     await this.conversationMemoryService.saveMessage({
       companyId: conversation.company.id,
@@ -660,10 +673,23 @@ export class InboxController {
       );
     }
 
-    const media = await this.whatsappMessagingService.downloadMedia(
-      conversation.company.id,
-      row.media_id,
-    );
+    let media;
+
+    try {
+      media = await this.whatsappMessagingService.downloadMedia(
+        conversation.company.id,
+        row.media_id,
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo descargar el audio de Meta.';
+
+      console.error('No se pudo reproducir el audio:', error);
+
+      throw new BadRequestException(detail.slice(0, 900));
+    }
 
     response.setHeader(
       'Content-Type',

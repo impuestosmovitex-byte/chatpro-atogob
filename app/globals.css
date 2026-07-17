@@ -372,98 +372,185 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
   gap: 9px;
 }
 
-
 /* Audios de WhatsApp */
-.audio-message {
+.wa-audio-message {
   display: grid;
-  gap: 6px;
-  min-width: min(330px, 68vw);
+  gap: 5px;
+  width: min(330px, 68vw);
 }
-.audio-message audio,
-.audio-recorder audio {
+.wa-audio-message audio {
   width: 100%;
-  max-width: 360px;
-  height: 42px;
+  height: 38px;
 }
-.audio-message small {
+.wa-audio-message small {
   color: inherit;
-  font-size: 11px;
-  opacity: .72;
+  font-size: 10px;
+  opacity: .68;
+}
+.wa-audio-loading,
+.wa-audio-error {
+  display: block;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,.6);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.wa-audio-error {
+  color: #a3323b;
+  background: #fff0f1;
+}
+
+.reply-box {
+  align-items: center;
+  padding: 10px 12px;
+  background: #f7f8fa;
 }
 .reply-compose {
   display: flex;
-  gap: 9px;
-  align-items: stretch;
+  align-items: flex-end;
+  gap: 8px;
   min-width: 0;
   flex: 1;
+  border: 1px solid #dde1e7;
+  border-radius: 22px;
+  background: #fff;
+  padding: 5px 6px 5px 12px;
 }
 .reply-compose .quick-reply-wrap {
   flex: 1;
   min-width: 0;
 }
-.audio-record-button {
-  width: 46px;
-  min-width: 46px;
-  border: 1px solid #d7dce5;
-  border-radius: 12px;
-  background: #fff;
-  color: #263348;
-  font-size: 21px;
+.reply-compose textarea {
+  width: 100%;
+  min-height: 38px;
+  max-height: 110px;
+  border: 0;
+  border-radius: 0;
+  padding: 9px 2px 7px;
+  resize: none;
+  background: transparent;
+  outline: 0;
+}
+.wa-idle-icon,
+.wa-text-send,
+.wa-audio-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
   cursor: pointer;
+  font: inherit;
+  transition: transform .15s ease, opacity .15s ease;
 }
-.audio-record-button:hover {
-  background: #f4f6fa;
-  border-color: #b9c1cf;
+.wa-idle-icon {
+  width: 38px;
+  height: 38px;
+  background: transparent;
+  color: #526072;
+  font-size: 19px;
 }
-.audio-record-button:disabled {
+.wa-idle-icon:hover,
+.wa-text-send:hover,
+.wa-audio-icon:hover {
+  transform: scale(1.04);
+}
+.wa-idle-icon:disabled,
+.wa-text-send:disabled,
+.wa-audio-icon:disabled {
   cursor: not-allowed;
-  opacity: .5;
+  opacity: .45;
 }
-.audio-recorder {
+.wa-text-send,
+.wa-audio-icon.send {
+  width: 43px;
+  height: 43px;
+  background: #20b66f;
+  color: #fff;
+  font-size: 21px;
+  box-shadow: 0 4px 12px rgba(32,182,111,.22);
+}
+.wa-audio-composer {
   display: flex;
   align-items: center;
-  gap: 10px;
-  grid-column: 1 / -1;
+  gap: 11px;
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #dfe3ea;
-  border-radius: 12px;
-  background: #f7f8fb;
+  min-height: 54px;
+  border: 1px solid #dfe3e8;
+  border-radius: 27px;
+  background: #fff;
+  padding: 5px 7px;
 }
-.audio-recorder.preview audio {
+.wa-audio-composer audio {
   flex: 1;
+  min-width: 120px;
+  height: 40px;
 }
-.audio-recorder.active {
-  background: #fff4f4;
-  border-color: #efc6c6;
-  color: #8d2f35;
+.wa-audio-icon {
+  width: 42px;
+  height: 42px;
+  background: transparent;
+  color: #5b6572;
+  font-size: 20px;
 }
-.recording-dot {
-  width: 10px;
-  height: 10px;
-  flex: none;
-  border-radius: 50%;
-  background: #d72f3f;
-  box-shadow: 0 0 0 5px rgba(215, 47, 63, .12);
-  animation: audioPulse 1.2s ease-in-out infinite;
+.wa-audio-icon.danger {
+  color: #c53c48;
 }
-.button.danger {
-  color: #9d3038;
+.wa-audio-icon.stop {
+  background: #fff0f2;
+  color: #dc3042;
+  border: 2px solid #dc3042;
+  font-size: 13px;
 }
-@keyframes audioPulse {
-  50% {
-    transform: scale(.75);
-    opacity: .55;
-  }
+.wa-recording-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  color: #4d5663;
 }
+.wa-recording-progress strong {
+  min-width: 40px;
+  color: #1f2937;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.wa-wave-line {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  height: 30px;
+  overflow: hidden;
+}
+.wa-wave-line i {
+  display: block;
+  width: 3px;
+  height: 8px;
+  border-radius: 999px;
+  background: #8993a0;
+  animation: waWave 1s ease-in-out infinite;
+}
+.wa-wave-line i:nth-child(2n) { animation-delay: .12s; }
+.wa-wave-line i:nth-child(3n) { animation-delay: .24s; }
+.wa-wave-line i:nth-child(4n) { animation-delay: .36s; }
+
+@keyframes waWave {
+  0%, 100% { height: 7px; opacity: .55; }
+  50% { height: 24px; opacity: 1; }
+}
+
 @media (max-width: 720px) {
-  .audio-recorder {
-    flex-wrap: wrap;
+  .wa-audio-message {
+    width: min(270px, 72vw);
   }
-  .audio-recorder.preview audio {
-    flex-basis: 100%;
+  .wa-audio-composer {
+    gap: 6px;
   }
-  .audio-message {
-    min-width: min(260px, 72vw);
+  .wa-audio-icon {
+    width: 38px;
+    height: 38px;
   }
 }
