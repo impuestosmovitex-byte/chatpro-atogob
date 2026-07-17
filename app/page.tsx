@@ -160,6 +160,8 @@ function getCart(context: Record<string, unknown>) {
 
 export default function Home() {
   const [canTestAgent, setCanTestAgent] = useState(false);
+  const [canOpenStorefront, setCanOpenStorefront] = useState(false);
+  const [canManageClients, setCanManageClients] = useState(false);
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [sessions, setSessions] = useState<InboxSession[]>([]);
   const [selected, setSelected] = useState<InboxConversation | null>(null);
@@ -556,18 +558,38 @@ export default function Home() {
         });
         const data = (await response.json()) as {
           ok?: boolean;
-          capabilities?: { testAgent?: boolean };
+          capabilities?: {
+            testAgent?: boolean;
+            storefront?: boolean;
+            manageClients?: boolean;
+          };
         };
 
         if (alive) {
-          setCanTestAgent(
+          const allowed =
             response.ok &&
             data.ok === true &&
+            Boolean(data.capabilities);
+
+          setCanTestAgent(
+            allowed &&
             data.capabilities?.testAgent === true,
+          );
+          setCanOpenStorefront(
+            allowed &&
+            data.capabilities?.storefront === true,
+          );
+          setCanManageClients(
+            allowed &&
+            data.capabilities?.manageClients === true,
           );
         }
       } catch {
-        if (alive) setCanTestAgent(false);
+        if (alive) {
+          setCanTestAgent(false);
+          setCanOpenStorefront(false);
+          setCanManageClients(false);
+        }
       }
     }
 
@@ -1193,7 +1215,7 @@ export default function Home() {
                   </div>
                 </dl>
 
-                {!isInternalTest ? (
+                {!isInternalTest && canOpenStorefront ? (
                   <section className="storefront-card">
                     <div>
                       <h3>Tienda conectada</h3>
@@ -1206,7 +1228,7 @@ export default function Home() {
                   </section>
                 ) : null}
 
-                {!isInternalTest ? (
+                {!isInternalTest && canManageClients ? (
                   <form className="contact-card-form" onSubmit={saveContactFromInbox}>
                     <div className="contact-card-heading">
                       <h3>Ficha comercial</h3>

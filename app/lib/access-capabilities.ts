@@ -3,6 +3,10 @@ import type { ChatProSession } from './inbox-auth';
 export type AccessCapabilities = {
   inbox: boolean;
   clients: boolean;
+  manageClients: boolean;
+  startConversations: boolean;
+  storefront: boolean;
+  sendAudio: boolean;
   automations: boolean;
   configuration: boolean;
   testAgent: boolean;
@@ -17,6 +21,10 @@ type CapabilitiesResponse = {
 const FULL_ACCESS: AccessCapabilities = {
   inbox: true,
   clients: true,
+  manageClients: true,
+  startConversations: true,
+  storefront: true,
+  sendAudio: true,
   automations: true,
   configuration: true,
   testAgent: true,
@@ -67,6 +75,11 @@ export async function getAccessCapabilities(
   return {
     inbox: data.capabilities.inbox === true,
     clients: data.capabilities.clients === true,
+    manageClients: data.capabilities.manageClients === true,
+    startConversations:
+      data.capabilities.startConversations === true,
+    storefront: data.capabilities.storefront === true,
+    sendAudio: data.capabilities.sendAudio === true,
     automations: data.capabilities.automations === true,
     configuration: data.capabilities.configuration === true,
     testAgent: data.capabilities.testAgent === true,

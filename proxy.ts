@@ -27,6 +27,7 @@ const ADVISOR_ALLOWED_APIS = [
   '/api/clients',
   '/api/advisor-presence',
   '/api/quick-replies',
+  '/api/storefront',
 ];
 
 function matchesPath(pathname: string, allowedPath: string): boolean {

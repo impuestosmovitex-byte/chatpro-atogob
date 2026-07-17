@@ -59,6 +59,7 @@ function category(key: string): string {
     settings: 'Configuración',
     automation: 'Automatizaciones',
     automations: 'Automatizaciones',
+    storefront: 'Tienda',
     sales: 'Ventas',
     order: 'Pedidos',
     orders: 'Pedidos',

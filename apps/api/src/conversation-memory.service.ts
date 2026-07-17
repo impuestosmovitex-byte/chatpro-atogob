@@ -349,10 +349,38 @@ export class ConversationMemoryService {
       lastActivityAt: now,
     });
 
-    const session = await this.getOrCreateSessionByCompanyId(
+    let session = await this.getOrCreateSessionByCompanyId(
       profile.id,
       phone,
     );
+
+    const { count: messageCount, error: messageCountError } =
+      await this.supabaseService
+        .getClient()
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', session.id);
+
+    if (messageCountError) {
+      throw new Error(
+        `No se pudo preparar la conversación del contacto: ${messageCountError.message}`,
+      );
+    }
+
+    if ((messageCount ?? 0) === 0) {
+      session = await this.updateAttention(session.id, {
+        attention_status: 'waiting',
+        assigned_to_user_id: null,
+        assigned_to_name: null,
+        taken_at: null,
+        closed_at: null,
+        context: {
+          ...session.context,
+          manual_contact: true,
+          manual_contact_created_at: now,
+        },
+      });
+    }
 
     return {
       company: { id: profile.id, slug: profile.slug, name: profile.name },

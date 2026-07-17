@@ -11,6 +11,10 @@ import { SupabaseService } from './supabase.service';
 type CapabilityKey =
   | 'inbox'
   | 'clients'
+  | 'manageClients'
+  | 'startConversations'
+  | 'storefront'
+  | 'sendAudio'
   | 'automations'
   | 'configuration'
   | 'testAgent';
@@ -139,7 +143,16 @@ export class AccessCapabilitiesController {
       inbox: fullAccess || hasPrefix('inbox', 'conversation', 'conversations'),
       clients:
         fullAccess ||
-        hasPrefix('client', 'clients', 'customer', 'customers', 'inbox'),
+        permissionKeys.includes('clients.view') ||
+        hasPrefix('client', 'clients', 'customer', 'customers'),
+      manageClients:
+        fullAccess || permissionKeys.includes('clients.manage'),
+      startConversations:
+        fullAccess || permissionKeys.includes('inbox.start'),
+      storefront:
+        fullAccess || permissionKeys.includes('storefront.open'),
+      sendAudio:
+        fullAccess || permissionKeys.includes('inbox.audio'),
       automations:
         fullAccess || hasPrefix('automation', 'automations'),
       configuration:

@@ -3,6 +3,7 @@ import {
   INBOX_SESSION_COOKIE,
   getInboxSession,
 } from '../../lib/inbox-auth';
+import { getAccessCapabilities } from '../../lib/access-capabilities';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { ok: false, error: 'Sesión requerida.' },
         { status: 401 },
+      );
+    }
+
+    const capabilities = await getAccessCapabilities(session);
+
+    if (!capabilities.storefront) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'No tienes permiso para abrir la tienda.',
+        },
+        { status: 403 },
       );
     }
 

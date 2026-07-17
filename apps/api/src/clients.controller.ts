@@ -65,16 +65,25 @@ export class ClientsController {
       roleKey,
       payload.company.id,
     );
-    const historyRestricted = !this.canViewHistory(actor, payload.session);
+    const historyRestricted = !this.canViewHistory(
+      actor,
+      payload.session,
+    );
+    const start = this.startAvailability(
+      actor,
+      payload.client,
+    );
 
     return {
       ok: true,
       ...payload,
       client: historyRestricted
-        ? { ...payload.client, lastMessage: null }
-        : payload.client,
+        ? { ...payload.client, lastMessage: null, ...start }
+        : { ...payload.client, ...start },
       messages: historyRestricted ? [] : payload.messages,
       historyRestricted,
+      canEdit: this.hasPermission(actor, 'clients.manage'),
+      ...start,
     };
   }
 
@@ -109,9 +118,13 @@ export class ClientsController {
     return {
       ok: true,
       ...payload,
-      clients: payload.clients.map((client) =>
-        this.secureClientSummary(actor, client),
-      ),
+      canEdit: this.hasPermission(actor, 'clients.manage'),
+      clients: payload.clients
+        .map((client) => this.secureClientSummary(actor, client))
+        .filter(
+          (client) =>
+            !client.historyRestricted || client.startAvailable,
+        ),
     };
   }
 
@@ -135,7 +148,7 @@ export class ClientsController {
     const profile = await this.conversationMemoryService.getCompanyProfile(
       company,
     );
-    await this.actor(
+    const actor = await this.actor(
       sessionType,
       userId,
       fullName,
@@ -146,7 +159,47 @@ export class ClientsController {
 
     const action = this.readText(body.action);
 
+    if (action === 'start-conversation') {
+      const phone = this.requiredPhone(this.readText(body.phone));
+      const payload =
+        await this.conversationMemoryService.getClientProfile(
+          company,
+          phone,
+        );
+      const start = this.startAvailability(actor, payload.client);
+
+      if (!start.startAvailable) {
+        throw new ForbiddenException(
+          start.startBlockedReason ||
+            'Esta conversación todavía no está disponible.',
+        );
+      }
+
+      if (!actor.userId) {
+        throw new BadRequestException(
+          'Inicia sesión con un usuario para tomar la conversación.',
+        );
+      }
+
+      return {
+        ok: true,
+        session:
+          await this.conversationMemoryService.takeConversation(
+            payload.session.id,
+            {
+              userId: actor.userId,
+              fullName: actor.fullName,
+            },
+          ),
+      };
+    }
+
     if (action === 'create') {
+      this.assertPermission(
+        actor,
+        'clients.manage',
+        'No tienes permiso para crear contactos.',
+      );
       return {
         ok: true,
         ...(await this.conversationMemoryService.createManualContact(
@@ -162,6 +215,12 @@ export class ClientsController {
     }
 
     if (action === 'update') {
+      this.assertPermission(
+        actor,
+        'clients.manage',
+        'No tienes permiso para editar clientes.',
+      );
+
       return {
         ok: true,
         contact: await this.conversationMemoryService.updateContact(
@@ -268,8 +327,14 @@ export class ClientsController {
         .filter((value: unknown): value is string => typeof value === 'string'),
     );
 
-    if (!permissions.has('inbox.view')) {
-      throw new ForbiddenException('No tienes permiso para ver clientes.');
+    if (
+      role !== 'owner' &&
+      role !== 'admin' &&
+      !permissions.has('clients.view')
+    ) {
+      throw new ForbiddenException(
+        'No tienes permiso para ver clientes.',
+      );
     }
 
     return {
@@ -291,20 +356,131 @@ export class ClientsController {
       return true;
     }
 
-    return (
+    if (
       session.attentionStatus === 'human' &&
-      session.assignedToUserId === actor.userId
+      session.assignedToUserId === actor.userId &&
+      actor.permissions.has('inbox.view_own')
+    ) {
+      return true;
+    }
+
+    if (
+      session.attentionStatus === 'human' &&
+      actor.permissions.has('inbox.view_team')
+    ) {
+      return true;
+    }
+
+    if (
+      session.attentionStatus === 'ai' &&
+      actor.permissions.has('inbox.view_ai')
+    ) {
+      return true;
+    }
+
+    return (
+      session.attentionStatus === 'waiting' &&
+      actor.permissions.has('inbox.view_waiting')
     );
+  }
+
+  private startAvailability(
+    actor: Actor,
+    client: Pick<
+      ClientSummary,
+      | 'attentionStatus'
+      | 'assignedToUserId'
+      | 'lastMessageAt'
+      | 'totalMessages'
+    >,
+  ): {
+    startAvailable: boolean;
+    startBlockedReason: string | null;
+  } {
+    if (!this.hasPermission(actor, 'inbox.start')) {
+      return {
+        startAvailable: false,
+        startBlockedReason:
+          'No tienes permiso para iniciar conversaciones.',
+      };
+    }
+
+    if (
+      client.attentionStatus === 'human' &&
+      client.assignedToUserId === actor.userId
+    ) {
+      return {
+        startAvailable: false,
+        startBlockedReason:
+          'La conversación ya está asignada a tu usuario.',
+      };
+    }
+
+    if (client.attentionStatus === 'human') {
+      return {
+        startAvailable: false,
+        startBlockedReason:
+          'La conversación está asignada a otro asesor.',
+      };
+    }
+
+    if (
+      client.attentionStatus === 'waiting' ||
+      client.totalMessages === 0
+    ) {
+      return {
+        startAvailable: true,
+        startBlockedReason: null,
+      };
+    }
+
+    const lastActivity = new Date(client.lastMessageAt).getTime();
+    const inactiveForTwelveHours =
+      Number.isFinite(lastActivity) &&
+      Date.now() - lastActivity >= 12 * 60 * 60 * 1000;
+
+    if (
+      inactiveForTwelveHours &&
+      (client.attentionStatus === 'ai' ||
+        client.attentionStatus === 'closed')
+    ) {
+      return {
+        startAvailable: true,
+        startBlockedReason: null,
+      };
+    }
+
+    return {
+      startAvailable: false,
+      startBlockedReason:
+        'La IA tuvo actividad durante las últimas 12 horas.',
+    };
   }
 
   private secureClientSummary(actor: Actor, client: ClientSummary) {
     const historyRestricted = !this.canViewHistory(actor, client);
+    const start = this.startAvailability(actor, client);
 
     return {
       ...client,
       lastMessage: historyRestricted ? null : client.lastMessage,
       historyRestricted,
+      ...start,
     };
+  }
+
+  private hasPermission(actor: Actor, permission: string): boolean {
+    return actor.isFullAccess || actor.permissions.has(permission);
+  }
+
+  private assertPermission(
+    actor: Actor,
+    permission: string,
+    message: string,
+  ): void {
+    if (!this.hasPermission(actor, permission)) {
+      throw new ForbiddenException(message);
+    }
   }
 
   private authorize(providedKey: string) {

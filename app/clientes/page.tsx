@@ -51,6 +51,8 @@ type ClientSummary = {
   totalMessages: number;
   lastMessage: InboxMessage | null;
   historyRestricted?: boolean;
+  startAvailable?: boolean;
+  startBlockedReason?: string | null;
 };
 
 type ClientProfile = {
@@ -59,6 +61,9 @@ type ClientProfile = {
   session: ConversationSession;
   messages: InboxMessage[];
   historyRestricted: boolean;
+  canEdit: boolean;
+  startAvailable: boolean;
+  startBlockedReason: string | null;
 };
 
 type ClientsResponse = {
@@ -66,6 +71,7 @@ type ClientsResponse = {
   error?: string;
   company?: { id: string; slug: string; name: string };
   clients?: ClientSummary[];
+  canEdit?: boolean;
 };
 
 type ClientProfileResponse = {
@@ -76,6 +82,9 @@ type ClientProfileResponse = {
   session?: ConversationSession;
   messages?: InboxMessage[];
   historyRestricted?: boolean;
+  canEdit?: boolean;
+  startAvailable?: boolean;
+  startBlockedReason?: string | null;
 };
 
 type SaveResponse = {
@@ -142,6 +151,8 @@ export default function ClientsPage() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [canManageClients, setCanManageClients] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -184,6 +195,7 @@ export default function ClientsPage() {
         throw new Error(data.error || "No se pudieron cargar los clientes.");
       }
       setClients(data.clients ?? []);
+      setCanManageClients(data.canEdit === true);
       setCompanyName(data.company?.name || "Empresa");
       setError("");
     } catch (caught) {
@@ -211,6 +223,13 @@ export default function ClientsPage() {
         messages: data.messages ?? [],
         historyRestricted:
           data.historyRestricted ?? data.client.historyRestricted ?? false,
+        canEdit: data.canEdit === true,
+        startAvailable:
+          data.startAvailable ?? data.client.startAvailable ?? false,
+        startBlockedReason:
+          data.startBlockedReason ??
+          data.client.startBlockedReason ??
+          null,
       };
       setSelected(profile);
       setCompanyName(profile.company.name || "Empresa");
@@ -291,6 +310,44 @@ export default function ClientsPage() {
     }
   }
 
+  async function startConversation() {
+    if (!selected) return;
+
+    setStarting(true);
+    setMessage('');
+    setError('');
+
+    try {
+      const response = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'start-conversation',
+          phone: selected.client.customerPhone,
+        }),
+      });
+      const data = (await readJson(response)) as SaveResponse;
+
+      if (!response.ok || !data.ok || !data.session) {
+        throw new Error(
+          data.error || 'No se pudo iniciar la conversación.',
+        );
+      }
+
+      window.location.assign(
+        `/?session=${encodeURIComponent(data.session.id)}`,
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'No se pudo iniciar la conversación.',
+      );
+    } finally {
+      setStarting(false);
+    }
+  }
+
   function searchClients(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void loadClients(search);
@@ -347,13 +404,15 @@ export default function ClientsPage() {
             </p>
           </div>
           <div className={styles.headerActions}>
-            <button
-              className={styles.secondaryButton}
-              type="button"
-              onClick={() => setShowCreate((current) => !current)}
-            >
-              {showCreate ? "Cancelar" : "+ Nuevo contacto"}
-            </button>
+            {canManageClients ? (
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                onClick={() => setShowCreate((current) => !current)}
+              >
+                {showCreate ? "Cancelar" : "+ Nuevo contacto"}
+              </button>
+            ) : null}
             <button
               className={styles.refreshButton}
               type="button"
@@ -368,7 +427,7 @@ export default function ClientsPage() {
         {error ? <div className={styles.error}>{error}</div> : null}
         {message ? <div className={styles.success}>{message}</div> : null}
 
-        {showCreate ? (
+        {showCreate && canManageClients ? (
           <form className={styles.createCard} onSubmit={createContact}>
             <div>
               <p className={styles.eyebrow}>NUEVO CONTACTO</p>
@@ -452,12 +511,8 @@ export default function ClientsPage() {
                     </span>
                     <span className={styles.phone}>{client.customerPhone}</span>
                     <span className={styles.preview}>
-                      {client.historyRestricted
-                        ? client.assignedToName
-                          ? `Historial restringido · Asignado a ${client.assignedToName}`
-                          : client.attentionStatus === "ai"
-                            ? "Historial restringido · IA atendiendo"
-                            : "Historial restringido"
+                      {client.startAvailable
+                        ? "Disponible para iniciar conversación"
                         : client.lastMessage?.message || "Sin mensajes todavía"}
                     </span>
                     <span className={`${styles.status} ${styles[`status_${client.attentionStatus}`]}`}>
@@ -484,11 +539,18 @@ export default function ClientsPage() {
                     <h2>{customerLabel(selected.client)}</h2>
                     <p>{channelLabel[selected.client.contact?.primaryChannel ?? "whatsapp"]} · {selected.client.customerPhone}</p>
                   </div>
-                  {selected.historyRestricted ? (
-                    <span className={styles.restrictedBadge}>
-                      Acceso restringido
-                    </span>
-                  ) : (
+                  {selected.startAvailable ? (
+                    <button
+                      className={styles.inboxButton}
+                      type="button"
+                      disabled={starting}
+                      onClick={() => void startConversation()}
+                    >
+                      {starting
+                        ? 'Iniciando…'
+                        : 'Iniciar conversación'}
+                    </button>
+                  ) : !selected.historyRestricted ? (
                     <button
                       className={styles.inboxButton}
                       type="button"
@@ -500,7 +562,7 @@ export default function ClientsPage() {
                     >
                       Abrir conversación
                     </button>
-                  )}
+                  ) : null}
                 </header>
 
                 <div className={styles.profileData}>
@@ -509,7 +571,7 @@ export default function ClientsPage() {
                   <article>
                     <span>Mensajes</span>
                     <strong>
-                      {selected.historyRestricted ? "Restringido" : totalMessages}
+                      {selected.historyRestricted ? "—" : totalMessages}
                     </strong>
                   </article>
                   <article><span>Primera interacción</span><strong>{formatDate(selected.client.firstMessageAt)}</strong></article>
@@ -517,6 +579,7 @@ export default function ClientsPage() {
                   <article><span>Asignado a</span><strong>{selected.client.assignedToName || "Sin asignar"}</strong></article>
                 </div>
 
+                {selected.canEdit ? (
                 <form className={styles.contactForm} onSubmit={saveContact}>
                   <div className={styles.contactFormHeader}>
                     <div>
@@ -543,7 +606,9 @@ export default function ClientsPage() {
                   </div>
                   <p className={styles.helper}>Separa las etiquetas con comas. Estas notas no las ve el cliente.</p>
                 </form>
+                ) : null}
 
+                {!selected.historyRestricted ? (
                 <section className={styles.history}>
                   <div className={styles.historyHeader}>
                     <div>
@@ -554,18 +619,6 @@ export default function ClientsPage() {
                   </div>
 
                   <div className={styles.messageFeed}>
-                    {!loadingProfile && selected.historyRestricted ? (
-                      <div className={styles.restrictedNotice}>
-                        <strong>Historial restringido</strong>
-                        <p>
-                          {selected.client.assignedToName
-                            ? `Esta conversación está asignada a ${selected.client.assignedToName}. Debe transferírtela para que puedas ver el historial y responder.`
-                            : selected.client.attentionStatus === "ai"
-                              ? "La IA está atendiendo esta conversación. Cuando esté disponible podrás tomarla desde la Bandeja."
-                              : "No tienes acceso al historial de esta conversación."}
-                        </p>
-                      </div>
-                    ) : null}
                     {!loadingProfile &&
                     !selected.historyRestricted &&
                     !selected.messages.length ? (
@@ -594,6 +647,7 @@ export default function ClientsPage() {
                       : null}
                   </div>
                 </section>
+                ) : null}
               </>
             )}
           </section>
