@@ -68,6 +68,7 @@ const DEFAULT_FULFILLMENT_MESSAGE = [
 export class ShopifyAutomationProcessorService implements OnModuleInit {
   private readonly logger = new Logger(ShopifyAutomationProcessorService.name);
   private processing = false;
+  private processingStartedAt: number | null = null;
 
   constructor(
     private readonly supabaseService: SupabaseService,
@@ -78,19 +79,46 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     this.logger.log(
       'Procesador automático de eventos Shopify iniciado.',
     );
-    void this.processPending();
+
+    setTimeout(() => {
+      void this.processPending();
+    }, 5000);
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
   async processPending(): Promise<void> {
+    const now = Date.now();
+
     if (this.processing) {
-      return;
+      const elapsed =
+        this.processingStartedAt === null
+          ? 0
+          : now - this.processingStartedAt;
+
+      if (elapsed < 30000) {
+        return;
+      }
+
+      this.logger.warn(
+        `Se liberó un procesamiento Shopify bloqueado hace ${Math.round(
+          elapsed / 1000,
+        )} segundos.`,
+      );
+      this.processing = false;
+      this.processingStartedAt = null;
     }
 
     this.processing = true;
+    this.processingStartedAt = now;
 
     try {
-      const rows = await this.pendingRows();
+      this.logger.log('Consultando la cola pendiente de Shopify.');
+
+      const rows = await this.withTimeout(
+        this.pendingRows(),
+        15000,
+        'La consulta de eventos Shopify tardó más de 15 segundos.',
+      );
 
       if (rows.length) {
         this.logger.log(
@@ -107,6 +135,28 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
       );
     } finally {
       this.processing = false;
+      this.processingStartedAt = null;
+    }
+  }
+
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    milliseconds: number,
+    message: string,
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error(message)), milliseconds);
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
     }
   }
 
