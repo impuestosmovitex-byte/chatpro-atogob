@@ -143,7 +143,8 @@ export class CartRecoveryService {
       Date.now() - rule.delay_minutes * 60 * 1000,
     ).toISOString();
 
-    const { data, error } = await this.supabaseService
+    const company = await this.getCompanyContext(rule.company_id);
+    let cartsQuery = this.supabaseService
       .getClient()
       .from('abandoned_carts')
       .select(
@@ -152,7 +153,54 @@ export class CartRecoveryService {
       .eq('company_id', rule.company_id)
       .in('cart_state', ['active', 'checkout_sent'])
       .eq('recovery_step', rule.sequence - 1)
-      .lte('last_activity_at', dueBefore)
+      .lte('last_activity_at', dueBefore);
+
+    if (this.isCartRecoveryTestMode(company.settings)) {
+      const candidates = new Set<string>();
+
+      for (const value of this.getCartRecoveryTestPhones(
+        company.settings,
+      )) {
+        const originalDigits = value.replace(/\D/g, '');
+        const normalized = this.normalizeWhatsAppRecipient(
+          value,
+          company.settings,
+        );
+        const normalizedDigits = normalized?.replace(/\D/g, '') ?? '';
+
+        if (originalDigits) {
+          candidates.add(originalDigits);
+
+          if (originalDigits.length >= 10) {
+            candidates.add(originalDigits.slice(-10));
+          }
+        }
+
+        if (normalizedDigits) {
+          candidates.add(normalizedDigits);
+          candidates.add(`+${normalizedDigits}`);
+
+          if (normalizedDigits.length >= 10) {
+            candidates.add(normalizedDigits.slice(-10));
+          }
+        }
+      }
+
+      if (!candidates.size) {
+        this.logger.warn(
+          `Recuperación en modo prueba sin teléfonos autorizados para la empresa ${rule.company_id}.`,
+        );
+        return;
+      }
+
+      cartsQuery = cartsQuery.in(
+        'customer_phone',
+        Array.from(candidates),
+      );
+    }
+
+    const { data, error } = await cartsQuery
+      .order('last_activity_at', { ascending: false })
       .limit(30);
 
     if (error) {
