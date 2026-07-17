@@ -203,8 +203,16 @@ export class CartRecoveryService {
         company.settings,
       )
     ) {
+      const allowedMasks = this.getCartRecoveryTestPhones(
+        company.settings,
+      )
+        .map((value) => this.maskPhone(value))
+        .join(', ');
+
       this.logger.log(
-        `Recuperación en modo prueba: se omitió el carrito ${cart.id}.`,
+        `Recuperación en modo prueba: se omitió el carrito ${cart.id}. Destino ${this.maskPhone(
+          recipient,
+        )}; autorizados ${allowedMasks || 'ninguno'}.`,
       );
       return;
     }
@@ -459,17 +467,39 @@ export class CartRecoveryService {
       return true;
     }
 
+    const recipientDigits = recipient.replace(/\D/g, '');
+    const recipientNational = recipientDigits.slice(-10);
     const testPhones = this.getCartRecoveryTestPhones(settings);
 
     return testPhones.some((value) => {
-      if (typeof value !== 'string') {
+      const normalized =
+        this.normalizeWhatsAppRecipient(value, settings);
+      const configuredDigits = (normalized ?? value).replace(/\D/g, '');
+
+      if (!configuredDigits) {
         return false;
       }
 
+      if (configuredDigits === recipientDigits) {
+        return true;
+      }
+
       return (
-        this.normalizeWhatsAppRecipient(value, settings) === recipient
+        configuredDigits.length >= 10 &&
+        recipientDigits.length >= 10 &&
+        configuredDigits.slice(-10) === recipientNational
       );
     });
+  }
+
+  private maskPhone(value: string): string {
+    const digits = value.replace(/\D/g, '');
+
+    if (!digits) {
+      return 'sin teléfono';
+    }
+
+    return `****${digits.slice(-4)}`;
   }
 
   private normalizeWhatsAppRecipient(
@@ -634,11 +664,21 @@ export class CartRecoveryService {
       'cart_recovery_test_phones',
     );
 
-    if (!Array.isArray(value)) {
-      return [];
+    if (Array.isArray(value)) {
+      return value
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean);
     }
 
-    return value.filter((item): item is string => typeof item === 'string');
+    if (typeof value === 'string') {
+      return value
+        .split(/[\n,;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    return [];
   }
 
   private getCartRecoveryDefaultCountryCode(settings: JsonObject): string {
