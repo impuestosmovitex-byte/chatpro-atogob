@@ -60,6 +60,12 @@ const baseNavigation: Array<{
     capability: 'automations',
   },
   {
+    href: '/plantillas-whatsapp',
+    label: 'Plantillas WhatsApp',
+    icon: '▤',
+    capability: 'automations',
+  },
+  {
     href: '/salud',
     label: 'Salud y alertas',
     icon: '!',

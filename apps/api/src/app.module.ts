@@ -52,6 +52,8 @@ import { ShopifyOrderDetailDiagnosticsController } from './shopify-order-detail-
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { PlatformHealthController } from './platform-health.controller';
 import { PlatformHealthService } from './platform-health.service';
+import { WhatsappTemplateController } from './whatsapp-template.controller';
+import { WhatsappTemplateService } from './whatsapp-template.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -82,6 +84,7 @@ import { PlatformHealthService } from './platform-health.service';
     AdvisorPresenceController,
     ServiceAreasController,
     PlatformHealthController,
+    WhatsappTemplateController,
   ],
   providers: [
     CompanyIntegrationService,
@@ -109,6 +112,7 @@ import { PlatformHealthService } from './platform-health.service';
     CartRecoveryContextService,
     AccessAuthService,
     PlatformHealthService,
+    WhatsappTemplateService,
   ],
 })
 export class AppModule {}
