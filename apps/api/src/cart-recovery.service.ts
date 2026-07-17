@@ -45,6 +45,7 @@ export class CartRecoveryService {
   private readonly logger = new Logger(CartRecoveryService.name);
   private client: OpenAI | null = null;
   private isRunning = false;
+  private readonly processedCartIdsThisCycle = new Set<string>();
 
   constructor(
     private readonly supabaseService: SupabaseService,
@@ -61,6 +62,7 @@ export class CartRecoveryService {
     }
 
     this.isRunning = true;
+    this.processedCartIdsThisCycle.clear();
 
     try {
       try {
@@ -76,6 +78,7 @@ export class CartRecoveryService {
     } catch (error) {
       this.logger.error('No se pudieron revisar los carritos pendientes.', error);
     } finally {
+      this.processedCartIdsThisCycle.clear();
       this.isRunning = false;
     }
   }
@@ -210,8 +213,12 @@ export class CartRecoveryService {
     }
 
     const carts = (data ?? []) as AbandonedCart[];
+    const cartsToProcess = this.latestCartPerRecipient(
+      carts,
+      company.settings,
+    );
 
-    for (const cart of carts) {
+    for (const cart of cartsToProcess) {
       try {
         await this.processCart(rule, cart, isLastRule);
       } catch (error) {
@@ -229,6 +236,10 @@ export class CartRecoveryService {
     isLastRule: boolean,
   ): Promise<void> {
     if (!cart.customer_phone || !cart.checkout_url) {
+      return;
+    }
+
+    if (this.processedCartIdsThisCycle.has(cart.id)) {
       return;
     }
 
@@ -298,6 +309,7 @@ export class CartRecoveryService {
           rule.sequence,
           isLastRule,
         );
+        this.processedCartIdsThisCycle.add(cart.id);
       }
       return;
     }
@@ -346,6 +358,7 @@ export class CartRecoveryService {
         rule.sequence,
         isLastRule,
       );
+      this.processedCartIdsThisCycle.add(cart.id);
     } catch (error) {
       await this.automationRuntimeService.markFailed(
         claim.executionId as string,
@@ -356,6 +369,34 @@ export class CartRecoveryService {
       );
       throw error;
     }
+  }
+
+  private latestCartPerRecipient(
+    carts: AbandonedCart[],
+    settings: JsonObject,
+  ): AbandonedCart[] {
+    const recipients = new Set<string>();
+    const selected: AbandonedCart[] = [];
+
+    for (const cart of carts) {
+      if (!cart.customer_phone) {
+        continue;
+      }
+
+      const recipient = this.normalizeWhatsAppRecipient(
+        cart.customer_phone,
+        settings,
+      );
+
+      if (!recipient || recipients.has(recipient)) {
+        continue;
+      }
+
+      recipients.add(recipient);
+      selected.push(cart);
+    }
+
+    return selected;
   }
 
   private async isInsideCustomerWindow(
