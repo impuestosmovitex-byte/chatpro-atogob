@@ -4,6 +4,11 @@ import { IntegrationCredentialsService } from './integration-credentials.service
 
 type JsonObject = Record<string, unknown>;
 
+export type WhatsappSendResult = {
+  messageId: string;
+  recipient: string | null;
+};
+
 @Injectable()
 export class WhatsappMessagingService {
   constructor(
@@ -15,10 +20,10 @@ export class WhatsappMessagingService {
     companyId: string,
     to: string,
     body: string,
-  ): Promise<void> {
+  ): Promise<WhatsappSendResult> {
     const channel = await this.resolveChannel(companyId);
 
-    await this.send(channel, {
+    return this.send(channel, {
       messaging_product: 'whatsapp',
       to,
       type: 'text',
@@ -32,7 +37,7 @@ export class WhatsappMessagingService {
     templateName: string,
     languageCode: string,
     bodyParameters: string[] = [],
-  ): Promise<void> {
+  ): Promise<WhatsappSendResult> {
     const channel = await this.resolveChannel(companyId);
     const template: {
       name: string;
@@ -58,7 +63,7 @@ export class WhatsappMessagingService {
       ];
     }
 
-    await this.send(channel, {
+    return this.send(channel, {
       messaging_product: 'whatsapp',
       to,
       type: 'template',
@@ -143,7 +148,7 @@ export class WhatsappMessagingService {
       apiVersion: string;
     },
     payload: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<WhatsappSendResult> {
     const response = await fetch(
       `https://graph.facebook.com/${channel.apiVersion}/${channel.phoneNumberId}/messages`,
       {
@@ -156,11 +161,49 @@ export class WhatsappMessagingService {
       },
     );
 
+    const rawResponse = await response.text();
+    let data: JsonObject = {};
+
+    try {
+      data = rawResponse
+        ? (JSON.parse(rawResponse) as JsonObject)
+        : {};
+    } catch {
+      data = {};
+    }
+
     if (!response.ok) {
       throw new Error(
-        `Meta no aceptó el mensaje: ${await response.text()}`,
+        `Meta no aceptó el mensaje: ${rawResponse}`,
       );
     }
+
+    const messages = Array.isArray(data.messages)
+      ? data.messages
+      : [];
+    const contacts = Array.isArray(data.contacts)
+      ? data.contacts
+      : [];
+    const message = this.object(messages[0]);
+    const contact = this.object(contacts[0]);
+    const messageId = this.readText(message.id);
+
+    if (!messageId) {
+      throw new Error(
+        'Meta aceptó la solicitud, pero no devolvió el identificador del mensaje.',
+      );
+    }
+
+    return {
+      messageId,
+      recipient: this.readText(contact.wa_id) || null,
+    };
+  }
+
+  private object(value: unknown): JsonObject {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as JsonObject)
+      : {};
   }
 
   private readText(value: unknown): string {

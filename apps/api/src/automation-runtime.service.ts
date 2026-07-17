@@ -94,7 +94,7 @@ export class AutomationRuntimeService {
       client
         .from('automation_executions')
         .select(
-          'id, automation_key, event_key, channel, recipient, status, attempt_count, scheduled_for, next_retry_at, sent_at, failed_at, error_message, payload, created_at',
+          'id, automation_key, event_key, channel, recipient, status, attempt_count, scheduled_for, next_retry_at, sent_at, failed_at, provider_message_id, error_message, payload, created_at',
         )
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
@@ -152,6 +152,12 @@ export class AutomationRuntimeService {
         channel: row.channel,
         recipient: row.recipient,
         status: row.status,
+        providerMessageId:
+          this.text(row.provider_message_id) || null,
+        providerStatus:
+          this.text(payload.provider_status) || null,
+        providerStatusAt:
+          this.text(payload.provider_status_at) || null,
         attemptCount: Number(row.attempt_count ?? 0),
         scheduledFor: row.scheduled_for,
         nextRetryAt: row.next_retry_at,
@@ -407,7 +413,7 @@ export class AutomationRuntimeService {
     const { data: existing, error: existingError } = await client
       .from('automation_executions')
       .select(
-        'id, status, attempt_count, next_retry_at, locked_at, sent_at',
+        'id, status, attempt_count, next_retry_at, locked_at, sent_at, provider_message_id',
       )
       .eq('company_id', input.companyId)
       .eq('automation_key', input.automationKey)
@@ -447,6 +453,18 @@ export class AutomationRuntimeService {
     if (attemptCount >= definition.maxAttempts) {
       return this.existingClaim(
         'attempts_exhausted',
+        existing.id,
+        attemptCount,
+        definition,
+      );
+    }
+
+    if (
+      existing.status === 'running' &&
+      this.text(existing.provider_message_id)
+    ) {
+      return this.existingClaim(
+        'locked',
         existing.id,
         attemptCount,
         definition,
@@ -524,6 +542,222 @@ export class AutomationRuntimeService {
       maxAttempts: definition.maxAttempts,
       retryDelayMinutes: definition.retryDelayMinutes,
     };
+  }
+
+  async markAccepted(
+    executionId: string,
+    providerMessageId: string,
+  ): Promise<void> {
+    const messageId = this.text(providerMessageId);
+
+    if (!messageId) {
+      throw new Error(
+        'Meta no devolvió un identificador válido para el mensaje.',
+      );
+    }
+
+    const client = this.supabaseService.getClient();
+    const { data, error: readError } = await client
+      .from('automation_executions')
+      .select('payload')
+      .eq('id', executionId)
+      .maybeSingle();
+
+    if (readError || !data) {
+      throw new Error(
+        `No se pudo preparar la confirmación de Meta: ${
+          readError?.message ?? 'ejecución no encontrada'
+        }`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const payload = {
+      ...this.object(data.payload),
+      provider_status: 'accepted',
+      provider_status_at: now,
+    };
+
+    const { error } = await client
+      .from('automation_executions')
+      .update({
+        status: 'running',
+        provider_message_id: messageId,
+        payload,
+        locked_at: now,
+        failed_at: null,
+        next_retry_at: null,
+        error_message: null,
+        updated_at: now,
+      })
+      .eq('id', executionId);
+
+    if (error) {
+      throw new Error(
+        `No se pudo guardar la aceptación de Meta: ${error.message}`,
+      );
+    }
+  }
+
+  async applyProviderStatus(input: {
+    messageId: string;
+    status: string;
+    timestamp: string | null;
+    recipient: string | null;
+    error: string | null;
+  }): Promise<boolean> {
+    const messageId = this.text(input.messageId);
+    const providerStatus = this.text(input.status).toLowerCase();
+
+    if (!messageId || !providerStatus) {
+      return false;
+    }
+
+    const client = this.supabaseService.getClient();
+    const { data: execution, error } = await client
+      .from('automation_executions')
+      .select(
+        'id, company_id, automation_key, status, attempt_count, sent_at, payload',
+      )
+      .eq('provider_message_id', messageId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo consultar el estado enviado por Meta: ${error.message}`,
+      );
+    }
+
+    if (!execution) {
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    const statusAt = this.text(input.timestamp) || now;
+    const payload: JsonObject = {
+      ...this.object(execution.payload),
+      provider_status: providerStatus,
+      provider_status_at: statusAt,
+    };
+
+    if (this.text(input.recipient)) {
+      payload.provider_recipient = this.text(input.recipient);
+    }
+
+    if (this.text(input.error)) {
+      payload.provider_error = this.text(input.error);
+    }
+
+    if (providerStatus === 'failed') {
+      if (execution.status === 'sent') {
+        return true;
+      }
+
+      const { error: payloadError } = await client
+        .from('automation_executions')
+        .update({ payload, updated_at: now })
+        .eq('id', execution.id);
+
+      if (payloadError) {
+        throw new Error(
+          `No se pudo guardar el fallo reportado por Meta: ${payloadError.message}`,
+        );
+      }
+
+      const definition = await this.getDefinition(
+        execution.company_id,
+        execution.automation_key,
+      );
+
+      await this.markFailed(
+        execution.id,
+        input.error || 'Meta reportó que el mensaje no pudo entregarse.',
+        Number(execution.attempt_count ?? 1),
+        definition.maxAttempts,
+        definition.retryDelayMinutes,
+      );
+
+      return true;
+    }
+
+    if (providerStatus === 'delivered' || providerStatus === 'read') {
+      const { error: updateError } = await client
+        .from('automation_executions')
+        .update({
+          status: 'sent',
+          sent_at: execution.sent_at || statusAt,
+          failed_at: null,
+          next_retry_at: null,
+          locked_at: null,
+          locked_by: null,
+          error_message: null,
+          payload,
+          updated_at: now,
+        })
+        .eq('id', execution.id);
+
+      if (updateError) {
+        throw new Error(
+          `No se pudo confirmar la entrega reportada por Meta: ${updateError.message}`,
+        );
+      }
+
+      await this.advanceRecoveredCart(payload, statusAt);
+      return true;
+    }
+
+    const { error: updateError } = await client
+      .from('automation_executions')
+      .update({
+        status: 'running',
+        payload,
+        locked_at: now,
+        updated_at: now,
+      })
+      .eq('id', execution.id);
+
+    if (updateError) {
+      throw new Error(
+        `No se pudo guardar el estado de Meta: ${updateError.message}`,
+      );
+    }
+
+    return true;
+  }
+
+  private async advanceRecoveredCart(
+    payload: JsonObject,
+    deliveredAt: string,
+  ): Promise<void> {
+    const cartId = this.text(payload.cartId);
+    const recoveryStep = Number(payload.recoveryStep);
+
+    if (!cartId || !Number.isInteger(recoveryStep) || recoveryStep < 1) {
+      return;
+    }
+
+    const update: JsonObject = {
+      recovery_step: recoveryStep,
+      last_recovery_sent_at: deliveredAt,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (payload.isLastRule === true) {
+      update.cart_state = 'closed';
+    }
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('abandoned_carts')
+      .update(update)
+      .eq('id', cartId)
+      .lt('recovery_step', recoveryStep);
+
+    if (error) {
+      throw new Error(
+        `No se pudo avanzar el carrito confirmado por Meta: ${error.message}`,
+      );
+    }
   }
 
   async markSent(executionId: string): Promise<void> {

@@ -298,6 +298,7 @@ export class CartRecoveryService {
       payload: {
         cartId: cart.id,
         recoveryStep: rule.sequence,
+        isLastRule,
         deliveryMode: rule.delivery_mode,
       },
     });
@@ -315,6 +316,8 @@ export class CartRecoveryService {
     }
 
     try {
+      let providerMessageId = '';
+
       if (rule.delivery_mode === 'session') {
         const message = await this.buildSessionMessage(
           company,
@@ -322,11 +325,12 @@ export class CartRecoveryService {
           cart,
         );
 
-        await this.whatsappMessagingService.sendText(
+        const result = await this.whatsappMessagingService.sendText(
           cart.company_id,
           recipient,
           message,
         );
+        providerMessageId = result.messageId;
 
         if (cart.session_id) {
           await this.conversationMemoryService.saveMessage({
@@ -336,27 +340,25 @@ export class CartRecoveryService {
             message,
             sender: 'assistant',
             aiResponse: message,
+            providerMessageId: result.messageId,
           });
         }
       }
 
       if (rule.delivery_mode === 'template') {
-        await this.whatsappMessagingService.sendTemplate(
+        const result = await this.whatsappMessagingService.sendTemplate(
           cart.company_id,
           recipient,
           rule.template_name as string,
           rule.template_language,
           [cart.checkout_url],
         );
+        providerMessageId = result.messageId;
       }
 
-      await this.automationRuntimeService.markSent(
+      await this.automationRuntimeService.markAccepted(
         claim.executionId as string,
-      );
-      await this.markRuleAsSent(
-        cart,
-        rule.sequence,
-        isLastRule,
+        providerMessageId,
       );
       this.processedCartIdsThisCycle.add(cart.id);
     } catch (error) {

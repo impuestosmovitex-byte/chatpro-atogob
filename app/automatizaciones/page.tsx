@@ -27,6 +27,9 @@ type Execution = {
   automationKey: string;
   recipient: string | null;
   status: string;
+  providerMessageId: string | null;
+  providerStatus: string | null;
+  providerStatusAt: string | null;
   attemptCount: number;
   nextRetryAt: string | null;
   sentAt: string | null;
@@ -73,12 +76,28 @@ const statusLabels: Record<string, string> = {
 };
 
 function executionStatusLabel(execution: Execution): string {
-  if (execution.status === 'sent') {
-    return 'Enviado';
-  }
-
   if (execution.status === 'failed') {
     return 'Fallido';
+  }
+
+  if (execution.providerStatus === 'read') {
+    return 'Leído';
+  }
+
+  if (execution.providerStatus === 'delivered') {
+    return 'Entregado';
+  }
+
+  if (execution.providerStatus === 'sent') {
+    return 'Enviado por Meta';
+  }
+
+  if (execution.providerStatus === 'accepted') {
+    return 'Aceptado por Meta';
+  }
+
+  if (execution.status === 'sent') {
+    return 'Enviado';
   }
 
   if (execution.status === 'running') {

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ChatAgentService } from './chat-agent.service';
+import { AutomationRuntimeService } from './automation-runtime.service';
 import { CartRecoveryContextService } from './cart-recovery-context.service';
 import { CustomerOrderService } from './customer-order.service';
 import { CompanyIntegrationService } from './company-integration.service';
@@ -26,6 +27,7 @@ export class WhatsappWebhookController {
 
   constructor(
     private readonly chatAgentService: ChatAgentService,
+    private readonly automationRuntimeService: AutomationRuntimeService,
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly companyIntegrationService: CompanyIntegrationService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
@@ -52,6 +54,26 @@ export class WhatsappWebhookController {
   @Post()
   @HttpCode(200)
   async receiveMessage(@Body() body: unknown) {
+    const statuses = this.getDeliveryStatuses(body);
+
+    for (const status of statuses) {
+      try {
+        const updated =
+          await this.automationRuntimeService.applyProviderStatus(status);
+
+        if (updated) {
+          console.log(
+            `Meta confirmó ${status.status} para ${status.messageId}.`,
+          );
+        }
+      } catch (error) {
+        console.error(
+          `No se pudo aplicar el estado ${status.status} de Meta:`,
+          error,
+        );
+      }
+    }
+
     const message = this.getIncomingMessage(body);
 
     if (!message || message.type !== 'text') {
@@ -1193,6 +1215,91 @@ export class WhatsappWebhookController {
     _session: ConversationSession,
   ): string {
     return `Perfecto, te ayudo con ${areaName}. Cuéntame qué necesitas.`;
+  }
+
+  private getDeliveryStatuses(body: unknown): Array<{
+    messageId: string;
+    status: string;
+    timestamp: string | null;
+    recipient: string | null;
+    error: string | null;
+  }> {
+    const root = body as any;
+    const entries = Array.isArray(root?.entry) ? root.entry : [];
+    const results: Array<{
+      messageId: string;
+      status: string;
+      timestamp: string | null;
+      recipient: string | null;
+      error: string | null;
+    }> = [];
+
+    for (const entry of entries) {
+      const changes = Array.isArray(entry?.changes)
+        ? entry.changes
+        : [];
+
+      for (const change of changes) {
+        const statuses = Array.isArray(change?.value?.statuses)
+          ? change.value.statuses
+          : [];
+
+        for (const item of statuses) {
+          const messageId =
+            typeof item?.id === 'string' ? item.id.trim() : '';
+          const status =
+            typeof item?.status === 'string'
+              ? item.status.trim().toLowerCase()
+              : '';
+
+          if (!messageId || !status) {
+            continue;
+          }
+
+          const timestampSeconds = Number(item?.timestamp);
+          const timestamp = Number.isFinite(timestampSeconds)
+            ? new Date(timestampSeconds * 1000).toISOString()
+            : null;
+          const recipient =
+            typeof item?.recipient_id === 'string'
+              ? item.recipient_id.trim()
+              : null;
+          const errors = Array.isArray(item?.errors)
+            ? item.errors
+            : [];
+          const firstError = errors[0] ?? null;
+          const errorData =
+            firstError?.error_data &&
+            typeof firstError.error_data === 'object'
+              ? firstError.error_data
+              : {};
+          const errorParts = [
+            firstError?.code,
+            firstError?.title,
+            firstError?.message,
+            errorData?.details,
+          ]
+            .map((value) =>
+              typeof value === 'string' || typeof value === 'number'
+                ? String(value).trim()
+                : '',
+            )
+            .filter(Boolean);
+
+          results.push({
+            messageId,
+            status,
+            timestamp,
+            recipient,
+            error: errorParts.length
+              ? errorParts.join(' · ').slice(0, 700)
+              : null,
+          });
+        }
+      }
+    }
+
+    return results;
   }
 
   private getIncomingMessage(body: any) {
