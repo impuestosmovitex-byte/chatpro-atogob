@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
+import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -19,6 +20,7 @@ export class ShopifyAutomaticTestSendService {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
+    private readonly whatsappTemplateExecutionService: WhatsappTemplateExecutionService,
   ) {}
 
   async sendIfAllowed(
@@ -111,11 +113,23 @@ export class ShopifyAutomaticTestSendService {
     }
 
     try {
-      await this.whatsappMessagingService.sendText(
-        companyId,
-        recipient,
-        message,
-      );
+      const templateResult =
+        await this.whatsappTemplateExecutionService.sendAssignedTemplate({
+          companyId,
+          eventKey: execution.automation_key,
+          to: recipient,
+          context: this.templateContext(
+            execution.automation_key,
+            payload,
+          ),
+        });
+      const sendResult =
+        templateResult ??
+        (await this.whatsappMessagingService.sendText(
+          companyId,
+          recipient,
+          message,
+        ));
 
       const sentAt = new Date().toISOString();
       const { error: sentError } = await client
@@ -137,6 +151,8 @@ export class ShopifyAutomaticTestSendService {
             test_recipient: recipient,
             auto_test_blocked: false,
             send_blocked_reason: null,
+            used_assigned_template: Boolean(templateResult),
+            provider_message_id: sendResult.messageId,
           },
           updated_at: sentAt,
         })
@@ -201,6 +217,48 @@ export class ShopifyAutomaticTestSendService {
         `No se pudo registrar el bloqueo de seguridad: ${error.message}`,
       );
     }
+  }
+
+  private templateContext(
+    automationKey: string,
+    payload: JsonObject,
+  ): JsonObject {
+    const variables = this.object(payload.variables);
+    const fullName =
+      this.text(variables.nombre_cliente) || 'Cliente';
+    const firstName =
+      fullName.split(/\s+/)[0]?.trim() || 'Cliente';
+
+    if (automationKey === 'fulfillment_created') {
+      return {
+        customer: {
+          first_name: firstName,
+          full_name: fullName,
+        },
+        order: {
+          number: this.text(variables.numero_pedido),
+        },
+        fulfillment: {
+          carrier: this.text(variables.transportadora),
+          tracking_number: this.text(variables.numero_guia),
+          tracking_url: this.text(variables.enlace_seguimiento),
+        },
+      };
+    }
+
+    return {
+      customer: {
+        first_name: firstName,
+        full_name: fullName,
+      },
+      order: {
+        number: this.text(variables.numero_pedido),
+        items_summary: this.text(variables.resumen_compra),
+        total: this.text(variables.total_pedido),
+        payment_method: this.text(variables.medio_pago),
+        status_url: this.text(variables.enlace_pedido),
+      },
+    };
   }
 
   private async allowedTestPhones(
