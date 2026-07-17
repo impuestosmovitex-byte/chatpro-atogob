@@ -371,3 +371,99 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
   justify-content: flex-end;
   gap: 9px;
 }
+
+
+/* Audios de WhatsApp */
+.audio-message {
+  display: grid;
+  gap: 6px;
+  min-width: min(330px, 68vw);
+}
+.audio-message audio,
+.audio-recorder audio {
+  width: 100%;
+  max-width: 360px;
+  height: 42px;
+}
+.audio-message small {
+  color: inherit;
+  font-size: 11px;
+  opacity: .72;
+}
+.reply-compose {
+  display: flex;
+  gap: 9px;
+  align-items: stretch;
+  min-width: 0;
+  flex: 1;
+}
+.reply-compose .quick-reply-wrap {
+  flex: 1;
+  min-width: 0;
+}
+.audio-record-button {
+  width: 46px;
+  min-width: 46px;
+  border: 1px solid #d7dce5;
+  border-radius: 12px;
+  background: #fff;
+  color: #263348;
+  font-size: 21px;
+  cursor: pointer;
+}
+.audio-record-button:hover {
+  background: #f4f6fa;
+  border-color: #b9c1cf;
+}
+.audio-record-button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+.audio-recorder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dfe3ea;
+  border-radius: 12px;
+  background: #f7f8fb;
+}
+.audio-recorder.preview audio {
+  flex: 1;
+}
+.audio-recorder.active {
+  background: #fff4f4;
+  border-color: #efc6c6;
+  color: #8d2f35;
+}
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: #d72f3f;
+  box-shadow: 0 0 0 5px rgba(215, 47, 63, .12);
+  animation: audioPulse 1.2s ease-in-out infinite;
+}
+.button.danger {
+  color: #9d3038;
+}
+@keyframes audioPulse {
+  50% {
+    transform: scale(.75);
+    opacity: .55;
+  }
+}
+@media (max-width: 720px) {
+  .audio-recorder {
+    flex-wrap: wrap;
+  }
+  .audio-recorder.preview audio {
+    flex-basis: 100%;
+  }
+  .audio-message {
+    min-width: min(260px, 72vw);
+  }
+}

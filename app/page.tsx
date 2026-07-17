@@ -21,6 +21,9 @@ type InboxMessage = {
   message: string;
   sender: string;
   authorType: "customer" | "ai" | "advisor";
+  messageType: "text" | "audio";
+  mediaMimeType: string | null;
+  mediaVoice: boolean;
   createdAt: string | null;
 };
 
@@ -178,6 +181,7 @@ export default function Home() {
   const [canTestAgent, setCanTestAgent] = useState(false);
   const [canOpenStorefront, setCanOpenStorefront] = useState(false);
   const [canManageClients, setCanManageClients] = useState(false);
+  const [canSendAudio, setCanSendAudio] = useState(false);
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [sessions, setSessions] = useState<InboxSession[]>([]);
   const [selected, setSelected] = useState<InboxConversation | null>(null);
@@ -204,6 +208,15 @@ export default function Home() {
   const [storefrontUrl, setStorefrontUrl] = useState("");
   const [storefrontLoading, setStorefrontLoading] = useState(false);
   const [storefrontError, setStorefrontError] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState("");
+  const [audioSending, setAudioSending] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<number | null>(null);
 
   async function loadIdentityAndPresence() {
     try {
@@ -556,6 +569,189 @@ export default function Home() {
     }
   }
 
+  function stopAudioTracks() {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }
+
+  function clearRecordingTimer() {
+    if (recordingTimerRef.current !== null) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }
+
+  function clearAudioDraft() {
+    if (audioPreviewUrl) {
+      URL.revokeObjectURL(audioPreviewUrl);
+    }
+
+    setAudioBlob(null);
+    setAudioPreviewUrl("");
+    setRecordingSeconds(0);
+    audioChunksRef.current = [];
+  }
+
+  async function startAudioRecording() {
+    if (
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setError(
+        "Este navegador no permite grabar audio. Usa Chrome, Safari o Edge actualizado.",
+      );
+      return;
+    }
+
+    try {
+      clearAudioDraft();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      mediaStreamRef.current = stream;
+
+      const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+      ];
+      const mimeType = candidates.find((candidate) =>
+        MediaRecorder.isTypeSupported(candidate),
+      );
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+      setRecordingSeconds(0);
+      setError("");
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        clearRecordingTimer();
+        stopAudioTracks();
+        setRecording(false);
+
+        const blob = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+
+        if (!blob.size) {
+          setError("No se pudo guardar la grabación.");
+          return;
+        }
+
+        const preview = URL.createObjectURL(blob);
+        setAudioBlob(blob);
+        setAudioPreviewUrl(preview);
+      };
+
+      recorder.start(250);
+      setRecording(true);
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingSeconds((current) => {
+          if (current >= 119) {
+            mediaRecorderRef.current?.stop();
+            return 120;
+          }
+
+          return current + 1;
+        });
+      }, 1000);
+    } catch (caught) {
+      stopAudioTracks();
+      clearRecordingTimer();
+      setRecording(false);
+      setError(
+        caught instanceof Error
+          ? `No se pudo usar el micrófono: ${caught.message}`
+          : "No se pudo usar el micrófono.",
+      );
+    }
+  }
+
+  function stopAudioRecording() {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
+      mediaRecorderRef.current.stop();
+    }
+  }
+
+  function cancelAudioRecording() {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+    }
+
+    stopAudioTracks();
+    clearRecordingTimer();
+    setRecording(false);
+    clearAudioDraft();
+  }
+
+  async function sendAudioRecording() {
+    if (!selected?.session.id || !audioBlob) return;
+
+    setAudioSending(true);
+    setError("");
+
+    try {
+      const extension = audioBlob.type.includes("mp4")
+        ? "m4a"
+        : audioBlob.type.includes("ogg")
+          ? "ogg"
+          : "webm";
+      const form = new FormData();
+      form.set("sessionId", selected.session.id);
+      form.set(
+        "audio",
+        new File([audioBlob], `audio.${extension}`, {
+          type: audioBlob.type || "audio/webm",
+        }),
+      );
+
+      const response = await fetch("/api/inbox/audio", {
+        method: "POST",
+        body: form,
+      });
+      const data = (await readJson(response)) as ApiConversation;
+
+      if (!response.ok || !data.ok || !data.conversation) {
+        throw new Error(data.error || "No se pudo enviar el audio.");
+      }
+
+      setSelected(data.conversation);
+      clearAudioDraft();
+      setActionMessage("Audio enviado.");
+      await loadList(false);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo enviar el audio.",
+      );
+    } finally {
+      setAudioSending(false);
+    }
+  }
+
+  function formatRecordingTime(seconds: number) {
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+
+    return `${minutes}:${String(rest).padStart(2, "0")}`;
+  }
+
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -578,6 +774,7 @@ export default function Home() {
             testAgent?: boolean;
             storefront?: boolean;
             manageClients?: boolean;
+            sendAudio?: boolean;
           };
         };
 
@@ -599,12 +796,17 @@ export default function Home() {
             allowed &&
             data.capabilities?.manageClients === true,
           );
+          setCanSendAudio(
+            allowed &&
+            data.capabilities?.sendAudio === true,
+          );
         }
       } catch {
         if (alive) {
           setCanTestAgent(false);
           setCanOpenStorefront(false);
           setCanManageClients(false);
+          setCanSendAudio(false);
         }
       }
     }
@@ -615,6 +817,24 @@ export default function Home() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current.state !== "inactive"
+      ) {
+        mediaRecorderRef.current.stop();
+      }
+
+      stopAudioTracks();
+      clearRecordingTimer();
+
+      if (audioPreviewUrl) {
+        URL.revokeObjectURL(audioPreviewUrl);
+      }
+    };
+  }, [audioPreviewUrl]);
 
   useEffect(() => {
     void loadList();
@@ -1108,7 +1328,26 @@ export default function Home() {
                         <span className="message-author">
                           {item.authorType === "customer" ? "Cliente" : item.authorType === "advisor" ? "Asesor" : "IA"}
                         </span>
-                        <p>{item.message}</p>
+                        {item.messageType === "audio" && item.id ? (
+                          <div className="audio-message">
+                            <audio
+                              controls
+                              preload="none"
+                              src={`/api/inbox/media?sessionId=${encodeURIComponent(
+                                item.sessionId,
+                              )}&messageId=${encodeURIComponent(item.id)}`}
+                            >
+                              Tu navegador no permite reproducir este audio.
+                            </audio>
+                            <small>
+                              {item.authorType === "customer"
+                                ? "Audio del cliente"
+                                : "Audio enviado"}
+                            </small>
+                          </div>
+                        ) : (
+                          <p>{item.message}</p>
+                        )}
                         <time>{formatDate(item.createdAt)}</time>
                       </div>
                     </div>
@@ -1136,7 +1375,67 @@ export default function Home() {
                   </form>
                 ) : selected.session.attentionStatus === "human" ? (
                   <form className="reply-box" onSubmit={sendMessage}>
-                    <div className="quick-reply-wrap">
+                    {recording ? (
+                      <div className="audio-recorder active">
+                        <span className="recording-dot" />
+                        <strong>
+                          Grabando {formatRecordingTime(recordingSeconds)}
+                        </strong>
+                        <button
+                          type="button"
+                          className="button quiet"
+                          onClick={stopAudioRecording}
+                        >
+                          Detener
+                        </button>
+                        <button
+                          type="button"
+                          className="button quiet danger"
+                          onClick={cancelAudioRecording}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : audioBlob && audioPreviewUrl ? (
+                      <div className="audio-recorder preview">
+                        <audio controls src={audioPreviewUrl} />
+                        <button
+                          type="button"
+                          className="button quiet"
+                          onClick={clearAudioDraft}
+                          disabled={audioSending}
+                        >
+                          Borrar
+                        </button>
+                        <button
+                          type="button"
+                          className="button primary"
+                          onClick={() => void sendAudioRecording()}
+                          disabled={audioSending}
+                        >
+                          {audioSending ? "Enviando audio…" : "Enviar audio"}
+                        </button>
+                      </div>
+                    ) : null}
+                    <div className="reply-compose">
+                      {canSendAudio ? (
+                        <button
+                          type="button"
+                          className="audio-record-button"
+                          onClick={() => void startAudioRecording()}
+                          disabled={
+                            actionLoading ||
+                            audioSending ||
+                            recording ||
+                            Boolean(audioBlob)
+                          }
+                          aria-label="Grabar audio"
+                          title="Grabar audio"
+                        >
+                          🎙
+                        </button>
+                      ) : null}
+                      <div className="quick-reply-wrap">
                       <textarea
                         value={message}
                         onChange={(event) => {
@@ -1181,8 +1480,9 @@ export default function Home() {
                           ))}
                         </div>
                       ) : null}
+                      </div>
                     </div>
-                    <button className="button primary" type="submit" disabled={actionLoading || !message.trim()}>
+                    <button className="button primary" type="submit" disabled={actionLoading || audioSending || recording || Boolean(audioBlob) || !message.trim()}>
                       {actionLoading ? "Enviando…" : "Enviar"}
                     </button>
                   </form>

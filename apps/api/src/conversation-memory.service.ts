@@ -54,6 +54,9 @@ export type InboxMessage = {
   message: string;
   sender: string;
   authorType: 'customer' | 'ai' | 'advisor';
+  messageType: 'text' | 'audio';
+  mediaMimeType: string | null;
+  mediaVoice: boolean;
   createdAt: string | null;
 };
 
@@ -117,6 +120,11 @@ type SaveMessageInput = {
   authorType?: 'customer' | 'ai' | 'advisor';
   aiResponse?: string | null;
   providerMessageId?: string | null;
+  messageType?: 'text' | 'audio';
+  mediaId?: string | null;
+  mediaMimeType?: string | null;
+  mediaFilename?: string | null;
+  mediaVoice?: boolean;
 };
 
 @Injectable()
@@ -1204,7 +1212,7 @@ export class ConversationMemoryService {
     const sessionIds = sessions.map((session) => session.id);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_voice, created_at')
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false });
 
@@ -1333,7 +1341,7 @@ export class ConversationMemoryService {
     const sessionIds = sessions.map((session) => session.id);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_voice, created_at')
       .in('session_id', sessionIds)
       .order('created_at', { ascending: true });
 
@@ -1401,7 +1409,7 @@ export class ConversationMemoryService {
     const session = this.toSession(sessionRow);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_voice, created_at')
       .eq('session_id', session.id)
       .order('created_at', { ascending: true });
 
@@ -1463,7 +1471,7 @@ export class ConversationMemoryService {
 
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_voice, created_at')
       .eq('session_id', id)
       .order('created_at', { ascending: true });
 
@@ -1502,10 +1510,14 @@ export class ConversationMemoryService {
         message: input.message,
         sender: input.sender,
         author_type: authorType,
-        message_type: 'text',
+        message_type: input.messageType ?? 'text',
         status: input.sender === 'customer' ? 'received' : 'sent',
         ai_response: input.aiResponse ?? null,
         provider_message_id: providerMessageId,
+        media_id: input.mediaId?.trim() || null,
+        media_mime_type: input.mediaMimeType?.trim() || null,
+        media_filename: input.mediaFilename?.trim() || null,
+        media_voice: input.mediaVoice === true,
       });
 
     if (error) {
@@ -1823,6 +1835,9 @@ export class ConversationMemoryService {
     message: string;
     sender: string;
     author_type?: string | null;
+    message_type?: string | null;
+    media_mime_type?: string | null;
+    media_voice?: boolean | null;
     created_at?: string | null;
   }): InboxMessage {
     const authorType =
@@ -1840,6 +1855,13 @@ export class ConversationMemoryService {
       message: message.message,
       sender: message.sender,
       authorType,
+      messageType: message.message_type === 'audio' ? 'audio' : 'text',
+      mediaMimeType:
+        typeof message.media_mime_type === 'string' &&
+        message.media_mime_type.trim()
+          ? message.media_mime_type
+          : null,
+      mediaVoice: message.media_voice === true,
       createdAt: message.created_at ?? null,
     };
   }

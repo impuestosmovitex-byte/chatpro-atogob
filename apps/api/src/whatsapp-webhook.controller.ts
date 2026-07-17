@@ -76,21 +76,60 @@ export class WhatsappWebhookController {
 
     const message = this.getIncomingMessage(body);
 
-    if (!message || message.type !== 'text') {
+    if (!message) {
       return 'EVENT_RECEIVED';
     }
 
-    const phone = message.from?.trim();
-    const text = message.text?.body?.trim() ?? '';
+    const phone =
+      typeof message.from === 'string' ? message.from.trim() : '';
     const incomingMessageId = this.getIncomingMessageId(message);
 
-    if (!phone || !text) {
+    if (!phone) {
       return 'EVENT_RECEIVED';
     }
 
     try {
       const incomingPhoneNumberId = this.getIncomingPhoneNumberId(body);
       const conversationKey = `${incomingPhoneNumberId}:${phone}`;
+
+      if (message.type === 'audio') {
+        const mediaId =
+          typeof message.audio?.id === 'string'
+            ? message.audio.id.trim()
+            : '';
+        const mimeType =
+          typeof message.audio?.mime_type === 'string'
+            ? message.audio.mime_type.trim()
+            : 'audio/ogg';
+
+        if (!mediaId) {
+          return 'EVENT_RECEIVED';
+        }
+
+        this.enqueueConversation(conversationKey, () =>
+          this.processIncomingAudio({
+            incomingPhoneNumberId,
+            phone,
+            incomingMessageId,
+            mediaId,
+            mimeType,
+            voice: message.audio?.voice === true,
+          }),
+        );
+
+        return 'EVENT_RECEIVED';
+      }
+
+      if (message.type !== 'text') {
+        return 'EVENT_RECEIVED';
+      }
+
+      const text = message.text?.body?.trim() ?? '';
+
+      if (!text) {
+        return 'EVENT_RECEIVED';
+      }
+
       const suppressReply = this.isRedundantProductReference(
         conversationKey,
         text,
@@ -187,6 +226,83 @@ export class WhatsappWebhookController {
 
     this.recentProductUrlMessages.delete(conversationKey);
     return true;
+  }
+
+  private async processIncomingAudio(input: {
+    incomingPhoneNumberId: string;
+    phone: string;
+    incomingMessageId: string | null;
+    mediaId: string;
+    mimeType: string;
+    voice: boolean;
+  }): Promise<void> {
+    try {
+      const integration =
+        await this.companyIntegrationService.findActiveIntegrationByExternalId(
+          'meta',
+          'whatsapp',
+          input.incomingPhoneNumberId,
+        );
+
+      if (!integration) {
+        throw new Error(
+          'No existe una empresa activa para el audio entrante.',
+        );
+      }
+
+      const profile =
+        await this.conversationMemoryService.getCompanyProfileById(
+          integration.companyId,
+        );
+      let session =
+        await this.conversationMemoryService.getOrCreateSessionByCompanyId(
+          integration.companyId,
+          input.phone,
+        );
+
+      const saved = await this.conversationMemoryService.saveMessage({
+        companyId: profile.id,
+        sessionId: session.id,
+        customerPhone: input.phone,
+        message: 'Audio recibido',
+        sender: 'customer',
+        authorType: 'customer',
+        providerMessageId: input.incomingMessageId,
+        messageType: 'audio',
+        mediaId: input.mediaId,
+        mediaMimeType: input.mimeType,
+        mediaFilename: 'audio.ogg',
+        mediaVoice: input.voice,
+      });
+
+      if (saved === 'duplicate') {
+        return;
+      }
+
+      await this.conversationMemoryService.touchSession(session.id);
+
+      if (session.attentionStatus === 'closed') {
+        session =
+          await this.conversationMemoryService.resumeAiConversation(
+            session.id,
+          );
+      }
+
+      if (session.attentionStatus === 'ai') {
+        await this.conversationMemoryService.requestHumanAttention(
+          session.id,
+          {
+            reason: 'El cliente envió un audio.',
+            summary:
+              'Escucha el audio recibido y continúa la atención con el cliente.',
+          },
+        );
+      }
+
+      console.log(`Audio recibido de ${input.phone}`);
+    } catch (error) {
+      console.error('No se pudo procesar el audio entrante:', error);
+    }
   }
 
   private async processIncomingText(input: {

@@ -1,4 +1,6 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, HttpCode, Param, Post, Query, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, HttpCode, Param, Post, Query, Res, UnauthorizedException, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { ChatAgentService } from './chat-agent.service';
 import { ConversationMemoryService, type ConversationSession, type InboxSessionSummary } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
@@ -496,6 +498,184 @@ export class InboxController {
     const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
     this.assertManageOwn(actor,conversation.session,'inbox.return_to_ai');
     return {ok:true,session:await this.conversationMemoryService.resumeAiConversation(sessionId)};
+  }
+
+  @Post(':sessionId/audio')
+  @HttpCode(200)
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      limits: { fileSize: 12 * 1024 * 1024 },
+    }),
+  )
+  async sendAdvisorAudio(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+    @UploadedFile()
+    file?: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname: string;
+      size: number;
+    },
+  ) {
+    this.authorize(key);
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+
+    this.assertManageOwn(
+      actor,
+      conversation.session,
+      'inbox.reply',
+    );
+
+    if (!actor.isFullAccess && !actor.permissions.has('inbox.audio')) {
+      throw new ForbiddenException(
+        'No tienes permiso para enviar audios.',
+      );
+    }
+
+    if (conversation.session.attentionStatus !== 'human') {
+      throw new BadRequestException(
+        'La conversación debe estar tomada por un asesor para enviar audios.',
+      );
+    }
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'Graba o selecciona un audio antes de enviarlo.',
+      );
+    }
+
+    const sent = await this.whatsappMessagingService.sendAudio(
+      conversation.company.id,
+      conversation.session.customerPhone,
+      {
+        buffer: file.buffer,
+        mimeType: file.mimetype || 'audio/webm',
+        filename: file.originalname || 'audio.webm',
+      },
+    );
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: conversation.company.id,
+      sessionId: conversation.session.id,
+      customerPhone: conversation.session.customerPhone,
+      message: 'Audio enviado',
+      sender: 'assistant',
+      authorType: 'advisor',
+      aiResponse: null,
+      providerMessageId: sent.messageId,
+      messageType: 'audio',
+      mediaId: sent.mediaId,
+      mediaMimeType: sent.mimeType,
+      mediaFilename: 'audio.ogg',
+      mediaVoice: true,
+    });
+    await this.conversationMemoryService.touchSession(
+      conversation.session.id,
+    );
+
+    return {
+      ok: true,
+      conversation:
+        await this.conversationMemoryService.getInboxConversation(
+          conversation.company.slug,
+          conversation.session.id,
+        ),
+    };
+  }
+
+  @Get(':sessionId/messages/:messageId/media')
+  async getMessageMedia(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+    @Param('messageId') messageId = '',
+    @Res() response: Response,
+  ) {
+    this.authorize(key);
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+
+    this.assertView(actor, conversation.session);
+
+    const { data: row, error } = await this.supabaseService
+      .getClient()
+      .from('conversations')
+      .select(
+        'id, company_id, session_id, message_type, media_id, media_mime_type',
+      )
+      .eq('id', messageId)
+      .eq('company_id', conversation.company.id)
+      .eq('session_id', conversation.session.id)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        `No se pudo consultar el audio: ${error.message}`,
+      );
+    }
+
+    if (
+      !row ||
+      row.message_type !== 'audio' ||
+      typeof row.media_id !== 'string' ||
+      !row.media_id.trim()
+    ) {
+      throw new BadRequestException(
+        'El mensaje no tiene un audio disponible.',
+      );
+    }
+
+    const media = await this.whatsappMessagingService.downloadMedia(
+      conversation.company.id,
+      row.media_id,
+    );
+
+    response.setHeader(
+      'Content-Type',
+      media.mimeType || row.media_mime_type || 'audio/ogg',
+    );
+    response.setHeader('Content-Length', String(media.buffer.length));
+    response.setHeader(
+      'Content-Disposition',
+      `inline; filename="${media.filename.replace(/"/g, '')}"`,
+    );
+    response.setHeader('Cache-Control', 'private, max-age=120');
+    return response.status(200).send(media.buffer);
   }
 
   @Post(':sessionId/messages') @HttpCode(200)
