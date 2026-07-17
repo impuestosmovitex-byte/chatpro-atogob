@@ -24,10 +24,40 @@ type Session = {
   userId?: string | null;
 };
 
-const baseNavigation = [
-  { href: '/', label: 'Bandeja', icon: '◉', exact: true },
-  { href: '/clientes', label: 'Clientes', icon: '◌' },
-  { href: '/automatizaciones', label: 'Automatizaciones', icon: '◈' },
+type Capabilities = {
+  inbox: boolean;
+  clients: boolean;
+  automations: boolean;
+  configuration: boolean;
+  testAgent: boolean;
+};
+
+const baseNavigation: Array<{
+  href: string;
+  label: string;
+  icon: string;
+  exact?: boolean;
+  capability: keyof Capabilities;
+}> = [
+  {
+    href: '/',
+    label: 'Bandeja',
+    icon: '◉',
+    exact: true,
+    capability: 'inbox',
+  },
+  {
+    href: '/clientes',
+    label: 'Clientes',
+    icon: '◌',
+    capability: 'clients',
+  },
+  {
+    href: '/automatizaciones',
+    label: 'Automatizaciones',
+    icon: '◈',
+    capability: 'automations',
+  },
 ];
 
 function isActive(pathname: string, href: string, exact?: boolean): boolean {
@@ -35,15 +65,13 @@ function isActive(pathname: string, href: string, exact?: boolean): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function canManageConfiguration(roleKey: string): boolean {
-  return roleKey === 'owner' || roleKey === 'admin';
-}
 
 export function AppSidebar({
   companyName = 'Empresa',
 }: AppSidebarProps) {
   const pathname = usePathname();
   const [roleKey, setRoleKey] = useState('');
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [activeCompany, setActiveCompany] = useState(companyName);
   const [activeSlug, setActiveSlug] = useState('');
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
@@ -66,9 +94,46 @@ export function AppSidebar({
         if (!alive || !sessionResponse.ok || !sessionData.session) return;
 
         const session = sessionData.session;
-        setRoleKey(session.roleKey?.trim().toLowerCase() || '');
+        const normalizedRoleKey =
+          session.roleKey?.trim().toLowerCase() || '';
+
+        setRoleKey(normalizedRoleKey);
         setActiveCompany(session.companyName?.trim() || companyName);
         setActiveSlug(session.companySlug?.trim().toLowerCase() || '');
+
+        try {
+          const capabilitiesResponse = await fetch(
+            '/api/auth/capabilities',
+            { cache: 'no-store' },
+          );
+          const capabilitiesData = (await capabilitiesResponse.json()) as {
+            ok?: boolean;
+            capabilities?: Capabilities;
+          };
+
+          if (
+            alive &&
+            capabilitiesResponse.ok &&
+            capabilitiesData.ok &&
+            capabilitiesData.capabilities
+          ) {
+            setCapabilities(capabilitiesData.capabilities);
+          }
+        } catch {
+          const fullAccess =
+            normalizedRoleKey === 'owner' ||
+            normalizedRoleKey === 'admin';
+
+          if (alive) {
+            setCapabilities({
+              inbox: true,
+              clients: true,
+              automations: fullAccess,
+              configuration: fullAccess,
+              testAgent: fullAccess,
+            });
+          }
+        }
 
         if (!session.userId) return;
 
@@ -95,12 +160,34 @@ export function AppSidebar({
     };
   }, [companyName]);
 
-  const navigation = canManageConfiguration(roleKey)
-    ? [
-        ...baseNavigation,
-        { href: '/configuracion', label: 'Configuración', icon: '⚙' },
-      ]
-    : baseNavigation;
+  const fullAccess = roleKey === 'owner' || roleKey === 'admin';
+  const effectiveCapabilities: Capabilities = capabilities ?? {
+    inbox: true,
+    clients: true,
+    automations: fullAccess,
+    configuration: fullAccess,
+    testAgent: fullAccess,
+  };
+
+  const navigation: Array<{
+    href: string;
+    label: string;
+    icon: string;
+    exact?: boolean;
+  }> = [
+    ...baseNavigation.filter(
+      (item) => effectiveCapabilities[item.capability],
+    ),
+    ...(effectiveCapabilities.configuration
+      ? [
+          {
+            href: '/configuracion',
+            label: 'Configuración',
+            icon: '⚙',
+          },
+        ]
+      : []),
+  ];
 
   async function changeCompany(companySlug: string) {
     if (!companySlug || companySlug === activeSlug || changingCompany) return;

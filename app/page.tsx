@@ -159,6 +159,7 @@ function getCart(context: Record<string, unknown>) {
 }
 
 export default function Home() {
+  const [canTestAgent, setCanTestAgent] = useState(false);
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [sessions, setSessions] = useState<InboxSession[]>([]);
   const [selected, setSelected] = useState<InboxConversation | null>(null);
@@ -546,6 +547,38 @@ export default function Home() {
   }
 
   useEffect(() => {
+    let alive = true;
+
+    async function loadCapabilities() {
+      try {
+        const response = await fetch('/api/auth/capabilities', {
+          cache: 'no-store',
+        });
+        const data = (await response.json()) as {
+          ok?: boolean;
+          capabilities?: { testAgent?: boolean };
+        };
+
+        if (alive) {
+          setCanTestAgent(
+            response.ok &&
+            data.ok === true &&
+            data.capabilities?.testAgent === true,
+          );
+        }
+      } catch {
+        if (alive) setCanTestAgent(false);
+      }
+    }
+
+    void loadCapabilities();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
     void loadList();
     void loadQuickReplies();
     void loadIdentityAndPresence();
@@ -782,6 +815,7 @@ export default function Home() {
           <button className="channel-tab active" type="button">
             <span className="whatsapp-icon">◔</span> WhatsApp
           </button>
+          {canTestAgent ? (
           <button
             className="channel-tab"
             type="button"
@@ -790,6 +824,7 @@ export default function Home() {
           >
             {internalTestLoading ? "Preparando prueba…" : "Probar agente"}
           </button>
+          ) : null}
           <button className="channel-tab" type="button" disabled>
             Instagram <small>Próximamente</small>
           </button>

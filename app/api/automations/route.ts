@@ -3,6 +3,7 @@ import {
   getInboxSession,
   INBOX_SESSION_COOKIE,
 } from '../../lib/inbox-auth';
+import { getAccessCapabilities } from '../../lib/access-capabilities';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,17 +18,12 @@ function config() {
   return { apiBase, inboxKey };
 }
 
-function canManage(
+async function canManage(
   session: Awaited<ReturnType<typeof getInboxSession>>,
-): boolean {
+): Promise<boolean> {
   if (!session) return false;
 
-  if (session.type === 'bootstrap') {
-    return session.roleKey === 'owner';
-  }
-
-  const role = session.roleKey?.trim().toLowerCase();
-  return session.type === 'user' && (role === 'owner' || role === 'admin');
+  return (await getAccessCapabilities(session)).automations;
 }
 
 async function proxy(response: Response) {
@@ -56,7 +52,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!canManage(current)) {
+  if (!(await canManage(current))) {
     return NextResponse.json(
       {
         ok: false,
@@ -101,7 +97,7 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  if (!canManage(current)) {
+  if (!(await canManage(current))) {
     return NextResponse.json(
       {
         ok: false,
@@ -169,7 +165,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!canManage(current)) {
+  if (!(await canManage(current))) {
     return NextResponse.json(
       {
         ok: false,

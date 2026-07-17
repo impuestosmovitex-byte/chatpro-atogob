@@ -3,6 +3,7 @@ import {
   getInboxSession,
   INBOX_SESSION_COOKIE,
 } from './app/lib/inbox-auth';
+import { getAccessCapabilities } from './app/lib/access-capabilities';
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -19,6 +20,7 @@ const ADVISOR_ALLOWED_PAGES = [
 
 const ADVISOR_ALLOWED_APIS = [
   '/api/auth/session',
+  '/api/auth/capabilities',
   '/api/auth/companies',
   '/api/auth/switch-company',
   '/api/inbox',
@@ -52,6 +54,14 @@ function isAllowedForAdvisor(pathname: string): boolean {
     : ADVISOR_ALLOWED_PAGES;
 
   return allowed.some((path) => matchesPath(pathname, path));
+}
+
+function isAutomationPath(pathname: string): boolean {
+  return (
+    matchesPath(pathname, '/automatizaciones') ||
+    matchesPath(pathname, '/api/automations') ||
+    matchesPath(pathname, '/api/automation-messages')
+  );
 }
 
 function secureResponse(response: NextResponse): NextResponse {
@@ -96,6 +106,38 @@ export async function proxy(request: NextRequest) {
     loginUrl.searchParams.set('next', pathname);
 
     return secureResponse(NextResponse.redirect(loginUrl));
+  }
+
+  if (isAutomationPath(pathname)) {
+    let allowed = false;
+
+    try {
+      allowed = (
+        await getAccessCapabilities(session)
+      ).automations;
+    } catch {
+      allowed = false;
+    }
+
+    if (!allowed) {
+      if (pathname.startsWith('/api/')) {
+        return secureResponse(
+          NextResponse.json(
+            {
+              ok: false,
+              error: 'No tienes permiso para administrar automatizaciones.',
+            },
+            { status: 403 },
+          ),
+        );
+      }
+
+      return secureResponse(
+        NextResponse.redirect(new URL('/', request.url)),
+      );
+    }
+
+    return secureResponse(NextResponse.next());
   }
 
   if (

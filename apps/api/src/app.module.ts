@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AccessAuthService } from './access-auth.service';
 import { AccessController } from './access.controller';
+import { AccessCapabilitiesController } from './access-capabilities.controller';
 import { AiService } from './ai.service';
 import { AutomationRuntimeService } from './automation-runtime.service';
 import { AutomationTestSendService } from './automation-test-send.service';
@@ -74,6 +75,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
     RolesController,
     QuickRepliesController,
     AccessController,
+    AccessCapabilitiesController,
     SupportSettingsController,
     AdvisorPresenceController,
     ServiceAreasController,
