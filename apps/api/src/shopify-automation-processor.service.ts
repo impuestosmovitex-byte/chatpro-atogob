@@ -75,10 +75,10 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    const timer = setTimeout(() => {
-      void this.processPending();
-    }, 5000);
-    timer.unref();
+    this.logger.log(
+      'Procesador automático de eventos Shopify iniciado.',
+    );
+    void this.processPending();
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -91,6 +91,12 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
 
     try {
       const rows = await this.pendingRows();
+
+      if (rows.length) {
+        this.logger.log(
+          `Procesando ${rows.length} evento(s) pendiente(s) de Shopify.`,
+        );
+      }
 
       for (const row of rows) {
         await this.processOne(row);

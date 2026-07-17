@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { CompanyIntegrationService } from './company-integration.service';
+import { ShopifyAutomationProcessorService } from './shopify-automation-processor.service';
 import { SupabaseService } from './supabase.service';
 
 type JsonObject = Record<string, unknown>;
@@ -20,6 +21,7 @@ export class ShopifyWebhookEventService {
   constructor(
     private readonly companyIntegrationService: CompanyIntegrationService,
     private readonly supabaseService: SupabaseService,
+    private readonly shopifyAutomationProcessorService: ShopifyAutomationProcessorService,
   ) {}
 
   async receive(input: {
@@ -106,12 +108,15 @@ export class ShopifyWebhookEventService {
       );
     }
 
+    void this.shopifyAutomationProcessorService.processPending();
+
     return {
       ok: true,
       duplicate: !data,
       eventId: data?.id ?? null,
       topic,
       shopDomain,
+      processingTriggered: true,
     };
   }
 
