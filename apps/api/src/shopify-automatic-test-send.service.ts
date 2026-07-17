@@ -236,10 +236,10 @@ export class ShopifyAutomaticTestSendService {
           full_name: fullName,
         },
         order: {
-          number: this.text(variables.numero_pedido),
+          number: this.normalizeOrderNumber(this.text(variables.numero_pedido)),
         },
         fulfillment: {
-          carrier: this.text(variables.transportadora),
+          carrier: this.normalizeCarrierName(this.text(variables.transportadora)),
           tracking_number: this.text(variables.numero_guia),
           tracking_url: this.text(variables.enlace_seguimiento),
         },
@@ -252,13 +252,36 @@ export class ShopifyAutomaticTestSendService {
         full_name: fullName,
       },
       order: {
-        number: this.text(variables.numero_pedido),
+        number: this.normalizeOrderNumber(this.text(variables.numero_pedido)),
         items_summary: this.text(variables.resumen_compra),
         total: this.text(variables.total_pedido),
         payment_method: this.text(variables.medio_pago),
         status_url: this.text(variables.enlace_pedido),
       },
     };
+  }
+
+  private normalizeOrderNumber(value: string): string {
+    return value.replace(/^#+\s*/, '').trim();
+  }
+
+  private normalizeCarrierName(value: string): string {
+    const clean = value.trim();
+    const normalized = clean
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+    if (
+      !clean ||
+      ['other', 'otro', 'unknown', 'desconocido'].includes(
+        normalized,
+      )
+    ) {
+      return 'Transportadora del pedido';
+    }
+
+    return clean;
   }
 
   private async allowedTestPhones(

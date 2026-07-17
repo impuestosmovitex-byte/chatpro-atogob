@@ -14,6 +14,7 @@ import { CartRecoveryContextService } from './cart-recovery-context.service';
 import { CustomerOrderService } from './customer-order.service';
 import { CompanyIntegrationService } from './company-integration.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
+import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
 import {
   ConversationMemoryService,
   type CompanyProfile,
@@ -31,6 +32,7 @@ export class WhatsappWebhookController {
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly companyIntegrationService: CompanyIntegrationService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
+    private readonly whatsappTemplateExecutionService: WhatsappTemplateExecutionService,
     private readonly cartRecoveryContextService: CartRecoveryContextService,
     private readonly customerOrderService: CustomerOrderService,
   ) {}
@@ -120,11 +122,11 @@ export class WhatsappWebhookController {
         return 'EVENT_RECEIVED';
       }
 
-      if (message.type !== 'text') {
-        return 'EVENT_RECEIVED';
-      }
-
-      const text = message.text?.body?.trim() ?? '';
+      const buttonText = this.getIncomingButtonText(message);
+      const text =
+        message.type === 'text'
+          ? message.text?.body?.trim() ?? ''
+          : buttonText;
 
       if (!text) {
         return 'EVENT_RECEIVED';
@@ -146,6 +148,7 @@ export class WhatsappWebhookController {
           text,
           incomingMessageId,
           suppressReply,
+          templateButton: Boolean(buttonText),
         }),
       );
     } catch (error) {
@@ -311,6 +314,7 @@ export class WhatsappWebhookController {
     text: string;
     incomingMessageId: string | null;
     suppressReply: boolean;
+    templateButton: boolean;
   }): Promise<void> {
     try {
       const integration =
@@ -354,6 +358,45 @@ export class WhatsappWebhookController {
       }
 
       await this.conversationMemoryService.touchSession(session.id);
+
+      if (input.templateButton) {
+        const buttonAction =
+          await this.whatsappTemplateExecutionService.resolveButtonAction(
+            profile.id,
+            input.text,
+          );
+
+        if (buttonAction) {
+          const reply = await this.executeTemplateButtonAction({
+            profile,
+            session,
+            phone: input.phone,
+            action: buttonAction.action,
+          });
+
+          if (reply) {
+            await this.whatsappMessagingService.sendText(
+              profile.id,
+              input.phone,
+              reply,
+            );
+
+            await this.conversationMemoryService.saveMessage({
+              companyId: profile.id,
+              sessionId: session.id,
+              customerPhone: input.phone,
+              message: reply,
+              sender: 'assistant',
+              authorType: 'ai',
+              aiResponse: reply,
+            });
+
+            await this.conversationMemoryService.touchSession(session.id);
+          }
+
+          return;
+        }
+      }
 
       if (input.suppressReply) {
         return;
@@ -420,6 +463,158 @@ export class WhatsappWebhookController {
       } catch (sendError) {
         console.error('No se pudo enviar el mensaje de respaldo:', sendError);
       }
+    }
+  }
+
+  private async executeTemplateButtonAction(input: {
+    profile: CompanyProfile;
+    session: ConversationSession;
+    phone: string;
+    action: string;
+  }): Promise<string | null> {
+    const now = new Date().toISOString();
+
+    switch (input.action) {
+      case 'tracking_information':
+        return this.resolveTrackingButtonReply(
+          input.profile,
+          input.phone,
+        );
+
+      case 'accept_order_updates':
+        await this.conversationMemoryService.updateSession(
+          input.session.id,
+          {
+            context: {
+              ...input.session.context,
+              order_updates_consent: {
+                accepted: true,
+                source: 'whatsapp_template_button',
+                updated_at: now,
+              },
+            },
+          },
+        );
+
+        return 'Listo ✅ Seguirás recibiendo por este chat las actualizaciones disponibles de tu pedido.';
+
+      case 'confirm_cod_order':
+        await this.conversationMemoryService.updateSession(
+          input.session.id,
+          {
+            context: {
+              ...input.session.context,
+              cod_confirmation: {
+                confirmed: true,
+                updated_at: now,
+              },
+            },
+          },
+        );
+
+        return 'Pedido confirmado ✅ Ahora confírmame el nombre de tu barrio para organizar la entrega.';
+
+      case 'payment_assistance':
+        await this.conversationMemoryService.updateSession(
+          input.session.id,
+          {
+            context: {
+              ...input.session.context,
+              customer_service_flow: {
+                type: 'payment_problem',
+                updated_at: now,
+              },
+            },
+          },
+        );
+
+        return 'Claro 😊 Cuéntame qué inconveniente tienes con el pago. No envíes claves, códigos de seguridad ni datos bancarios sensibles.';
+
+      case 'request_human_agent':
+        return this.requestCustomerServiceHuman(
+          input.session,
+          'Cliente solicitó asesor desde una plantilla de WhatsApp.',
+          'El cliente pulsó un botón para hablar con un asesor.',
+        );
+
+      case 'open_commercial_conversation':
+        await this.conversationMemoryService.updateSession(
+          input.session.id,
+          {
+            stage: 'sales',
+            context: {
+              ...input.session.context,
+              commercial_conversation: {
+                open: true,
+                updated_at: now,
+              },
+            },
+          },
+        );
+
+        return 'Perfecto 😊 Cuéntame qué producto te interesa y te ayudo.';
+
+      case 'stop_commercial_followup':
+        await this.conversationMemoryService.updateSession(
+          input.session.id,
+          {
+            context: {
+              ...input.session.context,
+              commercial_followup: {
+                enabled: false,
+                updated_at: now,
+              },
+            },
+          },
+        );
+
+        return 'Listo. No continuaremos este seguimiento comercial por WhatsApp.';
+
+      default:
+        return null;
+    }
+  }
+
+  private async resolveTrackingButtonReply(
+    profile: CompanyProfile,
+    phone: string,
+  ): Promise<string> {
+    try {
+      const result = await this.customerOrderService.lookup(
+        profile.id,
+        { phone },
+      ) as Record<string, any>;
+      const orders =
+        result.ok && result.found && Array.isArray(result.orders)
+          ? result.orders
+          : [];
+      const order = orders[0] as Record<string, any> | undefined;
+
+      if (!order) {
+        return 'No encontré un pedido asociado a este número. Envíame el número del pedido para revisarlo.';
+      }
+
+      const tracking = this.getFirstOrderTracking(order);
+
+      if (tracking) {
+        return this.formatConfiguredTrackingReply(
+          tracking,
+          profile,
+        );
+      }
+
+      const orderName = this.cleanCustomerText(order.name || '');
+
+      return orderName
+        ? `Tu pedido ${orderName} todavía no tiene una guía de seguimiento disponible.`
+        : 'Tu pedido todavía no tiene una guía de seguimiento disponible.';
+    } catch (error) {
+      console.error(
+        `No se pudo consultar el seguimiento para ${phone}:`,
+        error,
+      );
+
+      return 'No pude consultar la guía en este momento. Envíame el número del pedido para revisarlo.';
     }
   }
 
@@ -909,7 +1104,14 @@ export class WhatsappWebhookController {
     const config = this.findConfiguredCarrier(tracking.company, profile);
     const rawCompany = this.cleanCustomerText(tracking.company || '');
     const trackingNumber = this.cleanCustomerText(tracking.number || '');
-    const visibleCompany = config?.displayName || rawCompany;
+    const genericCompany = [
+      'other',
+      'otro',
+      'unknown',
+      'desconocido',
+    ].includes(this.normalizeCarrierKey(rawCompany));
+    const visibleCompany =
+      config?.displayName || (genericCompany ? '' : rawCompany);
     const configuredUrl = config?.trackingUrl || '';
     const trackingUrl =
       configuredUrl || this.extractBaseTrackingUrl(String(tracking.url || ''));
@@ -1416,6 +1618,42 @@ export class WhatsappWebhookController {
     }
 
     return results;
+  }
+
+  private getIncomingButtonText(message: any): string {
+    if (message?.type === 'button') {
+      const text =
+        typeof message?.button?.text === 'string'
+          ? message.button.text.trim()
+          : '';
+      const payload =
+        typeof message?.button?.payload === 'string'
+          ? message.button.payload.trim()
+          : '';
+
+      return text || payload;
+    }
+
+    if (message?.type === 'interactive') {
+      const buttonReply = message?.interactive?.button_reply;
+      const listReply = message?.interactive?.list_reply;
+      const title =
+        typeof buttonReply?.title === 'string'
+          ? buttonReply.title.trim()
+          : typeof listReply?.title === 'string'
+            ? listReply.title.trim()
+            : '';
+      const id =
+        typeof buttonReply?.id === 'string'
+          ? buttonReply.id.trim()
+          : typeof listReply?.id === 'string'
+            ? listReply.id.trim()
+            : '';
+
+      return title || id;
+    }
+
+    return '';
   }
 
   private getIncomingMessage(body: any) {

@@ -21,6 +21,13 @@ type TemplateRow = {
   components: unknown;
 };
 
+export type WhatsappTemplateButtonAction = {
+  action: string;
+  eventKey: string;
+  buttonText: string;
+  config: JsonObject;
+};
+
 @Injectable()
 export class WhatsappTemplateExecutionService {
   constructor(
@@ -49,6 +56,58 @@ export class WhatsappTemplateExecutionService {
     }
 
     return Boolean(data?.id);
+  }
+
+  async resolveButtonAction(
+    companyId: string,
+    buttonText: string,
+  ): Promise<WhatsappTemplateButtonAction | null> {
+    const normalizedButton = this.normalizeButtonText(buttonText);
+
+    if (!normalizedButton) {
+      return null;
+    }
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('company_template_bindings')
+      .select('event_key,button_actions,config')
+      .eq('company_id', companyId)
+      .eq('enabled', true);
+
+    if (error) {
+      throw new Error(
+        `No se pudieron consultar las acciones de botones: ${error.message}`,
+      );
+    }
+
+    for (const rawRow of data ?? []) {
+      const row = this.object(rawRow);
+      const actions = this.object(row.button_actions);
+
+      for (const [configuredText, rawAction] of Object.entries(actions)) {
+        if (
+          this.normalizeButtonText(configuredText) !== normalizedButton
+        ) {
+          continue;
+        }
+
+        const action = this.text(rawAction);
+
+        if (!action || action === 'none') {
+          return null;
+        }
+
+        return {
+          action,
+          eventKey: this.text(row.event_key),
+          buttonText: configuredText,
+          config: this.object(row.config),
+        };
+      }
+    }
+
+    return null;
   }
 
   async sendAssignedTemplate(input: {
@@ -369,6 +428,15 @@ export class WhatsappTemplateExecutionService {
 
   private escapeRegExp(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private normalizeButtonText(value: unknown): string {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es-CO')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
   }
 
   private scalarText(value: unknown): string {
