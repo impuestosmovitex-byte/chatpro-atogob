@@ -111,32 +111,48 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
   }
 
   private async pendingRows(): Promise<WebhookRow[]> {
-    const { data, error } = await this.supabaseService
-      .getClient()
-      .from('shopify_webhook_events')
-      .select(
-        'id, webhook_id, company_id, shop_domain, topic, status, payload, attempt_count, next_retry_at, received_at',
-      )
-      .in('status', ['received', 'failed'])
-      .order('received_at', { ascending: true })
-      .limit(40);
+    const client = this.supabaseService.getClient();
+    const fields =
+      'id, webhook_id, company_id, shop_domain, topic, status, payload, attempt_count, next_retry_at, received_at';
+    const now = new Date().toISOString();
 
-    if (error) {
+    const [receivedResult, failedResult] = await Promise.all([
+      client
+        .from('shopify_webhook_events')
+        .select(fields)
+        .eq('status', 'received')
+        .order('received_at', { ascending: true })
+        .limit(40),
+      client
+        .from('shopify_webhook_events')
+        .select(fields)
+        .eq('status', 'failed')
+        .lte('next_retry_at', now)
+        .order('next_retry_at', { ascending: true })
+        .limit(40),
+    ]);
+
+    if (receivedResult.error) {
       throw new Error(
-        `No se pudieron consultar los eventos pendientes: ${error.message}`,
+        `No se pudieron consultar los eventos recibidos: ${receivedResult.error.message}`,
       );
     }
 
-    const now = Date.now();
+    if (failedResult.error) {
+      throw new Error(
+        `No se pudieron consultar los reintentos pendientes: ${failedResult.error.message}`,
+      );
+    }
 
-    return ((data ?? []) as WebhookRow[]).filter((row) => {
-      if (row.status === 'received') {
-        return true;
-      }
+    const received = (receivedResult.data ?? []) as WebhookRow[];
+    const failed = (failedResult.data ?? []) as WebhookRow[];
 
-      const nextRetry = Date.parse(row.next_retry_at ?? '');
-      return Number.isFinite(nextRetry) && nextRetry <= now;
-    });
+    return [...received, ...failed]
+      .sort(
+        (left, right) =>
+          Date.parse(left.received_at) - Date.parse(right.received_at),
+      )
+      .slice(0, 40);
   }
 
   private async processOne(row: WebhookRow): Promise<void> {
