@@ -6,6 +6,7 @@ import { ConversationMemoryService } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
+import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -52,6 +53,7 @@ export class CartRecoveryService {
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly shopifyAbandonedCheckoutSyncService: ShopifyAbandonedCheckoutSyncService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
+    private readonly whatsappTemplateExecutionService: WhatsappTemplateExecutionService,
     private readonly automationRuntimeService: AutomationRuntimeService,
   ) {}
 
@@ -283,8 +285,19 @@ export class CartRecoveryService {
       return;
     }
 
+    const assignedTemplateEventKey =
+      this.cartTemplateEventKey(rule.sequence);
+    const hasAssignedTemplate =
+      rule.delivery_mode === 'template' &&
+      assignedTemplateEventKey !== null &&
+      (await this.whatsappTemplateExecutionService.hasEnabledBinding(
+        cart.company_id,
+        assignedTemplateEventKey,
+      ));
+
     if (
       rule.delivery_mode === 'template' &&
+      !hasAssignedTemplate &&
       !rule.template_name?.trim()
     ) {
       return;
@@ -346,13 +359,28 @@ export class CartRecoveryService {
       }
 
       if (rule.delivery_mode === 'template') {
-        const result = await this.whatsappMessagingService.sendTemplate(
-          cart.company_id,
-          recipient,
-          rule.template_name as string,
-          rule.template_language,
-          [cart.checkout_url],
-        );
+        const result =
+          hasAssignedTemplate && assignedTemplateEventKey
+            ? await this.whatsappTemplateExecutionService.sendAssignedTemplate({
+                companyId: cart.company_id,
+                eventKey: assignedTemplateEventKey,
+                to: recipient,
+                context: this.cartTemplateContext(cart),
+              })
+            : await this.whatsappMessagingService.sendTemplate(
+                cart.company_id,
+                recipient,
+                rule.template_name as string,
+                rule.template_language,
+                [cart.checkout_url],
+              );
+
+        if (!result) {
+          throw new Error(
+            `No se encontró una plantilla activa para el paso ${rule.sequence}.`,
+          );
+        }
+
         providerMessageId = result.messageId;
       }
 
@@ -371,6 +399,46 @@ export class CartRecoveryService {
       );
       throw error;
     }
+  }
+
+  private cartTemplateEventKey(
+    sequence: number,
+  ):
+    | 'abandoned_cart_step_1'
+    | 'abandoned_cart_step_2'
+    | 'abandoned_cart_step_3'
+    | null {
+    if (sequence === 1) return 'abandoned_cart_step_1';
+    if (sequence === 2) return 'abandoned_cart_step_2';
+    if (sequence === 3) return 'abandoned_cart_step_3';
+
+    return null;
+  }
+
+  private cartTemplateContext(cart: AbandonedCart): JsonObject {
+    const snapshot = this.toJsonObject(cart.cart_snapshot);
+    const customer = this.toJsonObject(snapshot.customer);
+    const fullName =
+      this.recoveryString(customer.name) || 'Cliente';
+    const firstName =
+      fullName.split(/\s+/)[0]?.trim() || 'Cliente';
+
+    return {
+      customer: {
+        first_name: firstName,
+        full_name: fullName,
+      },
+      checkout: {
+        items_summary: this.recoveryCartSummary(snapshot),
+        total:
+          this.recoveryMoney(
+            snapshot.total_amount,
+            snapshot.currency,
+          ) || 'Por confirmar',
+        recovery_url: cart.checkout_url ?? '',
+      },
+      promotion: {},
+    };
   }
 
   private latestCartPerRecipient(

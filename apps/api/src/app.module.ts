@@ -54,6 +54,7 @@ import { PlatformHealthController } from './platform-health.controller';
 import { PlatformHealthService } from './platform-health.service';
 import { WhatsappTemplateController } from './whatsapp-template.controller';
 import { WhatsappTemplateService } from './whatsapp-template.service';
+import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -113,6 +114,7 @@ import { WhatsappTemplateService } from './whatsapp-template.service';
     AccessAuthService,
     PlatformHealthService,
     WhatsappTemplateService,
+    WhatsappTemplateExecutionService,
   ],
 })
 export class AppModule {}

@@ -241,6 +241,31 @@ export class WhatsappMessagingService {
     });
   }
 
+  async sendTemplateComponents(
+    companyId: string,
+    to: string,
+    templateName: string,
+    languageCode: string,
+    components: JsonObject[] = [],
+  ): Promise<WhatsappSendResult> {
+    const channel = await this.resolveChannel(companyId);
+    const template: JsonObject = {
+      name: templateName,
+      language: { code: languageCode },
+    };
+
+    if (components.length) {
+      template.components = components;
+    }
+
+    return this.send(channel, {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template,
+    });
+  }
+
   private async prepareAudio(input: {
     buffer: Buffer;
     mimeType: string;
