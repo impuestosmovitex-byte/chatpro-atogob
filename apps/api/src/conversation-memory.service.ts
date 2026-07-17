@@ -664,14 +664,16 @@ export class ConversationMemoryService {
     const area =
       selectedArea ??
       await this.getDefaultServiceArea(session.companyId);
-    const handoffReason =
-      typeof handoff.reason === 'string' && handoff.reason.trim()
-        ? handoff.reason.trim().slice(0, 500)
-        : 'El caso requiere atención humana.';
-    const handoffSummary =
-      typeof handoff.summary === 'string' && handoff.summary.trim()
-        ? handoff.summary.trim().slice(0, 500)
-        : 'Revisa el historial de la conversación.';
+    const handoffReason = this.compactHandoffText(
+      handoff.reason,
+      'Requiere atención de un asesor.',
+      160,
+    );
+    const handoffSummary = this.compactHandoffText(
+      handoff.summary,
+      'Revisa el último mensaje del cliente y continúa la atención.',
+      280,
+    );
     const nextContext: JsonObject = {
       ...session.context,
       ...(area && !selectedArea
@@ -1972,6 +1974,30 @@ export class ConversationMemoryService {
     }
 
     return result;
+  }
+
+  private compactHandoffText(
+    value: unknown,
+    fallback: string,
+    maxLength: number,
+  ): string {
+    const normalized =
+      typeof value === 'string'
+        ? value
+            .replace(/\s+/g, ' ')
+            .replace(/^(motivo|resumen|detalle)\s*:\s*/i, '')
+            .trim()
+        : '';
+
+    if (!normalized) {
+      return fallback;
+    }
+
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, Math.max(1, maxLength - 1)).trim()}…`;
   }
 
   private toJsonObject(value: unknown): JsonObject {

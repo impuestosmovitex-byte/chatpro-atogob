@@ -147,6 +147,22 @@ function customerLabel(phone: string, contact?: Contact | null) {
   return contact?.displayName?.trim() || (phone ? `Cliente ${phone}` : "Cliente sin número");
 }
 
+function compactTransferText(
+  value: unknown,
+  fallback: string,
+  maxLength: number,
+) {
+  const text =
+    typeof value === "string"
+      ? value.replace(/\s+/g, " ").trim()
+      : "";
+
+  if (!text) return fallback;
+  if (text.length <= maxLength) return text;
+
+  return `${text.slice(0, Math.max(1, maxLength - 1)).trim()}…`;
+}
+
 function getCart(context: Record<string, unknown>) {
   const value = context.cart;
 
@@ -1273,9 +1289,22 @@ export default function Home() {
 
                 {typeof (selected.session.context as Record<string, unknown>).handoff === "object" ? (
                   <section className="contact-notes-context">
-                    <h3>Resumen de transferencia</h3>
-                    <p><strong>Motivo:</strong> {String(((selected.session.context as Record<string, any>).handoff?.reason) || "Caso transferido")}</p>
-                    <p>{String(((selected.session.context as Record<string, any>).handoff?.summary) || "Revisa el historial de la conversación.")}</p>
+                    <h3>Transferencia a asesor</h3>
+                    <p>
+                      {compactTransferText(
+                        (selected.session.context as Record<string, any>).handoff?.summary,
+                        "Revisa el último mensaje del cliente y continúa la atención.",
+                        280,
+                      )}
+                    </p>
+                    <small>
+                      <strong>Motivo:</strong>{" "}
+                      {compactTransferText(
+                        (selected.session.context as Record<string, any>).handoff?.reason,
+                        "Requiere atención de un asesor.",
+                        160,
+                      )}
+                    </small>
                   </section>
                 ) : null}
 

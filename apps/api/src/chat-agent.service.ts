@@ -66,6 +66,25 @@ export class ChatAgentService {
     customerMessage: string,
   ): Promise<string> {
     let activeSession = session;
+    const openingContextStatus = this.getContextStatus(
+      profile,
+      activeSession,
+    );
+    const startsNewConversation =
+      !openingContextStatus.is_within_context_window;
+
+    if (startsNewConversation) {
+      activeSession =
+        await this.conversationMemoryService.updateSession(
+          activeSession.id,
+          {
+            stage: 'active',
+            context: this.startFreshConversationContext(
+              activeSession.context,
+            ),
+          },
+        );
+    }
 
     // La atención principal ya recibe las reglas de alcance y comprensión
     // dentro de buildInstructions. Evitamos dos llamadas previas de IA por mensaje
@@ -89,7 +108,8 @@ export class ChatAgentService {
           )
         : activeSession;
 
-    const collections = await this.getCollectionsForSession(session);
+    const collections =
+      await this.getCollectionsForSession(activeSession);
     const recoveryContext = this.getActiveRecoveryContext(
       activeSession.context,
     );
@@ -112,6 +132,7 @@ export class ChatAgentService {
             last_message_at: activeSession.lastMessageAt,
             context_status: contextStatus,
             recovery_context: recoveryContext,
+            starts_new_conversation: startsNewConversation,
           },
           conversation_history: history,
           current_customer_message: customerMessage,
@@ -228,6 +249,9 @@ export class ChatAgentService {
       '- Entiende mensajes cortos, cambios de idea, errores de escritura y referencias como “esta”, “la lila”, “sí”, “dale”, “mejor no” o “quiero otra”.',
         '- Conserva el carrito real aunque la persona mire otro producto, pero solo cuando ese carrito corresponde a la compra actual.',
         '- Un pedido ya pagado, consultado o despachado NO es un carrito. Nunca agregues productos de pedidos anteriores a una compra nueva.',
+      '- Cuando session.starts_new_conversation sea true, atiende el mensaje como una conversación comercial nueva. No reutilices productos, tallas, variantes, carrito, pedido, menú ni intención de compra anteriores.',
+      '- Después de 72 horas sin actividad, solo consulta una compra anterior si el mensaje ACTUAL del cliente pregunta explícitamente por un pedido, guía, pago, cambio, garantía, devolución o algo que compró antes.',
+      '- No llames lookup_order solo porque exista un pedido o dato antiguo en el historial o contexto. Debe existir una solicitud actual y clara del cliente sobre esa compra.',
         '- Si la persona dice que quiere comprar algo nuevo, “solo quiero”, “solo esa”, “solo la blusa”, “ese pedido ya lo pagué” o corrige que los productos anteriores no van, separa la compra nueva del pedido anterior. Usa get_cart y quita productos no solicitados con remove_cart_line antes de crear checkout.',
       '- Pregunta solo por el dato que falte. No repitas ciudad, color, talla o medio de pago ya informado.',
       '',
@@ -258,7 +282,8 @@ export class ChatAgentService {
       '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
       '- Atiende primero el caso con la información disponible. Usa request_human_attention solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa, o las instrucciones específicas indiquen escalar.',
       '- REGLA DE COMPRENSIÓN: no transfieras por un solo mensaje ambiguo. Pide una aclaración breve y concreta. Si después de esa aclaración la persona sigue sin permitir entender o resolver el caso, usa request_human_attention. No supongas que un número, documento, teléfono, talla, referencia, enlace o dato corto es incorrecto: interprétalo usando el contexto o pide aclaración.',
-      '- Al transferir usa request_human_attention con un resumen interno MUY CORTO, máximo 3 líneas o 450 caracteres. Incluye solo: motivo de transferencia, qué necesita el cliente y el dato pendiente principal. No copies ni resumas todo el historial, carrito completo, precios ni mensajes anteriores; el asesor puede leer la conversación.',
+      '- Al transferir usa request_human_attention con un resumen interno MUY CORTO: máximo 2 líneas y 280 caracteres. Escribe únicamente qué necesita el cliente y cuál es el dato o acción pendiente. No copies historial, productos, precios, carrito ni pedidos completos.',
+      '- El campo reason debe ser una frase breve, máximo 120 caracteres. El campo summary debe entenderse por sí solo y no debe repetir el motivo.',
       '',
       'CONFIGURACIÓN COMERCIAL ESTRUCTURADA:',
       commercialRules,
@@ -475,7 +500,34 @@ export class ChatAgentService {
       return configuredHours;
     }
 
-    return 168;
+    return 72;
+  }
+
+  private startFreshConversationContext(
+    context: JsonObject,
+  ): JsonObject {
+    const recoveryContext = this.getActiveRecoveryContext(context);
+    const nextContext: JsonObject = {
+      conversation_cycle_started_at: new Date().toISOString(),
+      conversation_cycle_reason: 'inactive_72_hours',
+    };
+
+    if (recoveryContext) {
+      nextContext.cart_recovery = recoveryContext;
+
+      if (
+        typeof context.cart_recovery_initialized_id === 'string'
+      ) {
+        nextContext.cart_recovery_initialized_id =
+          context.cart_recovery_initialized_id;
+      }
+
+      if (Array.isArray(context.cart)) {
+        nextContext.cart = context.cart;
+      }
+    }
+
+    return nextContext;
   }
 
   private async classifyBusinessScope(
