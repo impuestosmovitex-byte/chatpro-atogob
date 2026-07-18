@@ -311,9 +311,17 @@ export class WhatsappMessagingService {
   }> {
     const converted = await this.transcodeAudio(input, {
       outputFilename: 'audio.ogg',
-      outputMimeType: 'audio/ogg',
+      outputMimeType: 'audio/ogg; codecs=opus',
       arguments: [
         '-vn',
+        '-af',
+        'aresample=async=1:first_pts=0',
+        '-fflags',
+        '+genpts',
+        '-avoid_negative_ts',
+        'make_zero',
+        '-map_metadata',
+        '-1',
         '-ac',
         '1',
         '-ar',
@@ -481,10 +489,14 @@ export class WhatsappMessagingService {
       filename: string;
     },
   ): Promise<string> {
-    const uploadMime = input.mimeType
+    const baseMime = input.mimeType
       .split(';')[0]
       .trim()
       .toLowerCase();
+    const uploadMime =
+      baseMime === 'audio/ogg'
+        ? 'audio/ogg; codecs=opus'
+        : baseMime;
 
     if (!uploadMime) {
       throw new Error('El audio no tiene un tipo MIME válido.');
