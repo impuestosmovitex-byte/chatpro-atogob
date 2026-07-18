@@ -361,6 +361,27 @@ export class WhatsappWebhookController {
         input.phone,
       );
 
+      const visualMimeType =
+        media.mimeType.split(';')[0].trim().toLowerCase() ||
+        'image/jpeg';
+      const visualMatch =
+        await this.chatAgentService.matchIncomingVisualReference(
+          profile,
+          session,
+          {
+            imageDataUrl:
+              `data:${visualMimeType};base64,` +
+              media.buffer.toString('base64'),
+            productName: analysis.productName,
+            reference: analysis.reference,
+            visiblePrice: analysis.visiblePrice,
+            visibleText: analysis.visibleText,
+            category: analysis.category,
+            colors: analysis.colors,
+            searchTerms: analysis.searchTerms,
+          },
+        );
+
       const currentSession =
         await this.conversationMemoryService.getSessionById(session.id);
       const receivedAt = new Date().toISOString();
@@ -378,11 +399,20 @@ export class WhatsappWebhookController {
             last_visual_reference: {
               summary: analysis.summary,
               category: analysis.category,
+              product_name: analysis.productName || null,
+              reference: analysis.reference || null,
+              visible_price: analysis.visiblePrice || null,
               colors: analysis.colors,
               visible_text: analysis.visibleText,
               search_terms: analysis.searchTerms,
               source_hint: analysis.sourceHint,
               confidence: analysis.confidence,
+              match_type: visualMatch.matchType,
+              match_confidence: visualMatch.confidence,
+              matched_product: visualMatch.matchedProduct,
+              candidates: visualMatch.candidates,
+              match_queries: visualMatch.queries,
+              match_reason: visualMatch.reason,
               caption: input.caption || null,
               received_at: receivedAt,
             },
@@ -397,6 +427,15 @@ export class WhatsappWebhookController {
           : 'El cliente envió solamente una imagen y quiere atención sobre lo que aparece.',
         `Descripción visual: ${analysis.summary}`,
         `Categoría aproximada: ${analysis.category}`,
+        analysis.productName
+          ? `Nombre comercial leído: ${analysis.productName}`
+          : '',
+        analysis.reference
+          ? `Referencia o código leído: ${analysis.reference}`
+          : '',
+        analysis.visiblePrice
+          ? `Precio visible leído: ${analysis.visiblePrice}`
+          : '',
         analysis.colors.length
           ? `Colores observados: ${analysis.colors.join(', ')}`
           : '',
@@ -404,13 +443,19 @@ export class WhatsappWebhookController {
           ? `Texto visible en la imagen: ${analysis.visibleText}`
           : '',
         analysis.searchTerms.length
-          ? `Términos útiles para consultar el catálogo: ${analysis.searchTerms.join(', ')}`
+          ? `Términos útiles: ${analysis.searchTerms.join(', ')}`
           : '',
-        `Origen estimado: ${analysis.sourceHint}. Confianza: ${analysis.confidence}.`,
-        'Atiende la intención del cliente usando OpenAI y la configuración de esta empresa.',
-        'Consulta únicamente el catálogo real de la empresa mediante las herramientas disponibles.',
-        'No afirmes que es una referencia exacta de la empresa solo por parecido visual.',
-        'Si no existe coincidencia exacta, dilo con claridad y ofrece productos reales similares de la categoría detectada.',
+        `Validación con catálogo real: ${visualMatch.matchType}. Confianza: ${visualMatch.confidence}.`,
+        visualMatch.matchedProduct
+          ? `Producto exacto confirmado: ${visualMatch.matchedProduct.title}. URL: ${visualMatch.matchedProduct.url}. Precio desde: ${visualMatch.matchedProduct.priceFromCop || 'consultar producto seleccionado'}.`
+          : '',
+        visualMatch.candidates.length
+          ? `Opciones reales parecidas, sin confirmar referencia exacta: ${visualMatch.candidates.map((item, index) => `${index + 1}. ${item.title} — ${item.url}`).join(' | ')}`
+          : '',
+        'Responde de forma breve y natural.',
+        'Si existe producto exacto confirmado, consulta el producto seleccionado y continúa con sus variantes reales.',
+        'Si solo existen opciones parecidas, muestra máximo tres y no afirmes que alguna sea la referencia exacta.',
+        'Si no hay coincidencias, pide nombre, enlace o un detalle útil sin inventar productos.',
       ].filter(Boolean).join('\n');
 
       const reply = await this.resolveReply(
@@ -483,6 +528,9 @@ export class WhatsappWebhookController {
   }): Promise<{
     summary: string;
     category: string;
+    productName: string;
+    reference: string;
+    visiblePrice: string;
     colors: string[];
     visibleText: string;
     searchTerms: string[];
@@ -536,12 +584,15 @@ export class WhatsappWebhookController {
       instructions: [
         'Analiza la imagen como referencia comercial enviada por un cliente.',
         'Devuelve únicamente JSON válido y sin markdown con esta estructura:',
-        '{"summary":"...","category":"...","colors":["..."],"visible_text":"...","search_terms":["..."],"source_hint":"catalog_screenshot|external_reference|unknown","confidence":"low|medium|high"}',
-        'summary: describe objetivamente el producto principal, sin inventar marca, referencia, precio, material, talla ni disponibilidad.',
+        '{"summary":"...","category":"...","product_name":"...","reference":"...","visible_price":"...","colors":["..."],"visible_text":"...","search_terms":["..."],"source_hint":"catalog_screenshot|external_reference|unknown","confidence":"low|medium|high"}',
+        'summary: describe objetivamente el producto principal, sin inventar material, talla ni disponibilidad.',
         'category: categoría breve y útil en español para buscar dentro del catálogo real de la empresa.',
+        'product_name: copia el nombre comercial legible del producto; déjalo vacío si está oculto o no es claro.',
+        'reference: copia una referencia, SKU o código claramente legible; déjalo vacío si no aparece.',
+        'visible_price: copia únicamente el precio claramente visible; no lo deduzcas.',
         'colors: únicamente colores claramente visibles.',
-        'visible_text: copia solo texto comercial legible que ayude a identificar el producto; déjalo vacío si no es claro.',
-        'search_terms: entre 1 y 6 términos cortos y útiles para buscar el producto o similares.',
+        'visible_text: copia el texto comercial legible que pueda ayudar a identificar el producto.',
+        'search_terms: entre 1 y 6 términos cortos y específicos para buscar el producto o similares.',
         'catalog_screenshot: parece captura de una tienda, catálogo o publicación comercial.',
         'external_reference: parece una foto o referencia externa sin prueba de pertenecer a la empresa.',
         'unknown: no es posible determinar el origen.',
@@ -620,6 +671,9 @@ export class WhatsappWebhookController {
     return {
       summary,
       category,
+      productName: readText(parsed.product_name, 240),
+      reference: readText(parsed.reference, 120),
+      visiblePrice: readText(parsed.visible_price, 80),
       colors: readList(parsed.colors, 6, 50),
       visibleText: readText(parsed.visible_text, 1200),
       searchTerms: searchTerms.length ? searchTerms : [category],
@@ -1332,30 +1386,71 @@ export class WhatsappWebhookController {
     }
 
     if (session.stage === 'main' || session.stage === 'area_menu') {
-      const selectedArea = this.resolveServiceAreaChoice(activeAreas, cleanText);
+      const explicitArea = this.resolveServiceAreaChoice(
+        activeAreas,
+        cleanText,
+      );
+      const directArea =
+        explicitArea
+          ? null
+          : await this.resolveDirectServiceAreaChoice(
+              profile,
+              activeAreas,
+              text,
+            );
+      const selectedArea = explicitArea ?? directArea;
 
       if (!selectedArea) {
         return this.buildServiceAreaMenu(profile, activeAreas, session);
       }
 
-      const selectedSession = await this.conversationMemoryService.updateSession(
-        session.id,
-        {
-          stage: 'active',
-          context: {
-            ...session.context,
-            service_area: {
-              id: selectedArea.id,
-              name: selectedArea.name,
-              description: selectedArea.description,
-              selected_at: new Date().toISOString(),
+      const selectedSession =
+        await this.conversationMemoryService.updateSession(
+          session.id,
+          {
+            stage: 'active',
+            context: {
+              ...session.context,
+              service_area: {
+                id: selectedArea.id,
+                name: selectedArea.name,
+                description: selectedArea.description,
+                selected_at: new Date().toISOString(),
+                selected_automatically: Boolean(directArea),
+              },
             },
           },
-        },
-      );
+        );
 
       if (this.isCustomerServiceSession(selectedSession)) {
+        if (directArea) {
+          const directCustomerServiceReply =
+            await this.resolveCustomerServiceReply(
+              selectedSession,
+              cleanText,
+              text,
+            );
+
+          if (directCustomerServiceReply) {
+            return directCustomerServiceReply;
+          }
+
+          return this.chatAgentService.reply(
+            profile,
+            selectedSession,
+            text,
+          );
+        }
+
         return this.startCustomerServiceMenu(selectedSession);
+      }
+
+      if (directArea) {
+        return this.chatAgentService.reply(
+          profile,
+          selectedSession,
+          text,
+        );
       }
 
       return this.buildAreaWelcome(
@@ -1460,6 +1555,166 @@ export class WhatsappWebhookController {
     }
 
     return nextContext;
+  }
+
+  private async resolveDirectServiceAreaChoice(
+    profile: CompanyProfile,
+    areas: Array<{
+      id: string;
+      name: string;
+      description: string;
+    }>,
+    originalText: string,
+  ): Promise<{
+    id: string;
+    name: string;
+    description: string;
+  } | null> {
+    const text = originalText.replace(/\s+/g, ' ').trim();
+
+    if (
+      !text ||
+      /^\d+$/.test(text) ||
+      !areas.length
+    ) {
+      return null;
+    }
+
+    const normalizedMessage = this.normalizeText(text);
+    const ignored = new Set([
+      'a',
+      'al',
+      'con',
+      'de',
+      'del',
+      'el',
+      'en',
+      'la',
+      'las',
+      'lo',
+      'los',
+      'me',
+      'mi',
+      'para',
+      'por',
+      'que',
+      'quiero',
+      'un',
+      'una',
+      'y',
+    ]);
+    const messageTokens = normalizedMessage
+      .split(' ')
+      .filter(
+        (token) =>
+          token.length >= 3 &&
+          !ignored.has(token),
+      );
+    const scored = areas
+      .map((area) => {
+        const areaTokens = this
+          .normalizeText(`${area.name} ${area.description}`)
+          .split(' ')
+          .filter(
+            (token) =>
+              token.length >= 3 &&
+              !ignored.has(token),
+          );
+        const overlap = areaTokens.filter((token) =>
+          messageTokens.includes(token),
+        ).length;
+
+        return { area, overlap };
+      })
+      .sort((left, right) => right.overlap - left.overlap);
+
+    if (
+      scored[0]?.overlap >= 2 &&
+      scored[0].overlap > (scored[1]?.overlap ?? 0)
+    ) {
+      console.log(
+        `[ChatPro][direct-area] source=local area="${scored[0].area.name}"`,
+      );
+      return scored[0].area;
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+
+    if (!apiKey) {
+      return null;
+    }
+
+    try {
+      const client = new OpenAI({ apiKey });
+      const model =
+        process.env.OPENAI_MODEL?.trim() ||
+        'gpt-5-mini';
+      const response = await client.responses.create({
+        model,
+        instructions: [
+          'Decide si el mensaje expresa una intención clara que corresponde a una de las áreas activas de una empresa.',
+          'Devuelve únicamente JSON válido y sin markdown:',
+          '{"area_id":"id o null","confidence":"low|medium|high","explicit_intent":true|false}',
+          'Usa exclusivamente las áreas entregadas, considerando tanto su nombre como su descripción.',
+          'Selecciona un área cuando el cliente ya explicó qué necesita: explorar o comprar productos, pagar, consultar un pedido, reportar un problema, solicitar cambio, garantía, devolución o atención humana.',
+          'Devuelve area_id null cuando sea solo un saludo, una respuesta sin contexto, contenido ambiguo o no exista una correspondencia clara.',
+          'No obligues al cliente a usar el menú cuando la intención sea clara.',
+          `Empresa: ${profile.name}.`,
+        ].join('\n'),
+        input: JSON.stringify({
+          mensaje: text,
+          areas: areas.map((area) => ({
+            id: area.id,
+            name: area.name,
+            description: area.description,
+          })),
+        }),
+      });
+      const raw = response.output_text
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '');
+      const parsed = JSON.parse(raw) as {
+        area_id?: unknown;
+        confidence?: unknown;
+        explicit_intent?: unknown;
+      };
+      const areaId =
+        typeof parsed.area_id === 'string'
+          ? parsed.area_id.trim()
+          : '';
+      const confidence =
+        parsed.confidence === 'high' ||
+        parsed.confidence === 'medium'
+          ? parsed.confidence
+          : 'low';
+
+      if (
+        parsed.explicit_intent !== true ||
+        confidence === 'low' ||
+        !areaId
+      ) {
+        return null;
+      }
+
+      const area =
+        areas.find((item) => item.id === areaId) ?? null;
+
+      if (area) {
+        console.log(
+          `[ChatPro][direct-area] source=openai ` +
+          `confidence=${confidence} area="${area.name}"`,
+        );
+      }
+
+      return area;
+    } catch (error) {
+      console.error(
+        '[ChatPro][direct-area] no se pudo clasificar el área:',
+        error,
+      );
+      return null;
+    }
   }
 
   private resolveServiceAreaChoice(

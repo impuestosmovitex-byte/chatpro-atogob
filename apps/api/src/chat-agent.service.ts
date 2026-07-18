@@ -260,6 +260,472 @@ export class ChatAgentService {
     }
   }
 
+  async matchIncomingVisualReference(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    input: {
+      imageDataUrl: string;
+      productName: string;
+      reference: string;
+      visiblePrice: string;
+      visibleText: string;
+      category: string;
+      colors: string[];
+      searchTerms: string[];
+    },
+  ): Promise<{
+    matchType: 'exact' | 'similar' | 'none';
+    confidence: number;
+    matchedProduct: {
+      title: string;
+      url: string;
+      imageUrl: string | null;
+      priceFromCop: string;
+    } | null;
+    candidates: Array<{
+      title: string;
+      url: string;
+      imageUrl: string | null;
+      priceFromCop: string;
+    }>;
+    queries: string[];
+    reason: string;
+  }> {
+    type VisualCandidate = {
+      id: string;
+      title: string;
+      url: string;
+      imageUrl: string | null;
+      priceFromCop: string;
+      textScore: number;
+    };
+
+    const compact = (value: unknown, limit = 240): string =>
+      typeof value === 'string'
+        ? value.replace(/\s+/g, ' ').trim().slice(0, limit)
+        : '';
+    const normalized = (value: string): string =>
+      this.normalizeText(value).replace(/\s+/g, ' ').trim();
+    const usefulTokens = (value: string): string[] => {
+      const ignored = new Set([
+        'a',
+        'al',
+        'con',
+        'de',
+        'del',
+        'el',
+        'en',
+        'esta',
+        'este',
+        'la',
+        'las',
+        'lo',
+        'los',
+        'para',
+        'por',
+        'producto',
+        'un',
+        'una',
+        'y',
+      ]);
+
+      return normalized(value)
+        .split(' ')
+        .filter((token) => token.length >= 3 && !ignored.has(token));
+    };
+    const digits = (value: string): string =>
+      value.replace(/[^\d]/g, '').replace(/^0+/, '');
+    const querySeeds = [
+      compact(input.reference, 120),
+      compact(input.productName, 180),
+      compact(input.visibleText, 220),
+      ...input.searchTerms.map((item) => compact(item, 120)),
+      [
+        compact(input.category, 100),
+        ...input.colors.slice(0, 2).map((item) => compact(item, 40)),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    ].filter(Boolean);
+    const queryMap = new Map<string, string>();
+
+    for (const seed of querySeeds) {
+      const key = normalized(seed);
+
+      if (!key || queryMap.has(key)) {
+        continue;
+      }
+
+      queryMap.set(key, seed);
+    }
+
+    const queries = [...queryMap.values()].slice(0, 6);
+    const candidateMap = new Map<string, VisualCandidate>();
+    const specificTargets = [
+      compact(input.reference, 120),
+      compact(input.productName, 180),
+      compact(input.visibleText, 220),
+    ].filter(Boolean);
+    const visiblePriceDigits = digits(input.visiblePrice);
+
+    const scoreTitle = (
+      title: string,
+      priceFromCop: string,
+    ): number => {
+      const titleNormalized = normalized(title);
+      const titleTokens = usefulTokens(title);
+      let score = 0;
+
+      for (const target of specificTargets) {
+        const targetNormalized = normalized(target);
+
+        if (!targetNormalized) {
+          continue;
+        }
+
+        if (titleNormalized === targetNormalized) {
+          score = Math.max(score, 1);
+          continue;
+        }
+
+        if (
+          targetNormalized.includes(titleNormalized) ||
+          titleNormalized.includes(targetNormalized)
+        ) {
+          score = Math.max(score, 0.9);
+        }
+
+        const targetTokens = usefulTokens(target);
+
+        if (targetTokens.length && titleTokens.length) {
+          const common = titleTokens.filter((token) =>
+            targetTokens.includes(token),
+          ).length;
+          const coverage =
+            common / Math.max(1, Math.min(
+              titleTokens.length,
+              targetTokens.length,
+            ));
+
+          score = Math.max(score, coverage * 0.82);
+        }
+      }
+
+      if (
+        visiblePriceDigits &&
+        digits(priceFromCop) === visiblePriceDigits
+      ) {
+        score = Math.min(1, score + 0.08);
+      }
+
+      return score;
+    };
+
+    for (const query of queries) {
+      try {
+        const result = await this.searchProducts(session, query);
+        const products =
+          result &&
+          typeof result === 'object' &&
+          Array.isArray(
+            (result as { products?: unknown }).products,
+          )
+            ? (result as { products: unknown[] }).products
+            : [];
+
+        for (const item of products) {
+          if (!item || typeof item !== 'object') {
+            continue;
+          }
+
+          const product = item as Record<string, unknown>;
+          const title = compact(product.title, 240);
+          const url = compact(product.url, 1000);
+
+          if (!title || !url) {
+            continue;
+          }
+
+          const id = compact(product.id, 300) || url;
+          const imageUrl =
+            typeof product.image_url === 'string' &&
+            product.image_url.trim()
+              ? product.image_url.trim()
+              : null;
+          const priceFromCop =
+            typeof product.price_from_cop === 'string' ||
+            typeof product.price_from_cop === 'number'
+              ? String(product.price_from_cop)
+              : '';
+          const candidate: VisualCandidate = {
+            id,
+            title,
+            url,
+            imageUrl,
+            priceFromCop,
+            textScore: scoreTitle(title, priceFromCop),
+          };
+          const previous = candidateMap.get(id);
+
+          if (!previous || candidate.textScore > previous.textScore) {
+            candidateMap.set(id, candidate);
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[ChatPro][visual-match] falló búsqueda "${query}":`,
+          error,
+        );
+      }
+    }
+
+    const ranked = [...candidateMap.values()]
+      .sort((left, right) => {
+        if (right.textScore !== left.textScore) {
+          return right.textScore - left.textScore;
+        }
+
+        return left.title.localeCompare(
+          right.title,
+          'es',
+          { sensitivity: 'base' },
+        );
+      })
+      .slice(0, 12);
+    const top = ranked[0] ?? null;
+    const second = ranked[1] ?? null;
+    const hasSpecificText =
+      Boolean(input.productName.trim()) ||
+      Boolean(input.reference.trim()) ||
+      Boolean(input.visibleText.trim());
+
+    const selectExactCandidate = async (
+      candidate: VisualCandidate,
+      confidence: number,
+      reason: string,
+    ) => {
+      const selected = await this.selectProductByName(
+        session,
+        candidate.title,
+      );
+      const ok =
+        selected &&
+        typeof selected === 'object' &&
+        (selected as { ok?: unknown }).ok === true;
+
+      if (!ok) {
+        return null;
+      }
+
+      return {
+        matchType: 'exact' as const,
+        confidence,
+        matchedProduct: {
+          title: candidate.title,
+          url: candidate.url,
+          imageUrl: candidate.imageUrl,
+          priceFromCop: candidate.priceFromCop,
+        },
+        candidates: [],
+        queries,
+        reason,
+      };
+    };
+
+    if (
+      top &&
+      hasSpecificText &&
+      top.textScore >= 0.94 &&
+      (!second || top.textScore - second.textScore >= 0.08)
+    ) {
+      const exact = await selectExactCandidate(
+        top,
+        Math.max(0.94, top.textScore),
+        'El nombre, referencia o texto visible coincide con un producto real.',
+      );
+
+      if (exact) {
+        console.log(
+          `[ChatPro][visual-match] source=text match=exact product="${top.title}"`,
+        );
+        return exact;
+      }
+    }
+
+    const visualCandidates = ranked
+      .filter(
+        (candidate) =>
+          typeof candidate.imageUrl === 'string' &&
+          /^https?:\/\//i.test(candidate.imageUrl),
+      )
+      .slice(0, 8);
+    let visualChoice: VisualCandidate | null = null;
+    let visualMatchType: 'exact' | 'similar' | 'none' = 'none';
+    let visualConfidence = 0;
+    let visualReason = '';
+
+    if (
+      visualCandidates.length &&
+      /^data:image\//i.test(input.imageDataUrl)
+    ) {
+      try {
+        const content: any[] = [
+          {
+            type: 'input_text',
+            text:
+              'IMAGEN DEL CLIENTE. Compárala con los candidatos reales del catálogo.',
+          },
+          {
+            type: 'input_image',
+            image_url: input.imageDataUrl,
+            detail: 'high',
+          },
+        ];
+
+        visualCandidates.forEach((candidate, index) => {
+          content.push(
+            {
+              type: 'input_text',
+              text:
+                `CANDIDATO ${index + 1}: ${candidate.title}. ` +
+                `Precio desde: ${candidate.priceFromCop || 'sin dato'}.`,
+            },
+            {
+              type: 'input_image',
+              image_url: candidate.imageUrl,
+              detail: 'auto',
+            },
+          );
+        });
+
+        const response = await this.getClient().responses.create({
+          model: this.getModel(),
+          instructions: [
+            'Compara una imagen enviada por un cliente con imágenes de productos reales de una tienda.',
+            'Devuelve únicamente JSON válido y sin markdown:',
+            '{"match_type":"exact|similar|none","candidate_index":1,"confidence":0.0,"reason":"..."}',
+            'exact significa que es el mismo diseño o producto, aunque cambien el recorte, modelo, fondo, color disponible o ángulo.',
+            'similar significa que comparte categoría o estilo, pero no puedes asegurar que sea la misma referencia.',
+            'none significa que ningún candidato es suficientemente parecido.',
+            'Sé conservador: no uses exact solo por compartir color, categoría, mangas o silueta general.',
+            'candidate_index empieza en 1. Usa null cuando match_type sea none.',
+            `Empresa activa: ${profile.name}.`,
+          ].join('\n'),
+          input: [
+            {
+              role: 'user',
+              content,
+            },
+          ],
+        } as any);
+        const raw = response.output_text
+          .trim()
+          .replace(/^```(?:json)?\s*/i, '')
+          .replace(/\s*```$/i, '');
+        const parsed = JSON.parse(raw) as {
+          match_type?: unknown;
+          candidate_index?: unknown;
+          confidence?: unknown;
+          reason?: unknown;
+        };
+        const index = Number(parsed.candidate_index);
+        const confidence = Number(parsed.confidence);
+        const matchType =
+          parsed.match_type === 'exact' ||
+          parsed.match_type === 'similar'
+            ? parsed.match_type
+            : 'none';
+
+        visualMatchType = matchType;
+        visualConfidence =
+          Number.isFinite(confidence)
+            ? Math.min(1, Math.max(0, confidence))
+            : 0;
+        visualReason = compact(parsed.reason, 360);
+
+        if (
+          Number.isInteger(index) &&
+          index >= 1 &&
+          index <= visualCandidates.length
+        ) {
+          visualChoice = visualCandidates[index - 1] ?? null;
+        }
+      } catch (error) {
+        console.error(
+          '[ChatPro][visual-match] no se pudo comparar imágenes:',
+          error,
+        );
+      }
+    }
+
+    if (
+      visualMatchType === 'exact' &&
+      visualChoice &&
+      visualConfidence >= 0.84
+    ) {
+      const exact = await selectExactCandidate(
+        visualChoice,
+        visualConfidence,
+        visualReason ||
+          'La imagen coincide con un producto real del catálogo.',
+      );
+
+      if (exact) {
+        console.log(
+          `[ChatPro][visual-match] source=vision match=exact ` +
+          `confidence=${visualConfidence.toFixed(2)} ` +
+          `product="${visualChoice.title}"`,
+        );
+        return exact;
+      }
+    }
+
+    const candidateOrder = [
+      ...(visualChoice ? [visualChoice] : []),
+      ...ranked.filter(
+        (candidate) => candidate.id !== visualChoice?.id,
+      ),
+    ];
+    const candidates = candidateOrder
+      .slice(0, 3)
+      .map((candidate) => ({
+        title: candidate.title,
+        url: candidate.url,
+        imageUrl: candidate.imageUrl,
+        priceFromCop: candidate.priceFromCop,
+      }));
+
+    if (candidates.length) {
+      console.log(
+        `[ChatPro][visual-match] match=similar candidates=${candidates.length}`,
+      );
+      return {
+        matchType: 'similar',
+        confidence:
+          visualMatchType === 'similar'
+            ? visualConfidence
+            : top?.textScore ?? 0,
+        matchedProduct: null,
+        candidates,
+        queries,
+        reason:
+          visualReason ||
+          'No existe certeza suficiente para confirmar una referencia exacta.',
+      };
+    }
+
+    console.log('[ChatPro][visual-match] match=none');
+    return {
+      matchType: 'none',
+      confidence: 0,
+      matchedProduct: null,
+      candidates: [],
+      queries,
+      reason:
+        'No se encontraron productos reales suficientes para validar la imagen.',
+    };
+  }
+
   private buildInstructions(
     profile: CompanyProfile,
     hasRecoveryContext = false,
@@ -318,9 +784,10 @@ export class ChatAgentService {
       '- Después de lookup_order, responde únicamente con datos reales encontrados. Si hay guía, comparte transportadora, número y link de seguimiento. Si no hay guía o el caso es complejo, explica con claridad y ofrece pasar a asesor.',
       '- Si lookup_order devuelve next_action ask_alternate_identifier, no uses request_human_attention todavía. Pide un dato diferente y concreto: correo o celular si ya tienes pedido, o número de pedido si ya tienes celular/correo.',
       '- Si lookup_order devuelve next_action offer_human_attention o requires_human true, ofrece dejar el caso con un asesor. No pidas de nuevo el mismo dato y no inventes estado del pedido.',
-      '- session.context.last_visual_reference contiene el análisis de la última imagen enviada por el cliente. Úsalo cuando el mensaje actual se refiera a “esta”, “esa”, “esto”, “la foto”, “la imagen”, “la de arriba” o pida precio, disponibilidad o similares.',
-      '- Una semejanza visual no demuestra que sea una referencia exacta de la empresa. Solo confirma nombre, precio, variantes, disponibilidad o enlace cuando una herramienta encuentre el producto real.',
-      '- Si no encuentras coincidencia exacta de una imagen, dilo con claridad y busca productos reales similares usando la categoría, colores, texto visible y search_terms de last_visual_reference.',
+      '- session.context.last_visual_reference contiene el análisis y la validación de la última imagen. Úsalo cuando el mensaje actual se refiera a “esta”, “esa”, “esto”, “la foto”, “la imagen”, “la de arriba” o pida precio, disponibilidad, talla o color.',
+      '- Si last_visual_reference.match_type es exact y matched_product existe, esa referencia ya fue validada contra el catálogo real y quedó seleccionada. Usa get_selected_product para consultar precio y variantes reales.',
+      '- Si match_type es similar, no afirmes que encontraste la referencia exacta. Presenta como máximo las opciones reales incluidas en candidates y pregunta cuál corresponde.',
+      '- Si match_type es none, explica brevemente que no pudiste confirmar la referencia exacta y ofrece buscar por nombre, enlace o categoría.',
       '- Nunca inventes un enlace ni presentes como disponible un producto externo que no exista en el catálogo de la empresa activa.',
       '- Cuando la persona comparta un enlace de producto, selecciónalo con select_product_by_url y responde usando sus datos reales.',
       '- Cuando pida una categoría amplia, usa open_collection o search_products según corresponda.',
