@@ -1109,6 +1109,8 @@ export class WhatsappWebhookController {
       'otro',
       'unknown',
       'desconocido',
+      'transportadora registrada por la tienda',
+      'transportadora del pedido',
     ].includes(this.normalizeCarrierKey(rawCompany));
     const visibleCompany =
       config?.displayName || (genericCompany ? '' : rawCompany);

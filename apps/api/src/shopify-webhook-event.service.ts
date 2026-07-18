@@ -12,6 +12,7 @@ type JsonObject = Record<string, unknown>;
 
 const SUPPORTED_TOPICS = new Set([
   'orders/create',
+  'orders/cancelled',
   'fulfillments/create',
   'fulfillments/update',
 ]);

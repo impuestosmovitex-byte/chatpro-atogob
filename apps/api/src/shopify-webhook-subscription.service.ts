@@ -13,6 +13,7 @@ type WebhookNode = {
 
 const REQUIRED_TOPICS = [
   'ORDERS_CREATE',
+  'ORDERS_CANCELLED',
   'FULFILLMENTS_CREATE',
   'FULFILLMENTS_UPDATE',
 ] as const;

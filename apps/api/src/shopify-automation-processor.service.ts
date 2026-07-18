@@ -4,7 +4,12 @@ import { SupabaseService } from './supabase.service';
 import { ShopifyAutomaticTestSendService } from './shopify-automatic-test-send.service';
 
 type JsonObject = Record<string, unknown>;
-type AutomationKey = 'order_created' | 'fulfillment_created';
+type AutomationKey =
+  | 'order_created'
+  | 'fulfillment_created'
+  | 'cod_order_created'
+  | 'payment_pending'
+  | 'order_cancelled';
 
 type WebhookRow = {
   id: string;
@@ -62,6 +67,29 @@ const DEFAULT_FULFILLMENT_MESSAGE = [
   'Guía: {{numero_guia}}',
   'Haz seguimiento aquí:',
   '{{enlace_seguimiento}}',
+].join('\n\n');
+
+const DEFAULT_COD_MESSAGE = [
+  'Hola {{nombre_cliente}}.',
+  'Recibimos tu pedido {{numero_pedido}} contraentrega.',
+  'Total: {{total_pedido}}',
+  'Medio de pago: {{medio_pago}}',
+  'Confirma el pedido para continuar con la entrega.',
+].join('\n\n');
+
+const DEFAULT_PAYMENT_PENDING_MESSAGE = [
+  'Hola {{nombre_cliente}}.',
+  'Tu pedido {{numero_pedido}} está pendiente de pago.',
+  'Total: {{total_pedido}}',
+  'Completa el proceso aquí:',
+  '{{enlace_pago}}',
+].join('\n\n');
+
+const DEFAULT_CANCELLED_MESSAGE = [
+  'Hola {{nombre_cliente}}.',
+  'Tu pedido {{numero_pedido}} fue cancelado.',
+  'Puedes volver a comprar aquí:',
+  '{{url_tienda}}',
 ].join('\n\n');
 
 @Injectable()
@@ -213,10 +241,32 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     }
 
     try {
-      const prepared =
-        claimed.topic === 'orders/create'
-          ? await this.prepareOrder(claimed)
-          : await this.prepareFulfillment(claimed);
+      let prepared: PreparedAutomation | null;
+
+      if (claimed.topic === 'orders/create') {
+        prepared = await this.prepareOrder(claimed);
+      } else if (claimed.topic === 'orders/cancelled') {
+        const cancellationEnabled =
+          await this.hasEnabledTemplateBinding(
+            claimed.company_id,
+            'order_cancelled',
+          );
+
+        if (!cancellationEnabled) {
+          await this.markIgnored(
+            claimed.id,
+            'La empresa no tiene activa una plantilla de pedido cancelado.',
+          );
+          return;
+        }
+
+        prepared = await this.prepareOrder(
+          claimed,
+          'order_cancelled',
+        );
+      } else {
+        prepared = await this.prepareFulfillment(claimed);
+      }
 
       if (!prepared) {
         await this.markIgnored(
@@ -268,7 +318,10 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     return data ? (data as WebhookRow) : null;
   }
 
-  private async prepareOrder(row: WebhookRow): Promise<PreparedAutomation> {
+  private async prepareOrder(
+    row: WebhookRow,
+    forcedKey?: 'order_cancelled',
+  ): Promise<PreparedAutomation> {
     const payload = this.object(row.payload);
     const orderId = this.firstText(payload.id, payload.order_id);
 
@@ -301,6 +354,17 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
       row.company_id,
       rawRecipient,
     );
+    const paymentMethod = this.paymentMethod(payload);
+    const statusUrl = this.firstText(
+      payload.order_status_url,
+      payload.status_url,
+    );
+    const automationKey =
+      forcedKey ??
+      (await this.orderAutomationKey(
+        row.company_id,
+        payload,
+      ));
     const variables: JsonObject = {
       nombre_cliente: customerName,
       numero_pedido: orderNumber,
@@ -309,21 +373,25 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
         payload.total_price,
         payload.currency,
       ),
-      enlace_pedido: this.firstText(
-        payload.order_status_url,
-        payload.status_url,
-      ),
+      medio_pago: paymentMethod,
+      enlace_pedido: statusUrl,
+      enlace_pago: statusUrl,
+      url_tienda: this.storefrontUrl(row.shop_domain),
     };
     const config = await this.messageConfig(
       row.company_id,
-      'order_created',
+      automationKey,
     );
+    const eventKey =
+      automationKey === 'order_created'
+        ? `shopify-order:${orderId}`
+        : `shopify-${automationKey}:${orderId}`;
 
     return {
       companyId: row.company_id,
       automationId: config.automationId,
-      automationKey: 'order_created',
-      eventKey: `shopify-order:${orderId}`,
+      automationKey,
+      eventKey,
       recipient,
       rawRecipient,
       message: this.render(config.body, variables),
@@ -434,6 +502,117 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     };
   }
 
+  private async orderAutomationKey(
+    companyId: string,
+    payload: JsonObject,
+  ): Promise<AutomationKey> {
+    if (
+      this.isCashOnDelivery(payload) &&
+      (await this.hasEnabledTemplateBinding(
+        companyId,
+        'cod_order_created',
+      ))
+    ) {
+      return 'cod_order_created';
+    }
+
+    if (
+      this.isPaymentPending(payload) &&
+      (await this.hasEnabledTemplateBinding(
+        companyId,
+        'payment_pending',
+      ))
+    ) {
+      return 'payment_pending';
+    }
+
+    return 'order_created';
+  }
+
+  private async hasEnabledTemplateBinding(
+    companyId: string,
+    eventKey: AutomationKey,
+  ): Promise<boolean> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('company_template_bindings')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('event_key', eventKey)
+      .eq('enabled', true)
+      .not('template_id', 'is', null)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo validar la plantilla ${eventKey}: ${error.message}`,
+      );
+    }
+
+    return Boolean(data?.id);
+  }
+
+  private isCashOnDelivery(payload: JsonObject): boolean {
+    const values = [
+      this.firstText(payload.gateway),
+      this.firstText(payload.payment_gateway),
+      ...this.stringArray(payload.payment_gateway_names),
+      this.firstText(payload.tags),
+      this.firstText(payload.note),
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const normalized = this.normalizeSearchText(values);
+
+    return (
+      /\bcod\b/.test(normalized) ||
+      normalized.includes('cash on delivery') ||
+      normalized.includes('contra entrega') ||
+      normalized.includes('contraentrega') ||
+      normalized.includes('pago al recibir')
+    );
+  }
+
+  private isPaymentPending(payload: JsonObject): boolean {
+    const status = this.normalizeSearchText(
+      this.firstText(
+        payload.financial_status,
+        payload.payment_status,
+      ),
+    );
+
+    return ['pending', 'partially paid'].includes(status);
+  }
+
+  private paymentMethod(payload: JsonObject): string {
+    const values = [
+      ...this.stringArray(payload.payment_gateway_names),
+      this.firstText(payload.gateway),
+      this.firstText(payload.payment_gateway),
+    ].filter(Boolean);
+
+    return (
+      Array.from(new Set(values)).join(', ') ||
+      'Método de pago registrado por Shopify'
+    );
+  }
+
+  private storefrontUrl(shopDomain: string): string {
+    const domain = shopDomain.trim().replace(/^https?:\/\//i, '');
+
+    return domain ? `https://${domain}` : '';
+  }
+
+  private normalizeSearchText(value: unknown): string {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   private async findOrderPayload(
     companyId: string,
     orderId: string,
@@ -486,9 +665,7 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     const message = this.object(config.message);
     const body =
       this.firstText(message.body) ||
-      (key === 'order_created'
-        ? DEFAULT_ORDER_MESSAGE
-        : DEFAULT_FULFILLMENT_MESSAGE);
+      this.defaultMessage(key);
     const deliveryMode =
       this.firstText(message.delivery_mode) === 'template'
         ? 'template'
@@ -505,6 +682,26 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
       templateLanguage:
         this.firstText(message.template_language) || 'es_CO',
     };
+  }
+
+  private defaultMessage(key: AutomationKey): string {
+    if (key === 'fulfillment_created') {
+      return DEFAULT_FULFILLMENT_MESSAGE;
+    }
+
+    if (key === 'cod_order_created') {
+      return DEFAULT_COD_MESSAGE;
+    }
+
+    if (key === 'payment_pending') {
+      return DEFAULT_PAYMENT_PENDING_MESSAGE;
+    }
+
+    if (key === 'order_cancelled') {
+      return DEFAULT_CANCELLED_MESSAGE;
+    }
+
+    return DEFAULT_ORDER_MESSAGE;
   }
 
   private async savePreparedExecution(

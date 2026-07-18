@@ -61,11 +61,16 @@ export class ShopifyAutomaticTestSendService {
     }
 
     if (
-      execution.automation_key !== 'order_created' &&
-      execution.automation_key !== 'fulfillment_created'
+      ![
+        'order_created',
+        'fulfillment_created',
+        'cod_order_created',
+        'payment_pending',
+        'order_cancelled',
+      ].includes(execution.automation_key)
     ) {
       throw new BadRequestException(
-        'El envío automático de prueba solo admite pedidos y guías.',
+        'La ejecución no corresponde a un evento transaccional compatible.',
       );
     }
 
@@ -257,6 +262,12 @@ export class ShopifyAutomaticTestSendService {
         total: this.text(variables.total_pedido),
         payment_method: this.text(variables.medio_pago),
         status_url: this.text(variables.enlace_pedido),
+        payment_url: this.text(
+          variables.enlace_pago ?? variables.enlace_pedido,
+        ),
+      },
+      storefront: {
+        url: this.text(variables.url_tienda),
       },
     };
   }
