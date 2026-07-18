@@ -306,9 +306,9 @@ export class WhatsappMessagingService {
     mimeType: string;
     filename: string;
   }> {
-    return this.transcodeAudio(input, {
+    const converted = await this.transcodeAudio(input, {
       outputFilename: 'audio.ogg',
-      outputMimeType: 'audio/ogg; codecs=opus',
+      outputMimeType: 'audio/ogg',
       arguments: [
         '-vn',
         '-ac',
@@ -321,8 +321,29 @@ export class WhatsappMessagingService {
         '32k',
         '-application',
         'voip',
+        '-f',
+        'ogg',
       ],
     });
+
+    this.assertWhatsappOggOpus(converted.buffer);
+
+    return converted;
+  }
+
+  private assertWhatsappOggOpus(buffer: Buffer): void {
+    const hasOggContainer =
+      buffer.length >= 4 &&
+      buffer.subarray(0, 4).toString('ascii') === 'OggS';
+    const hasOpusCodec = buffer.includes(
+      Buffer.from('OpusHead', 'ascii'),
+    );
+
+    if (!hasOggContainer || !hasOpusCodec) {
+      throw new Error(
+        'El conversor no generó un archivo OGG con códec Opus válido para WhatsApp.',
+      );
+    }
   }
 
   private async transcodeToMp3(input: {
@@ -457,13 +478,22 @@ export class WhatsappMessagingService {
       filename: string;
     },
   ): Promise<string> {
+    const uploadMime = input.mimeType
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+
+    if (!uploadMime) {
+      throw new Error('El audio no tiene un tipo MIME válido.');
+    }
+
     const form = new FormData();
     form.set('messaging_product', 'whatsapp');
-    form.set('type', input.mimeType);
+    form.set('type', uploadMime);
     form.set(
       'file',
       new Blob([new Uint8Array(input.buffer)], {
-        type: input.mimeType,
+        type: uploadMime,
       }),
       input.filename,
     );
