@@ -822,3 +822,401 @@
   margin: 0;
   line-height: 1.55;
 }
+
+/* MOBILE-3: clientes en una sola pantalla, perfil independiente y sin scroll interno. */
+.mobileBackButton {
+  display: none;
+}
+
+.profileTitle {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    min-height: 100dvh;
+    display: block;
+    overflow-x: hidden;
+    background: #ffffff;
+  }
+
+  .workspace {
+    min-height: 100dvh;
+    box-sizing: border-box;
+    padding: 0 0 calc(78px + env(safe-area-inset-bottom));
+  }
+
+  .header {
+    display: grid;
+    gap: 13px;
+    margin: 0;
+    padding: 22px 18px 14px;
+    background: #ffffff;
+  }
+
+  .header .eyebrow,
+  .subheading {
+    display: none;
+  }
+
+  .header h1 {
+    font-size: 34px;
+    line-height: 1.05;
+    letter-spacing: -0.045em;
+  }
+
+  .headerActions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .headerActions > button {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .error,
+  .success {
+    margin: 0 16px 12px;
+  }
+
+  .layout {
+    min-height: 0;
+    display: block;
+  }
+
+  .listPanel {
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .searchForm {
+    padding: 12px 16px 14px;
+    border-bottom: 1px solid #edf0f2;
+    background: #ffffff;
+  }
+
+  .searchForm > label,
+  .tagFilter label {
+    margin-bottom: 7px;
+    font-size: 12px;
+  }
+
+  .searchRow {
+    align-items: stretch;
+  }
+
+  .searchRow input,
+  .tagFilter select {
+    min-height: 46px;
+    border-radius: 13px;
+    font-size: 16px;
+  }
+
+  .searchRow button {
+    min-width: 82px;
+    border-radius: 13px;
+  }
+
+  .tagFilter {
+    margin-top: 11px;
+  }
+
+  .listHeader {
+    padding: 16px 17px 10px;
+    border-bottom: 0;
+  }
+
+  .listHeader h2 {
+    font-size: 21px;
+  }
+
+  .listHeader p {
+    font-size: 12px;
+  }
+
+  .clientList {
+    display: block;
+    overflow: visible;
+  }
+
+  .clientRow {
+    gap: 13px;
+    min-height: 106px;
+    padding: 15px 17px;
+    background: #ffffff;
+  }
+
+  .clientRow:hover,
+  .selectedRow {
+    background: #faf8f2;
+  }
+
+  .avatar {
+    width: 48px;
+    height: 48px;
+    background: #def4e6;
+    color: #176b42;
+    font-size: 14px;
+  }
+
+  .clientSummary {
+    width: 100%;
+    gap: 5px;
+  }
+
+  .clientTopLine {
+    min-width: 0;
+    align-items: baseline;
+  }
+
+  .clientTopLine strong {
+    font-size: 17px;
+  }
+
+  .clientTopLine time {
+    flex: 0 0 auto;
+    max-width: 82px;
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+  }
+
+  .phone,
+  .preview {
+    font-size: 13px;
+  }
+
+  .status {
+    padding: 4px 9px;
+    font-size: 10px;
+  }
+
+  .profilePanel {
+    display: none;
+  }
+
+  .profileOpen {
+    padding-bottom: 0;
+    background: #f6f7f9;
+  }
+
+  .profileOpen .header,
+  .profileOpen .listPanel,
+  .profileOpen .createCard {
+    display: none;
+  }
+
+  .profileOpen .layout {
+    min-height: 100dvh;
+  }
+
+  .profileOpen .profilePanel {
+    min-height: 100dvh;
+    display: block;
+    border: 0;
+    border-radius: 0;
+    background: #f6f7f9;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .placeholder {
+    display: none;
+  }
+
+  .profileHeader {
+    position: sticky;
+    z-index: 20;
+    top: 0;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 12px;
+    border-bottom: 1px solid #e8ebee;
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(18px);
+  }
+
+  .mobileBackButton {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 999px;
+    background: #edf7f1;
+    color: #177047;
+    font: inherit;
+    font-size: 35px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .profileTitle .eyebrow {
+    display: none;
+  }
+
+  .profileHeader h2 {
+    overflow: hidden;
+    font-size: 21px;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profileHeader p:last-child {
+    overflow: hidden;
+    margin-top: 4px;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profileHeader .inboxButton {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 44px;
+    border-radius: 13px;
+    background: #1c1d20;
+    color: #ffffff;
+  }
+
+  .profileData {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    margin: 12px 12px 0;
+    border: 1px solid #e8ebee;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .profileData article {
+    min-height: 78px;
+    padding: 13px;
+  }
+
+  .profileData span {
+    font-size: 9px;
+  }
+
+  .profileData strong {
+    font-size: 12px;
+  }
+
+  .contactForm {
+    margin: 12px;
+    border: 1px solid #e3e5e8;
+    border-radius: 16px;
+    padding: 17px;
+    background: #ffffff;
+  }
+
+  .contactFormHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .contactFormHeader .eyebrow {
+    margin-bottom: 3px;
+  }
+
+  .contactFormHeader h3 {
+    font-size: 18px;
+  }
+
+  .contactFormHeader .saveButton {
+    min-height: 40px;
+    padding: 9px 14px;
+  }
+
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .contactForm input,
+  .contactForm textarea {
+    min-height: 44px;
+    border-radius: 12px;
+    font-size: 16px;
+  }
+
+  .history {
+    margin: 12px;
+    border: 1px solid #e3e5e8;
+    border-radius: 16px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+
+  .historyHeader {
+    padding: 17px 17px 12px;
+  }
+
+  .historyHeader h3 {
+    font-size: 18px;
+  }
+
+  .messageFeed {
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+    padding: 0 14px 18px;
+  }
+
+  .message {
+    max-width: 88%;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .createOpen {
+    padding-bottom: 20px;
+    background: #f6f7f9;
+  }
+
+  .createOpen .layout {
+    display: none;
+  }
+
+  .createOpen .header {
+    background: #f6f7f9;
+  }
+
+  .createCard {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin: 0 12px 18px;
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: none;
+  }
+
+  .createCard > div,
+  .createCard .fullField {
+    grid-column: auto;
+  }
+
+  .createCard input,
+  .createCard textarea {
+    min-height: 46px;
+    border-radius: 12px;
+    font-size: 16px;
+  }
+
+  .createCard .saveButton {
+    min-height: 46px;
+    border-radius: 13px;
+  }
+}

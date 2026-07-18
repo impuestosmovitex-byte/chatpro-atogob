@@ -123,6 +123,39 @@ function formatDate(value: string | null) {
   }).format(date);
 }
 
+function formatListDate(value: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (sameDay) {
+    return new Intl.DateTimeFormat("es-CO", {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return new Intl.DateTimeFormat("es-CO", {
+      day: "numeric",
+      month: "short",
+    }).format(date);
+  }
+
+  return new Intl.DateTimeFormat("es-CO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).format(date);
+}
+
 function customerLabel(client: ClientSummary) {
   return client.contact?.displayName || `Cliente ${client.customerPhone}`;
 }
@@ -392,9 +425,16 @@ export default function ClientsPage() {
 
   return (
     <main className={styles.shell}>
-      <AppSidebar companyName={companyName} />
+      <AppSidebar
+        companyName={companyName}
+        hideMobileNavigation={Boolean(selected || showCreate)}
+      />
 
-      <section className={styles.workspace}>
+      <section
+        className={`${styles.workspace} ${
+          selected ? styles.profileOpen : ""
+        } ${showCreate ? styles.createOpen : ""}`}
+      >
         <header className={styles.header}>
           <div>
             <p className={styles.eyebrow}>CRM</p>
@@ -502,12 +542,13 @@ export default function ClientsPage() {
                   key={client.customerPhone}
                   type="button"
                   onClick={() => void openClient(client.customerPhone)}
+                  aria-label={`Abrir perfil de ${customerLabel(client)}`}
                 >
                   <span className={styles.avatar}>{initials(customerLabel(client))}</span>
                   <span className={styles.clientSummary}>
                     <span className={styles.clientTopLine}>
                       <strong>{customerLabel(client)}</strong>
-                      <time>{formatDate(client.lastMessageAt)}</time>
+                      <time>{formatListDate(client.lastMessageAt)}</time>
                     </span>
                     <span className={styles.phone}>{client.customerPhone}</span>
                     <span className={styles.preview}>
@@ -534,7 +575,15 @@ export default function ClientsPage() {
             ) : (
               <>
                 <header className={styles.profileHeader}>
-                  <div>
+                  <button
+                    className={styles.mobileBackButton}
+                    type="button"
+                    onClick={() => setSelected(null)}
+                    aria-label="Volver a la lista de clientes"
+                  >
+                    ‹
+                  </button>
+                  <div className={styles.profileTitle}>
                     <p className={styles.eyebrow}>Perfil de contacto</p>
                     <h2>{customerLabel(selected.client)}</h2>
                     <p>{channelLabel[selected.client.contact?.primaryChannel ?? "whatsapp"]} · {selected.client.customerPhone}</p>
