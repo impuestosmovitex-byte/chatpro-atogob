@@ -194,3 +194,14 @@
     backdrop-filter: blur(18px);
   }
 }
+
+
+.mobileNavHidden {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .mobileNavHidden {
+    display: none;
+  }
+}

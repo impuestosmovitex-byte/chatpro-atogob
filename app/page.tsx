@@ -472,6 +472,7 @@ export default function Home() {
   const [canSendAudio, setCanSendAudio] = useState(false);
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [mobileSearch, setMobileSearch] = useState("");
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [sessions, setSessions] = useState<InboxSession[]>([]);
   const [selected, setSelected] = useState<InboxConversation | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -521,6 +522,10 @@ export default function Home() {
   const [audioPreviewUrl, setAudioPreviewUrl] = useState("");
   const [audioSending, setAudioSending] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+
+  useEffect(() => {
+    setMobileActionsOpen(false);
+  }, [selected?.session.id]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
@@ -1626,8 +1631,15 @@ export default function Home() {
   const showHumanActions = !isInternalTest && selectedStatus === "human";
 
   return (
-    <main className="chatpro-shell">
-      <AppSidebar companyName={currentUser?.companyName ?? "Empresa"} />
+    <main
+      className={`chatpro-shell ${
+        selected ? "mobile-conversation-shell" : ""
+      }`}
+    >
+      <AppSidebar
+        companyName={currentUser?.companyName ?? "Empresa"}
+        hideMobileNavigation={Boolean(selected)}
+      />
 
       <section className="workspace">
         <header className="workspace-header">
@@ -2078,6 +2090,142 @@ export default function Home() {
                           : `${statusLabel[selected.session.attentionStatus]}${selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}`}
                       </p>
                     </div>
+
+                    <div className="mobile-chat-menu-wrap">
+                      <button
+                        className="mobile-chat-menu-button"
+                        type="button"
+                        aria-label="Abrir acciones de la conversación"
+                        aria-expanded={mobileActionsOpen}
+                        onClick={() =>
+                          setMobileActionsOpen((current) => !current)
+                        }
+                      >
+                        <span aria-hidden="true">⋮</span>
+                      </button>
+
+                      {mobileActionsOpen ? (
+                        <>
+                          <button
+                            className="mobile-chat-menu-backdrop"
+                            type="button"
+                            aria-label="Cerrar acciones"
+                            onClick={() => setMobileActionsOpen(false)}
+                          />
+                          <div
+                            className="mobile-chat-menu-popover"
+                            role="menu"
+                            aria-label="Acciones de la conversación"
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setMobileActionsOpen(false);
+                                window.location.assign("/clientes");
+                              }}
+                            >
+                              Ir a Clientes
+                            </button>
+
+                            {isInternalTest ? (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={internalTestLoading}
+                                onClick={() => {
+                                  setMobileActionsOpen(false);
+                                  void startInternalTest();
+                                }}
+                              >
+                                {internalTestLoading
+                                  ? "Reiniciando…"
+                                  : "Nueva prueba"}
+                              </button>
+                            ) : null}
+
+                            {!isInternalTest &&
+                            selected.historyRestricted !== true ? (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={templateLoading}
+                                onClick={() => {
+                                  setMobileActionsOpen(false);
+                                  void openWhatsappTemplateDialog();
+                                }}
+                              >
+                                {templateLoading
+                                  ? "Cargando plantillas…"
+                                  : "Usar plantilla"}
+                              </button>
+                            ) : null}
+
+                            {showTakeButton ? (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={actionLoading}
+                                onClick={() => {
+                                  setMobileActionsOpen(false);
+                                  void runAction("take");
+                                }}
+                              >
+                                {actionLoading
+                                  ? "Tomando…"
+                                  : "Tomar conversación"}
+                              </button>
+                            ) : null}
+
+                            {showHumanActions ? (
+                              <>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={actionLoading}
+                                  onClick={() => {
+                                    setMobileActionsOpen(false);
+                                    void runAction("resume_ai");
+                                  }}
+                                >
+                                  Devolver a IA
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={actionLoading || transferLoading}
+                                  onClick={() => {
+                                    setMobileActionsOpen(false);
+                                    void openTransferDialog();
+                                  }}
+                                >
+                                  Transferir conversación
+                                </button>
+                                <button
+                                  className="danger"
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={actionLoading}
+                                  onClick={() => {
+                                    setMobileActionsOpen(false);
+                                    void runAction("close");
+                                  }}
+                                >
+                                  Finalizar conversación
+                                </button>
+                              </>
+                            ) : null}
+
+                            {!isInternalTest &&
+                            selected.session.attentionStatus === "closed" ? (
+                              <span className="mobile-chat-menu-status">
+                                Conversación en historial
+                              </span>
+                            ) : null}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="chat-actions">
                     {isInternalTest ? (
@@ -2392,8 +2540,8 @@ export default function Home() {
                                   }
                                 }
                               }}
-                              placeholder="Escribe una respuesta o usa / para atajos…"
-                              rows={2}
+                              placeholder="Escribe un mensaje o usa / para atajos…"
+                              rows={1}
                             />
                             {visibleQuickReplies.length ? (
                               <div className="quick-reply-menu">
@@ -2426,7 +2574,20 @@ export default function Home() {
                               aria-label="Grabar audio"
                               title="Grabar audio"
                             >
-                              <span aria-hidden="true">🎙</span>
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <rect x="9" y="2" width="6" height="12" rx="3" />
+                                <path d="M5 10a7 7 0 0 0 14 0" />
+                                <path d="M12 17v5" />
+                                <path d="M8 22h8" />
+                              </svg>
                             </button>
                           ) : null}
                         </div>

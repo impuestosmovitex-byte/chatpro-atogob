@@ -7,6 +7,7 @@ import styles from './AppSidebar.module.css';
 
 type AppSidebarProps = {
   companyName?: string;
+  hideMobileNavigation?: boolean;
 };
 
 type CompanyOption = {
@@ -81,6 +82,7 @@ function isActive(pathname: string, href: string, exact?: boolean): boolean {
 
 export function AppSidebar({
   companyName = 'Empresa',
+  hideMobileNavigation = false,
 }: AppSidebarProps) {
   const pathname = usePathname();
   const [roleKey, setRoleKey] = useState('');
@@ -323,8 +325,11 @@ export function AppSidebar({
       </aside>
 
       <nav
-        className={styles.mobileNav}
+        className={`${styles.mobileNav} ${
+          hideMobileNavigation ? styles.mobileNavHidden : ''
+        }`}
         aria-label="Navegación móvil"
+        aria-hidden={hideMobileNavigation}
       >
         {effectiveCapabilities.inbox ? (
           <Link
