@@ -59,6 +59,12 @@ export class CartService {
     private readonly supabaseService: SupabaseService,
   ) {}
 
+  private async refreshSession(
+    session: ConversationSession,
+  ): Promise<ConversationSession> {
+    return this.conversationMemoryService.getSessionById(session.id);
+  }
+
   async addSelectedVariant(
     session: ConversationSession,
     quantity: number,
@@ -67,8 +73,9 @@ export class CartService {
       throw new Error('La cantidad debe ser un número entero mayor a cero.');
     }
 
-    const product = this.readSelectedProduct(session.context);
-    const variant = this.readSelectedVariant(session.context);
+    const currentSession = await this.refreshSession(session);
+    const product = this.readSelectedProduct(currentSession.context);
+    const variant = this.readSelectedVariant(currentSession.context);
 
     if (!product || !variant) {
       return {
@@ -78,7 +85,7 @@ export class CartService {
       };
     }
 
-    return this.addCartLines(session, [
+    return this.addCartLines(currentSession, [
       {
         productId: product.id,
         productTitle: product.title,
@@ -104,7 +111,8 @@ export class CartService {
       };
     }
 
-    const cart = this.readCart(session.context).map((line) => ({
+    const currentSession = await this.refreshSession(session);
+    const cart = this.readCart(currentSession.context).map((line) => ({
       ...line,
       options: line.options.map((option) => ({ ...option })),
     }));
@@ -143,13 +151,13 @@ export class CartService {
       }
     }
 
-    const links = await this.buildCartLinksForSession(session, cart);
+    const links = await this.buildCartLinksForSession(currentSession, cart);
 
     const updatedSession =
-      await this.conversationMemoryService.updateSession(session.id, {
+      await this.conversationMemoryService.updateSession(currentSession.id, {
         stage: 'sales',
         context: {
-          ...session.context,
+          ...currentSession.context,
           cart,
           lastCartUrl: links.cartUrl,
           lastCheckoutUrl: links.checkoutUrl,
@@ -191,9 +199,10 @@ export class CartService {
       };
     }
 
-    const selectedProduct = this.readSelectedProduct(session.context);
-    const selectedVariant = this.readSelectedVariant(session.context);
-    const cart = this.readCart(session.context).map((line) => ({
+    const currentSession = await this.refreshSession(session);
+    const selectedProduct = this.readSelectedProduct(currentSession.context);
+    const selectedVariant = this.readSelectedVariant(currentSession.context);
+    const cart = this.readCart(currentSession.context).map((line) => ({
       ...line,
       options: line.options.map((option) => ({ ...option })),
     }));
@@ -234,7 +243,7 @@ export class CartService {
 
     if (source.variantId === selectedVariant.id) {
       source.quantity = quantity;
-      return this.persistEditedCart(session, cart);
+      return this.persistEditedCart(currentSession, cart);
     }
 
     const replacement: CartLine = {
@@ -271,7 +280,7 @@ export class CartService {
       }
     }
 
-    return this.persistEditedCart(session, cart);
+    return this.persistEditedCart(currentSession, cart);
   }
 
   async setCartLineQuantity(
@@ -293,7 +302,8 @@ export class CartService {
       };
     }
 
-    const cart = this.readCart(session.context).map((line) => ({
+    const currentSession = await this.refreshSession(session);
+    const cart = this.readCart(currentSession.context).map((line) => ({
       ...line,
       options: line.options.map((option) => ({ ...option })),
     }));
@@ -309,7 +319,7 @@ export class CartService {
 
     line.quantity = quantity;
 
-    return this.persistEditedCart(session, cart);
+    return this.persistEditedCart(currentSession, cart);
   }
 
   async removeCartLine(
@@ -323,7 +333,8 @@ export class CartService {
       };
     }
 
-    const current = this.readCart(session.context);
+    const currentSession = await this.refreshSession(session);
+    const current = this.readCart(currentSession.context);
     const cart = current
       .filter((line) => line.variantId !== variantId)
       .map((line) => ({
@@ -338,11 +349,12 @@ export class CartService {
       };
     }
 
-    return this.persistEditedCart(session, cart);
+    return this.persistEditedCart(currentSession, cart);
   }
 
   async getCart(session: ConversationSession) {
-    const cart = this.readCart(session.context);
+    const currentSession = await this.refreshSession(session);
+    const cart = this.readCart(currentSession.context);
 
     if (!cart.length) {
       return {
@@ -360,8 +372,7 @@ export class CartService {
   async createCheckoutLink(session: ConversationSession) {
     // El checkout debe usar el carrito persistido más reciente, no una copia
     // anterior que pudo existir antes de agregar o cambiar una variante.
-    const currentSession =
-      await this.conversationMemoryService.getSessionById(session.id);
+    const currentSession = await this.refreshSession(session);
     const cart = this.readCart(currentSession.context);
 
     if (!cart.length) {
