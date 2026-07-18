@@ -5,8 +5,16 @@ import { AppSidebar } from '../../components/AppSidebar';
 import { FormEvent, useEffect, useState } from 'react';
 import styles from './page.module.css';
 
+type ResponseLength = 'brief' | 'balanced' | 'detailed';
+
 type CommercialFlow = {
   welcomeMessage: string;
+  areaWelcomeMessage: string;
+  responseLength: ResponseLength;
+  maxQuestionsPerMessage: number;
+  avoidRepetition: boolean;
+  showRestrictionsOnlyWhenRelevant: boolean;
+  askBeforeShowingCatalog: boolean;
   salesInstructions: string;
   shippingInstructions: string;
   paymentInstructions: string;
@@ -61,6 +69,12 @@ type ResponseData = {
 
 const EMPTY_FLOW: CommercialFlow = {
   welcomeMessage: '',
+  areaWelcomeMessage: '',
+  responseLength: 'brief',
+  maxQuestionsPerMessage: 1,
+  avoidRepetition: true,
+  showRestrictionsOnlyWhenRelevant: true,
+  askBeforeShowingCatalog: true,
   salesInstructions: '',
   shippingInstructions: '',
   paymentInstructions: '',
@@ -149,13 +163,41 @@ function normalizeShippingTracking(
 }
 
 function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
+  const flow: Partial<CommercialFlow> =
+    value?.commercialFlow ?? {};
+  const maxQuestions = Number(flow.maxQuestionsPerMessage);
+  const responseLength =
+    flow.responseLength === 'balanced' ||
+    flow.responseLength === 'detailed'
+      ? flow.responseLength
+      : 'brief';
+
   return {
     assistantName: value?.assistantName ?? '',
     tone: value?.tone?.trim() || EMPTY.tone,
     aiInstructions: value?.aiInstructions ?? '',
     commercialFlow: {
       ...EMPTY_FLOW,
-      ...(value?.commercialFlow ?? {}),
+      ...flow,
+      responseLength,
+      maxQuestionsPerMessage:
+        Number.isInteger(maxQuestions) &&
+        maxQuestions >= 1 &&
+        maxQuestions <= 3
+          ? maxQuestions
+          : 1,
+      avoidRepetition:
+        typeof flow.avoidRepetition === 'boolean'
+          ? flow.avoidRepetition
+          : true,
+      showRestrictionsOnlyWhenRelevant:
+        typeof flow.showRestrictionsOnlyWhenRelevant === 'boolean'
+          ? flow.showRestrictionsOnlyWhenRelevant
+          : true,
+      askBeforeShowingCatalog:
+        typeof flow.askBeforeShowingCatalog === 'boolean'
+          ? flow.askBeforeShowingCatalog
+          : true,
     },
     knowledgeBase: {
       ...EMPTY_KNOWLEDGE,
@@ -204,7 +246,10 @@ export default function ConfiguracionPage() {
     void load();
   }, []);
 
-  function updateFlow(key: keyof CommercialFlow, value: string) {
+  function updateFlow<K extends keyof CommercialFlow>(
+    key: K,
+    value: CommercialFlow[K],
+  ) {
     setConfiguration((current) => ({
       ...current,
       commercialFlow: {
@@ -425,6 +470,22 @@ export default function ConfiguracionPage() {
                 Configurar áreas
               </button>
             </div>
+
+            <label>
+              <span>Mensaje al entrar a un área</span>
+              <textarea
+                value={configuration.commercialFlow.areaWelcomeMessage}
+                onChange={(event) =>
+                  updateFlow('areaWelcomeMessage', event.target.value)
+                }
+                placeholder="Ejemplo: Perfecto 😊 ¿Qué producto estás buscando? También puedes enviarme una foto o enlace."
+                rows={3}
+                disabled={loading}
+              />
+              <small>
+                Puedes usar {'{asistente}'}, {'{empresa}'} y {'{area}'}. Este mensaje se muestra después de elegir un área.
+              </small>
+            </label>
           </section>
 
           <section className={styles.card}>
@@ -433,7 +494,108 @@ export default function ConfiguracionPage() {
                 <p>2. FLUJO COMERCIAL</p>
                 <h2>Qué debe hacer para vender</h2>
               </div>
+              <span>Configurable por empresa</span>
             </div>
+
+            <div className={styles.grid}>
+              <label>
+                <span>Longitud de respuesta</span>
+                <select
+                  value={configuration.commercialFlow.responseLength}
+                  onChange={(event) =>
+                    updateFlow(
+                      'responseLength',
+                      event.target.value as ResponseLength,
+                    )
+                  }
+                  disabled={loading}
+                >
+                  <option value="brief">Breve</option>
+                  <option value="balanced">Equilibrada</option>
+                  <option value="detailed">Detallada</option>
+                </select>
+                <small>
+                  Breve muestra solo lo necesario para avanzar al siguiente paso.
+                </small>
+              </label>
+
+              <label>
+                <span>Preguntas principales por mensaje</span>
+                <select
+                  value={configuration.commercialFlow.maxQuestionsPerMessage}
+                  onChange={(event) =>
+                    updateFlow(
+                      'maxQuestionsPerMessage',
+                      Number(event.target.value),
+                    )
+                  }
+                  disabled={loading}
+                >
+                  <option value={1}>1 pregunta</option>
+                  <option value={2}>Hasta 2 preguntas</option>
+                  <option value={3}>Hasta 3 preguntas</option>
+                </select>
+                <small>
+                  Una pregunta evita abrumar al cliente durante la compra.
+                </small>
+              </label>
+            </div>
+
+            <label>
+              <span>No repetir información ya confirmada</span>
+              <input
+                type="checkbox"
+                checked={configuration.commercialFlow.avoidRepetition}
+                onChange={(event) =>
+                  updateFlow('avoidRepetition', event.target.checked)
+                }
+                disabled={loading}
+              />
+              <small>
+                Evita repetir ciudad, costo de envío, color, talla o medio de pago.
+              </small>
+            </label>
+
+            <label>
+              <span>Mostrar restricciones solo cuando sean relevantes</span>
+              <input
+                type="checkbox"
+                checked={
+                  configuration.commercialFlow
+                    .showRestrictionsOnlyWhenRelevant
+                }
+                onChange={(event) =>
+                  updateFlow(
+                    'showRestrictionsOnlyWhenRelevant',
+                    event.target.checked,
+                  )
+                }
+                disabled={loading}
+              />
+              <small>
+                No anuncia opciones no disponibles salvo que el cliente pregunte o intente seleccionarlas.
+              </small>
+            </label>
+
+            <label>
+              <span>Preguntar antes de mostrar el catálogo</span>
+              <input
+                type="checkbox"
+                checked={
+                  configuration.commercialFlow.askBeforeShowingCatalog
+                }
+                onChange={(event) =>
+                  updateFlow(
+                    'askBeforeShowingCatalog',
+                    event.target.checked,
+                  )
+                }
+                disabled={loading}
+              />
+              <small>
+                Primero pregunta qué busca y después muestra solo la colección o productos relacionados.
+              </small>
+            </label>
 
             <label>
               <span>Proceso de ventas</span>

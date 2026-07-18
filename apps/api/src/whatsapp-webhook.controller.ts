@@ -1358,7 +1358,11 @@ export class WhatsappWebhookController {
         return this.startCustomerServiceMenu(selectedSession);
       }
 
-      return this.buildAreaWelcome(selectedArea.name, selectedSession);
+      return this.buildAreaWelcome(
+        profile,
+        selectedArea.name,
+        selectedSession,
+      );
     }
 
     if (session.stage === 'main' || session.stage === 'area_menu') {
@@ -2217,18 +2221,40 @@ export class WhatsappWebhookController {
     value: string,
     profile: CompanyProfile,
     assistantName: string,
+    areaName = '',
   ): string {
     return value
       .replace(/\{asistente\}/gi, assistantName)
       .replace(/\{empresa\}/gi, profile.name)
+      .replace(/\{area\}/gi, areaName)
       .trim();
   }
 
   private buildAreaWelcome(
+    profile: CompanyProfile,
     areaName: string,
     _session: ConversationSession,
   ): string {
-    return `Perfecto, te ayudo con ${areaName}. Cuéntame qué necesitas.`;
+    const flow =
+      profile.settings.commercial_flow &&
+      typeof profile.settings.commercial_flow === 'object' &&
+      !Array.isArray(profile.settings.commercial_flow)
+        ? profile.settings.commercial_flow as Record<string, unknown>
+        : {};
+    const configured =
+      typeof flow.area_welcome_message === 'string'
+        ? flow.area_welcome_message.trim()
+        : '';
+    const assistantName =
+      profile.assistantName?.trim() || 'nuestro asistente';
+
+    return this.applyWelcomeTokens(
+      configured ||
+        `Perfecto 😊 Cuéntame qué necesitas en ${areaName}.`,
+      profile,
+      assistantName,
+      areaName,
+    );
   }
 
   private getDeliveryStatuses(body: unknown): Array<{

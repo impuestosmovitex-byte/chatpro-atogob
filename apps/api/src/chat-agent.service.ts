@@ -300,6 +300,11 @@ export class ChatAgentService {
       '- No llames lookup_order solo porque exista un pedido o dato antiguo en el historial o contexto. Debe existir una solicitud actual y clara del cliente sobre esa compra.',
         '- Si la persona dice que quiere comprar algo nuevo, “solo quiero”, “solo esa”, “solo la blusa”, “ese pedido ya lo pagué” o corrige que los productos anteriores no van, separa la compra nueva del pedido anterior. Usa get_cart y quita productos no solicitados con remove_cart_line antes de crear checkout.',
       '- Pregunta solo por el dato que falte. No repitas ciudad, color, talla o medio de pago ya informado.',
+      '- Entrega la información de forma progresiva: responde primero al paso actual y no mezcles catálogo, variantes, envío, pago y checkout en un solo mensaje.',
+      '- No envíes todas las colecciones solamente porque la persona entró a Ventas. Primero pregunta qué busca y, cuando indique una categoría, comparte únicamente la colección o los productos relacionados.',
+      '- No menciones restricciones, opciones no disponibles o condiciones negativas que la persona no haya preguntado ni seleccionado.',
+      '- Explica las instrucciones de un medio de pago cuando la persona pregunte por ese medio o lo seleccione. No adelantes instrucciones de otros medios.',
+      '- Las instrucciones finales del checkout deben acompañar el enlace de checkout o responder una pregunta directa sobre cómo finalizar. No las adelantes durante la selección del producto.',
       '',
       'USO DE HERRAMIENTAS:',
       '- Consulta productos, colecciones, variantes y carrito con las herramientas antes de dar datos definitivos.',
@@ -377,6 +382,7 @@ export class ChatAgentService {
 
     const labels: Array<[string, string]> = [
       ['welcome_message', 'Saludo y menú inicial'],
+      ['area_welcome_message', 'Mensaje al entrar a un área'],
       ['sales_instructions', 'Proceso de ventas'],
       ['shipping_instructions', 'Ciudades y envíos'],
       ['payment_instructions', 'Medios de pago'],
@@ -391,9 +397,46 @@ export class ChatAgentService {
       })
       .filter(Boolean);
 
-    return lines.length
-      ? lines.join('\n')
-      : '- No hay reglas comerciales estructuradas. Usa únicamente las instrucciones adicionales configuradas por la empresa.';
+    const responseLength =
+      typeof source.response_length === 'string'
+        ? source.response_length.trim().toLowerCase()
+        : 'brief';
+    const responseLengthLabel =
+      responseLength === 'detailed'
+        ? 'detallada'
+        : responseLength === 'balanced'
+          ? 'equilibrada'
+          : 'breve';
+    const rawMaxQuestions =
+      Number(source.max_questions_per_message);
+    const maxQuestions =
+      Number.isInteger(rawMaxQuestions) &&
+      rawMaxQuestions >= 1 &&
+      rawMaxQuestions <= 3
+        ? rawMaxQuestions
+        : 1;
+    const avoidRepetition =
+      source.avoid_repetition !== false;
+    const restrictionsOnlyWhenRelevant =
+      source.show_restrictions_only_when_relevant !== false;
+    const askBeforeShowingCatalog =
+      source.ask_before_showing_catalog !== false;
+
+    lines.unshift(
+      `- Longitud preferida: ${responseLengthLabel}.`,
+      `- Máximo de preguntas principales por mensaje: ${maxQuestions}.`,
+      avoidRepetition
+        ? '- Evita repetir información que ya entregaste o que la persona ya confirmó.'
+        : '- Puedes repetir información importante cuando ayude a evitar confusiones.',
+      restrictionsOnlyWhenRelevant
+        ? '- Menciona restricciones o indisponibilidades solo cuando la persona pregunte por esa opción o intente seleccionarla.'
+        : '- Puedes anticipar restricciones relevantes durante la orientación.',
+      askBeforeShowingCatalog
+        ? '- Al entrar a Ventas pregunta primero qué busca. No envíes todas las colecciones; muestra solo la categoría o productos relacionados después de conocer su interés.'
+        : '- La empresa permite presentar el catálogo general al iniciar la atención de Ventas.',
+    );
+
+    return lines.join('\n');
   }
 
   private getShippingTrackingRules(settings: JsonObject): string {

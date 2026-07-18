@@ -1956,6 +1956,7 @@ export class ConversationMemoryService {
 
     const mapping: Array<[string, string]> = [
       ['welcome_message', 'welcomeMessage'],
+      ['area_welcome_message', 'areaWelcomeMessage'],
       ['sales_instructions', 'salesInstructions'],
       ['shipping_instructions', 'shippingInstructions'],
       ['payment_instructions', 'paymentInstructions'],
@@ -1973,6 +1974,33 @@ export class ConversationMemoryService {
         result[storedKey] = text;
       }
     }
+
+    const responseLength =
+      typeof source.responseLength === 'string'
+        ? source.responseLength.trim().toLowerCase()
+        : '';
+
+    result.response_length =
+      responseLength === 'balanced' ||
+      responseLength === 'detailed'
+        ? responseLength
+        : 'brief';
+
+    const maxQuestions = Number(source.maxQuestionsPerMessage);
+
+    result.max_questions_per_message =
+      Number.isInteger(maxQuestions) &&
+      maxQuestions >= 1 &&
+      maxQuestions <= 3
+        ? maxQuestions
+        : 1;
+
+    result.avoid_repetition =
+      source.avoidRepetition !== false;
+    result.show_restrictions_only_when_relevant =
+      source.showRestrictionsOnlyWhenRelevant !== false;
+    result.ask_before_showing_catalog =
+      source.askBeforeShowingCatalog !== false;
 
     return result;
   }
