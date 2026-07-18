@@ -57,6 +57,47 @@ type QuickReply = {
   isActive: boolean;
 };
 
+type WhatsappTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  category: string;
+  status: string;
+  components: unknown[];
+};
+
+type WhatsappTemplateBinding = {
+  id: string;
+  eventKey: string;
+  templateId: string | null;
+  enabled: boolean;
+  variableMapping: Record<string, unknown>;
+};
+
+type WhatsappTemplateEvent = {
+  key: string;
+  label: string;
+};
+
+type WhatsappTemplatesResponse = {
+  ok?: boolean;
+  error?: string;
+  templates?: WhatsappTemplate[];
+  bindings?: WhatsappTemplateBinding[];
+  eventDefinitions?: WhatsappTemplateEvent[];
+};
+
+type PreparedWhatsappTemplate = {
+  sessionId: string;
+  templateId: string;
+  name: string;
+  language: string;
+  variables: Record<string, string>;
+  preview: string;
+  usageLabels: string[];
+};
+
+
 type StorefrontResponse = {
   ok?: boolean;
   error?: string;
@@ -164,6 +205,118 @@ function compactTransferText(
   if (text.length <= maxLength) return text;
 
   return `${text.slice(0, Math.max(1, maxLength - 1)).trim()}…`;
+}
+
+
+function templateObjectList(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+
+  return value.filter(
+    (item): item is Record<string, unknown> =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item),
+  );
+}
+
+function whatsappTemplateVisibleText(template: WhatsappTemplate): string {
+  const sections: string[] = [];
+
+  for (const component of templateObjectList(template.components)) {
+    const type =
+      typeof component.type === "string"
+        ? component.type.trim().toUpperCase()
+        : "";
+    const text =
+      typeof component.text === "string"
+        ? component.text.trim()
+        : "";
+
+    if (text && ["HEADER", "BODY", "FOOTER"].includes(type)) {
+      sections.push(text);
+    }
+
+    if (type === "BUTTONS") {
+      const buttons = templateObjectList(component.buttons)
+        .map((button) =>
+          typeof button.text === "string" ? button.text.trim() : "",
+        )
+        .filter(Boolean);
+
+      if (buttons.length) {
+        sections.push(
+          buttons.map((button) => `[Botón: ${button}]`).join("\n"),
+        );
+      }
+    }
+  }
+
+  return (
+    sections.join("\n\n") ||
+    "Esta plantilla no contiene texto visible para previsualizar."
+  );
+}
+
+function whatsappTemplateVariableKeys(
+  template: WhatsappTemplate,
+): string[] {
+  const keys = new Set<string>();
+  const text = whatsappTemplateVisibleText(template);
+  const expression = /\{\{\s*([^{}]+?)\s*\}\}/g;
+
+  for (const match of text.matchAll(expression)) {
+    const key = match[1]?.trim();
+
+    if (key) keys.add(key);
+  }
+
+  return [...keys].sort((left, right) => {
+    const leftNumber = Number(left);
+    const rightNumber = Number(right);
+
+    if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
+      return leftNumber - rightNumber;
+    }
+
+    return left.localeCompare(right, "es");
+  });
+}
+
+function renderWhatsappTemplatePreview(
+  template: WhatsappTemplate,
+  variables: Record<string, string>,
+): string {
+  let preview = whatsappTemplateVisibleText(template);
+
+  for (const key of whatsappTemplateVariableKeys(template)) {
+    const replacement =
+      variables[key]?.trim() || `[Variable ${key}]`;
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    preview = preview.replace(
+      new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`, "g"),
+      replacement,
+    );
+  }
+
+  return preview;
+}
+
+function whatsappTemplateUsageLabels(
+  templateId: string,
+  bindings: WhatsappTemplateBinding[],
+  events: WhatsappTemplateEvent[],
+): string[] {
+  const eventNames = new Map(
+    events.map((event) => [event.key, event.label]),
+  );
+
+  return bindings
+    .filter((binding) => binding.templateId === templateId)
+    .map((binding) => {
+      const label =
+        eventNames.get(binding.eventKey) || binding.eventKey;
+
+      return binding.enabled ? label : `${label} · pausada`;
+    });
 }
 
 function getCart(context: Record<string, unknown>) {
@@ -305,6 +458,23 @@ export default function Home() {
   const [presenceLoading, setPresenceLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateError, setTemplateError] = useState("");
+  const [whatsappTemplates, setWhatsappTemplates] = useState<
+    WhatsappTemplate[]
+  >([]);
+  const [whatsappTemplateBindings, setWhatsappTemplateBindings] =
+    useState<WhatsappTemplateBinding[]>([]);
+  const [whatsappTemplateEvents, setWhatsappTemplateEvents] =
+    useState<WhatsappTemplateEvent[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateVariables, setTemplateVariables] = useState<
+    Record<string, string>
+  >({});
+  const [preparedTemplate, setPreparedTemplate] =
+    useState<PreparedWhatsappTemplate | null>(null);
+
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
@@ -395,6 +565,154 @@ export default function Home() {
     }
   }
 
+
+  function blankTemplateVariables(
+    template: WhatsappTemplate,
+  ): Record<string, string> {
+    return Object.fromEntries(
+      whatsappTemplateVariableKeys(template).map((key) => [key, ""]),
+    );
+  }
+
+  function selectWhatsappTemplate(templateId: string) {
+    setSelectedTemplateId(templateId);
+    setTemplateError("");
+
+    const template =
+      whatsappTemplates.find((item) => item.id === templateId) ?? null;
+
+    setTemplateVariables(
+      template ? blankTemplateVariables(template) : {},
+    );
+  }
+
+  async function openWhatsappTemplateDialog() {
+    if (!selected || selected.historyRestricted) return;
+
+    setTemplateOpen(true);
+    setTemplateLoading(true);
+    setTemplateError("");
+
+    try {
+      const response = await fetch("/api/whatsapp-templates", {
+        cache: "no-store",
+      });
+      const data =
+        (await readJson(response)) as WhatsappTemplatesResponse;
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || "No se pudieron cargar las plantillas.",
+        );
+      }
+
+      const approved = (data.templates ?? []).filter(
+        (template) =>
+          template.status.trim().toUpperCase() === "APPROVED",
+      );
+      const bindings = data.bindings ?? [];
+      const events = data.eventDefinitions ?? [];
+
+      setWhatsappTemplates(approved);
+      setWhatsappTemplateBindings(bindings);
+      setWhatsappTemplateEvents(events);
+
+      const existing =
+        preparedTemplate?.sessionId === selected.session.id
+          ? approved.find(
+              (template) =>
+                template.id === preparedTemplate.templateId,
+            ) ?? null
+          : null;
+      const initial = existing ?? approved[0] ?? null;
+
+      setSelectedTemplateId(initial?.id ?? "");
+      setTemplateVariables(
+        existing && preparedTemplate
+          ? preparedTemplate.variables
+          : initial
+            ? blankTemplateVariables(initial)
+            : {},
+      );
+    } catch (caught) {
+      setWhatsappTemplates([]);
+      setWhatsappTemplateBindings([]);
+      setWhatsappTemplateEvents([]);
+      setSelectedTemplateId("");
+      setTemplateVariables({});
+      setTemplateError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudieron cargar las plantillas.",
+      );
+    } finally {
+      setTemplateLoading(false);
+    }
+  }
+
+  function prepareWhatsappTemplate() {
+    if (!selected) return;
+
+    const template =
+      whatsappTemplates.find(
+        (item) => item.id === selectedTemplateId,
+      ) ?? null;
+
+    if (!template) {
+      setTemplateError("Selecciona una plantilla aprobada.");
+      return;
+    }
+
+    const variableKeys = whatsappTemplateVariableKeys(template);
+    const missing = variableKeys.filter(
+      (key) => !templateVariables[key]?.trim(),
+    );
+
+    if (missing.length) {
+      setTemplateError(
+        `Completa ${
+          missing.length === 1
+            ? `la variable ${missing[0]}`
+            : `las variables ${missing.join(", ")}`
+        }.`,
+      );
+      return;
+    }
+
+    const usageLabels = whatsappTemplateUsageLabels(
+      template.id,
+      whatsappTemplateBindings,
+      whatsappTemplateEvents,
+    );
+
+    setPreparedTemplate({
+      sessionId: selected.session.id,
+      templateId: template.id,
+      name: template.name,
+      language: template.language,
+      variables: { ...templateVariables },
+      preview: renderWhatsappTemplatePreview(
+        template,
+        templateVariables,
+      ),
+      usageLabels,
+    });
+    setTemplateOpen(false);
+    setTemplateError("");
+    setActionMessage(
+      `Plantilla ${template.name} preparada. Todavía no se ha enviado.`,
+    );
+  }
+
+  function editPreparedWhatsappTemplate() {
+    if (!preparedTemplate) return;
+
+    setSelectedTemplateId(preparedTemplate.templateId);
+    setTemplateVariables({ ...preparedTemplate.variables });
+    setTemplateError("");
+    setTemplateOpen(true);
+  }
+
   async function loadQuickReplies() {
     try {
       const response = await fetch(
@@ -445,6 +763,14 @@ export default function Home() {
         setMessage("");
         setQuickReplyOpen(false);
         setActionMessage("");
+
+        if (selected?.session.id !== sessionId) {
+          setPreparedTemplate(null);
+          setTemplateOpen(false);
+          setSelectedTemplateId("");
+          setTemplateVariables({});
+          setTemplateError("");
+        }
       }
 
       setError("");
@@ -1325,6 +1651,211 @@ export default function Home() {
         </div>
       ) : null}
 
+
+      {templateOpen ? (
+        <div
+          className="transfer-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              !templateLoading
+            ) {
+              setTemplateOpen(false);
+            }
+          }}
+        >
+          <section
+            className="transfer-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="template-dialog-title"
+            style={{ maxWidth: 680 }}
+          >
+            <div className="transfer-dialog-heading">
+              <div>
+                <p className="eyebrow">WhatsApp</p>
+                <h2 id="template-dialog-title">
+                  Preparar plantilla aprobada
+                </h2>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar"
+                disabled={templateLoading}
+                onClick={() => setTemplateOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="transfer-dialog-copy">
+              Revisa el contenido y completa las variables. En este
+              bloque la plantilla quedará preparada, pero no será
+              enviada.
+            </p>
+
+            {templateLoading ? (
+              <p className="transfer-empty">
+                Cargando plantillas aprobadas…
+              </p>
+            ) : templateError && !whatsappTemplates.length ? (
+              <p className="error-banner">{templateError}</p>
+            ) : !whatsappTemplates.length ? (
+              <p className="transfer-empty">
+                Esta empresa no tiene plantillas aprobadas disponibles.
+              </p>
+            ) : (
+              (() => {
+                const currentTemplate =
+                  whatsappTemplates.find(
+                    (template) =>
+                      template.id === selectedTemplateId,
+                  ) ??
+                  whatsappTemplates[0] ??
+                  null;
+
+                if (!currentTemplate) return null;
+
+                const variableKeys =
+                  whatsappTemplateVariableKeys(currentTemplate);
+                const usageLabels =
+                  whatsappTemplateUsageLabels(
+                    currentTemplate.id,
+                    whatsappTemplateBindings,
+                    whatsappTemplateEvents,
+                  );
+
+                return (
+                  <>
+                    <label className="transfer-field">
+                      <span>Plantilla</span>
+                      <select
+                        value={currentTemplate.id}
+                        disabled={templateLoading}
+                        onChange={(event) =>
+                          selectWhatsappTemplate(event.target.value)
+                        }
+                      >
+                        {whatsappTemplates.map((template) => (
+                          <option
+                            key={template.id}
+                            value={template.id}
+                          >
+                            {template.name} · {template.language}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                        padding: 14,
+                        border: "1px solid rgba(148, 163, 184, 0.28)",
+                        borderRadius: 14,
+                        background: "rgba(15, 23, 42, 0.04)",
+                      }}
+                    >
+                      <strong>Vista previa</strong>
+                      <p
+                        style={{
+                          margin: 0,
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        {renderWhatsappTemplatePreview(
+                          currentTemplate,
+                          templateVariables,
+                        )}
+                      </p>
+
+                      <small>
+                        Categoría: {currentTemplate.category || "Sin categoría"}
+                      </small>
+
+                      {usageLabels.length ? (
+                        <small>
+                          Uso configurado: {usageLabels.join(" · ")}
+                        </small>
+                      ) : (
+                        <small>
+                          Sin automatización asignada. Puede prepararse
+                          manualmente desde esta conversación.
+                        </small>
+                      )}
+                    </div>
+
+                    {variableKeys.length ? (
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 12,
+                          marginTop: 14,
+                        }}
+                      >
+                        {variableKeys.map((key) => (
+                          <label
+                            className="transfer-field"
+                            key={key}
+                          >
+                            <span>Variable {"{{"}{key}{"}}"}</span>
+                            <input
+                              value={templateVariables[key] ?? ""}
+                              disabled={templateLoading}
+                              placeholder={`Valor para la variable ${key}`}
+                              onChange={(event) =>
+                                setTemplateVariables((current) => ({
+                                  ...current,
+                                  [key]: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="transfer-empty">
+                        Esta plantilla no requiere variables.
+                      </p>
+                    )}
+
+                    {templateError ? (
+                      <p className="error-banner">{templateError}</p>
+                    ) : null}
+                  </>
+                );
+              })()
+            )}
+
+            <div className="transfer-dialog-actions">
+              <button
+                className="button quiet"
+                type="button"
+                disabled={templateLoading}
+                onClick={() => setTemplateOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="button primary"
+                type="button"
+                disabled={
+                  templateLoading ||
+                  !whatsappTemplates.length ||
+                  !selectedTemplateId
+                }
+                onClick={prepareWhatsappTemplate}
+              >
+                Dejar preparada
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       <div className="inbox-layout">
           <section className="conversation-list-panel">
             <div className="list-panel-heading">
@@ -1416,6 +1947,22 @@ export default function Home() {
                         {internalTestLoading ? "Reiniciando…" : "Nueva prueba"}
                       </button>
                     ) : null}
+
+                    {!isInternalTest &&
+                    selected.historyRestricted !== true ? (
+                      <button
+                        className="button quiet"
+                        type="button"
+                        disabled={templateLoading}
+                        onClick={() =>
+                          void openWhatsappTemplateDialog()
+                        }
+                      >
+                        {templateLoading
+                          ? "Cargando plantillas…"
+                          : "Plantilla"}
+                      </button>
+                    ) : null}
                     {showTakeButton ? (
                       <button
                         className="button primary"
@@ -1487,6 +2034,83 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
+
+
+                {preparedTemplate?.sessionId ===
+                selected.session.id ? (
+                  <div
+                    style={{
+                      margin: "0 16px 12px",
+                      padding: 14,
+                      border: "1px solid rgba(16, 185, 129, 0.35)",
+                      borderRadius: 14,
+                      background: "rgba(16, 185, 129, 0.08)",
+                      display: "grid",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div>
+                        <strong>
+                          Plantilla preparada: {preparedTemplate.name}
+                        </strong>
+                        <p
+                          style={{
+                            margin: "4px 0 0",
+                            whiteSpace: "pre-wrap",
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          {preparedTemplate.preview}
+                        </p>
+                        {preparedTemplate.usageLabels.length ? (
+                          <small>
+                            Uso:{" "}
+                            {preparedTemplate.usageLabels.join(" · ")}
+                          </small>
+                        ) : null}
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <button
+                          className="button quiet"
+                          type="button"
+                          onClick={editPreparedWhatsappTemplate}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          className="button quiet"
+                          type="button"
+                          onClick={() => {
+                            setPreparedTemplate(null);
+                            setActionMessage(
+                              "Plantilla preparada descartada.",
+                            );
+                          }}
+                        >
+                          Descartar
+                        </button>
+                      </div>
+                    </div>
+                    <small>
+                      Aún no se ha enviado. El envío real se habilitará
+                      en el bloque 2H-2.
+                    </small>
+                  </div>
+                ) : null}
 
                 {isInternalTest ? (
                   <form className="reply-box" onSubmit={sendInternalTestMessage}>
