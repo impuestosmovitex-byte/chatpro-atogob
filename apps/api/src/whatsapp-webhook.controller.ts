@@ -918,8 +918,7 @@ export class WhatsappWebhookController {
       await this.conversationMemoryService.listActiveServiceAreas(profile.id);
 
     if (['hola', 'menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
-      const nextContext = { ...session.context };
-      delete nextContext.service_area;
+      const nextContext = this.startFreshAreaMenuContext(session.context);
 
       const resetSession = await this.conversationMemoryService.updateSession(
         session.id,
@@ -956,7 +955,7 @@ export class WhatsappWebhookController {
         return this.startCustomerServiceMenu(selectedSession);
       }
 
-      return this.chatAgentService.reply(profile, selectedSession, text);
+      return this.buildAreaWelcome(selectedArea.name, selectedSession);
     }
 
     if (session.stage === 'main' || session.stage === 'area_menu') {
@@ -994,6 +993,65 @@ export class WhatsappWebhookController {
     }
 
     return this.chatAgentService.reply(profile, session, text);
+  }
+
+  private startFreshAreaMenuContext(
+    context: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const now = new Date().toISOString();
+    const previousPurchaseContext: Record<string, unknown> = {
+      saved_at: now,
+    };
+    let hasPreviousPurchase = false;
+
+    for (const key of [
+      'cart',
+      'selectedProduct',
+      'selectedVariant',
+      'selectedVariants',
+      'lastCartUrl',
+      'lastCheckoutUrl',
+    ]) {
+      if (context[key] !== undefined && context[key] !== null) {
+        previousPurchaseContext[key] = context[key];
+        hasPreviousPurchase = true;
+      }
+    }
+
+    const nextContext: Record<string, unknown> = {
+      ...context,
+      conversation_cycle_started_at: now,
+      conversation_cycle_reason: 'customer_requested_menu',
+      menu_requested_at: now,
+    };
+
+    if (hasPreviousPurchase) {
+      nextContext.previous_purchase_context = previousPurchaseContext;
+    }
+
+    for (const key of [
+      'service_area',
+      'customer_service_flow',
+      'cart',
+      'cart_recovery',
+      'selectedProduct',
+      'selectedVariant',
+      'selectedVariants',
+      'selectedAt',
+      'selectedVariantAt',
+      'purchaseIntent',
+      'purchaseIntentAt',
+      'lastCartUrl',
+      'lastCheckoutUrl',
+      'lastCartUpdatedAt',
+      'checkoutCreatedAt',
+      'clarification_state',
+      'technical_failure_state',
+    ]) {
+      delete nextContext[key];
+    }
+
+    return nextContext;
   }
 
   private resolveServiceAreaChoice(
