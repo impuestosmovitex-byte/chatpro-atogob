@@ -245,14 +245,40 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
 
       if (claimed.topic === 'orders/create') {
         prepared = await this.prepareOrder(claimed);
+
+        const automationEnabled = await this.isAutomationEnabled(
+          claimed.company_id,
+          prepared.automationKey,
+        );
+
+        if (!automationEnabled) {
+          await this.markIgnored(
+            claimed.id,
+            `La automatización ${prepared.automationKey} está pausada.`,
+          );
+          return;
+        }
       } else if (claimed.topic === 'orders/cancelled') {
-        const cancellationEnabled =
-          await this.hasEnabledTemplateBinding(
+        const [automationEnabled, templateEnabled] = await Promise.all([
+          this.isAutomationEnabled(
             claimed.company_id,
             'order_cancelled',
-          );
+          ),
+          this.hasEnabledTemplateBinding(
+            claimed.company_id,
+            'order_cancelled',
+          ),
+        ]);
 
-        if (!cancellationEnabled) {
+        if (!automationEnabled) {
+          await this.markIgnored(
+            claimed.id,
+            'La automatización de pedido cancelado está pausada.',
+          );
+          return;
+        }
+
+        if (!templateEnabled) {
           await this.markIgnored(
             claimed.id,
             'La empresa no tiene activa una plantilla de pedido cancelado.',
@@ -266,6 +292,20 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
         );
       } else {
         prepared = await this.prepareFulfillment(claimed);
+
+        if (
+          prepared &&
+          !(await this.isAutomationEnabled(
+            claimed.company_id,
+            'fulfillment_created',
+          ))
+        ) {
+          await this.markIgnored(
+            claimed.id,
+            'La automatización de guía o envío creado está pausada.',
+          );
+          return;
+        }
       }
 
       if (!prepared) {
@@ -527,6 +567,27 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     }
 
     return 'order_created';
+  }
+
+  private async isAutomationEnabled(
+    companyId: string,
+    automationKey: AutomationKey,
+  ): Promise<boolean> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('company_automations')
+      .select('enabled')
+      .eq('company_id', companyId)
+      .eq('automation_key', automationKey)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo validar la automatización ${automationKey}: ${error.message}`,
+      );
+    }
+
+    return data?.enabled === true;
   }
 
   private async hasEnabledTemplateBinding(
