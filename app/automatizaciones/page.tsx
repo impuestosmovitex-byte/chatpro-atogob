@@ -10,6 +10,9 @@ type Automation = {
     | 'abandoned_cart'
     | 'order_created'
     | 'payment_confirmed'
+    | 'cod_order_created'
+    | 'payment_pending'
+    | 'order_cancelled'
     | 'fulfillment_created';
   name: string;
   description: string;
@@ -388,8 +391,14 @@ export default function AutomationsPage() {
                     {automation.key === 'abandoned_cart'
                       ? 'Se envía según los tiempos configurados después de detectar el abandono.'
                       : automation.key === 'order_created'
-                        ? 'Se enviará inmediatamente cuando Shopify cree el pedido.'
-                        : 'Se enviará inmediatamente cuando Shopify genere la guía o el envío.'}
+                        ? 'Se enviará inmediatamente cuando Shopify cree un pedido normal.'
+                        : automation.key === 'cod_order_created'
+                          ? 'Se enviará cuando Shopify cree un pedido identificado como contraentrega.'
+                          : automation.key === 'payment_pending'
+                            ? 'Se enviará cuando Shopify cree un pedido con el pago pendiente.'
+                            : automation.key === 'order_cancelled'
+                              ? 'Se enviará cuando Shopify informe que el pedido fue cancelado.'
+                              : 'Se enviará inmediatamente cuando Shopify genere la guía o el envío.'}
                   </p>
 
                   {automation.key === 'abandoned_cart' ? (

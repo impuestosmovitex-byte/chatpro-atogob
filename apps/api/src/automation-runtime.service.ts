@@ -7,6 +7,9 @@ export type AutomationKey =
   | 'abandoned_cart'
   | 'order_created'
   | 'payment_confirmed'
+  | 'cod_order_created'
+  | 'payment_pending'
+  | 'order_cancelled'
   | 'fulfillment_created';
 
 export type AutomationDefinition = {
@@ -57,6 +60,24 @@ const DEFAULT_AUTOMATIONS: Array<{
     key: 'order_created',
     name: 'Confirmación de pedido',
     description: 'Confirma automáticamente que el pedido fue recibido.',
+  },
+  {
+    key: 'cod_order_created',
+    name: 'Pedido contraentrega',
+    description:
+      'Solicita la confirmación de los pedidos creados con pago contraentrega.',
+  },
+  {
+    key: 'payment_pending',
+    name: 'Pago pendiente',
+    description:
+      'Recuerda al cliente que su pedido todavía está pendiente de pago.',
+  },
+  {
+    key: 'order_cancelled',
+    name: 'Pedido cancelado',
+    description:
+      'Informa al cliente cuando Shopify registra la cancelación del pedido.',
   },
   {
     key: 'payment_confirmed',
