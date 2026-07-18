@@ -106,7 +106,17 @@ type StorefrontResponse = {
 
 type AdvisorStatus = "available" | "busy" | "away" | "offline";
 type CurrentUser = { userId: string; companyName: string; fullName: string; roleName: string };
-type AdvisorPresence = { status: AdvisorStatus };
+type AdvisorPresence = {
+  status: AdvisorStatus;
+  lastSeenAt?: string | null;
+  statusChangedAt?: string | null;
+};
+type AdvisorPresenceResponse = {
+  ok?: boolean;
+  error?: string;
+  advisor?: AdvisorPresence;
+  assignedPendingCount?: number;
+};
 type TransferTarget = {
   userId: string;
   fullName: string;
@@ -537,7 +547,8 @@ export default function Home() {
       if (!meResponse.ok || !me.ok || !me.session?.userId) throw new Error(me.error || "No se pudo identificar al usuario.");
       setCurrentUser(me.session);
       const presenceResponse = await fetch("/api/advisor-presence", { cache: "no-store" });
-      const data = await readJson(presenceResponse) as { ok?: boolean; error?: string; advisor?: AdvisorPresence };
+      const data =
+        await readJson(presenceResponse) as AdvisorPresenceResponse;
       if (!presenceResponse.ok || !data.ok || !data.advisor) throw new Error(data.error || "No se pudo cargar la disponibilidad.");
       setPresence(data.advisor);
     } catch (caught) {
@@ -547,16 +558,130 @@ export default function Home() {
 
   async function changePresence(status: AdvisorStatus) {
     setPresenceLoading(true);
+
     try {
-      const response = await fetch("/api/advisor-presence", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
-      const data = await readJson(response) as { ok?: boolean; error?: string; advisor?: AdvisorPresence };
-      if (!response.ok || !data.ok || !data.advisor) throw new Error(data.error || "No se pudo guardar la disponibilidad.");
+      const response = await fetch("/api/advisor-presence", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const data =
+        await readJson(response) as AdvisorPresenceResponse;
+
+      if (!response.ok || !data.ok || !data.advisor) {
+        throw new Error(
+          data.error || "No se pudo guardar la disponibilidad.",
+        );
+      }
+
       setPresence(data.advisor);
       setError("");
+
+      const assignedPendingCount =
+        Math.max(0, Number(data.assignedPendingCount) || 0);
+
+      if (assignedPendingCount > 0) {
+        setActionMessage(
+          assignedPendingCount === 1
+            ? "Se asignó 1 conversación pendiente."
+            : `Se asignaron ${assignedPendingCount} conversaciones pendientes.`,
+        );
+        await loadList(false);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudo guardar la disponibilidad.");
-    } finally { setPresenceLoading(false); }
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo guardar la disponibilidad.",
+      );
+    } finally {
+      setPresenceLoading(false);
+    }
   }
+
+  useEffect(() => {
+    if (
+      !currentUser?.userId ||
+      presence?.status !== "available"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const heartbeat = async () => {
+      if (
+        cancelled ||
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/advisor-presence", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status: "available" }),
+          cache: "no-store",
+        });
+        const data =
+          await readJson(response) as AdvisorPresenceResponse;
+
+        if (
+          cancelled ||
+          !response.ok ||
+          !data.ok ||
+          !data.advisor
+        ) {
+          return;
+        }
+
+        setPresence(data.advisor);
+
+        const assignedPendingCount =
+          Math.max(
+            0,
+            Number(data.assignedPendingCount) || 0,
+          );
+
+        if (assignedPendingCount > 0) {
+          setActionMessage(
+            assignedPendingCount === 1
+              ? "Se asignó 1 conversación pendiente."
+              : `Se asignaron ${assignedPendingCount} conversaciones pendientes.`,
+          );
+          await loadList(false);
+        }
+      } catch {
+        // La bandeja sigue operando; el próximo heartbeat reintentará.
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void heartbeat();
+      }
+    };
+
+    void heartbeat();
+    const interval = window.setInterval(
+      () => void heartbeat(),
+      60_000,
+    );
+    document.addEventListener(
+      "visibilitychange",
+      onVisibilityChange,
+    );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener(
+        "visibilitychange",
+        onVisibilityChange,
+      );
+    };
+  }, [currentUser?.userId, presence?.status]);
 
   async function readJson(response: Response) {
     const contentType = response.headers.get("content-type") ?? "";
