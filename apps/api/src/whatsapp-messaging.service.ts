@@ -122,7 +122,10 @@ export class WhatsappMessagingService {
       messaging_product: 'whatsapp',
       to,
       type: 'audio',
-      audio: { id: mediaId },
+      audio: {
+        id: mediaId,
+        voice: true,
+      },
     });
 
     return {
