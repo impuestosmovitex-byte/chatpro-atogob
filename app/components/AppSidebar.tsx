@@ -246,7 +246,8 @@ export function AppSidebar({
   const canSwitch = companies.length > 1;
 
   return (
-    <aside className={styles.sidebar}>
+    <>
+      <aside className={styles.sidebar}>
       <div className={styles.brand}>
         <span className={styles.dot} />
         <span>Chat Pro</span>
@@ -319,6 +320,46 @@ export function AppSidebar({
       >
         {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
       </button>
-    </aside>
+      </aside>
+
+      <nav
+        className={styles.mobileNav}
+        aria-label="Navegación móvil"
+      >
+        {effectiveCapabilities.inbox ? (
+          <Link
+            className={`${styles.mobileNavItem} ${
+              isActive(pathname, '/', true) ? styles.mobileNavActive : ''
+            }`}
+            href="/"
+          >
+            <span aria-hidden="true">◉</span>
+            <small>Bandeja</small>
+          </Link>
+        ) : null}
+
+        {effectiveCapabilities.clients ? (
+          <Link
+            className={`${styles.mobileNavItem} ${
+              isActive(pathname, '/clientes') ? styles.mobileNavActive : ''
+            }`}
+            href="/clientes"
+          >
+            <span aria-hidden="true">◎</span>
+            <small>Clientes</small>
+          </Link>
+        ) : null}
+
+        <button
+          type="button"
+          className={styles.mobileNavItem}
+          onClick={() => void logout()}
+          disabled={loggingOut}
+        >
+          <span aria-hidden="true">↪</span>
+          <small>{loggingOut ? 'Saliendo…' : 'Salir'}</small>
+        </button>
+      </nav>
+    </>
   );
 }

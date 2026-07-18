@@ -471,6 +471,7 @@ export default function Home() {
   const [canManageClients, setCanManageClients] = useState(false);
   const [canSendAudio, setCanSendAudio] = useState(false);
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
+  const [mobileSearch, setMobileSearch] = useState("");
   const [sessions, setSessions] = useState<InboxSession[]>([]);
   const [selected, setSelected] = useState<InboxConversation | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -1597,6 +1598,27 @@ export default function Home() {
     setQuickReplyOpen(false);
   }
 
+  const visibleSessions = useMemo(() => {
+    const query = mobileSearch.trim().toLowerCase();
+
+    if (!query) return sessions;
+
+    return sessions.filter((session) => {
+      const label = customerLabel(
+        session.customerPhone,
+        session.contact,
+      ).toLowerCase();
+      const phone = session.customerPhone.toLowerCase();
+      const preview = session.lastMessage?.message?.toLowerCase() ?? "";
+
+      return (
+        label.includes(query) ||
+        phone.includes(query) ||
+        preview.includes(query)
+      );
+    });
+  }, [mobileSearch, sessions]);
+
   const selectedStatus = selected?.session.attentionStatus;
   const showTakeButton =
     !isInternalTest &&
@@ -1937,17 +1959,39 @@ export default function Home() {
         </div>
       ) : null}
 
-      <div className="inbox-layout">
+      <div
+        className={`inbox-layout ${
+          selected ? "mobile-chat-open" : "mobile-list-open"
+        }`}
+      >
           <section className="conversation-list-panel">
             <div className="list-panel-heading">
               <div>
+                <p className="mobile-list-eyebrow">Bandeja</p>
                 <h2>Chats</h2>
-                <p>{loadingList ? "Actualizando…" : `${sessions.length} conversaciones`}</p>
+                <p>{loadingList ? "Actualizando…" : `${visibleSessions.length} conversaciones`}</p>
               </div>
-              <button className="refresh-button" type="button" onClick={() => void loadList()}>
+              <button
+                className="refresh-button"
+                type="button"
+                onClick={() => void loadList()}
+                aria-label="Actualizar conversaciones"
+                title="Actualizar conversaciones"
+              >
                 ↻
               </button>
             </div>
+
+            <label className="mobile-chat-search">
+              <span aria-hidden="true">⌕</span>
+              <input
+                type="search"
+                value={mobileSearch}
+                onChange={(event) => setMobileSearch(event.target.value)}
+                placeholder="Buscar cliente o mensaje"
+                aria-label="Buscar cliente o mensaje"
+              />
+            </label>
 
             <div className="filter-row">
               {filters.map((item) => (
@@ -1963,10 +2007,14 @@ export default function Home() {
             </div>
 
             <div className="conversation-list">
-              {!loadingList && !sessions.length ? (
-                <div className="empty-list">Aún no hay chats en este filtro.</div>
+              {!loadingList && !visibleSessions.length ? (
+                <div className="empty-list">
+                  {mobileSearch.trim()
+                    ? "No encontramos chats con esa búsqueda."
+                    : "Aún no hay chats en este filtro."}
+                </div>
               ) : null}
-              {sessions.map((session) => (
+              {visibleSessions.map((session) => (
                 <button
                   key={session.id}
                   type="button"
@@ -2002,20 +2050,34 @@ export default function Home() {
             ) : (
               <>
                 <header className="chat-header">
-                  <div>
-                    <p className="eyebrow">
-                      {isInternalTest ? "Prueba interna · no envía WhatsApp" : "WhatsApp"}
-                    </p>
-                    <h2>
-                      {isInternalTest
-                        ? `Probar a ${selected.company.name}`
-                        : customerLabel(selected.session.customerPhone, selected.contact)}
-                    </h2>
-                    <p className="chat-subtitle">
-                      {isInternalTest
-                        ? "Conversación real con el agente y las integraciones de esta empresa."
-                        : `${statusLabel[selected.session.attentionStatus]}${selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}`}
-                    </p>
+                  <div className="chat-identity">
+                    <button
+                      className="mobile-back-button"
+                      type="button"
+                      onClick={() => setSelected(null)}
+                      aria-label="Volver a la lista de chats"
+                      title="Volver a chats"
+                    >
+                      ‹
+                    </button>
+                    <span className="mobile-chat-avatar" aria-hidden="true">
+                      {selected.session.customerPhone.slice(-2) || "CP"}
+                    </span>
+                    <div className="chat-heading-copy">
+                      <p className="eyebrow">
+                        {isInternalTest ? "Prueba interna · no envía WhatsApp" : "WhatsApp"}
+                      </p>
+                      <h2>
+                        {isInternalTest
+                          ? `Probar a ${selected.company.name}`
+                          : customerLabel(selected.session.customerPhone, selected.contact)}
+                      </h2>
+                      <p className="chat-subtitle">
+                        {isInternalTest
+                          ? "Conversación real con el agente y las integraciones de esta empresa."
+                          : `${statusLabel[selected.session.attentionStatus]}${selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}`}
+                      </p>
+                    </div>
                   </div>
                   <div className="chat-actions">
                     {isInternalTest ? (
