@@ -86,28 +86,28 @@ export class ChatAgentService {
         );
     }
 
-    const isVisualReferenceMessage =
-      customerMessage.trimStart().startsWith('[REFERENCIA_VISUAL]');
+    const routingStartedAt = Date.now();
+    const routing = await this.resolveMessageRouting(
+      profile,
+      activeSession,
+      customerMessage,
+    );
+    const clarificationReply = await this.applyMessageUnderstanding(
+      activeSession,
+      routing.understanding,
+    );
 
-    const clarificationReply = isVisualReferenceMessage
-      ? null
-      : await this.handleUnclearMessage(
-          profile,
-          activeSession,
-          customerMessage,
-        );
+    console.log(
+      `[ChatPro][routing] source=${routing.source} ` +
+      `understanding=${routing.understanding} intent=${routing.intent} ` +
+      `duration_ms=${Date.now() - routingStartedAt}`,
+    );
 
     if (clarificationReply) {
       return clarificationReply;
     }
 
-    const currentIntent = isVisualReferenceMessage
-      ? 'new_catalog_search'
-      : await this.classifyCurrentIntent(
-          profile,
-          activeSession,
-          customerMessage,
-        );
+    const currentIntent = routing.intent;
 
     activeSession =
       currentIntent === 'new_catalog_search'
@@ -578,6 +578,233 @@ export class ChatAgentService {
     }
 
     return nextContext;
+  }
+
+  private async resolveMessageRouting(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    customerMessage: string,
+  ): Promise<{
+    understanding: 'clear' | 'unclear';
+    intent: 'new_catalog_search' | 'continuation' | 'other';
+    source: 'local' | 'openai';
+  }> {
+    const local = this.getLocalMessageRouting(
+      session,
+      customerMessage,
+    );
+
+    if (local) {
+      return {
+        ...local,
+        source: 'local',
+      };
+    }
+
+    const history = await this.getRecentMessages(session.id);
+    const response = await this.getClient().responses.create({
+      model: this.getModel(),
+      instructions: [
+        'Clasifica el mensaje actual de una conversación comercial.',
+        'No respondas al cliente.',
+        'Devuelve únicamente JSON válido con esta estructura:',
+        '{"understanding":"clear"|"unclear","intent":"new_catalog_search"|"continuation"|"other"}',
+        '',
+        'understanding=clear cuando el mensaje puede procesarse usando el historial, contexto, productos, pedidos, pagos, servicios o integraciones.',
+        'understanding=unclear únicamente cuando no es posible saber qué solicita ni a qué se refiere, incluso usando el contexto.',
+        'No marques como unclear solo por ser corto, contener un número, ciudad, color, talla, sí/no, correo, celular, referencia, enlace o dato solicitado anteriormente.',
+        '',
+        'intent=new_catalog_search cuando pide explorar una categoría, producto genérico o una búsqueda nueva, aunque exista un producto anterior.',
+        'intent=continuation cuando se refiere al producto, imagen, carrito, pedido, pregunta o dato que ya se venía tratando.',
+        'intent=other para saludos, pagos, servicio, políticas u otros mensajes que no requieren limpiar el producto anterior.',
+        '',
+        `Empresa: ${profile.name}.`,
+        `Instrucciones de la empresa: ${profile.aiInstructions || 'No hay instrucciones adicionales.'}`,
+      ].join('\n'),
+      input: JSON.stringify({
+        historial_reciente: history,
+        mensaje_actual: customerMessage,
+        contexto: session.context,
+        producto_anterior: this.readSelectedProduct(session.context),
+      }),
+    });
+
+    const raw = response.output_text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
+
+    try {
+      const parsed = JSON.parse(raw) as {
+        understanding?: string;
+        intent?: string;
+      };
+
+      return {
+        understanding:
+          parsed.understanding === 'unclear'
+            ? 'unclear'
+            : 'clear',
+        intent:
+          parsed.intent === 'new_catalog_search' ||
+          parsed.intent === 'continuation'
+            ? parsed.intent
+            : 'other',
+        source: 'openai',
+      };
+    } catch {
+      return {
+        understanding: 'clear',
+        intent: 'other',
+        source: 'openai',
+      };
+    }
+  }
+
+  private getLocalMessageRouting(
+    session: ConversationSession,
+    customerMessage: string,
+  ): {
+    understanding: 'clear';
+    intent: 'new_catalog_search' | 'continuation' | 'other';
+  } | null {
+    const raw = customerMessage.trim();
+    const normalized = this.normalizeText(raw);
+    const clarificationState =
+      session.context.clarification_state &&
+      typeof session.context.clarification_state === 'object' &&
+      !Array.isArray(session.context.clarification_state)
+        ? session.context.clarification_state as JsonObject
+        : null;
+
+    if (clarificationState?.waiting_for_clarification === true) {
+      return null;
+    }
+
+    if (raw.startsWith('[REFERENCIA_VISUAL]')) {
+      return {
+        understanding: 'clear',
+        intent: 'new_catalog_search',
+      };
+    }
+
+    if (/^https?:\/\/\S+$/i.test(raw)) {
+      return {
+        understanding: 'clear',
+        intent: 'other',
+      };
+    }
+
+    const hasActiveReference =
+      this.hasActiveConversationReference(session.context);
+
+    if (
+      hasActiveReference &&
+      (
+        raw.length <= 120 ||
+        /^(si|sí|no|dale|listo|ok|okay|esta|este|esa|ese|esto|esa misma|ese mismo|la primera|la segunda|el primero|el segundo|quiero esta|quiero este|quiero esa|quiero ese)$/i.test(
+          raw,
+        )
+      )
+    ) {
+      return {
+        understanding: 'clear',
+        intent: 'continuation',
+      };
+    }
+
+    if (
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) ||
+      /^\+?[\d\s().-]{3,20}$/.test(raw)
+    ) {
+      return {
+        understanding: 'clear',
+        intent: hasActiveReference ? 'continuation' : 'other',
+      };
+    }
+
+    if (
+      /^(muestrame|muéstrame|mostrar|ver|busco|estoy buscando|catalogo|catálogo|coleccion|colección|que productos|qué productos|productos disponibles)\b/.test(
+        normalized,
+      )
+    ) {
+      return {
+        understanding: 'clear',
+        intent: 'new_catalog_search',
+      };
+    }
+
+    return null;
+  }
+
+  private hasActiveConversationReference(
+    context: JsonObject,
+  ): boolean {
+    const cartHasLines =
+      Array.isArray(context.cart) && context.cart.length > 0;
+
+    return Boolean(
+      context.selectedProduct ||
+      context.selectedVariant ||
+      context.selectedVariants ||
+      context.purchaseIntent ||
+      context.last_visual_reference ||
+      context.customer_service_flow ||
+      context.cart_recovery ||
+      cartHasLines,
+    );
+  }
+
+  private async applyMessageUnderstanding(
+    session: ConversationSession,
+    understanding: 'clear' | 'unclear',
+  ): Promise<string | null> {
+    const previous =
+      session.context.clarification_state &&
+      typeof session.context.clarification_state === 'object' &&
+      !Array.isArray(session.context.clarification_state)
+        ? session.context.clarification_state as JsonObject
+        : null;
+
+    if (understanding === 'clear') {
+      if (previous) {
+        const nextContext = { ...session.context };
+        delete nextContext.clarification_state;
+
+        await this.conversationMemoryService.updateSession(session.id, {
+          context: nextContext,
+        });
+      }
+
+      return null;
+    }
+
+    if (previous?.waiting_for_clarification === true) {
+      const updated =
+        await this.conversationMemoryService.requestHumanAttention(
+          session.id,
+          {
+            reason:
+              'No se logró comprender la solicitud después de una aclaración.',
+            summary:
+              'El cliente envió un mensaje que no se pudo interpretar y no logró aclararlo después de una solicitud breve de contexto.',
+          },
+        );
+
+      return this.humanAttentionMessage(updated);
+    }
+
+    await this.conversationMemoryService.updateSession(session.id, {
+      context: {
+        ...session.context,
+        clarification_state: {
+          waiting_for_clarification: true,
+          asked_at: new Date().toISOString(),
+        },
+      },
+    });
+
+    return 'No logré entender bien a qué te refieres. ¿Puedes explicarme un poco más o decirme qué necesitas revisar?';
   }
 
   private async classifyBusinessScope(
