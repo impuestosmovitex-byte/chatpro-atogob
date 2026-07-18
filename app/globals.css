@@ -1117,3 +1117,119 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
     background: #fff;
   }
 }
+
+/* MOBILE-3.2 — Bloqueo horizontal definitivo y avisos móviles */
+@media (max-width: 760px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+
+  .mobile-conversation-shell {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    min-width: 0;
+    max-width: 100vw;
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .mobile-conversation-shell .workspace,
+  .mobile-conversation-shell .inbox-layout,
+  .mobile-conversation-shell .chat-panel {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    contain: inline-size;
+  }
+
+  .mobile-conversation-shell .message-feed {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden !important;
+    overflow-y: auto;
+    overscroll-behavior-x: none;
+    touch-action: pan-y;
+  }
+
+  .mobile-conversation-shell .message-row {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .mobile-conversation-shell .message-bubble {
+    box-sizing: border-box;
+    width: fit-content;
+    min-width: 0;
+    max-width: 86%;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .mobile-conversation-shell .message-bubble p,
+  .mobile-conversation-shell .message-bubble a,
+  .mobile-conversation-shell .message-bubble span,
+  .mobile-conversation-shell .message-bubble code,
+  .mobile-conversation-shell .message-bubble pre {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .mobile-conversation-shell .message-bubble pre {
+    white-space: pre-wrap;
+  }
+
+  .mobile-conversation-shell .wa-audio-message {
+    width: min(270px, calc(100vw - 64px));
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .mobile-conversation-shell .wa-audio-message audio,
+  .mobile-conversation-shell .message-bubble audio,
+  .mobile-conversation-shell .message-bubble img,
+  .mobile-conversation-shell .message-bubble video {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .mobile-conversation-shell .success-banner {
+    top: auto;
+    right: auto;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    left: 50%;
+    width: max-content;
+    max-width: calc(100vw - 28px);
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 1.25;
+    text-align: center;
+    pointer-events: none;
+    transform: translateX(-50%);
+  }
+
+  .mobile-conversation-shell .error-banner {
+    top: calc(env(safe-area-inset-top) + 72px);
+    right: 14px;
+    left: 14px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+}

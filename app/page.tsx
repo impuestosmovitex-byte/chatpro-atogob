@@ -1615,6 +1615,39 @@ export default function Home() {
     return () => cancelAnimationFrame(frame);
   }, [selected?.session.id, selected?.messages.length, loadingChat]);
 
+  useEffect(() => {
+    const feed = messageFeedRef.current;
+
+    if (!feed || !selected?.session.id) {
+      return;
+    }
+
+    const keepHorizontalPosition = () => {
+      if (feed.scrollLeft !== 0) {
+        feed.scrollLeft = 0;
+      }
+    };
+
+    feed.scrollLeft = 0;
+    feed.addEventListener("scroll", keepHorizontalPosition, { passive: true });
+
+    return () => {
+      feed.removeEventListener("scroll", keepHorizontalPosition);
+    };
+  }, [selected?.session.id]);
+
+  useEffect(() => {
+    if (!actionMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setActionMessage("");
+    }, 2400);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [actionMessage]);
+
 
   const quickReplyQuery = message.trimStart().startsWith("/")
     ? message.trimStart().slice(1).toLowerCase()
