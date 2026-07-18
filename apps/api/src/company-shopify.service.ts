@@ -653,6 +653,90 @@ export class CompanyShopifyService {
     return orders;
   }
 
+  async lookupOrderById(
+    companyId: string,
+    orderId: string,
+  ): Promise<CompanyShopifyCustomerOrder | null> {
+    const rawId = String(orderId ?? '').trim();
+
+    if (!rawId) {
+      return null;
+    }
+
+    const shopifyId = rawId.startsWith('gid://shopify/Order/')
+      ? rawId
+      : /^\d+$/.test(rawId)
+        ? `gid://shopify/Order/${rawId}`
+        : '';
+
+    if (!shopifyId) {
+      return null;
+    }
+
+    const data = await this.graphql<{
+      node: CompanyShopifyOrderNode | null;
+    }>(
+      companyId,
+      `
+        query ChatProOrderById($id: ID!) {
+          node(id: $id) {
+            ... on Order {
+              id
+              name
+              createdAt
+              processedAt
+              cancelledAt
+              displayFinancialStatus
+              displayFulfillmentStatus
+              currentTotalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+              lineItems(first: 20) {
+                edges {
+                  node {
+                    title
+                    quantity
+                    variantTitle
+                    originalUnitPriceSet {
+                      shopMoney {
+                        amount
+                        currencyCode
+                      }
+                    }
+                  }
+                }
+              }
+              fulfillments(first: 10) {
+                status
+                displayStatus
+                createdAt
+                deliveredAt
+                trackingInfo(first: 10) {
+                  company
+                  number
+                  url
+                }
+              }
+            }
+          }
+        }
+      `,
+      { id: shopifyId },
+    );
+
+    if (!data.node) {
+      return null;
+    }
+
+    return this.enrichOrderDetails(
+      companyId,
+      this.toCustomerOrder(data.node),
+    );
+  }
+
   // Consulta base de pedidos intencionalmente simple: evita campos de cliente/envío/fulfillment
   // para no romper por permisos de datos protegidos. Guías se agregan en un bloque separado.
   private async lookupOrdersByQuery(

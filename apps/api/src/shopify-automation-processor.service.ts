@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from './supabase.service';
+import { CompanyShopifyService } from './company-shopify.service';
 import { ShopifyAutomaticTestSendService } from './shopify-automatic-test-send.service';
 
 type JsonObject = Record<string, unknown>;
@@ -9,7 +10,8 @@ type AutomationKey =
   | 'fulfillment_created'
   | 'cod_order_created'
   | 'payment_pending'
-  | 'order_cancelled';
+  | 'order_cancelled'
+  | 'post_purchase_bonus';
 
 type WebhookRow = {
   id: string;
@@ -92,6 +94,14 @@ const DEFAULT_CANCELLED_MESSAGE = [
   '{{url_tienda}}',
 ].join('\n\n');
 
+const DEFAULT_POST_PURCHASE_BONUS_MESSAGE = [
+  'Hola {{nombre_cliente}}.',
+  'Gracias por tu compra.',
+  'Tenemos un beneficio posterior a tu compra.',
+  'Consulta la tienda aquí:',
+  '{{url_tienda}}',
+].join('\n\n');
+
 @Injectable()
 export class ShopifyAutomationProcessorService implements OnModuleInit {
   private readonly logger = new Logger(ShopifyAutomationProcessorService.name);
@@ -100,6 +110,7 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
 
   constructor(
     private readonly supabaseService: SupabaseService,
+    private readonly companyShopifyService: CompanyShopifyService,
     private readonly automaticTestSendService: ShopifyAutomaticTestSendService,
   ) {}
 
@@ -290,6 +301,35 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
           claimed,
           'order_cancelled',
         );
+      } else if (this.isDeliveredFulfillment(claimed.payload)) {
+        const [automationEnabled, templateEnabled] = await Promise.all([
+          this.isAutomationEnabled(
+            claimed.company_id,
+            'post_purchase_bonus',
+          ),
+          this.hasEnabledTemplateBinding(
+            claimed.company_id,
+            'post_purchase_bonus',
+          ),
+        ]);
+
+        if (!automationEnabled) {
+          await this.markIgnored(
+            claimed.id,
+            'La automatización de beneficio posterior a la compra está pausada.',
+          );
+          return;
+        }
+
+        if (!templateEnabled) {
+          await this.markIgnored(
+            claimed.id,
+            'La empresa no tiene activa una plantilla de beneficio posterior a la compra.',
+          );
+          return;
+        }
+
+        prepared = await this.preparePostPurchaseBonus(claimed);
       } else {
         prepared = await this.prepareFulfillment(claimed);
 
@@ -311,7 +351,9 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
       if (!prepared) {
         await this.markIgnored(
           claimed.id,
-          'El evento todavía no tiene una guía o enlace de seguimiento.',
+          this.isDeliveredFulfillment(claimed.payload)
+            ? 'No se pudo resolver el pedido entregado para preparar el beneficio.'
+            : 'El evento no tiene guía suficiente o no se pudo resolver el pedido relacionado.',
         );
         return;
       }
@@ -447,6 +489,64 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     };
   }
 
+
+  private async preparePostPurchaseBonus(
+    row: WebhookRow,
+  ): Promise<PreparedAutomation | null> {
+    const payload = this.object(row.payload);
+    const orderId = this.firstText(payload.order_id);
+
+    if (!orderId) {
+      throw new Error(
+        'La entrega confirmada por Shopify no tiene pedido relacionado.',
+      );
+    }
+
+    const orderContext = await this.resolveOrderContext(
+      row.company_id,
+      orderId,
+    );
+
+    if (!orderContext) {
+      return null;
+    }
+
+    const recipient = await this.normalizeRecipient(
+      row.company_id,
+      orderContext.rawRecipient,
+    );
+
+    const variables: JsonObject = {
+      nombre_cliente: orderContext.customerName,
+      numero_pedido: orderContext.orderNumber,
+      url_tienda: this.storefrontUrl(row.shop_domain),
+    };
+
+    const config = await this.messageConfig(
+      row.company_id,
+      'post_purchase_bonus',
+    );
+
+    return {
+      companyId: row.company_id,
+      automationId: config.automationId,
+      automationKey: 'post_purchase_bonus',
+      eventKey: `shopify-post-purchase-bonus:${orderId}`,
+      recipient,
+      rawRecipient: orderContext.rawRecipient,
+      message: this.render(config.body, variables),
+      orderId,
+      orderNumber: orderContext.orderNumber,
+      sourceEventId: row.id,
+      sourceWebhookId: row.webhook_id,
+      sourceTopic: row.topic,
+      deliveryMode: config.deliveryMode,
+      templateName: config.templateName,
+      templateLanguage: config.templateLanguage,
+      variables,
+    };
+  }
+
   private async prepareFulfillment(
     row: WebhookRow,
   ): Promise<PreparedAutomation | null> {
@@ -472,42 +572,22 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
       throw new Error('La guía de Shopify no tiene pedido relacionado.');
     }
 
-    const orderPayload = await this.findOrderPayload(
+    const orderContext = await this.resolveOrderContext(
       row.company_id,
       orderId,
     );
 
-    if (!orderPayload) {
-      throw new Error(
-        `Todavía no se encontró el evento del pedido ${orderId}.`,
-      );
+    if (!orderContext) {
+      return null;
     }
 
-    const customer = this.object(orderPayload.customer);
-    const shipping = this.object(orderPayload.shipping_address);
-    const billing = this.object(orderPayload.billing_address);
-    const defaultAddress = this.object(customer.default_address);
-    const customerName =
-      this.fullName(customer) ||
-      this.fullName(shipping) ||
-      this.fullName(billing) ||
-      'cliente';
-    const rawRecipient = this.firstText(
-      orderPayload.phone,
-      shipping.phone,
-      billing.phone,
-      customer.phone,
-      defaultAddress.phone,
-    );
+    const customerName = orderContext.customerName;
+    const rawRecipient = orderContext.rawRecipient;
     const recipient = await this.normalizeRecipient(
       row.company_id,
       rawRecipient,
     );
-    const orderNumber =
-      this.firstText(orderPayload.name) ||
-      (this.firstText(orderPayload.order_number)
-        ? `#${this.firstText(orderPayload.order_number)}`
-        : orderId);
+    const orderNumber = orderContext.orderNumber;
     const variables: JsonObject = {
       nombre_cliente: customerName,
       numero_pedido: orderNumber,
@@ -645,6 +725,18 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     return ['pending', 'partially paid'].includes(status);
   }
 
+  private isDeliveredFulfillment(value: unknown): boolean {
+    const payload = this.object(value);
+    const status = this.normalizeSearchText(
+      this.firstText(
+        payload.shipment_status,
+        payload.delivery_status,
+      ),
+    );
+
+    return status === 'delivered';
+  }
+
   private paymentMethod(payload: JsonObject): string {
     const values = [
       ...this.stringArray(payload.payment_gateway_names),
@@ -672,6 +764,66 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
       .replace(/[_-]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+
+  private async resolveOrderContext(
+    companyId: string,
+    orderId: string,
+  ): Promise<{
+    customerName: string;
+    rawRecipient: string;
+    orderNumber: string;
+  } | null> {
+    const payload = await this.findOrderPayload(companyId, orderId);
+
+    if (payload) {
+      const customer = this.object(payload.customer);
+      const shipping = this.object(payload.shipping_address);
+      const billing = this.object(payload.billing_address);
+      const defaultAddress = this.object(customer.default_address);
+
+      return {
+        customerName:
+          this.fullName(customer) ||
+          this.fullName(shipping) ||
+          this.fullName(billing) ||
+          'cliente',
+        rawRecipient: this.firstText(
+          payload.phone,
+          shipping.phone,
+          billing.phone,
+          customer.phone,
+          defaultAddress.phone,
+        ),
+        orderNumber:
+          this.firstText(payload.name) ||
+          (this.firstText(payload.order_number)
+            ? `#${this.firstText(payload.order_number)}`
+            : orderId),
+      };
+    }
+
+    const order = await this.companyShopifyService.lookupOrderById(
+      companyId,
+      orderId,
+    );
+
+    if (!order) {
+      return null;
+    }
+
+    return {
+      customerName:
+        order.customer.name ||
+        order.shippingAddress?.name ||
+        'cliente',
+      rawRecipient:
+        order.customer.phone ||
+        order.shippingAddress?.phone ||
+        '',
+      orderNumber: order.name || orderId,
+    };
   }
 
   private async findOrderPayload(
@@ -760,6 +912,10 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
 
     if (key === 'order_cancelled') {
       return DEFAULT_CANCELLED_MESSAGE;
+    }
+
+    if (key === 'post_purchase_bonus') {
+      return DEFAULT_POST_PURCHASE_BONUS_MESSAGE;
     }
 
     return DEFAULT_ORDER_MESSAGE;

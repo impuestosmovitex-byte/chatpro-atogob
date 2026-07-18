@@ -67,6 +67,7 @@ export class ShopifyAutomaticTestSendService {
         'cod_order_created',
         'payment_pending',
         'order_cancelled',
+        'post_purchase_bonus',
       ].includes(execution.automation_key)
     ) {
       throw new BadRequestException(

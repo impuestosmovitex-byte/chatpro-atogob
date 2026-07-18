@@ -13,6 +13,7 @@ type Automation = {
     | 'cod_order_created'
     | 'payment_pending'
     | 'order_cancelled'
+    | 'post_purchase_bonus'
     | 'fulfillment_created';
   name: string;
   description: string;
@@ -398,7 +399,9 @@ export default function AutomationsPage() {
                             ? 'Se enviará cuando Shopify cree un pedido con el pago pendiente.'
                             : automation.key === 'order_cancelled'
                               ? 'Se enviará cuando Shopify informe que el pedido fue cancelado.'
-                              : 'Se enviará inmediatamente cuando Shopify genere la guía o el envío.'}
+                              : automation.key === 'post_purchase_bonus'
+                                ? 'Se enviará una sola vez cuando Shopify confirme que el envío fue entregado.'
+                                : 'Se enviará inmediatamente cuando Shopify genere la guía o el envío.'}
                   </p>
 
                   {automation.key === 'abandoned_cart' ? (

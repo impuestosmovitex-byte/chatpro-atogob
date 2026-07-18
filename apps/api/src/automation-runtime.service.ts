@@ -10,6 +10,7 @@ export type AutomationKey =
   | 'cod_order_created'
   | 'payment_pending'
   | 'order_cancelled'
+  | 'post_purchase_bonus'
   | 'fulfillment_created';
 
 export type AutomationDefinition = {
@@ -78,6 +79,12 @@ const DEFAULT_AUTOMATIONS: Array<{
     name: 'Pedido cancelado',
     description:
       'Informa al cliente cuando Shopify registra la cancelación del pedido.',
+  },
+  {
+    key: 'post_purchase_bonus',
+    name: 'Beneficio posterior a la compra',
+    description:
+      'Envía la plantilla configurada cuando Shopify confirma la entrega.',
   },
   {
     key: 'payment_confirmed',
