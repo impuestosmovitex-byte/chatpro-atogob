@@ -6,7 +6,14 @@ import { ConversationMemoryService, type ConversationSession, type InboxSessionS
 import { SupabaseService } from './supabase.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
-type InboxBody = { message?: unknown; action?: unknown; sessionId?: unknown; targetUserId?: unknown };
+type InboxBody = {
+  message?: unknown;
+  action?: unknown;
+  sessionId?: unknown;
+  targetUserId?: unknown;
+  templateId?: unknown;
+  variables?: unknown;
+};
 const INTERNAL_TEST_PHONE = '000000000000000';
 type Actor = { userId:string; fullName:string; permissions:Set<string>; isFullAccess:boolean };
 
@@ -704,6 +711,191 @@ export class InboxController {
     return response.status(200).send(media.buffer);
   }
 
+  @Post(':sessionId/templates')
+  @HttpCode(200)
+  async sendAdvisorTemplate(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+    @Body() body: InboxBody = {},
+  ) {
+    this.authorize(key);
+
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+
+    if (
+      !actor.isFullAccess &&
+      !actor.permissions.has('inbox.reply')
+    ) {
+      throw new ForbiddenException(
+        'No tienes permiso para enviar plantillas desde la bandeja.',
+      );
+    }
+
+    const settings = await this.getAiTakeSettings(
+      conversation.company.id,
+    );
+    const availability = this.takeAvailability(
+      actor,
+      conversation.session,
+      settings,
+    );
+
+    if (conversation.session.attentionStatus === 'human') {
+      this.assertManageOwn(
+        actor,
+        conversation.session,
+        'inbox.reply',
+      );
+    } else if (
+      !actor.isFullAccess &&
+      !availability.takeAvailable
+    ) {
+      throw new ForbiddenException(
+        availability.takeBlockedReason ||
+          'No puedes reabrir esta conversación.',
+      );
+    }
+
+    const templateId = this.readText(body.templateId);
+
+    if (!templateId) {
+      throw new BadRequestException(
+        'Selecciona una plantilla aprobada.',
+      );
+    }
+
+    const variables = this.readTemplateVariables(body.variables);
+    const { data: template, error: templateError } =
+      await this.supabaseService
+        .getClient()
+        .from('company_whatsapp_templates')
+        .select('id,name,language,status,components')
+        .eq('company_id', conversation.company.id)
+        .eq('id', templateId)
+        .maybeSingle();
+
+    if (templateError) {
+      throw new BadRequestException(
+        `No se pudo validar la plantilla: ${templateError.message}`,
+      );
+    }
+
+    if (!template) {
+      throw new BadRequestException(
+        'La plantilla no pertenece a esta empresa o ya no existe.',
+      );
+    }
+
+    if (
+      this.readText(template.status).toUpperCase() !== 'APPROVED'
+    ) {
+      throw new BadRequestException(
+        'La plantilla ya no está aprobada en Meta. Sincronízala antes de enviarla.',
+      );
+    }
+
+    const templateName = this.readText(template.name);
+    const language = this.readText(template.language);
+
+    if (!templateName || !language) {
+      throw new BadRequestException(
+        'La plantilla no tiene nombre o idioma válido.',
+      );
+    }
+
+    const prepared = this.prepareManualTemplate(
+      template.components,
+      variables,
+    );
+    const sent =
+      await this.whatsappMessagingService.sendTemplateComponents(
+        conversation.company.id,
+        conversation.session.customerPhone,
+        templateName,
+        language,
+        prepared.components,
+      );
+
+    const historyMessage = [
+      `Plantilla enviada: ${templateName}`,
+      prepared.preview,
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+      .slice(0, 8000);
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: conversation.company.id,
+      sessionId: conversation.session.id,
+      customerPhone: conversation.session.customerPhone,
+      message: historyMessage,
+      sender: 'assistant',
+      authorType: 'advisor',
+      aiResponse: null,
+      providerMessageId: sent.messageId,
+    });
+    await this.conversationMemoryService.touchSession(
+      conversation.session.id,
+    );
+
+    const advisor = actor.userId
+      ? {
+          userId: actor.userId,
+          fullName: actor.fullName,
+        }
+      : await this.resolveBootstrapOwner(conversation.company.id);
+
+    let warning = '';
+
+    try {
+      if (
+        conversation.session.attentionStatus !== 'human' ||
+        conversation.session.assignedToUserId !== advisor.userId
+      ) {
+        await this.conversationMemoryService.takeConversation(
+          conversation.session.id,
+          advisor,
+        );
+      }
+    } catch (error) {
+      warning =
+        'La plantilla fue enviada y quedó registrada, pero no se pudo tomar automáticamente la conversación. Tómala manualmente para continuar.';
+      console.error(
+        'La plantilla se envió, pero no se pudo tomar la conversación:',
+        error,
+      );
+    }
+
+    return {
+      ok: true,
+      messageId: sent.messageId,
+      warning: warning || null,
+      conversation:
+        await this.conversationMemoryService.getInboxConversation(
+          conversation.company.slug,
+          conversation.session.id,
+        ),
+    };
+  }
+
   @Post(':sessionId/messages') @HttpCode(200)
   async sendAdvisorMessage(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='', @Body() body:InboxBody={}) {
     this.authorize(key);
@@ -716,6 +908,234 @@ export class InboxController {
     await this.conversationMemoryService.saveMessage({companyId:conversation.company.id,sessionId:conversation.session.id,customerPhone:conversation.session.customerPhone,message,sender:'assistant',authorType:'advisor',aiResponse:null});
     await this.conversationMemoryService.touchSession(conversation.session.id);
     return {ok:true,conversation:await this.conversationMemoryService.getInboxConversation(conversation.company.slug,conversation.session.id)};
+  }
+
+  private readTemplateVariables(
+    value: unknown,
+  ): Record<string, string> {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value)
+    ) {
+      return {};
+    }
+
+    const result: Record<string, string> = {};
+
+    for (const [rawKey, rawValue] of Object.entries(value).slice(0, 80)) {
+      const key = rawKey.trim().slice(0, 80);
+      const text =
+        typeof rawValue === 'string'
+          ? rawValue.replace(/\u0000/g, '').trim().slice(0, 2000)
+          : '';
+
+      if (key && text) {
+        result[key] = text;
+      }
+    }
+
+    return result;
+  }
+
+  private templateObjectList(
+    value: unknown,
+  ): Array<Record<string, unknown>> {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        !Array.isArray(item),
+    );
+  }
+
+  private templatePlaceholderKeys(value: unknown): string[] {
+    const text = typeof value === 'string' ? value : '';
+    const keys: string[] = [];
+    const seen = new Set<string>();
+    const expression = /\{\{\s*([^{}]+?)\s*\}\}/g;
+
+    for (const match of text.matchAll(expression)) {
+      const key = match[1]?.trim();
+
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        keys.push(key);
+      }
+    }
+
+    return keys;
+  }
+
+  private templateTextParameter(
+    key: string,
+    value: string,
+  ): Record<string, unknown> {
+    return /^\d+$/.test(key)
+      ? {
+          type: 'text',
+          text: value,
+        }
+      : {
+          type: 'text',
+          text: value,
+          parameter_name: key,
+        };
+  }
+
+  private prepareManualTemplate(
+    rawComponents: unknown,
+    variables: Record<string, string>,
+  ): {
+    components: Array<Record<string, unknown>>;
+    preview: string;
+  } {
+    const components = this.templateObjectList(rawComponents);
+    const outgoing: Array<Record<string, unknown>> = [];
+    const previewParts: string[] = [];
+    const required: string[] = [];
+    const requiredSet = new Set<string>();
+
+    const requireKeys = (keys: string[]) => {
+      for (const key of keys) {
+        if (!requiredSet.has(key)) {
+          requiredSet.add(key);
+          required.push(key);
+        }
+      }
+    };
+
+    const render = (value: unknown) => {
+      let text = typeof value === 'string' ? value.trim() : '';
+
+      for (const key of this.templatePlaceholderKeys(text)) {
+        const escaped = key.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          '\\$&',
+        );
+        text = text.replace(
+          new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`, 'g'),
+          variables[key] || `[Variable ${key}]`,
+        );
+      }
+
+      return text;
+    };
+
+    for (const component of components) {
+      const type = this.readText(component.type).toUpperCase();
+      const text = this.readText(component.text);
+
+      if (type === 'HEADER') {
+        const format =
+          this.readText(component.format).toUpperCase();
+
+        if (
+          format &&
+          format !== 'TEXT' &&
+          format !== 'NONE'
+        ) {
+          throw new BadRequestException(
+            'Esta plantilla requiere una imagen, video, documento o ubicación en el encabezado. Ese tipo de plantilla todavía no puede enviarse manualmente desde la bandeja.',
+          );
+        }
+
+        const keys = this.templatePlaceholderKeys(text);
+        requireKeys(keys);
+
+        if (keys.length) {
+          outgoing.push({
+            type: 'header',
+            parameters: keys.map((key) =>
+              this.templateTextParameter(key, variables[key] || ''),
+            ),
+          });
+        }
+
+        const rendered = render(text);
+        if (rendered) previewParts.push(rendered);
+        continue;
+      }
+
+      if (type === 'BODY') {
+        const keys = this.templatePlaceholderKeys(text);
+        requireKeys(keys);
+
+        if (keys.length) {
+          outgoing.push({
+            type: 'body',
+            parameters: keys.map((key) =>
+              this.templateTextParameter(key, variables[key] || ''),
+            ),
+          });
+        }
+
+        const rendered = render(text);
+        if (rendered) previewParts.push(rendered);
+        continue;
+      }
+
+      if (type === 'FOOTER') {
+        const rendered = render(text);
+        if (rendered) previewParts.push(rendered);
+        continue;
+      }
+
+      if (type === 'BUTTONS') {
+        const buttons = this.templateObjectList(component.buttons);
+
+        buttons.forEach((button, index) => {
+          const buttonType =
+            this.readText(button.type).toUpperCase();
+          const label = this.readText(button.text);
+          const url = this.readText(button.url);
+
+          if (label) {
+            previewParts.push(`[Botón: ${label}]`);
+          }
+
+          if (buttonType === 'URL') {
+            const keys = this.templatePlaceholderKeys(url);
+            requireKeys(keys);
+
+            if (keys.length) {
+              outgoing.push({
+                type: 'button',
+                sub_type: 'url',
+                index: String(index),
+                parameters: keys.map((key) => ({
+                  type: 'text',
+                  text: variables[key] || '',
+                })),
+              });
+            }
+          }
+        });
+      }
+    }
+
+    const missing = required.filter(
+      (key) => !variables[key]?.trim(),
+    );
+
+    if (missing.length) {
+      throw new BadRequestException(
+        `Faltan valores para ${
+          missing.length === 1
+            ? `la variable ${missing[0]}`
+            : `las variables ${missing.join(', ')}`
+        }.`,
+      );
+    }
+
+    return {
+      components: outgoing,
+      preview: previewParts.join('\n\n').slice(0, 6500),
+    };
   }
 
   private async actor(sessionType:string,userId:string,fullName:string,headerCompanyId:string,roleKey:string,companyId:string):Promise<Actor>{

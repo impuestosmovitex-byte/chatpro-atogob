@@ -13,6 +13,8 @@ type InboxRequestBody = {
   agentName?: unknown;
   message?: unknown;
   targetUserId?: unknown;
+  templateId?: unknown;
+  variables?: unknown;
 };
 
 function text(value: unknown): string {
@@ -120,6 +122,40 @@ export async function POST(request: NextRequest) {
     const company = session.companySlug;
     const sessionId = text(body.sessionId);
     const action = text(body.action);
+
+    if (action === 'template') {
+      if (!sessionId) {
+        return NextResponse.json(
+          { ok: false, error: 'Falta la conversación.' },
+          { status: 400 },
+        );
+      }
+
+      const target = new URL(
+        `${apiBase}/inbox/${encodeURIComponent(sessionId)}/templates`,
+      );
+      target.searchParams.set('company', company);
+
+      const response = await fetch(target, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...trustedHeaders(inboxKey, session),
+        },
+        body: JSON.stringify({
+          templateId: text(body.templateId),
+          variables:
+            body.variables &&
+            typeof body.variables === 'object' &&
+            !Array.isArray(body.variables)
+              ? body.variables
+              : {},
+        }),
+        cache: 'no-store',
+      });
+
+      return proxyResponse(response);
+    }
 
     const internalTestAction =
       action === 'internal_test_start'

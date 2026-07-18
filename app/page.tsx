@@ -259,13 +259,33 @@ function whatsappTemplateVariableKeys(
   template: WhatsappTemplate,
 ): string[] {
   const keys = new Set<string>();
-  const text = whatsappTemplateVisibleText(template);
+  const sources = [whatsappTemplateVisibleText(template)];
   const expression = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
-  for (const match of text.matchAll(expression)) {
-    const key = match[1]?.trim();
+  for (const component of templateObjectList(template.components)) {
+    if (
+      typeof component.text === "string" &&
+      component.text.trim()
+    ) {
+      sources.push(component.text);
+    }
 
-    if (key) keys.add(key);
+    for (const button of templateObjectList(component.buttons)) {
+      if (
+        typeof button.url === "string" &&
+        button.url.trim()
+      ) {
+        sources.push(button.url);
+      }
+    }
+  }
+
+  for (const source of sources) {
+    for (const match of source.matchAll(expression)) {
+      const key = match[1]?.trim();
+
+      if (key) keys.add(key);
+    }
   }
 
   return [...keys].sort((left, right) => {
@@ -460,6 +480,7 @@ export default function Home() {
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateSending, setTemplateSending] = useState(false);
   const [templateError, setTemplateError] = useState("");
   const [whatsappTemplates, setWhatsappTemplates] = useState<
     WhatsappTemplate[]
@@ -711,6 +732,66 @@ export default function Home() {
     setTemplateVariables({ ...preparedTemplate.variables });
     setTemplateError("");
     setTemplateOpen(true);
+  }
+
+  async function sendPreparedWhatsappTemplate() {
+    if (!selected || !preparedTemplate || templateSending) return;
+
+    if (preparedTemplate.sessionId !== selected.session.id) {
+      setError(
+        "La plantilla preparada no corresponde a esta conversación.",
+      );
+      return;
+    }
+
+    setTemplateSending(true);
+    setActionMessage("");
+    setError("");
+
+    try {
+      const response = await fetch("/api/inbox", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId: selected.session.id,
+          action: "template",
+          templateId: preparedTemplate.templateId,
+          variables: preparedTemplate.variables,
+        }),
+      });
+      const data = (await readJson(response)) as {
+        ok?: boolean;
+        error?: string;
+        warning?: string | null;
+      };
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || "No se pudo enviar la plantilla.",
+        );
+      }
+
+      const sessionId = selected.session.id;
+
+      setPreparedTemplate(null);
+      setTemplateOpen(false);
+      setSelectedTemplateId("");
+      setTemplateVariables({});
+      await loadList(false);
+      await openConversation(sessionId, true);
+      setActionMessage(
+        data.warning?.trim() ||
+          "Plantilla enviada por WhatsApp. La conversación quedó abierta para continuar como asesor.",
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo enviar la plantilla.",
+      );
+    } finally {
+      setTemplateSending(false);
+    }
   }
 
   async function loadQuickReplies() {
@@ -2085,8 +2166,21 @@ export default function Home() {
                         }}
                       >
                         <button
+                          className="button primary"
+                          type="button"
+                          disabled={templateSending}
+                          onClick={() =>
+                            void sendPreparedWhatsappTemplate()
+                          }
+                        >
+                          {templateSending
+                            ? "Enviando…"
+                            : "Enviar plantilla"}
+                        </button>
+                        <button
                           className="button quiet"
                           type="button"
+                          disabled={templateSending}
                           onClick={editPreparedWhatsappTemplate}
                         >
                           Editar
@@ -2094,6 +2188,7 @@ export default function Home() {
                         <button
                           className="button quiet"
                           type="button"
+                          disabled={templateSending}
                           onClick={() => {
                             setPreparedTemplate(null);
                             setActionMessage(
@@ -2106,8 +2201,9 @@ export default function Home() {
                       </div>
                     </div>
                     <small>
-                      Aún no se ha enviado. El envío real se habilitará
-                      en el bloque 2H-2.
+                      Al enviarla, ChatPro la registrará en el historial
+                      y dejará la conversación tomada para continuar
+                      con texto o audio como asesor.
                     </small>
                   </div>
                 ) : null}
