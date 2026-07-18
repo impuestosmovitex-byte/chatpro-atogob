@@ -123,6 +123,38 @@ export class WhatsappWebhookController {
         return 'EVENT_RECEIVED';
       }
 
+      if (message.type === 'image') {
+        const mediaId =
+          typeof message.image?.id === 'string'
+            ? message.image.id.trim()
+            : '';
+        const mimeType =
+          typeof message.image?.mime_type === 'string'
+            ? message.image.mime_type.trim()
+            : 'image/jpeg';
+        const caption =
+          typeof message.image?.caption === 'string'
+            ? message.image.caption.replace(/\s+/g, ' ').trim().slice(0, 1500)
+            : '';
+
+        if (!mediaId) {
+          return 'EVENT_RECEIVED';
+        }
+
+        this.enqueueConversation(conversationKey, () =>
+          this.processIncomingImage({
+            incomingPhoneNumberId,
+            phone,
+            incomingMessageId,
+            mediaId,
+            mimeType,
+            caption,
+          }),
+        );
+
+        return 'EVENT_RECEIVED';
+      }
+
       const buttonText = this.getIncomingButtonText(message);
       const text =
         message.type === 'text'
@@ -230,6 +262,377 @@ export class WhatsappWebhookController {
 
     this.recentProductUrlMessages.delete(conversationKey);
     return true;
+  }
+
+  private async processIncomingImage(input: {
+    incomingPhoneNumberId: string;
+    phone: string;
+    incomingMessageId: string | null;
+    mediaId: string;
+    mimeType: string;
+    caption: string;
+  }): Promise<void> {
+    let profile: CompanyProfile | null = null;
+    let session: ConversationSession | null = null;
+    let replySent = false;
+
+    try {
+      const integration =
+        await this.companyIntegrationService.findActiveIntegrationByExternalId(
+          'meta',
+          'whatsapp',
+          input.incomingPhoneNumberId,
+        );
+
+      if (!integration) {
+        throw new Error(
+          'No existe una empresa activa para la imagen entrante.',
+        );
+      }
+
+      profile =
+        await this.conversationMemoryService.getCompanyProfileById(
+          integration.companyId,
+        );
+      session =
+        await this.conversationMemoryService.getOrCreateSessionByCompanyId(
+          integration.companyId,
+          input.phone,
+        );
+
+      const customerMessage = input.caption
+        ? `📷 Imagen recibida: ${input.caption}`
+        : '📷 Imagen recibida.';
+
+      const saved = await this.conversationMemoryService.saveMessage({
+        companyId: profile.id,
+        sessionId: session.id,
+        customerPhone: input.phone,
+        message: customerMessage,
+        sender: 'customer',
+        authorType: 'customer',
+        providerMessageId: input.incomingMessageId,
+        messageType: 'text',
+        mediaId: input.mediaId,
+        mediaMimeType: input.mimeType,
+        mediaFilename: 'imagen',
+      });
+
+      if (saved === 'duplicate') {
+        return;
+      }
+
+      await this.conversationMemoryService.touchSession(session.id);
+
+      if (
+        session.attentionStatus === 'waiting' ||
+        session.attentionStatus === 'human'
+      ) {
+        console.log(
+          `Imagen guardada para atención humana de ${input.phone}`,
+        );
+        return;
+      }
+
+      if (session.attentionStatus === 'closed') {
+        session =
+          await this.conversationMemoryService.resumeAiConversation(
+            session.id,
+          );
+      }
+
+      const media = await this.whatsappMessagingService.downloadRawMedia(
+        profile.id,
+        input.mediaId,
+        input.mimeType || 'image/jpeg',
+      );
+
+      const analysis = await this.analyzeIncomingImage({
+        buffer: media.buffer,
+        mimeType: media.mimeType,
+        caption: input.caption,
+        companyName: profile.name,
+        companyInstructions: profile.aiInstructions,
+      });
+
+      session = await this.attachRecoveryContext(
+        session,
+        profile.id,
+        input.phone,
+      );
+
+      const currentSession =
+        await this.conversationMemoryService.getSessionById(session.id);
+      const receivedAt = new Date().toISOString();
+
+      session = await this.conversationMemoryService.updateSession(
+        currentSession.id,
+        {
+          stage:
+            currentSession.stage === 'main' ||
+            currentSession.stage === 'area_menu'
+              ? 'active'
+              : currentSession.stage,
+          context: {
+            ...currentSession.context,
+            last_visual_reference: {
+              summary: analysis.summary,
+              category: analysis.category,
+              colors: analysis.colors,
+              visible_text: analysis.visibleText,
+              search_terms: analysis.searchTerms,
+              source_hint: analysis.sourceHint,
+              confidence: analysis.confidence,
+              caption: input.caption || null,
+              received_at: receivedAt,
+            },
+          },
+        },
+      );
+
+      const visualCustomerMessage = [
+        '[REFERENCIA_VISUAL]',
+        input.caption
+          ? `Texto escrito por el cliente junto a la imagen: ${input.caption}`
+          : 'El cliente envió solamente una imagen y quiere atención sobre lo que aparece.',
+        `Descripción visual: ${analysis.summary}`,
+        `Categoría aproximada: ${analysis.category}`,
+        analysis.colors.length
+          ? `Colores observados: ${analysis.colors.join(', ')}`
+          : '',
+        analysis.visibleText
+          ? `Texto visible en la imagen: ${analysis.visibleText}`
+          : '',
+        analysis.searchTerms.length
+          ? `Términos útiles para consultar el catálogo: ${analysis.searchTerms.join(', ')}`
+          : '',
+        `Origen estimado: ${analysis.sourceHint}. Confianza: ${analysis.confidence}.`,
+        'Atiende la intención del cliente usando OpenAI y la configuración de esta empresa.',
+        'Consulta únicamente el catálogo real de la empresa mediante las herramientas disponibles.',
+        'No afirmes que es una referencia exacta de la empresa solo por parecido visual.',
+        'Si no existe coincidencia exacta, dilo con claridad y ofrece productos reales similares de la categoría detectada.',
+      ].filter(Boolean).join('\n');
+
+      const reply = await this.resolveReply(
+        profile,
+        session,
+        visualCustomerMessage,
+      );
+
+      await this.whatsappMessagingService.sendText(
+        profile.id,
+        input.phone,
+        reply,
+      );
+      replySent = true;
+
+      await this.conversationMemoryService.saveMessage({
+        companyId: profile.id,
+        sessionId: session.id,
+        customerPhone: input.phone,
+        message: reply,
+        sender: 'assistant',
+        authorType: 'ai',
+        aiResponse: reply,
+      });
+
+      await this.conversationMemoryService.touchSession(session.id);
+      console.log(`Imagen comprendida y respondida a ${input.phone}`);
+    } catch (error) {
+      console.error('No se pudo procesar la imagen entrante:', error);
+
+      if (!replySent && profile && session) {
+        const fallback =
+          'Recibí la imagen, pero no logré analizarla correctamente. ' +
+          'Puedes enviarla otra vez, escribir qué producto buscas o compartir el enlace para ayudarte.';
+
+        try {
+          await this.whatsappMessagingService.sendText(
+            profile.id,
+            input.phone,
+            fallback,
+          );
+
+          await this.conversationMemoryService.saveMessage({
+            companyId: profile.id,
+            sessionId: session.id,
+            customerPhone: input.phone,
+            message: fallback,
+            sender: 'assistant',
+            authorType: 'ai',
+            aiResponse: fallback,
+          });
+
+          await this.conversationMemoryService.touchSession(session.id);
+        } catch (fallbackError) {
+          console.error(
+            'No se pudo enviar la respuesta de respaldo para la imagen:',
+            fallbackError,
+          );
+        }
+      }
+    }
+  }
+
+  private async analyzeIncomingImage(input: {
+    buffer: Buffer;
+    mimeType: string;
+    caption: string;
+    companyName: string;
+    companyInstructions: string;
+  }): Promise<{
+    summary: string;
+    category: string;
+    colors: string[];
+    visibleText: string;
+    searchTerms: string[];
+    sourceHint: 'catalog_screenshot' | 'external_reference' | 'unknown';
+    confidence: 'low' | 'medium' | 'high';
+  }> {
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+
+    if (!apiKey) {
+      throw new Error(
+        'OPENAI_API_KEY no está configurada para analizar imágenes.',
+      );
+    }
+
+    if (!input.buffer.length) {
+      throw new Error('La imagen descargada está vacía.');
+    }
+
+    if (input.buffer.length > 15 * 1024 * 1024) {
+      throw new Error('La imagen supera el límite seguro de 15 MB.');
+    }
+
+    const mimeType = input.mimeType
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+    const supportedMimeTypes = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+    ]);
+
+    if (!supportedMimeTypes.has(mimeType)) {
+      throw new Error(
+        `El formato ${mimeType || 'desconocido'} no es compatible con el análisis visual.`,
+      );
+    }
+
+    const client = new OpenAI({ apiKey });
+    const model =
+      process.env.OPENAI_VISION_MODEL?.trim() ||
+      process.env.OPENAI_MODEL?.trim() ||
+      'gpt-5-mini';
+    const dataUrl =
+      `data:${mimeType};base64,${input.buffer.toString('base64')}`;
+
+    const response = await client.responses.create({
+      model,
+      instructions: [
+        'Analiza la imagen como referencia comercial enviada por un cliente.',
+        'Devuelve únicamente JSON válido y sin markdown con esta estructura:',
+        '{"summary":"...","category":"...","colors":["..."],"visible_text":"...","search_terms":["..."],"source_hint":"catalog_screenshot|external_reference|unknown","confidence":"low|medium|high"}',
+        'summary: describe objetivamente el producto principal, sin inventar marca, referencia, precio, material, talla ni disponibilidad.',
+        'category: categoría breve y útil en español para buscar dentro del catálogo real de la empresa.',
+        'colors: únicamente colores claramente visibles.',
+        'visible_text: copia solo texto comercial legible que ayude a identificar el producto; déjalo vacío si no es claro.',
+        'search_terms: entre 1 y 6 términos cortos y útiles para buscar el producto o similares.',
+        'catalog_screenshot: parece captura de una tienda, catálogo o publicación comercial.',
+        'external_reference: parece una foto o referencia externa sin prueba de pertenecer a la empresa.',
+        'unknown: no es posible determinar el origen.',
+        'Nunca afirmes que el producto pertenece a la empresa ni que existe en su catálogo.',
+        `Empresa activa: ${input.companyName}.`,
+        `Instrucciones de la empresa: ${(input.companyInstructions || 'Sin instrucciones adicionales.').slice(0, 4000)}`,
+      ].join('\n'),
+      input: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: input.caption
+                ? `El cliente acompañó la imagen con este texto: ${input.caption}`
+                : 'El cliente no escribió texto junto a la imagen.',
+            },
+            {
+              type: 'input_image',
+              image_url: dataUrl,
+              detail: 'auto',
+            },
+          ],
+        },
+      ],
+    } as any);
+
+    const raw = response.output_text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
+
+    let parsed: Record<string, unknown>;
+
+    try {
+      const value = JSON.parse(raw) as unknown;
+
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('La respuesta visual no fue un objeto JSON.');
+      }
+
+      parsed = value as Record<string, unknown>;
+    } catch {
+      throw new Error(
+        'OpenAI no devolvió un análisis visual estructurado.',
+      );
+    }
+
+    const readText = (value: unknown, limit: number): string =>
+      typeof value === 'string'
+        ? value.replace(/\s+/g, ' ').trim().slice(0, limit)
+        : '';
+    const readList = (
+      value: unknown,
+      maxItems: number,
+      maxLength: number,
+    ): string[] =>
+      Array.isArray(value)
+        ? value
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) =>
+              item.replace(/\s+/g, ' ').trim().slice(0, maxLength),
+            )
+            .filter(Boolean)
+            .slice(0, maxItems)
+        : [];
+
+    const category = readText(parsed.category, 120) || 'producto';
+    const summary =
+      readText(parsed.summary, 1000) ||
+      `Se observa un producto de la categoría ${category}.`;
+    const rawSourceHint = readText(parsed.source_hint, 40);
+    const rawConfidence = readText(parsed.confidence, 20);
+    const searchTerms = readList(parsed.search_terms, 6, 100);
+
+    return {
+      summary,
+      category,
+      colors: readList(parsed.colors, 6, 50),
+      visibleText: readText(parsed.visible_text, 1200),
+      searchTerms: searchTerms.length ? searchTerms : [category],
+      sourceHint:
+        rawSourceHint === 'catalog_screenshot' ||
+        rawSourceHint === 'external_reference'
+          ? rawSourceHint
+          : 'unknown',
+      confidence:
+        rawConfidence === 'high' || rawConfidence === 'medium'
+          ? rawConfidence
+          : 'low',
+    };
   }
 
   private async processIncomingAudio(input: {
@@ -1032,6 +1435,7 @@ export class WhatsappWebhookController {
     for (const key of [
       'service_area',
       'customer_service_flow',
+      'last_visual_reference',
       'cart',
       'cart_recovery',
       'selectedProduct',

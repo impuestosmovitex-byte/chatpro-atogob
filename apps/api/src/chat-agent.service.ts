@@ -86,21 +86,28 @@ export class ChatAgentService {
         );
     }
 
-    const clarificationReply = await this.handleUnclearMessage(
-      profile,
-      activeSession,
-      customerMessage,
-    );
+    const isVisualReferenceMessage =
+      customerMessage.trimStart().startsWith('[REFERENCIA_VISUAL]');
+
+    const clarificationReply = isVisualReferenceMessage
+      ? null
+      : await this.handleUnclearMessage(
+          profile,
+          activeSession,
+          customerMessage,
+        );
 
     if (clarificationReply) {
       return clarificationReply;
     }
 
-    const currentIntent = await this.classifyCurrentIntent(
-      profile,
-      activeSession,
-      customerMessage,
-    );
+    const currentIntent = isVisualReferenceMessage
+      ? 'new_catalog_search'
+      : await this.classifyCurrentIntent(
+          profile,
+          activeSession,
+          customerMessage,
+        );
 
     activeSession =
       currentIntent === 'new_catalog_search'
@@ -306,6 +313,10 @@ export class ChatAgentService {
       '- Después de lookup_order, responde únicamente con datos reales encontrados. Si hay guía, comparte transportadora, número y link de seguimiento. Si no hay guía o el caso es complejo, explica con claridad y ofrece pasar a asesor.',
       '- Si lookup_order devuelve next_action ask_alternate_identifier, no uses request_human_attention todavía. Pide un dato diferente y concreto: correo o celular si ya tienes pedido, o número de pedido si ya tienes celular/correo.',
       '- Si lookup_order devuelve next_action offer_human_attention o requires_human true, ofrece dejar el caso con un asesor. No pidas de nuevo el mismo dato y no inventes estado del pedido.',
+      '- session.context.last_visual_reference contiene el análisis de la última imagen enviada por el cliente. Úsalo cuando el mensaje actual se refiera a “esta”, “esa”, “esto”, “la foto”, “la imagen”, “la de arriba” o pida precio, disponibilidad o similares.',
+      '- Una semejanza visual no demuestra que sea una referencia exacta de la empresa. Solo confirma nombre, precio, variantes, disponibilidad o enlace cuando una herramienta encuentre el producto real.',
+      '- Si no encuentras coincidencia exacta de una imagen, dilo con claridad y busca productos reales similares usando la categoría, colores, texto visible y search_terms de last_visual_reference.',
+      '- Nunca inventes un enlace ni presentes como disponible un producto externo que no exista en el catálogo de la empresa activa.',
       '- Cuando la persona comparta un enlace de producto, selecciónalo con select_product_by_url y responde usando sus datos reales.',
       '- Cuando pida una categoría amplia, usa open_collection o search_products según corresponda.',
       '- Cuando la persona confirme claramente una variante, valida con select_variant y agrega de inmediato con add_selected_variant_to_cart.',

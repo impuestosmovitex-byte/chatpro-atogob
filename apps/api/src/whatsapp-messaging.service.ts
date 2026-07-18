@@ -135,15 +135,16 @@ export class WhatsappMessagingService {
     };
   }
 
-  async downloadMedia(
+  async downloadRawMedia(
     companyId: string,
     mediaId: string,
+    fallbackMimeType = 'application/octet-stream',
   ): Promise<WhatsappMediaDownload> {
     const channel = await this.resolveChannel(companyId);
     const id = mediaId.trim();
 
     if (!id) {
-      throw new Error('El audio no tiene identificador de Meta.');
+      throw new Error('El archivo no tiene identificador de Meta.');
     }
 
     const metadataResponse = await fetch(
@@ -152,6 +153,7 @@ export class WhatsappMessagingService {
         headers: {
           Authorization: `Bearer ${channel.accessToken}`,
         },
+        signal: AbortSignal.timeout(15000),
         cache: 'no-store',
       },
     );
@@ -168,40 +170,59 @@ export class WhatsappMessagingService {
 
     if (!metadataResponse.ok) {
       throw new Error(
-        `Meta no permitió consultar el audio: ${metadataRaw}`,
+        `Meta no permitió consultar el archivo: ${metadataRaw}`,
       );
     }
 
     const url = this.readText(metadata.url);
     const mimeType =
-      this.readText(metadata.mime_type) || 'audio/ogg';
+      this.readText(metadata.mime_type) || fallbackMimeType;
 
     if (!url) {
-      throw new Error('Meta no devolvió la URL temporal del audio.');
+      throw new Error('Meta no devolvió la URL temporal del archivo.');
     }
 
     const mediaResponse = await fetch(url, {
       headers: {
         Authorization: `Bearer ${channel.accessToken}`,
       },
+      signal: AbortSignal.timeout(20000),
       cache: 'no-store',
     });
 
     if (!mediaResponse.ok) {
       throw new Error(
-        `Meta no permitió descargar el audio: ${await mediaResponse.text()}`,
+        `Meta no permitió descargar el archivo: ${await mediaResponse.text()}`,
       );
     }
 
-    const downloaded = {
-      buffer: Buffer.from(await mediaResponse.arrayBuffer()),
-      mimeType:
-        mediaResponse.headers.get('content-type')?.trim() ||
-        mimeType,
-      filename: `audio-${id}.${this.extensionForMime(mimeType)}`,
-    };
+    const responseMimeType =
+      mediaResponse.headers.get('content-type')?.trim() ||
+      mimeType;
 
-    return this.transcodeToMp3(downloaded);
+    return {
+      buffer: Buffer.from(await mediaResponse.arrayBuffer()),
+      mimeType: responseMimeType,
+      filename: `media-${id}.${this.extensionForMime(responseMimeType)}`,
+    };
+  }
+
+  async downloadMedia(
+    companyId: string,
+    mediaId: string,
+  ): Promise<WhatsappMediaDownload> {
+    const downloaded = await this.downloadRawMedia(
+      companyId,
+      mediaId,
+      'audio/ogg',
+    );
+
+    return this.transcodeToMp3({
+      ...downloaded,
+      filename:
+        `audio-${mediaId.trim()}.` +
+        this.extensionForMime(downloaded.mimeType),
+    });
   }
 
   async sendTemplate(
@@ -555,8 +576,13 @@ export class WhatsappMessagingService {
     if (mime === 'audio/aac') return 'aac';
     if (mime === 'audio/amr') return 'amr';
     if (mime === 'audio/webm') return 'webm';
+    if (mime === 'image/jpeg' || mime === 'image/jpg') return 'jpg';
+    if (mime === 'image/png') return 'png';
+    if (mime === 'image/webp') return 'webp';
+    if (mime === 'image/gif') return 'gif';
+    if (mime === 'application/pdf') return 'pdf';
 
-    return 'ogg';
+    return 'bin';
   }
 
   private async resolveChannel(companyId: string): Promise<{
