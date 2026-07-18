@@ -86,9 +86,16 @@ export class ChatAgentService {
         );
     }
 
-    // La atención principal ya recibe las reglas de alcance y comprensión
-    // dentro de buildInstructions. Evitamos dos llamadas previas de IA por mensaje
-    // para mantener respuestas rápidas y no afectar carrito ni recuperación.
+    const clarificationReply = await this.handleUnclearMessage(
+      profile,
+      activeSession,
+      customerMessage,
+    );
+
+    if (clarificationReply) {
+      return clarificationReply;
+    }
+
     const currentIntent = await this.classifyCurrentIntent(
       profile,
       activeSession,
@@ -145,7 +152,8 @@ export class ChatAgentService {
       },
     ];
 
-    let response = await this.getClient().responses.create({
+    try {
+      let response = await this.getClient().responses.create({
       model: this.getModel(),
       instructions: this.buildInstructions(
         profile,
@@ -156,7 +164,7 @@ export class ChatAgentService {
       tool_choice: 'auto',
     });
 
-    for (let turn = 0; turn < 6; turn += 1) {
+      for (let turn = 0; turn < 10; turn += 1) {
       const toolOutputs: Array<{
         type: 'function_call_output';
         call_id: string;
@@ -195,9 +203,22 @@ export class ChatAgentService {
           );
       }
 
-      if (!toolOutputs.length) {
-        return this.cleanReply(response.output_text);
-      }
+        if (!toolOutputs.length) {
+          const clean = this.cleanReply(response.output_text);
+
+          if (clean) {
+            await this.clearTechnicalFailureState(activeSession.id);
+            return clean;
+          }
+
+          return this.finalizeAgentReply(
+            profile,
+            activeSession,
+            [...input, ...response.output],
+            Boolean(recoveryContext),
+            'La respuesta final quedó vacía o contenía información técnica interna.',
+          );
+        }
 
       input.push(...response.output, ...toolOutputs);
 
@@ -213,7 +234,23 @@ export class ChatAgentService {
       });
     }
 
-    return 'Estoy revisando la información para ayudarte. Cuéntame qué necesitas y lo revisamos.';
+      return this.finalizeAgentReply(
+        profile,
+        activeSession,
+        [...input, ...response.output],
+        Boolean(recoveryContext),
+        'El ciclo de herramientas alcanzó el límite seguro de diez rondas.',
+      );
+    } catch (error) {
+      console.error('Falló el motor principal de OpenAI:', error);
+
+      return this.handleTechnicalFailure(
+        activeSession.id,
+        error instanceof Error
+          ? error.message
+          : 'No se pudo completar el ciclo principal de OpenAI.',
+      );
+    }
   }
 
   private buildInstructions(
@@ -635,9 +672,7 @@ export class ChatAgentService {
         },
       );
 
-      return updated.attentionStatus === 'human'
-        ? 'Para ayudarte mejor, te voy a comunicar con un asesor.'
-        : 'Para ayudarte mejor, dejé tu solicitud pendiente para que un asesor la revise.';
+      return this.humanAttentionMessage(updated);
     }
 
     await this.conversationMemoryService.updateSession(session.id, {
@@ -2104,6 +2139,175 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     return Number(value);
   }
 
+
+  private async finalizeAgentReply(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    input: any[],
+    hasRecoveryContext: boolean,
+    reason: string,
+  ): Promise<string> {
+    try {
+      const finalResponse = await this.getClient().responses.create({
+        model: this.getModel(),
+        instructions: [
+          this.buildInstructions(profile, hasRecoveryContext),
+          '',
+          'RECUPERACIÓN INTERNA DE RESPUESTA:',
+          '- Ya se ejecutaron las herramientas necesarias o se alcanzó el límite seguro.',
+          '- Redacta ahora una respuesta final para el cliente usando únicamente los resultados reales incluidos en la conversación.',
+          '- No menciones herramientas, llamadas, funciones, JSON, errores internos ni procesos técnicos.',
+          '- Conserva el objetivo actual del cliente y pide únicamente el dato que realmente falte.',
+          '- Si el cliente quiere finalizar una compra y ya existe un checkout_url real, compártelo.',
+          '- No inventes información ni afirmes que una acción se completó si no aparece como exitosa.',
+        ].join('\n'),
+        input: [
+          ...input,
+          {
+            role: 'user',
+            content: JSON.stringify({
+              internal_recovery: true,
+              reason,
+              instruction:
+                'Produce la respuesta final natural para el cliente y continúa el objetivo comercial actual.',
+            }),
+          },
+        ],
+      });
+
+      const clean = this.cleanReply(finalResponse.output_text);
+
+      if (clean) {
+        await this.clearTechnicalFailureState(session.id);
+        return clean;
+      }
+
+      return this.handleTechnicalFailure(
+        session.id,
+        `${reason} La recuperación final también quedó vacía o insegura.`,
+      );
+    } catch (error) {
+      console.error('No se pudo recuperar la respuesta final de OpenAI:', error);
+
+      return this.handleTechnicalFailure(
+        session.id,
+        error instanceof Error
+          ? error.message
+          : `${reason} La recuperación final produjo un error.`,
+      );
+    }
+  }
+
+  private async handleTechnicalFailure(
+    sessionId: string,
+    reason: string,
+  ): Promise<string> {
+    const session =
+      await this.conversationMemoryService.getSessionById(sessionId);
+    const rawState =
+      session.context.technical_failure_state &&
+      typeof session.context.technical_failure_state === 'object' &&
+      !Array.isArray(session.context.technical_failure_state)
+        ? session.context.technical_failure_state as JsonObject
+        : null;
+    const previousCount =
+      rawState && typeof rawState.count === 'number'
+        ? Math.max(0, Math.floor(rawState.count))
+        : 0;
+    const nextCount = previousCount + 1;
+
+    if (nextCount >= 2) {
+      const updated =
+        await this.conversationMemoryService.requestHumanAttention(
+          session.id,
+          {
+            reason:
+              'El motor automático no logró completar la atención después de dos intentos.',
+            summary:
+              'Continúa desde el último mensaje del cliente. Conserva el carrito, los datos ya informados y el objetivo pendiente.',
+          },
+        );
+
+      return this.humanAttentionMessage(updated);
+    }
+
+    await this.conversationMemoryService.updateSession(session.id, {
+      context: {
+        ...session.context,
+        technical_failure_state: {
+          count: nextCount,
+          reason: reason.trim().slice(0, 500),
+          failed_at: new Date().toISOString(),
+        },
+      },
+    });
+
+    return 'Tuve una dificultad para completar esa acción, pero conservé la conversación y los datos que ya me diste. Escríbeme nuevamente cómo deseas continuar y retomaré desde este punto.';
+  }
+
+  private async clearTechnicalFailureState(
+    sessionId: string,
+  ): Promise<void> {
+    const session =
+      await this.conversationMemoryService.getSessionById(sessionId);
+
+    if (
+      !session.context.technical_failure_state ||
+      typeof session.context.technical_failure_state !== 'object' ||
+      Array.isArray(session.context.technical_failure_state)
+    ) {
+      return;
+    }
+
+    const nextContext = { ...session.context };
+    delete nextContext.technical_failure_state;
+
+    await this.conversationMemoryService.updateSession(session.id, {
+      context: nextContext,
+    });
+  }
+
+  private humanAttentionMessage(
+    session: ConversationSession,
+  ): string {
+    const context =
+      session.context &&
+      typeof session.context === 'object' &&
+      !Array.isArray(session.context)
+        ? session.context as JsonObject
+        : {};
+    const handoff =
+      context.handoff &&
+      typeof context.handoff === 'object' &&
+      !Array.isArray(context.handoff)
+        ? context.handoff as JsonObject
+        : {};
+    const status =
+      typeof handoff.status === 'string'
+        ? handoff.status.trim()
+        : '';
+
+    if (session.attentionStatus === 'human') {
+      return session.assignedToName
+        ? `Para ayudarte mejor, te voy a comunicar con ${session.assignedToName}, uno de nuestros asesores.`
+        : 'Para ayudarte mejor, te voy a comunicar con uno de nuestros asesores.';
+    }
+
+    if (status === 'waiting_outside_hours') {
+      return 'En este momento estamos fuera del horario de atención. Dejé tu solicitud pendiente para que uno de nuestros asesores te responda cuando inicie el próximo horario disponible.';
+    }
+
+    if (status === 'waiting_no_advisor') {
+      return 'En este momento nuestros asesores no están disponibles. Dejé tu solicitud en espera para que el equipo continúe la atención apenas haya un asesor disponible.';
+    }
+
+    if (status === 'waiting_no_area') {
+      return 'Dejé tu solicitud pendiente para que el equipo responsable la revise y continúe la atención.';
+    }
+
+    return 'Para ayudarte mejor, dejé tu solicitud pendiente para que uno de nuestros asesores la revise y te responda.';
+  }
+
   private cleanReply(reply: string): string {
     const clean = this.removeInternalBlocks(reply)
       .replace(/\bto=functions\.[a-z0-9_.-]+\s*/gi, '')
@@ -2113,7 +2317,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       .trim();
 
     if (!clean || this.isUnsafeModelReply(clean)) {
-      return 'Estoy revisando la información para ayudarte. Cuéntame un poco más de lo que necesitas.';
+      return '';
     }
 
     return clean.slice(0, 1500);
