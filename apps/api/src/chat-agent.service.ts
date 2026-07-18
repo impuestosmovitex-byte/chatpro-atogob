@@ -2267,6 +2267,12 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     });
   }
 
+  humanAttentionReply(
+    session: ConversationSession,
+  ): string {
+    return this.humanAttentionMessage(session);
+  }
+
   private humanAttentionMessage(
     session: ConversationSession,
   ): string {

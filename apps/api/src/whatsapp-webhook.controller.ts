@@ -1,3 +1,4 @@
+import OpenAI, { toFile } from 'openai';
 import {
   Body,
   Controller,
@@ -263,11 +264,38 @@ export class WhatsappWebhookController {
           input.phone,
         );
 
+      let transcription = '';
+      let transcriptionError = '';
+
+      try {
+        const media = await this.whatsappMessagingService.downloadMedia(
+          profile.id,
+          input.mediaId,
+        );
+
+        transcription = await this.transcribeIncomingAudio({
+          buffer: media.buffer,
+          filename: media.filename,
+          companyName: profile.name,
+        });
+      } catch (error) {
+        transcriptionError =
+          error instanceof Error
+            ? error.message
+            : 'No se pudo transcribir el audio.';
+        console.error(
+          `No se pudo transcribir el audio de ${input.phone}:`,
+          error,
+        );
+      }
+
       const saved = await this.conversationMemoryService.saveMessage({
         companyId: profile.id,
         sessionId: session.id,
         customerPhone: input.phone,
-        message: 'Audio recibido',
+        message: transcription
+          ? `Transcripción del audio: ${transcription}`
+          : 'Audio recibido. No se pudo generar la transcripción automática.',
         sender: 'customer',
         authorType: 'customer',
         providerMessageId: input.incomingMessageId,
@@ -284,6 +312,16 @@ export class WhatsappWebhookController {
 
       await this.conversationMemoryService.touchSession(session.id);
 
+      if (
+        session.attentionStatus === 'waiting' ||
+        session.attentionStatus === 'human'
+      ) {
+        console.log(
+          `Audio guardado para atención humana de ${input.phone}`,
+        );
+        return;
+      }
+
       if (session.attentionStatus === 'closed') {
         session =
           await this.conversationMemoryService.resumeAiConversation(
@@ -291,21 +329,215 @@ export class WhatsappWebhookController {
           );
       }
 
-      if (session.attentionStatus === 'ai') {
-        await this.conversationMemoryService.requestHumanAttention(
-          session.id,
-          {
-            reason: 'El cliente envió un audio.',
-            summary:
-              'Escucha el audio recibido y continúa la atención con el cliente.',
-          },
-        );
+      if (!transcription) {
+        await this.handleAudioTranscriptionFailure({
+          profile,
+          session,
+          phone: input.phone,
+          reason: transcriptionError,
+        });
+        return;
       }
 
-      console.log(`Audio recibido de ${input.phone}`);
+      session = await this.clearAudioTranscriptionState(session);
+      session = await this.attachRecoveryContext(
+        session,
+        profile.id,
+        input.phone,
+      );
+
+      const reply = await this.resolveReply(
+        profile,
+        session,
+        transcription,
+      );
+
+      await this.whatsappMessagingService.sendText(
+        profile.id,
+        input.phone,
+        reply,
+      );
+
+      await this.conversationMemoryService.saveMessage({
+        companyId: profile.id,
+        sessionId: session.id,
+        customerPhone: input.phone,
+        message: reply,
+        sender: 'assistant',
+        authorType: 'ai',
+        aiResponse: reply,
+      });
+
+      await this.conversationMemoryService.touchSession(session.id);
+      console.log(`Audio comprendido y respondido a ${input.phone}`);
     } catch (error) {
       console.error('No se pudo procesar el audio entrante:', error);
     }
+  }
+
+  private async transcribeIncomingAudio(input: {
+    buffer: Buffer;
+    filename: string;
+    companyName: string;
+  }): Promise<string> {
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+
+    if (!apiKey) {
+      throw new Error(
+        'OPENAI_API_KEY no está configurada para transcribir audios.',
+      );
+    }
+
+    if (!input.buffer.length) {
+      throw new Error('El audio descargado está vacío.');
+    }
+
+    const client = new OpenAI({ apiKey });
+    const model =
+      process.env.OPENAI_TRANSCRIPTION_MODEL?.trim() ||
+      'gpt-4o-mini-transcribe';
+    const filename =
+      input.filename.trim().toLowerCase().endsWith('.mp3')
+        ? input.filename.trim()
+        : 'audio.mp3';
+
+    const result = await client.audio.transcriptions.create({
+      file: await toFile(input.buffer, filename),
+      model: model as any,
+      language: 'es',
+      prompt:
+        `Transcribe fielmente este mensaje de un cliente de ${input.companyName}. ` +
+        'Conserva nombres de productos, colores, tallas, ciudades, números de pedido, ' +
+        'correos, teléfonos y referencias tal como se escuchen. No respondas ni resumas.',
+    });
+
+    const transcription =
+      typeof result.text === 'string'
+        ? result.text.replace(/\s+/g, ' ').trim().slice(0, 6000)
+        : '';
+
+    if (
+      !transcription ||
+      !/[\p{L}\p{N}]/u.test(transcription)
+    ) {
+      throw new Error(
+        'OpenAI no pudo obtener una transcripción comprensible.',
+      );
+    }
+
+    return transcription;
+  }
+
+  private async clearAudioTranscriptionState(
+    session: any,
+  ): Promise<any> {
+    const current =
+      await this.conversationMemoryService.getSessionById(session.id);
+
+    if (
+      !current.context.audio_transcription_state ||
+      typeof current.context.audio_transcription_state !== 'object' ||
+      Array.isArray(current.context.audio_transcription_state)
+    ) {
+      return current;
+    }
+
+    const nextContext = { ...current.context };
+    delete nextContext.audio_transcription_state;
+
+    return this.conversationMemoryService.updateSession(current.id, {
+      context: nextContext,
+    });
+  }
+
+  private async handleAudioTranscriptionFailure(input: {
+    profile: any;
+    session: any;
+    phone: string;
+    reason: string;
+  }): Promise<void> {
+    const current =
+      await this.conversationMemoryService.getSessionById(
+        input.session.id,
+      );
+    const rawState =
+      current.context.audio_transcription_state &&
+      typeof current.context.audio_transcription_state === 'object' &&
+      !Array.isArray(current.context.audio_transcription_state)
+        ? current.context.audio_transcription_state as Record<string, unknown>
+        : null;
+    const previousCount =
+      rawState && typeof rawState.count === 'number'
+        ? Math.max(0, Math.floor(rawState.count))
+        : 0;
+    const nextCount = previousCount + 1;
+
+    if (nextCount >= 2) {
+      const updated =
+        await this.conversationMemoryService.requestHumanAttention(
+          current.id,
+          {
+            reason:
+              'No se logró comprender el audio después de dos intentos.',
+            summary:
+              'Escucha los últimos audios del cliente y continúa desde el contexto, carrito y datos ya registrados.',
+          },
+        );
+      const reply =
+        this.chatAgentService.humanAttentionReply(updated);
+
+      await this.whatsappMessagingService.sendText(
+        input.profile.id,
+        input.phone,
+        reply,
+      );
+
+      await this.conversationMemoryService.saveMessage({
+        companyId: input.profile.id,
+        sessionId: current.id,
+        customerPhone: input.phone,
+        message: reply,
+        sender: 'assistant',
+        authorType: 'ai',
+        aiResponse: reply,
+      });
+
+      await this.conversationMemoryService.touchSession(current.id);
+      return;
+    }
+
+    await this.conversationMemoryService.updateSession(current.id, {
+      context: {
+        ...current.context,
+        audio_transcription_state: {
+          count: nextCount,
+          reason: input.reason.trim().slice(0, 500),
+          failed_at: new Date().toISOString(),
+        },
+      },
+    });
+
+    const reply =
+      'No logré escuchar bien el audio. Por favor envíalo nuevamente ' +
+      'o escríbeme el mensaje para poder ayudarte.';
+
+    await this.whatsappMessagingService.sendText(
+      input.profile.id,
+      input.phone,
+      reply,
+    );
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: input.profile.id,
+      sessionId: current.id,
+      customerPhone: input.phone,
+      message: reply,
+      sender: 'assistant',
+      authorType: 'ai',
+      aiResponse: reply,
+    });
+
+    await this.conversationMemoryService.touchSession(current.id);
   }
 
   private async processIncomingText(input: {
