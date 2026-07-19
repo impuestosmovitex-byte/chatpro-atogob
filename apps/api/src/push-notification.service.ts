@@ -154,6 +154,96 @@ export class PushNotificationService {
     });
   }
 
+  async notifyAssignedAdvisorForIncomingMessage(input: {
+    companyId: string;
+    sessionId: string;
+    customerPhone: string;
+    message: string;
+  }): Promise<{
+    sent: number;
+    failed: number;
+    reason:
+      | "sent"
+      | "session_not_found"
+      | "not_assigned_to_human"
+      | "no_active_device";
+  }> {
+    const client = this.supabaseService.getClient();
+
+    const { data: session, error: sessionError } = await client
+      .from("conversation_sessions")
+      .select("attention_status, assigned_to_user_id")
+      .eq("company_id", input.companyId)
+      .eq("id", input.sessionId)
+      .maybeSingle();
+
+    if (sessionError) {
+      throw new Error(
+        `No se pudo consultar la sesión para notificar: ${sessionError.message}`,
+      );
+    }
+
+    if (!session) {
+      return {
+        sent: 0,
+        failed: 0,
+        reason: "session_not_found",
+      };
+    }
+
+    const assignedUserId =
+      typeof session.assigned_to_user_id === "string"
+        ? session.assigned_to_user_id.trim()
+        : "";
+
+    if (
+      session.attention_status !== "human" ||
+      !assignedUserId
+    ) {
+      return {
+        sent: 0,
+        failed: 0,
+        reason: "not_assigned_to_human",
+      };
+    }
+
+    const { data: contact, error: contactError } = await client
+      .from("contacts")
+      .select("display_name")
+      .eq("company_id", input.companyId)
+      .eq("phone", input.customerPhone)
+      .maybeSingle();
+
+    if (contactError) {
+      console.error(
+        `No se pudo consultar el nombre del contacto ${input.customerPhone}:`,
+        contactError,
+      );
+    }
+
+    const displayName =
+      typeof contact?.display_name === "string" &&
+      contact.display_name.trim()
+        ? contact.display_name.trim()
+        : "un cliente";
+
+    const result = await this.sendToUser(
+      input.companyId,
+      assignedUserId,
+      {
+        title: `Nuevo mensaje de ${displayName}`,
+        body: this.messagePreview(input.message),
+        url: `/?session=${encodeURIComponent(input.sessionId)}`,
+        tag: `chat-${input.sessionId}`,
+      },
+    );
+
+    return {
+      ...result,
+      reason: result.sent > 0 ? "sent" : "no_active_device",
+    };
+  }
+
   async sendToUser(
     companyId: string,
     userId: string,
@@ -268,6 +358,20 @@ export class PushNotificationService {
         error,
       );
     }
+  }
+
+  private messagePreview(value: string): string {
+    const normalized = value
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!normalized) {
+      return "Tienes un nuevo mensaje pendiente.";
+    }
+
+    return normalized.length > 140
+      ? `${normalized.slice(0, 137)}...`
+      : normalized;
   }
 
   private topic(value: string): string {

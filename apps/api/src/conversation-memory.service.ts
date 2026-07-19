@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { PushNotificationService } from './push-notification.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -129,7 +130,10 @@ type SaveMessageInput = {
 
 @Injectable()
 export class ConversationMemoryService {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly pushNotificationService: PushNotificationService,
+  ) {}
 
   async getCompanyProfile(companySlug: string): Promise<CompanyProfile> {
     const slug = companySlug.trim().toLowerCase();
@@ -1533,6 +1537,31 @@ export class ConversationMemoryService {
       }
 
       throw new Error(`No se pudo guardar el mensaje: ${error.message}`);
+    }
+
+    if (input.sender === 'customer' && authorType === 'customer') {
+      try {
+        const notification =
+          await this.pushNotificationService.notifyAssignedAdvisorForIncomingMessage(
+            {
+              companyId: input.companyId,
+              sessionId: input.sessionId,
+              customerPhone: input.customerPhone,
+              message: input.message,
+            },
+          );
+
+        if (notification.sent > 0) {
+          console.log(
+            `Notificación enviada al asesor asignado de la sesión ${input.sessionId}.`,
+          );
+        }
+      } catch (notificationError) {
+        console.error(
+          `No se pudo notificar el mensaje entrante de la sesión ${input.sessionId}:`,
+          notificationError,
+        );
+      }
     }
 
     return 'saved';
