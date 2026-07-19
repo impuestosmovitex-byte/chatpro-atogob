@@ -299,6 +299,11 @@ export class WhatsappWebhookController {
           integration.companyId,
           input.phone,
         );
+      session =
+        await this.chatAgentService.prepareSessionForIncomingActivity(
+          profile,
+          session,
+        );
 
       const customerMessage = input.caption
         ? `📷 Imagen recibida: ${input.caption}`
@@ -372,6 +377,7 @@ export class WhatsappWebhookController {
             imageDataUrl:
               `data:${visualMimeType};base64,` +
               media.buffer.toString('base64'),
+            summary: analysis.summary,
             productName: analysis.productName,
             reference: analysis.reference,
             visiblePrice: analysis.visiblePrice,
@@ -385,6 +391,42 @@ export class WhatsappWebhookController {
       const currentSession =
         await this.conversationMemoryService.getSessionById(session.id);
       const receivedAt = new Date().toISOString();
+      const nextVisualContext: Record<string, unknown> = {
+        ...currentSession.context,
+      };
+
+      if (visualMatch.matchType !== 'exact') {
+        delete nextVisualContext.selectedProduct;
+        delete nextVisualContext.selectedVariant;
+        delete nextVisualContext.selectedVariants;
+        delete nextVisualContext.selectedAt;
+        delete nextVisualContext.selectedVariantAt;
+        delete nextVisualContext.purchaseIntent;
+        delete nextVisualContext.purchaseIntentAt;
+      }
+
+      nextVisualContext.last_visual_reference = {
+        summary: analysis.summary,
+        category: analysis.category,
+        product_name: analysis.productName || null,
+        reference: analysis.reference || null,
+        visible_price: analysis.visiblePrice || null,
+        colors: analysis.colors,
+        visible_text: analysis.visibleText,
+        search_terms: analysis.searchTerms,
+        source_hint: analysis.sourceHint,
+        confidence: analysis.confidence,
+        match_type: visualMatch.matchType,
+        match_confidence: visualMatch.confidence,
+        matched_product: visualMatch.matchedProduct,
+        candidates: visualMatch.candidates,
+        match_queries: visualMatch.queries,
+        match_reason: visualMatch.reason,
+        caption: input.caption || null,
+        received_at: receivedAt,
+      };
+      nextVisualContext.commercial_last_customer_message_at =
+        receivedAt;
 
       session = await this.conversationMemoryService.updateSession(
         currentSession.id,
@@ -394,31 +436,71 @@ export class WhatsappWebhookController {
             currentSession.stage === 'area_menu'
               ? 'active'
               : currentSession.stage,
-          context: {
-            ...currentSession.context,
-            last_visual_reference: {
-              summary: analysis.summary,
-              category: analysis.category,
-              product_name: analysis.productName || null,
-              reference: analysis.reference || null,
-              visible_price: analysis.visiblePrice || null,
-              colors: analysis.colors,
-              visible_text: analysis.visibleText,
-              search_terms: analysis.searchTerms,
-              source_hint: analysis.sourceHint,
-              confidence: analysis.confidence,
-              match_type: visualMatch.matchType,
-              match_confidence: visualMatch.confidence,
-              matched_product: visualMatch.matchedProduct,
-              candidates: visualMatch.candidates,
-              match_queries: visualMatch.queries,
-              match_reason: visualMatch.reason,
-              caption: input.caption || null,
-              received_at: receivedAt,
-            },
-          },
+          context: nextVisualContext,
         },
       );
+
+      if (visualMatch.matchType === 'exact') {
+        const exactReply =
+          await this.chatAgentService.buildExactVisualProductReply(
+            session,
+          );
+
+        if (exactReply) {
+          await this.whatsappMessagingService.sendText(
+            profile.id,
+            input.phone,
+            exactReply,
+          );
+          replySent = true;
+
+          await this.conversationMemoryService.saveMessage({
+            companyId: profile.id,
+            sessionId: session.id,
+            customerPhone: input.phone,
+            message: exactReply,
+            sender: 'assistant',
+            authorType: 'ai',
+            aiResponse: exactReply,
+          });
+
+          await this.conversationMemoryService.touchSession(session.id);
+          console.log(
+            `Producto visual exacto respondido a ${input.phone}`,
+          );
+          return;
+        }
+      }
+
+      if (visualMatch.matchType !== 'exact') {
+        const uncertainReply =
+          visualMatch.matchType === 'similar'
+            ? 'Veo el producto, pero hay varias publicaciones muy parecidas en el catálogo. Envíame el enlace exacto para confirmarlo y ayudarte con las opciones.'
+            : 'No pude confirmar la referencia exacta con esa imagen. Envíame el enlace del producto o una foto donde se vea el nombre para ayudarte.';
+
+        await this.whatsappMessagingService.sendText(
+          profile.id,
+          input.phone,
+          uncertainReply,
+        );
+        replySent = true;
+
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: uncertainReply,
+          sender: 'assistant',
+          authorType: 'ai',
+          aiResponse: uncertainReply,
+        });
+
+        await this.conversationMemoryService.touchSession(session.id);
+        console.log(
+          `Imagen incierta respondida sin reutilizar producto anterior a ${input.phone}`,
+        );
+        return;
+      }
 
       const visualCustomerMessage = [
         '[REFERENCIA_VISUAL]',
@@ -447,14 +529,14 @@ export class WhatsappWebhookController {
           : '',
         `Validación con catálogo real: ${visualMatch.matchType}. Confianza: ${visualMatch.confidence}.`,
         visualMatch.matchedProduct
-          ? `Producto exacto confirmado: ${visualMatch.matchedProduct.title}. URL: ${visualMatch.matchedProduct.url}. Precio desde: ${visualMatch.matchedProduct.priceFromCop || 'consultar producto seleccionado'}.`
+          ? `Producto real validado: ${visualMatch.matchedProduct.title}. URL: ${visualMatch.matchedProduct.url}. Precio del catálogo: ${visualMatch.matchedProduct.priceFromCop || 'consultar producto seleccionado'}.`
           : '',
         visualMatch.candidates.length
           ? `Opciones reales parecidas, sin confirmar referencia exacta: ${visualMatch.candidates.map((item, index) => `${index + 1}. ${item.title} — ${item.url}`).join(' | ')}`
           : '',
         'Responde de forma breve y natural.',
         'Si existe producto exacto confirmado, consulta el producto seleccionado y continúa con sus variantes reales.',
-        'Si solo existen opciones parecidas, muestra máximo tres y no afirmes que alguna sea la referencia exacta.',
+        'Si existen publicaciones parecidas pero no hay certeza exacta, pide el enlace del producto y no muestres alternativas no solicitadas.',
         'Si no hay coincidencias, pide nombre, enlace o un detalle útil sin inventar productos.',
       ].filter(Boolean).join('\n');
 

@@ -65,26 +65,17 @@ export class ChatAgentService {
     session: ConversationSession,
     customerMessage: string,
   ): Promise<string> {
-    let activeSession = session;
     const openingContextStatus = this.getContextStatus(
       profile,
-      activeSession,
+      session,
     );
     const startsNewConversation =
       !openingContextStatus.is_within_context_window;
-
-    if (startsNewConversation) {
-      activeSession =
-        await this.conversationMemoryService.updateSession(
-          activeSession.id,
-          {
-            stage: 'active',
-            context: this.startFreshConversationContext(
-              activeSession.context,
-            ),
-          },
-        );
-    }
+    let activeSession =
+      await this.prepareSessionForIncomingActivity(
+        profile,
+        session,
+      );
 
     const routingStartedAt = Date.now();
     const routing = await this.resolveMessageRouting(
@@ -124,13 +115,26 @@ export class ChatAgentService {
 
     const collections =
       await this.getCollectionsForSession(activeSession);
+    const directCollectionReply =
+      await this.tryBuildDirectCollectionReply(
+        activeSession,
+        customerMessage,
+        collections,
+      );
+
+    if (directCollectionReply) {
+      return directCollectionReply;
+    }
+
     const recoveryContext = this.getActiveRecoveryContext(
       activeSession.context,
     );
     const contextStatus = this.getContextStatus(profile, activeSession);
-    const history = contextStatus.is_within_context_window
-      ? await this.getRecentMessages(activeSession.id)
-      : [];
+    const history =
+      !startsNewConversation &&
+      contextStatus.is_within_context_window
+        ? await this.getRecentMessages(activeSession.id)
+        : [];
 
     const input: any[] = [
       {
@@ -215,7 +219,10 @@ export class ChatAgentService {
 
           if (clean) {
             await this.clearTechnicalFailureState(activeSession.id);
-            return clean;
+            return this.enforceSalesReply(
+              activeSession,
+              clean,
+            );
           }
 
           return this.finalizeAgentReply(
@@ -265,6 +272,7 @@ export class ChatAgentService {
     session: ConversationSession,
     input: {
       imageDataUrl: string;
+      summary: string;
       productName: string;
       reference: string;
       visiblePrice: string;
@@ -298,6 +306,7 @@ export class ChatAgentService {
       imageUrl: string | null;
       priceFromCop: string;
       textScore: number;
+      bundleLike: boolean;
     };
 
     const compact = (value: unknown, limit = 240): string =>
@@ -464,6 +473,7 @@ export class ChatAgentService {
             imageUrl,
             priceFromCop,
             textScore: scoreTitle(title, priceFromCop),
+            bundleLike: this.isBundleLikeProductTitle(title),
           };
           const previous = candidateMap.get(id);
 
@@ -483,6 +493,10 @@ export class ChatAgentService {
       .sort((left, right) => {
         if (right.textScore !== left.textScore) {
           return right.textScore - left.textScore;
+        }
+
+        if (left.bundleLike !== right.bundleLike) {
+          return left.bundleLike ? 1 : -1;
         }
 
         return left.title.localeCompare(
@@ -552,7 +566,21 @@ export class ChatAgentService {
       }
     }
 
-    const visualCandidates = ranked
+    const visualDescription =
+      normalized(input.summary);
+    const imageShowsSeveralProducts =
+      /\b(varios|varias|dos|tres|cuatro|combo|pack|kit|conjunto de)\b/.test(
+        visualDescription,
+      );
+    const preferredVisualPool =
+      imageShowsSeveralProducts
+        ? ranked
+        : ranked.filter((candidate) => !candidate.bundleLike);
+    const visualCandidates = (
+      preferredVisualPool.length
+        ? preferredVisualPool
+        : ranked
+    )
       .filter(
         (candidate) =>
           typeof candidate.imageUrl === 'string' &&
@@ -726,6 +754,559 @@ export class ChatAgentService {
     };
   }
 
+  async prepareSessionForIncomingActivity(
+    profile: CompanyProfile,
+    session: ConversationSession,
+  ): Promise<ConversationSession> {
+    const status = this.getContextStatus(profile, session);
+    const now = new Date().toISOString();
+    const baseContext =
+      status.is_within_context_window
+        ? { ...session.context }
+        : this.startFreshConversationContext(session.context);
+
+    return this.conversationMemoryService.updateSession(
+      session.id,
+      {
+        stage:
+          status.is_within_context_window
+            ? session.stage
+            : 'active',
+        context: {
+          ...baseContext,
+          commercial_last_customer_message_at: now,
+        },
+      },
+    );
+  }
+
+  async buildExactVisualProductReply(
+    session: ConversationSession,
+  ): Promise<string | null> {
+    const currentSession =
+      await this.conversationMemoryService.getSessionById(session.id);
+    const result =
+      await this.getSelectedProduct(currentSession);
+
+    if (
+      !result ||
+      typeof result !== 'object' ||
+      (result as { ok?: unknown }).ok !== true
+    ) {
+      return null;
+    }
+
+    const snapshot =
+      (result as { selected_product?: unknown }).selected_product;
+
+    if (
+      !snapshot ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot)
+    ) {
+      return null;
+    }
+
+    const product = snapshot as JsonObject;
+    const title =
+      typeof product.title === 'string'
+        ? product.title.trim()
+        : '';
+
+    if (!title) {
+      return null;
+    }
+
+    const variants = Array.isArray(product.variants)
+      ? product.variants.filter(
+          (item): item is JsonObject =>
+            Boolean(item) &&
+            typeof item === 'object' &&
+            !Array.isArray(item),
+        )
+      : [];
+    const prices = variants
+      .map((variant) => {
+        const value = variant.price_cop;
+        return typeof value === 'string' ||
+          typeof value === 'number'
+          ? Number(value)
+          : NaN;
+      })
+      .filter((value) => Number.isFinite(value));
+    const startingPrice =
+      typeof product.price_from_cop === 'string' ||
+      typeof product.price_from_cop === 'number'
+        ? Number(product.price_from_cop)
+        : NaN;
+
+    if (!prices.length && Number.isFinite(startingPrice)) {
+      prices.push(startingPrice);
+    }
+
+    const uniquePrices = Array.from(
+      new Set(prices.map((value) => Math.round(value))),
+    ).sort((left, right) => left - right);
+    const priceText =
+      uniquePrices.length === 1
+        ? ` cuesta ${this.formatCop(uniquePrices[0])}`
+        : uniquePrices.length > 1
+          ? ` tiene opciones desde ${this.formatCop(uniquePrices[0])}`
+          : '';
+
+    const optionGroups = Array.isArray(product.options)
+      ? product.options
+          .filter(
+            (item): item is JsonObject =>
+              Boolean(item) &&
+              typeof item === 'object' &&
+              !Array.isArray(item),
+          )
+          .map((item) => {
+            const name =
+              typeof item.name === 'string'
+                ? item.name.trim()
+                : '';
+            const values = Array.isArray(item.values)
+              ? Array.from(
+                  new Set(
+                    item.values
+                      .filter(
+                        (value): value is string =>
+                          typeof value === 'string' &&
+                          value.trim().length > 0,
+                      )
+                      .map((value) => value.trim())
+                      .filter(
+                        (value) =>
+                          this.normalizeText(value) !== 'default title',
+                      ),
+                  ),
+                )
+              : [];
+
+            return { name, values };
+          })
+          .filter(
+            (item) =>
+              item.name &&
+              this.normalizeText(item.name) !== 'title' &&
+              item.values.length > 1,
+          )
+      : [];
+    const preferredOption =
+      optionGroups.find((item) =>
+        /color|colour/i.test(item.name),
+      ) ??
+      optionGroups.find((item) =>
+        /talla|size|medida/i.test(item.name),
+      ) ??
+      optionGroups[0] ??
+      null;
+
+    if (preferredOption) {
+      const values = preferredOption.values.slice(0, 8);
+      const label = preferredOption.name.toLowerCase();
+
+      return (
+        `${title}${priceText} y está disponible en ` +
+        `${this.joinNaturalList(values)} 😊 ` +
+        `¿Qué ${label} prefieres?`
+      );
+    }
+
+    return `${title}${priceText} 😊 ¿Cuántas unidades necesitas?`;
+  }
+
+  private async tryBuildDirectCollectionReply(
+    session: ConversationSession,
+    customerMessage: string,
+    collections: Array<{
+      id: string;
+      title: string;
+      onlineStoreUrl: string;
+    }>,
+  ): Promise<string | null> {
+    const normalizedMessage =
+      this.normalizeText(customerMessage).replace(/\s+/g, ' ').trim();
+
+    if (
+      !normalizedMessage ||
+      !/\b(ver|mostrar|muestra|catalogo|coleccion|busco|buscar|quiero|necesito)\b/.test(
+        normalizedMessage,
+      )
+    ) {
+      return null;
+    }
+
+    const ignored = new Set([
+      'catalogo',
+      'coleccion',
+      'colecciones',
+      'mostrar',
+      'muestra',
+      'productos',
+      'producto',
+      'quiero',
+      'busco',
+      'buscar',
+      'necesito',
+      'para',
+      'ver',
+      'una',
+      'uno',
+      'unos',
+      'unas',
+      'con',
+      'del',
+      'las',
+      'los',
+      'por',
+    ]);
+    const stem = (value: string): string => {
+      if (value.length > 5 && value.endsWith('es')) {
+        return value.slice(0, -2);
+      }
+
+      if (value.length > 4 && value.endsWith('s')) {
+        return value.slice(0, -1);
+      }
+
+      return value;
+    };
+    const messageTokens = normalizedMessage
+      .split(' ')
+      .filter((token) => token.length >= 3 && !ignored.has(token))
+      .map(stem);
+    const ranked = collections
+      .filter(
+        (collection) =>
+          collection &&
+          typeof collection.id === 'string' &&
+          typeof collection.title === 'string' &&
+          typeof collection.onlineStoreUrl === 'string' &&
+          collection.onlineStoreUrl.trim(),
+      )
+      .map((collection) => {
+        const collectionTokens = this
+          .normalizeText(collection.title)
+          .split(' ')
+          .filter(
+            (token) =>
+              token.length >= 3 &&
+              !ignored.has(token),
+          )
+          .map(stem);
+        const score = collectionTokens.filter((token) =>
+          messageTokens.includes(token),
+        ).length;
+
+        return { collection, score };
+      })
+      .sort((left, right) => right.score - left.score);
+    const best = ranked[0] ?? null;
+    const second = ranked[1] ?? null;
+
+    if (
+      !best ||
+      best.score < 1 ||
+      best.score === (second?.score ?? -1)
+    ) {
+      return null;
+    }
+
+    await this.conversationMemoryService.updateSession(
+      session.id,
+      {
+        stage: 'sales',
+        context: {
+          ...session.context,
+          lastCollection: {
+            id: best.collection.id,
+            title: best.collection.title,
+            url: best.collection.onlineStoreUrl,
+          },
+          lastCollectionOpenedAt: new Date().toISOString(),
+        },
+      },
+    );
+
+    return (
+      `Perfecto 😊 Aquí tienes nuestro catálogo de ` +
+      `${best.collection.title.toLowerCase()}:\n` +
+      `${best.collection.onlineStoreUrl}\n` +
+      'Envíame el enlace o una foto del producto que te guste.'
+    );
+  }
+
+  private isBundleLikeProductTitle(title: string): boolean {
+    return /\b(combo|pack|bundle|kit|duo|trio|x\s*\d+|\d+\s*(unidades|prendas|productos))\b/i.test(
+      this.normalizeText(title),
+    );
+  }
+
+  private joinNaturalList(values: string[]): string {
+    if (values.length <= 1) {
+      return values[0] ?? '';
+    }
+
+    if (values.length === 2) {
+      return `${values[0]} y ${values[1]}`;
+    }
+
+    return `${values.slice(0, -1).join(', ')} y ${values[values.length - 1]}`;
+  }
+
+  private formatCop(value: number): string {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      maximumFractionDigits: 0,
+    }).format(Math.round(value));
+  }
+
+  private readSaleContext(context: JsonObject): JsonObject {
+    const value = context.sale_context;
+
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value)
+    ) {
+      return {};
+    }
+
+    return { ...(value as JsonObject) };
+  }
+
+  private normalizeCopAmount(value: unknown): string {
+    if (typeof value !== 'string' && typeof value !== 'number') {
+      return '';
+    }
+
+    const raw = String(value).trim();
+
+    if (!raw) {
+      return '';
+    }
+
+    const normalized = raw
+      .replace(/[^\d,.-]/g, '')
+      .replace(/\./g, '')
+      .replace(',', '.');
+    const amount = Number(normalized);
+
+    return Number.isFinite(amount) && amount >= 0
+      ? String(Math.round(amount))
+      : '';
+  }
+
+  private async rememberSaleContext(
+    session: ConversationSession,
+    args: JsonObject,
+  ) {
+    const currentSession =
+      await this.conversationMemoryService.getSessionById(session.id);
+    const existing =
+      this.readSaleContext(currentSession.context);
+    const city =
+      typeof args.city === 'string'
+        ? args.city.trim().slice(0, 120)
+        : '';
+    const paymentMethod =
+      typeof args.payment_method === 'string'
+        ? args.payment_method.trim().slice(0, 120)
+        : '';
+    const shippingCost =
+      this.normalizeCopAmount(args.shipping_cost_cop);
+    const next: JsonObject = { ...existing };
+
+    if (city) {
+      const previousCity =
+        typeof existing.city === 'string'
+          ? this.normalizeText(existing.city)
+          : '';
+
+      next.city = city;
+
+      if (
+        previousCity &&
+        previousCity !== this.normalizeText(city) &&
+        !shippingCost
+      ) {
+        delete next.shipping_cost_cop;
+      }
+    }
+
+    if (paymentMethod) {
+      const previousPayment =
+        typeof existing.payment_method === 'string'
+          ? this.normalizeText(existing.payment_method)
+          : '';
+
+      next.payment_method = paymentMethod;
+
+      if (
+        previousPayment &&
+        previousPayment !== this.normalizeText(paymentMethod)
+      ) {
+        next.payment_instructions_sent = false;
+      }
+    }
+
+    if (shippingCost) {
+      next.shipping_cost_cop = shippingCost;
+    }
+
+    if (args.payment_instructions_sent === true) {
+      next.payment_instructions_sent = true;
+    }
+
+    if (args.checkout_instructions_sent === true) {
+      next.checkout_instructions_sent = true;
+    }
+
+    next.updated_at = new Date().toISOString();
+
+    const updated =
+      await this.conversationMemoryService.updateSession(
+        currentSession.id,
+        {
+          context: {
+            ...currentSession.context,
+            sale_context: next,
+          },
+        },
+      );
+
+    return {
+      ok: true,
+      sale_context: this.readSaleContext(updated.context),
+    };
+  }
+
+  private async getSaleContext(session: ConversationSession) {
+    const currentSession =
+      await this.conversationMemoryService.getSessionById(session.id);
+
+    return {
+      ok: true,
+      sale_context: this.readSaleContext(currentSession.context),
+    };
+  }
+
+  private async enrichCartToolResult(
+    session: ConversationSession,
+    result: unknown,
+  ): Promise<unknown> {
+    if (
+      !result ||
+      typeof result !== 'object' ||
+      Array.isArray(result)
+    ) {
+      return result;
+    }
+
+    const currentSession =
+      await this.conversationMemoryService.getSessionById(session.id);
+    const saleContext =
+      this.readSaleContext(currentSession.context);
+    const output = { ...(result as JsonObject) };
+    const cart =
+      output.cart &&
+      typeof output.cart === 'object' &&
+      !Array.isArray(output.cart)
+        ? output.cart as JsonObject
+        : null;
+    const productsTotal =
+      cart &&
+      (typeof cart.products_total_cop === 'string' ||
+        typeof cart.products_total_cop === 'number')
+        ? Number(cart.products_total_cop)
+        : NaN;
+    const shippingCost =
+      typeof saleContext.shipping_cost_cop === 'string' ||
+      typeof saleContext.shipping_cost_cop === 'number'
+        ? Number(saleContext.shipping_cost_cop)
+        : NaN;
+
+    output.sale_context = saleContext;
+
+    if (Number.isFinite(shippingCost)) {
+      output.shipping_cost_cop = String(
+        Math.round(shippingCost),
+      );
+    }
+
+    if (
+      Number.isFinite(productsTotal) &&
+      Number.isFinite(shippingCost)
+    ) {
+      output.grand_total_cop = String(
+        Math.round(productsTotal + shippingCost),
+      );
+    }
+
+    return output;
+  }
+
+  private async enforceSalesReply(
+    session: ConversationSession,
+    reply: string,
+  ): Promise<string> {
+    const asksDeliveryData =
+      /\b(direccion completa|nombre y telefono|nombre completo y telefono|pásame la dirección|pasame la direccion|datos completos de entrega)\b/i.test(
+        reply,
+      );
+
+    if (!asksDeliveryData) {
+      return reply;
+    }
+
+    const currentSession =
+      await this.conversationMemoryService.getSessionById(session.id);
+
+    if (
+      !['sales', 'product', 'variant', 'checkout'].includes(
+        currentSession.stage,
+      )
+    ) {
+      return reply;
+    }
+
+    const cartResult =
+      await this.cartService.getCart(currentSession);
+
+    if (
+      !cartResult ||
+      typeof cartResult !== 'object' ||
+      (cartResult as { ok?: unknown }).ok !== true
+    ) {
+      return reply;
+    }
+
+    const checkoutResult =
+      await this.cartService.createCheckoutLink(currentSession);
+
+    if (
+      !checkoutResult ||
+      typeof checkoutResult !== 'object' ||
+      (checkoutResult as { ok?: unknown }).ok !== true ||
+      typeof (checkoutResult as { checkout_url?: unknown })
+        .checkout_url !== 'string'
+    ) {
+      return reply;
+    }
+
+    const checkoutUrl =
+      (checkoutResult as { checkout_url: string }).checkout_url;
+
+    return (
+      'Completa tus datos de entrega aquí y selecciona “Envío”:\n' +
+      checkoutUrl
+    );
+  }
+
   private buildInstructions(
     profile: CompanyProfile,
     hasRecoveryContext = false,
@@ -767,7 +1348,11 @@ export class ChatAgentService {
         '- Si la persona dice que quiere comprar algo nuevo, “solo quiero”, “solo esa”, “solo la blusa”, “ese pedido ya lo pagué” o corrige que los productos anteriores no van, separa la compra nueva del pedido anterior. Usa get_cart y quita productos no solicitados con remove_cart_line antes de crear checkout.',
       '- Pregunta solo por el dato que falte. No repitas ciudad, color, talla o medio de pago ya informado.',
       '- Entrega la información de forma progresiva: responde primero al paso actual y no mezcles catálogo, variantes, envío, pago y checkout en un solo mensaje.',
-      '- No envíes todas las colecciones solamente porque la persona entró a Ventas. Primero pregunta qué busca y, cuando indique una categoría, comparte únicamente la colección o los productos relacionados.',
+      '- Cuando la persona pida ver una categoría, comparte de inmediato únicamente la colección real correspondiente. Después del enlace solo indica que envíe el enlace o una foto del producto que le guste.',
+      '- No preguntes estilos, colores o preferencias antes de mostrar una colección solicitada. No ofrezcas opciones populares, recomendaciones ni productos complementarios mientras el módulo de recomendación no esté habilitado.',
+      '- No uses frases como “confirmo el producto” o “encontré el producto”. Menciona directamente nombre, precio real y la primera opción que falte.',
+      '- Si varias publicaciones, combos o bundles se parecen a una imagen y no existe certeza exacta, pide el enlace del producto. No muestres alternativas que la persona no solicitó.',
+      '- Las recomendaciones de talla deben ser breves: máximo dos frases y una sola talla sugerida cuando la información permita recomendarla.',
       '- No menciones restricciones, opciones no disponibles o condiciones negativas que la persona no haya preguntado ni seleccionado.',
       '- Explica las instrucciones de un medio de pago cuando la persona pregunte por ese medio o lo seleccione. No adelantes instrucciones de otros medios.',
       '- Las instrucciones finales del checkout deben acompañar el enlace de checkout o responder una pregunta directa sobre cómo finalizar. No las adelantes durante la selección del producto.',
@@ -796,9 +1381,17 @@ export class ChatAgentService {
       '- No preguntes “¿lo agrego?” después de que la persona ya confirmó color, talla o variante.',
         '- Antes de crear checkout, usa get_cart y verifica que el carrito contenga únicamente productos que la persona pidió para esta compra actual. Si hay productos de un pedido anterior, carrito recuperado viejo o artículos no solicitados, usa remove_cart_line para quitarlos antes de crear el checkout.',
         '- Si la persona corrige “solo quiero X” o “por qué me vas a cobrar todo”, acepta la corrección, deja solo los productos confirmados para la compra actual y vuelve a resumir el carrito.',
+      '- session.context.sale_context conserva ciudad, costo de envío, medio de pago y pasos ya enviados. Úsalo antes de volver a preguntar. Cuando la persona entregue o cambie uno de esos datos, llama remember_sale_context.',
+      '- Después de recibir la ciudad, informa el costo de envío correspondiente según la configuración y guárdalo con remember_sale_context antes de preguntar el medio de pago.',
+      '- Cuando debas preguntar cómo pagará, presenta todos los medios reales configurados. “Pago antes del despacho” no es un medio de pago.',
+      '- Cuando la persona seleccione un medio, habla únicamente de ese medio. Antes de responder usa get_cart para obtener productos, envío y total general.',
+      '- Antes de enviar datos de transferencia, tarjeta o crédito, muestra una sola vez producto, subtotal, envío y total general. No repitas el resumen si ya fue informado y nada cambió.',
+      '- No solicites dirección, nombre ni teléfono por WhatsApp para crear el envío. Esos datos se completan en el checkout.',
       '- Antes de crear checkout, sigue las instrucciones de la empresa: pide solo los datos que falten, confirma ciudad, envío, medio de pago y resumen.',
-      '- Usa create_checkout_link únicamente cuando la persona confirme que desea finalizar la compra.',
-      '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para finalizar el pago. Nunca sustituyas ese enlace por un cart_url.',
+      '- Cuando producto, variante, ciudad y medio de pago estén listos, usa create_checkout_link también para transferencia, tarjeta o crédito, para que la persona complete los datos de entrega.',
+      '- Usa create_checkout_link únicamente cuando la persona confirme que desea finalizar la compra o ya seleccionó el medio de pago con la compra lista.',
+      '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para completar datos y finalizar. Nunca sustituyas ese enlace por un cart_url.',
+      '- Si sale_context.payment_instructions_sent es true, no vuelvas a enviar los mismos datos; pide únicamente el comprobante o el paso pendiente.',
       '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
       '- Al usar request_human_attention, customer_message debe ser el mensaje exacto que verá la persona: natural, breve, útil y alineado al tono/configuración de la empresa. No uses una frase fija si la empresa configuró otra forma de atención.',
       '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
@@ -1024,7 +1617,11 @@ export class ChatAgentService {
     is_within_context_window: boolean;
   } {
     const contextWindowHours = this.getContextWindowHours(profile);
-    const lastMessageTime = new Date(session.lastMessageAt).getTime();
+    const commercialActivity =
+      typeof session.context.commercial_last_customer_message_at === 'string'
+        ? session.context.commercial_last_customer_message_at
+        : session.lastMessageAt;
+    const lastMessageTime = new Date(commercialActivity).getTime();
 
     const elapsedMilliseconds = Number.isFinite(lastMessageTime)
       ? Math.max(0, Date.now() - lastMessageTime)
@@ -1082,9 +1679,6 @@ export class ChatAgentService {
           context.cart_recovery_initialized_id;
       }
 
-      if (Array.isArray(context.cart)) {
-        nextContext.cart = context.cart;
-      }
     }
 
     return nextContext;
@@ -1739,6 +2333,64 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 },
 {
   type: 'function',
+  name: 'remember_sale_context',
+  description:
+    'Guarda ciudad, costo de envío, medio de pago y si ya se enviaron instrucciones. Úsala cada vez que el cliente entregue o cambie uno de esos datos.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      city: {
+        type: 'string',
+        description:
+          'Ciudad confirmada. Usa cadena vacía si no cambió.',
+      },
+      payment_method: {
+        type: 'string',
+        description:
+          'Medio de pago elegido. Usa cadena vacía si no cambió.',
+      },
+      shipping_cost_cop: {
+        type: 'string',
+        description:
+          'Costo de envío numérico en COP, sin símbolos. Usa cadena vacía si todavía no se conoce.',
+      },
+      payment_instructions_sent: {
+        type: 'boolean',
+        description:
+          'true cuando la respuesta actual ya incluirá los datos o instrucciones del medio elegido.',
+      },
+      checkout_instructions_sent: {
+        type: 'boolean',
+        description:
+          'true cuando la respuesta actual ya incluirá el checkout.',
+      },
+    },
+    required: [
+      'city',
+      'payment_method',
+      'shipping_cost_cop',
+      'payment_instructions_sent',
+      'checkout_instructions_sent',
+    ],
+  },
+},
+{
+  type: 'function',
+  name: 'get_sale_context',
+  description:
+    'Consulta ciudad, envío, medio de pago y pasos ya enviados antes de volver a preguntarlos.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {},
+    required: [],
+  },
+},
+{
+  type: 'function',
   name: 'lookup_order',
   description:
     'Consulta un pedido real de la empresa por número de pedido, correo o celular. Úsala para estado del pedido, guía, transportadora, seguimiento, cambios, garantías o problemas posteriores a la compra.',
@@ -1853,37 +2505,56 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       }
 
       if (name === 'add_selected_variant_to_cart') {
-        return this.cartService.addSelectedVariant(
+        const result = await this.cartService.addSelectedVariant(
           session,
           this.readInteger(args, 'quantity'),
         );
+
+        return this.enrichCartToolResult(session, result);
       }
 
       if (name === 'replace_cart_line_variant') {
-        return this.cartService.replaceCartLineWithSelectedVariant(
-          session,
-          this.readString(args, 'current_variant_id'),
-          this.readInteger(args, 'quantity'),
-        );
+        const result =
+          await this.cartService.replaceCartLineWithSelectedVariant(
+            session,
+            this.readString(args, 'current_variant_id'),
+            this.readInteger(args, 'quantity'),
+          );
+
+        return this.enrichCartToolResult(session, result);
       }
 
       if (name === 'set_cart_line_quantity') {
-        return this.cartService.setCartLineQuantity(
+        const result = await this.cartService.setCartLineQuantity(
           session,
           this.readString(args, 'variant_id'),
           this.readInteger(args, 'quantity'),
         );
+
+        return this.enrichCartToolResult(session, result);
       }
 
       if (name === 'remove_cart_line') {
-        return this.cartService.removeCartLine(
+        const result = await this.cartService.removeCartLine(
           session,
           this.readString(args, 'variant_id'),
         );
+
+        return this.enrichCartToolResult(session, result);
       }
 
       if (name === 'get_cart') {
-        return this.cartService.getCart(session);
+        const result = await this.cartService.getCart(session);
+
+        return this.enrichCartToolResult(session, result);
+      }
+
+      if (name === 'remember_sale_context') {
+        return this.rememberSaleContext(session, args);
+      }
+
+      if (name === 'get_sale_context') {
+        return this.getSaleContext(session);
       }
 
       if (name === 'lookup_order') {
@@ -1948,7 +2619,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       }
 
       if (name === 'create_checkout_link') {
-        return this.cartService.createCheckoutLink(session);
+        const result =
+          await this.cartService.createCheckoutLink(session);
+
+        return this.enrichCartToolResult(session, result);
       }
 
       return {
@@ -2929,7 +3603,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (clean) {
         await this.clearTechnicalFailureState(session.id);
-        return clean;
+        return this.enforceSalesReply(session, clean);
       }
 
       return this.handleTechnicalFailure(
