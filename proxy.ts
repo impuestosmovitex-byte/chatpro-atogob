@@ -11,6 +11,8 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/logout',
   '/api/health',
   '/api/integrations/shopify/callback',
+  '/manifest.webmanifest',
+  '/sw.js',
 ]);
 
 const ADVISOR_ALLOWED_PAGES = [
@@ -26,6 +28,7 @@ const ADVISOR_ALLOWED_APIS = [
   '/api/inbox',
   '/api/clients',
   '/api/advisor-presence',
+  '/api/push-notifications',
   '/api/quick-replies',
   '/api/storefront',
 ];

@@ -55,6 +55,8 @@ import { PlatformHealthService } from './platform-health.service';
 import { WhatsappTemplateController } from './whatsapp-template.controller';
 import { WhatsappTemplateService } from './whatsapp-template.service';
 import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
+import { PushNotificationController } from './push-notification.controller';
+import { PushNotificationService } from './push-notification.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -86,6 +88,7 @@ import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.
     ServiceAreasController,
     PlatformHealthController,
     WhatsappTemplateController,
+    PushNotificationController,
   ],
   providers: [
     CompanyIntegrationService,
@@ -115,6 +118,7 @@ import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.
     PlatformHealthService,
     WhatsappTemplateService,
     WhatsappTemplateExecutionService,
+    PushNotificationService,
   ],
 })
 export class AppModule {}
