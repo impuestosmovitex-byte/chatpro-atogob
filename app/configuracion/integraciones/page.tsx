@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
+import { WhatsappEmbeddedSignupButton } from './WhatsappEmbeddedSignupButton';
 import styles from './page.module.css';
 
 type Integration = {
@@ -896,8 +897,16 @@ export default function IntegracionesPage() {
                         : 'Conectar WhatsApp Business'}
                   </strong>
                   <p>
-                    Usa los datos de Meta Developers / WhatsApp Business.
-                    El token se guarda cifrado y nunca se muestra en Chat Pro.
+                    Conecta el número mediante el flujo oficial de Meta. También
+                    se conserva la opción manual para diagnósticos avanzados.
+                  </p>
+
+                  <WhatsappEmbeddedSignupButton />
+
+                  <strong>Conexión manual avanzada</strong>
+                  <p>
+                    Usa Phone Number ID y token únicamente cuando Meta ya haya
+                    terminado el registro del número.
                   </p>
 
                   <label htmlFor="wa-phone-id">Phone Number ID</label>

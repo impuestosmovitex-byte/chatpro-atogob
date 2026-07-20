@@ -41,6 +41,13 @@ type WhatsappTestBody = {
   message?: unknown;
 };
 
+type WhatsappEmbeddedCompleteBody = {
+  code?: unknown;
+  wabaId?: unknown;
+  phoneNumberId?: unknown;
+  businessId?: unknown;
+};
+
 const CATALOG = [
   {
     provider: 'meta',
@@ -195,6 +202,243 @@ export class IntegrationsController {
       ok: true,
       company,
       integrations: [...known, ...extra],
+    };
+  }
+
+  @Get('whatsapp/embedded/config')
+  async getWhatsappEmbeddedConfig(
+    @Headers('x-chatpro-inbox-key') accessKey: string | undefined,
+    @Query('company') companySlug: string | undefined,
+  ) {
+    this.requireAccess(accessKey);
+    await this.getCompany(companySlug);
+
+    const settings = this.whatsappEmbeddedSettings();
+    const missing: string[] = [];
+
+    if (!settings.appId) missing.push('META_WHATSAPP_APP_ID');
+    if (!settings.appSecret) missing.push('META_WHATSAPP_APP_SECRET');
+    if (!settings.configurationId) {
+      missing.push('META_WHATSAPP_EMBEDDED_CONFIG_ID');
+    }
+
+    return {
+      ok: true,
+      ready: missing.length === 0,
+      appId: settings.appId || null,
+      configurationId: settings.configurationId || null,
+      apiVersion: settings.apiVersion,
+      sessionInfoVersion: settings.sessionInfoVersion,
+      flowVersion: settings.flowVersion,
+      featureType: settings.featureType,
+      missing,
+      message: missing.length
+        ? `Faltan variables de Meta en Railway: ${missing.join(', ')}.`
+        : 'Embedded Signup está listo para abrirse.',
+    };
+  }
+
+  @Post('whatsapp/embedded/complete')
+  async completeWhatsappEmbeddedSignup(
+    @Headers('x-chatpro-inbox-key') accessKey: string | undefined,
+    @Query('company') companySlug: string | undefined,
+    @Body() body: WhatsappEmbeddedCompleteBody,
+  ) {
+    this.requireAccess(accessKey);
+    const company = await this.getCompany(companySlug);
+    const code = this.text(body.code);
+    const wabaId = this.digits(body.wabaId);
+    const requestedPhoneNumberId = this.digits(body.phoneNumberId);
+    const businessId = this.digits(body.businessId);
+    const settings = this.whatsappEmbeddedSettings();
+
+    if (!settings.appId || !settings.appSecret || !settings.configurationId) {
+      throw new BadRequestException(
+        'Faltan META_WHATSAPP_APP_ID, META_WHATSAPP_APP_SECRET o META_WHATSAPP_EMBEDDED_CONFIG_ID en Railway.',
+      );
+    }
+
+    if (!code || code.length < 20) {
+      throw new BadRequestException(
+        'Meta no devolvió un código de autorización válido.',
+      );
+    }
+
+    if (!wabaId || wabaId.length < 6) {
+      throw new BadRequestException(
+        'Meta no devolvió el identificador de la cuenta de WhatsApp.',
+      );
+    }
+
+    const tokenUrl = new URL(
+      `https://graph.facebook.com/${settings.apiVersion}/oauth/access_token`,
+    );
+    tokenUrl.searchParams.set('client_id', settings.appId);
+    tokenUrl.searchParams.set('client_secret', settings.appSecret);
+    tokenUrl.searchParams.set('code', code);
+
+    const tokenPayload = await this.metaJson(
+      tokenUrl,
+      { method: 'GET' },
+      'Meta no permitió intercambiar el código de Embedded Signup',
+    );
+    const accessToken = this.text(tokenPayload.access_token);
+
+    if (!accessToken || accessToken.length < 20) {
+      throw new BadRequestException(
+        'Meta no devolvió el token empresarial de WhatsApp.',
+      );
+    }
+
+    const phonesUrl = new URL(
+      `https://graph.facebook.com/${settings.apiVersion}/${wabaId}/phone_numbers`,
+    );
+    phonesUrl.searchParams.set(
+      'fields',
+      'id,verified_name,display_phone_number,quality_rating,platform_type,code_verification_status',
+    );
+    phonesUrl.searchParams.set('limit', '100');
+
+    const phonesPayload = await this.metaJson(
+      phonesUrl,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      'Meta no permitió consultar los números autorizados',
+    );
+    const phones = Array.isArray(phonesPayload.data)
+      ? phonesPayload.data.map((value) => this.toRecord(value))
+      : [];
+    const selectedPhone = requestedPhoneNumberId
+      ? phones.find((phone) => this.digits(phone.id) === requestedPhoneNumberId)
+      : phones.length === 1
+        ? phones[0]
+        : null;
+
+    if (!selectedPhone) {
+      throw new BadRequestException(
+        requestedPhoneNumberId
+          ? 'El número seleccionado no pertenece a la cuenta de WhatsApp autorizada.'
+          : 'Meta autorizó varias líneas y no indicó cuál debe conectarse. Repite el flujo y selecciona una sola línea.',
+      );
+    }
+
+    const phoneNumberId = this.digits(selectedPhone.id);
+    const displayName = this.text(selectedPhone.verified_name);
+    const displayPhoneNumber = this.text(selectedPhone.display_phone_number);
+    const qualityRating = this.text(selectedPhone.quality_rating);
+    const platformType = this.text(selectedPhone.platform_type);
+    const codeVerificationStatus = this.text(
+      selectedPhone.code_verification_status,
+    );
+
+    const subscribeUrl = new URL(
+      `https://graph.facebook.com/${settings.apiVersion}/${wabaId}/subscribed_apps`,
+    );
+    const subscribePayload = await this.metaJson(
+      subscribeUrl,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      'Meta no permitió suscribir la app a la cuenta de WhatsApp',
+    );
+
+    if (subscribePayload.success !== true) {
+      throw new BadRequestException(
+        'Meta no confirmó la suscripción de webhooks para esta cuenta.',
+      );
+    }
+
+    const client = this.supabaseService.getClient();
+    const { data: existing, error: existingError } = await client
+      .from('company_integrations')
+      .select('id, company_id')
+      .eq('provider', 'meta')
+      .eq('integration_type', 'whatsapp')
+      .eq('external_id', phoneNumberId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new BadRequestException(
+        `No se pudo validar el canal de WhatsApp: ${existingError.message}`,
+      );
+    }
+
+    if (existing && existing.company_id !== company.id) {
+      throw new BadRequestException(
+        'Este Phone Number ID ya está conectado a otra empresa en Chat Pro.',
+      );
+    }
+
+    const now = new Date().toISOString();
+    const { error: saveError } = await client
+      .from('company_integrations')
+      .upsert(
+        {
+          company_id: company.id,
+          provider: 'meta',
+          integration_type: 'whatsapp',
+          external_id: phoneNumberId,
+          status: 'active',
+          config: {
+            api_version: settings.apiVersion,
+            display_name: displayName || null,
+            display_phone_number: displayPhoneNumber || null,
+            business_account_id: wabaId,
+            meta_business_id: businessId || null,
+            quality_rating: qualityRating || null,
+            platform_type: platformType || null,
+            code_verification_status: codeVerificationStatus || null,
+            setup_source: 'meta_embedded_signup_business_app',
+          },
+          credential_mode: 'encrypted',
+          credential_reference: {
+            token_format: 'meta_business_integration_system_user_token',
+            phone_number_id: phoneNumberId,
+            waba_id: wabaId,
+          },
+          credentials_encrypted: this.credentialsService.encrypt({
+            access_token: accessToken,
+          }),
+          updated_at: now,
+        },
+        { onConflict: 'provider,integration_type,external_id' },
+      );
+
+    if (saveError) {
+      throw new BadRequestException(
+        `No se pudo guardar WhatsApp: ${saveError.message}`,
+      );
+    }
+
+    const { error: disconnectError } = await client
+      .from('company_integrations')
+      .update({ status: 'disconnected', updated_at: now })
+      .eq('company_id', company.id)
+      .eq('provider', 'meta')
+      .eq('integration_type', 'whatsapp')
+      .neq('external_id', phoneNumberId)
+      .eq('status', 'active');
+
+    if (disconnectError) {
+      throw new BadRequestException(
+        `WhatsApp quedó guardado, pero no se pudo cerrar la conexión anterior: ${disconnectError.message}`,
+      );
+    }
+
+    return {
+      ok: true,
+      message: 'WhatsApp quedó autorizado y conectado mediante Meta.',
+      company,
+      whatsapp: {
+        phoneNumberId,
+        wabaId,
+        displayName: displayName || null,
+        displayPhoneNumber: displayPhoneNumber || null,
+        platformType: platformType || null,
+      },
     };
   }
 
@@ -564,6 +808,54 @@ export class IntegrationsController {
       displayPhoneNumber: this.text(config.display_phone_number) || null,
       qualityRating: this.text(config.quality_rating) || null,
     };
+  }
+
+  private whatsappEmbeddedSettings() {
+    return {
+      appId: process.env.META_WHATSAPP_APP_ID?.trim() || '',
+      appSecret: process.env.META_WHATSAPP_APP_SECRET?.trim() || '',
+      configurationId:
+        process.env.META_WHATSAPP_EMBEDDED_CONFIG_ID?.trim() || '',
+      apiVersion: this.apiVersion(
+        process.env.META_WHATSAPP_GRAPH_VERSION?.trim() || 'v25.0',
+      ),
+      sessionInfoVersion:
+        process.env.META_WHATSAPP_EMBEDDED_SESSION_VERSION?.trim() || '3',
+      flowVersion:
+        process.env.META_WHATSAPP_EMBEDDED_FLOW_VERSION?.trim() || 'v3',
+      featureType:
+        process.env.META_WHATSAPP_EMBEDDED_FEATURE_TYPE?.trim() ||
+        'whatsapp_business_app_onboarding',
+    };
+  }
+
+  private async metaJson(
+    url: URL,
+    init: RequestInit,
+    context: string,
+  ): Promise<JsonObject> {
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        accept: 'application/json',
+        ...(init.headers || {}),
+      },
+    });
+    const raw = await response.text();
+
+    if (!response.ok) {
+      throw new BadRequestException(
+        `${context}: ${this.metaErrorMessage(raw, response.status)}`,
+      );
+    }
+
+    const payload = this.parseJsonObject(raw);
+
+    if (!Object.keys(payload).length) {
+      throw new BadRequestException(`${context}: Meta devolvió una respuesta vacía.`);
+    }
+
+    return payload;
   }
 
   private metaErrorMessage(raw: string, status: number): string {
