@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     if (!sessionId || !messageId) {
       return NextResponse.json(
-        { ok: false, error: 'Falta identificar el audio.' },
+        { ok: false, error: 'Falta identificar el archivo.' },
         { status: 400 },
       );
     }
@@ -72,14 +72,14 @@ export async function GET(request: NextRequest) {
     const response = await fetch(target, {
       headers: {
         ...trustedHeaders(inboxKey, session),
-        accept: 'audio/*',
+        accept: 'image/*,audio/*',
       },
       cache: 'no-store',
     });
 
     if (!response.ok) {
       const raw = await response.text();
-      let detail = raw || 'No se pudo cargar el audio.';
+      let detail = raw || 'No se pudo cargar el archivo.';
 
       try {
         const parsed = JSON.parse(raw) as {
@@ -107,11 +107,11 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         'content-type':
-          response.headers.get('content-type') ?? 'audio/ogg',
+          response.headers.get('content-type') ?? 'application/octet-stream',
         'content-disposition':
           response.headers.get('content-disposition') ??
-          'inline; filename="audio.ogg"',
-        'cache-control': 'private, max-age=120',
+          'inline; filename="archivo"',
+        'cache-control': 'private, max-age=3600',
       },
     });
   } catch (error) {
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
         error:
           error instanceof Error
             ? error.message
-            : 'No se pudo cargar el audio.',
+            : 'No se pudo cargar el archivo.',
       },
       { status: 500 },
     );

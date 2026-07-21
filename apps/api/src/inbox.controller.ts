@@ -656,7 +656,7 @@ export class InboxController {
       .getClient()
       .from('conversations')
       .select(
-        'id, company_id, session_id, message_type, media_id, media_mime_type',
+        'id, company_id, session_id, message_type, media_id, media_mime_type, media_storage_path',
       )
       .eq('id', messageId)
       .eq('company_id', conversation.company.id)
@@ -665,49 +665,90 @@ export class InboxController {
 
     if (error) {
       throw new BadRequestException(
-        `No se pudo consultar el audio: ${error.message}`,
+        `No se pudo consultar el archivo: ${error.message}`,
       );
     }
 
     if (
       !row ||
-      row.message_type !== 'audio' ||
-      typeof row.media_id !== 'string' ||
-      !row.media_id.trim()
+      !['audio', 'image'].includes(row.message_type) ||
+      (typeof row.media_storage_path !== 'string' &&
+        (typeof row.media_id !== 'string' || !row.media_id.trim()))
     ) {
       throw new BadRequestException(
-        'El mensaje no tiene un audio disponible.',
+        'El mensaje no tiene un archivo disponible.',
       );
     }
 
-    let media;
+    let media: {
+      buffer: Buffer;
+      mimeType: string;
+      filename: string;
+    };
 
     try {
-      media = await this.whatsappMessagingService.downloadMedia(
-        conversation.company.id,
-        row.media_id,
-      );
+      if (
+        typeof row.media_storage_path === 'string' &&
+        row.media_storage_path.trim()
+      ) {
+        const { data, error: storageError } = await this.supabaseService
+          .getClient()
+          .storage.from('chatpro-media')
+          .download(row.media_storage_path.trim());
+
+        if (storageError || !data) {
+          throw new Error(
+            storageError?.message ||
+              'No se encontró el archivo permanente.',
+          );
+        }
+
+        media = {
+          buffer: Buffer.from(await data.arrayBuffer()),
+          mimeType:
+            data.type ||
+            row.media_mime_type ||
+            (row.message_type === 'image'
+              ? 'image/jpeg'
+              : 'audio/ogg'),
+          filename:
+            row.media_storage_path.split('/').pop() ||
+            (row.message_type === 'image'
+              ? 'imagen'
+              : 'audio.ogg'),
+        };
+      } else {
+        media = await this.whatsappMessagingService.downloadRawMedia(
+          conversation.company.id,
+          row.media_id,
+          row.media_mime_type ||
+            (row.message_type === 'image'
+              ? 'image/jpeg'
+              : 'audio/ogg'),
+        );
+      }
     } catch (error) {
       const detail =
         error instanceof Error
           ? error.message
-          : 'No se pudo descargar el audio de Meta.';
+          : 'No se pudo descargar el archivo.';
 
-      console.error('No se pudo reproducir el audio:', error);
-
+      console.error('No se pudo abrir el archivo del mensaje:', error);
       throw new BadRequestException(detail.slice(0, 900));
     }
 
     response.setHeader(
       'Content-Type',
-      media.mimeType || row.media_mime_type || 'audio/ogg',
+      media.mimeType ||
+        row.media_mime_type ||
+        (row.message_type === 'image' ? 'image/jpeg' : 'audio/ogg'),
     );
     response.setHeader('Content-Length', String(media.buffer.length));
     response.setHeader(
       'Content-Disposition',
       `inline; filename="${media.filename.replace(/"/g, '')}"`,
     );
-    response.setHeader('Cache-Control', 'private, max-age=120');
+    response.setHeader('Cache-Control', 'private, max-age=3600');
     return response.status(200).send(media.buffer);
   }
 

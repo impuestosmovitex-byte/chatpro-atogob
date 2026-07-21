@@ -21,8 +21,9 @@ type InboxMessage = {
   message: string;
   sender: string;
   authorType: "customer" | "ai" | "advisor";
-  messageType: "text" | "audio";
+  messageType: "text" | "audio" | "image";
   mediaMimeType: string | null;
+  mediaStoragePath?: string | null;
   mediaVoice: boolean;
   createdAt: string | null;
 };
@@ -357,6 +358,118 @@ function getCart(context: Record<string, unknown>) {
   return value.filter(
     (line): line is Record<string, unknown> =>
       Boolean(line) && typeof line === "object" && !Array.isArray(line),
+  );
+}
+
+function ImageMessageViewer({
+  item,
+}: {
+  item: InboxMessage;
+}) {
+  const [source, setSource] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [imageError, setImageError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = "";
+
+    async function loadImage() {
+      if (!item.id) {
+        setImageError("La imagen no tiene identificador.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setImageError("");
+
+        const response = await fetch(
+          `/api/inbox/media?sessionId=${encodeURIComponent(
+            item.sessionId,
+          )}&messageId=${encodeURIComponent(item.id)}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          const contentType =
+            response.headers.get("content-type") ?? "";
+          let detail = "No se pudo cargar la imagen.";
+
+          if (contentType.includes("application/json")) {
+            const data = (await response.json()) as {
+              error?: string;
+              message?: string;
+            };
+            detail = data.error || data.message || detail;
+          } else {
+            detail = (await response.text()) || detail;
+          }
+
+          throw new Error(detail);
+        }
+
+        const blob = await response.blob();
+
+        if (!blob.size) {
+          throw new Error("La imagen recibida está vacía.");
+        }
+
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+
+        setImageError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo cargar la imagen.",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadImage();
+
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [item.id, item.sessionId]);
+
+  if (loading) {
+    return <small className="wa-image-loading">Cargando imagen…</small>;
+  }
+
+  if (imageError || !source) {
+    return (
+      <small className="wa-image-error">
+        {imageError || "Imagen no disponible."}
+      </small>
+    );
+  }
+
+  return (
+    <a
+      className="wa-image-link"
+      href={source}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Abrir imagen completa"
+    >
+      <img
+        className="wa-image-message"
+        src={source}
+        alt={item.message || "Imagen enviada por el cliente"}
+      />
+    </a>
   );
 }
 
@@ -2475,6 +2588,14 @@ export default function Home() {
                         </span>
                         {item.messageType === "audio" && item.id ? (
                           <AudioMessagePlayer item={item} />
+                        ) : item.messageType === "image" && item.id ? (
+                          <>
+                            <ImageMessageViewer item={item} />
+                            {item.message &&
+                            item.message !== "📷 Imagen recibida." ? (
+                              <p>{item.message}</p>
+                            ) : null}
+                          </>
                         ) : (
                           <p>{item.message}</p>
                         )}

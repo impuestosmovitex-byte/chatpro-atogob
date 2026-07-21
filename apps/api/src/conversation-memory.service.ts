@@ -55,8 +55,9 @@ export type InboxMessage = {
   message: string;
   sender: string;
   authorType: 'customer' | 'ai' | 'advisor';
-  messageType: 'text' | 'audio';
+  messageType: 'text' | 'audio' | 'image';
   mediaMimeType: string | null;
+  mediaStoragePath: string | null;
   mediaVoice: boolean;
   createdAt: string | null;
 };
@@ -121,9 +122,10 @@ type SaveMessageInput = {
   authorType?: 'customer' | 'ai' | 'advisor';
   aiResponse?: string | null;
   providerMessageId?: string | null;
-  messageType?: 'text' | 'audio';
+  messageType?: 'text' | 'audio' | 'image';
   mediaId?: string | null;
   mediaMimeType?: string | null;
+  mediaStoragePath?: string | null;
   mediaFilename?: string | null;
   mediaVoice?: boolean;
 };
@@ -1223,7 +1225,7 @@ export class ConversationMemoryService {
     const sessionIds = sessions.map((session) => session.id);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_voice, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at')
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false });
 
@@ -1352,7 +1354,7 @@ export class ConversationMemoryService {
     const sessionIds = sessions.map((session) => session.id);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_voice, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at')
       .in('session_id', sessionIds)
       .order('created_at', { ascending: true });
 
@@ -1420,7 +1422,7 @@ export class ConversationMemoryService {
     const session = this.toSession(sessionRow);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_voice, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at')
       .eq('session_id', session.id)
       .order('created_at', { ascending: true });
 
@@ -1482,7 +1484,7 @@ export class ConversationMemoryService {
 
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_voice, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at')
       .eq('session_id', id)
       .order('created_at', { ascending: true });
 
@@ -1560,6 +1562,83 @@ export class ConversationMemoryService {
       }));
   }
 
+  async persistIncomingMedia(input: {
+    companyId: string;
+    sessionId: string;
+    mediaId: string;
+    providerMessageId?: string | null;
+    buffer: Buffer;
+    mimeType: string;
+    filename?: string | null;
+  }): Promise<string> {
+    const cleanMime =
+      input.mimeType.split(';')[0].trim().toLowerCase() ||
+      'application/octet-stream';
+    const extensionByMime: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+      'audio/ogg': 'ogg',
+      'audio/mpeg': 'mp3',
+      'audio/mp4': 'm4a',
+      'audio/aac': 'aac',
+    };
+    const fallbackExtension = extensionByMime[cleanMime] || 'bin';
+    const rawFilename = input.filename?.trim() || `media.${fallbackExtension}`;
+    const safeFilename = rawFilename
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 120) || `media.${fallbackExtension}`;
+    const identity =
+      input.providerMessageId?.trim() ||
+      input.mediaId.trim() ||
+      `${Date.now()}`;
+    const safeIdentity = identity.replace(/[^a-zA-Z0-9_-]+/g, '-');
+    const storagePath =
+      `${input.companyId}/${input.sessionId}/${safeIdentity}-${safeFilename}`;
+
+    const client = this.supabaseService.getClient();
+    const { error: uploadError } = await client.storage
+      .from('chatpro-media')
+      .upload(storagePath, input.buffer, {
+        contentType: cleanMime,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      throw new Error(
+        `No se pudo guardar el archivo permanente: ${uploadError.message}`,
+      );
+    }
+
+    let update = client
+      .from('conversations')
+      .update({ media_storage_path: storagePath })
+      .eq('company_id', input.companyId)
+      .eq('session_id', input.sessionId)
+      .eq('media_id', input.mediaId);
+
+    if (input.providerMessageId?.trim()) {
+      update = update.eq(
+        'provider_message_id',
+        input.providerMessageId.trim(),
+      );
+    }
+
+    const { error: updateError } = await update;
+
+    if (updateError) {
+      await client.storage.from('chatpro-media').remove([storagePath]);
+      throw new Error(
+        `No se pudo vincular el archivo al mensaje: ${updateError.message}`,
+      );
+    }
+
+    return storagePath;
+  }
+
   async saveMessage(input: SaveMessageInput): Promise<'saved' | 'duplicate'> {
     const providerMessageId = input.providerMessageId?.trim() || null;
     const authorType =
@@ -1581,6 +1660,7 @@ export class ConversationMemoryService {
         provider_message_id: providerMessageId,
         media_id: input.mediaId?.trim() || null,
         media_mime_type: input.mediaMimeType?.trim() || null,
+        media_storage_path: input.mediaStoragePath?.trim() || null,
         media_filename: input.mediaFilename?.trim() || null,
         media_voice: input.mediaVoice === true,
       });
@@ -1927,6 +2007,7 @@ export class ConversationMemoryService {
     author_type?: string | null;
     message_type?: string | null;
     media_mime_type?: string | null;
+    media_storage_path?: string | null;
     media_voice?: boolean | null;
     created_at?: string | null;
   }): InboxMessage {
@@ -1945,11 +2026,21 @@ export class ConversationMemoryService {
       message: message.message,
       sender: message.sender,
       authorType,
-      messageType: message.message_type === 'audio' ? 'audio' : 'text',
+      messageType:
+        message.message_type === 'audio'
+          ? 'audio'
+          : message.message_type === 'image'
+            ? 'image'
+            : 'text',
       mediaMimeType:
         typeof message.media_mime_type === 'string' &&
         message.media_mime_type.trim()
           ? message.media_mime_type
+          : null,
+      mediaStoragePath:
+        typeof message.media_storage_path === 'string' &&
+        message.media_storage_path.trim()
+          ? message.media_storage_path
           : null,
       mediaVoice: message.media_voice === true,
       createdAt: message.created_at ?? null,

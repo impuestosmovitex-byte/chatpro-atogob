@@ -317,7 +317,7 @@ export class WhatsappWebhookController {
         sender: 'customer',
         authorType: 'customer',
         providerMessageId: input.incomingMessageId,
-        messageType: 'text',
+        messageType: 'image',
         mediaId: input.mediaId,
         mediaMimeType: input.mimeType,
         mediaFilename: 'imagen',
@@ -328,6 +328,22 @@ export class WhatsappWebhookController {
       }
 
       await this.conversationMemoryService.touchSession(session.id);
+
+      const media = await this.whatsappMessagingService.downloadRawMedia(
+        profile.id,
+        input.mediaId,
+        input.mimeType || 'image/jpeg',
+      );
+
+      await this.conversationMemoryService.persistIncomingMedia({
+        companyId: profile.id,
+        sessionId: session.id,
+        mediaId: input.mediaId,
+        providerMessageId: input.incomingMessageId,
+        buffer: media.buffer,
+        mimeType: media.mimeType,
+        filename: 'imagen',
+      });
 
       if (
         session.attentionStatus === 'waiting' ||
@@ -346,11 +362,6 @@ export class WhatsappWebhookController {
           );
       }
 
-      const media = await this.whatsappMessagingService.downloadRawMedia(
-        profile.id,
-        input.mediaId,
-        input.mimeType || 'image/jpeg',
-      );
 
       session = await this.attachRecoveryContext(
         session,

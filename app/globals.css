@@ -1233,3 +1233,42 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
     line-height: 1.35;
   }
 }
+
+
+.wa-image-link {
+  display: block;
+  width: min(320px, 100%);
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #eef1f5;
+}
+
+.wa-image-message {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  cursor: zoom-in;
+}
+
+.wa-image-loading,
+.wa-image-error {
+  display: block;
+  padding: 10px 0;
+  font-size: 12px;
+}
+
+.wa-image-error {
+  color: #b13b3b;
+}
+
+@media (max-width: 760px) {
+  .wa-image-link {
+    width: 100%;
+  }
+
+  .wa-image-message {
+    max-height: 420px;
+  }
+}
