@@ -1887,12 +1887,6 @@ h2 {
 
 /* DESKTOP-INBOX-FIT-V1 — Bandeja ajustada a la altura visible */
 @media (min-width: 851px) {
-  html,
-  body {
-    height: 100%;
-    overflow: hidden;
-  }
-
   .chatpro-shell {
     height: 100dvh;
     min-height: 0;

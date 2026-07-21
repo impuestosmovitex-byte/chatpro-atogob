@@ -308,20 +308,18 @@
   }
 }
 
-/* CHATPRO: scroll interno de páginas en escritorio */
+/* CHATPRO: desplazamiento normal de páginas administrativas */
 @media (min-width: 901px) {
   .shell {
-    height: 100dvh;
-    min-height: 0;
-    overflow: hidden;
+    min-height: 100vh;
+    height: auto;
+    overflow: visible;
   }
 
   .workspace {
-    min-height: 0;
-    max-height: 100dvh;
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    min-height: 100vh;
+    max-height: none;
+    overflow: visible;
   }
 }
 
