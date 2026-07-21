@@ -75,6 +75,7 @@ export type InboxConversation = {
 
 export type InboxSessionSummary = ConversationSession & {
   lastMessage: InboxMessage | null;
+  pendingCount: number;
 };
 
 
@@ -1236,12 +1237,27 @@ export class ConversationMemoryService {
     }
 
     const latestBySession = new Map<string, InboxMessage>();
+    const pendingCountBySession = new Map<string, number>();
+    const pendingCountClosed = new Set<string>();
 
     for (const row of messageRows ?? []) {
       const message = this.toInboxMessage(row);
 
       if (!latestBySession.has(message.sessionId)) {
         latestBySession.set(message.sessionId, message);
+      }
+
+      if (pendingCountClosed.has(message.sessionId)) {
+        continue;
+      }
+
+      if (message.authorType === 'customer') {
+        pendingCountBySession.set(
+          message.sessionId,
+          (pendingCountBySession.get(message.sessionId) ?? 0) + 1,
+        );
+      } else {
+        pendingCountClosed.add(message.sessionId);
       }
     }
 
@@ -1256,6 +1272,7 @@ export class ConversationMemoryService {
         ...session,
         contact: contactsByPhone.get(session.customerPhone) ?? null,
         lastMessage: latestBySession.get(session.id) ?? null,
+        pendingCount: pendingCountBySession.get(session.id) ?? 0,
       })),
     };
   }

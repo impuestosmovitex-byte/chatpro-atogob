@@ -2085,3 +2085,43 @@ h2 {
     flex-basis: 58px;
   }
 }
+
+
+/* UX-1B: contador de mensajes pendientes */
+.conversation-bottomline {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.conversation-bottomline .conversation-assignment {
+  min-width: 0;
+}
+
+.conversation-pending-count {
+  min-width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 6px;
+  color: #ffffff;
+  background: #25a866;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.conversation-row.has-pending .conversation-topline strong {
+  color: #18202a;
+  font-weight: 900;
+}
+
+.conversation-row.has-pending .conversation-preview {
+  color: #2f3945;
+  font-weight: 800;
+}

@@ -46,6 +46,7 @@ type ConversationSession = {
 type InboxSession = ConversationSession & {
   contact?: Contact | null;
   lastMessage: InboxMessage | null;
+  pendingCount: number;
 };
 
 type QuickReply = {
@@ -2461,7 +2462,7 @@ export default function Home() {
                     type="button"
                     className={`conversation-row status-${session.attentionStatus} ${
                       selected?.session.id === session.id ? "selected" : ""
-                    }`}
+                    } ${session.pendingCount > 0 ? "has-pending" : ""}`}
                     onClick={() => void openConversation(session.id)}
                   >
                     <span className="avatar" aria-hidden="true">
@@ -2481,14 +2482,26 @@ export default function Home() {
                         {session.lastMessage?.message || "Sin mensajes todavía"}
                       </span>
 
-                      <span
-                        className={`conversation-assignment ${session.attentionStatus}`}
-                      >
+                      <span className="conversation-bottomline">
                         <span
-                          className="conversation-status-dot"
-                          aria-hidden="true"
-                        />
-                        {assignmentLabel}
+                          className={`conversation-assignment ${session.attentionStatus}`}
+                        >
+                          <span
+                            className="conversation-status-dot"
+                            aria-hidden="true"
+                          />
+                          {assignmentLabel}
+                        </span>
+
+                        {session.pendingCount > 0 ? (
+                          <span
+                            className="conversation-pending-count"
+                            aria-label={`${session.pendingCount} mensajes pendientes`}
+                            title={`${session.pendingCount} mensajes pendientes`}
+                          >
+                            {session.pendingCount > 99 ? "99+" : session.pendingCount}
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                   </button>
