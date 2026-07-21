@@ -1272,3 +1272,81 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
     max-height: 420px;
   }
 }
+
+/* DESKTOP-INBOX-FIT-V1 — Bandeja ajustada a la altura visible */
+@media (min-width: 851px) {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .chatpro-shell {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace {
+    height: 100dvh;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .workspace-header,
+  .channel-tabs,
+  .error-banner,
+  .success-banner {
+    flex: 0 0 auto;
+  }
+
+  .inbox-layout {
+    height: auto;
+    min-height: 0;
+    max-height: 100%;
+    flex: 1 1 auto;
+  }
+
+  .conversation-list-panel,
+  .chat-panel,
+  .context-panel {
+    min-height: 0;
+  }
+
+  .conversation-list-panel {
+    overflow: hidden;
+  }
+
+  .conversation-list {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .chat-panel {
+    overflow: hidden;
+  }
+
+  .chat-header,
+  .reply-box,
+  .reply-disabled {
+    flex: 0 0 auto;
+  }
+
+  .message-feed {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .context-panel {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+/* END DESKTOP-INBOX-FIT-V1 */
