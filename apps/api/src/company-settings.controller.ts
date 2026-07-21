@@ -67,7 +67,7 @@ function optionalText(value: unknown): string | undefined {
 
 function cleanText(value: unknown): string {
   return typeof value === 'string'
-    ? value.trim().slice(0, 6000)
+    ? value.trim().slice(0, 30000)
     : '';
 }
 
