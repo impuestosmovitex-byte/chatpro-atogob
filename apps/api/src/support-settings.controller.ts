@@ -42,6 +42,8 @@ export class SupportSettingsController {
           'outside_hours_message',
           'advisors_can_take_ai',
           'ai_take_after_minutes',
+          'ai_auto_archive_enabled',
+          'ai_auto_archive_hours',
         ].join(','),
       )
       .eq('company_id', company.id)
@@ -58,6 +60,8 @@ export class SupportSettingsController {
       outside_hours_message?: string | null;
       advisors_can_take_ai?: boolean | null;
       ai_take_after_minutes?: number | null;
+      ai_auto_archive_enabled?: boolean | null;
+      ai_auto_archive_hours?: number | null;
     } | null;
 
     const { data: hours, error: hoursError } = await client
@@ -88,6 +92,10 @@ export class SupportSettingsController {
           settings?.advisors_can_take_ai === true,
         aiTakeAfterMinutes:
           settings?.ai_take_after_minutes ?? 60,
+        aiAutoArchiveEnabled:
+          settings?.ai_auto_archive_enabled !== false,
+        aiAutoArchiveHours:
+          settings?.ai_auto_archive_hours ?? 12,
         hours: DAYS.map((day) => {
           const item: any = hoursByDay.get(day.dayOfWeek);
 
@@ -140,6 +148,20 @@ export class SupportSettingsController {
       );
     }
 
+    const aiAutoArchiveHours = Number(
+      body.aiAutoArchiveHours ?? 12,
+    );
+
+    if (
+      !Number.isInteger(aiAutoArchiveHours) ||
+      aiAutoArchiveHours < 1 ||
+      aiAutoArchiveHours > 720
+    ) {
+      throw new BadRequestException(
+        'Las horas para archivar conversaciones de IA deben estar entre 1 y 720.',
+      );
+    }
+
     const rows = hours.map((item: any) => {
       const dayOfWeek = Number(item.dayOfWeek);
       const startTime = String(item.startTime ?? '');
@@ -183,6 +205,9 @@ export class SupportSettingsController {
           advisors_can_take_ai:
             body.advisorsCanTakeAi === true,
           ai_take_after_minutes: aiTakeAfterMinutes,
+          ai_auto_archive_enabled:
+            body.aiAutoArchiveEnabled !== false,
+          ai_auto_archive_hours: aiAutoArchiveHours,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'company_id' },

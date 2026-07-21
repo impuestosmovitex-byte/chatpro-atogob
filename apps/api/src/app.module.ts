@@ -57,6 +57,7 @@ import { WhatsappTemplateService } from './whatsapp-template.service';
 import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
 import { PushNotificationController } from './push-notification.controller';
 import { PushNotificationService } from './push-notification.service';
+import { AiConversationArchiveService } from './ai-conversation-archive.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -119,6 +120,7 @@ import { PushNotificationService } from './push-notification.service';
     WhatsappTemplateService,
     WhatsappTemplateExecutionService,
     PushNotificationService,
+    AiConversationArchiveService,
   ],
 })
 export class AppModule {}
