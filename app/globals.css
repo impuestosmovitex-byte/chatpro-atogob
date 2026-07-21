@@ -1350,3 +1350,33 @@ h2 { font-size: 16px; letter-spacing: -.2px; }
   }
 }
 /* END DESKTOP-INBOX-FIT-V1 */
+
+
+/* CHATPRO_SCROLL_FIX_START */
+@media (min-width: 851px) {
+  html,
+  body {
+    height: auto !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  .chatpro-shell {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow: visible !important;
+  }
+
+  .workspace {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow: visible !important;
+  }
+
+  .inbox-layout {
+    min-height: 520px !important;
+  }
+}
+/* CHATPRO_SCROLL_FIX_END */
+
