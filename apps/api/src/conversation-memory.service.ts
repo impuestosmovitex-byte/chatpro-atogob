@@ -19,6 +19,8 @@ const SESSION_FIELDS = [
   'stage',
   'context',
   'last_message_at',
+  'pending_count',
+  'pending_since',
   'attention_status',
   'assigned_to_user_id',
   'assigned_to_name',
@@ -42,6 +44,8 @@ export type ConversationSession = {
   stage: string;
   context: JsonObject;
   lastMessageAt: string;
+  pendingCount: number;
+  pendingSince: string | null;
   attentionStatus: AttentionStatus;
   assignedToUserId: string | null;
   assignedToName: string | null;
@@ -75,7 +79,6 @@ export type InboxConversation = {
 
 export type InboxSessionSummary = ConversationSession & {
   lastMessage: InboxMessage | null;
-  pendingCount: number;
 };
 
 
@@ -1237,27 +1240,12 @@ export class ConversationMemoryService {
     }
 
     const latestBySession = new Map<string, InboxMessage>();
-    const pendingCountBySession = new Map<string, number>();
-    const pendingCountClosed = new Set<string>();
 
     for (const row of messageRows ?? []) {
       const message = this.toInboxMessage(row);
 
       if (!latestBySession.has(message.sessionId)) {
         latestBySession.set(message.sessionId, message);
-      }
-
-      if (pendingCountClosed.has(message.sessionId)) {
-        continue;
-      }
-
-      if (message.authorType === 'customer') {
-        pendingCountBySession.set(
-          message.sessionId,
-          (pendingCountBySession.get(message.sessionId) ?? 0) + 1,
-        );
-      } else {
-        pendingCountClosed.add(message.sessionId);
       }
     }
 
@@ -1272,7 +1260,6 @@ export class ConversationMemoryService {
         ...session,
         contact: contactsByPhone.get(session.customerPhone) ?? null,
         lastMessage: latestBySession.get(session.id) ?? null,
-        pendingCount: pendingCountBySession.get(session.id) ?? 0,
       })),
     };
   }
@@ -2005,6 +1992,15 @@ export class ConversationMemoryService {
         row.last_message_at.trim()
           ? row.last_message_at
           : new Date(0).toISOString(),
+      pendingCount:
+        typeof row.pending_count === 'number' &&
+        Number.isFinite(row.pending_count)
+          ? Math.max(0, Math.trunc(row.pending_count))
+          : 0,
+      pendingSince:
+        typeof row.pending_since === 'string' && row.pending_since.trim()
+          ? row.pending_since
+          : null,
       attentionStatus: this.toAttentionStatus(
         row.attention_status,
       ),
