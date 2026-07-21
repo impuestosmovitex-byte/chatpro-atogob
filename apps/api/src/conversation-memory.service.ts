@@ -1456,6 +1456,7 @@ export class ConversationMemoryService {
   async getInboxConversation(
     companySlug: string,
     sessionId: string,
+    afterCreatedAt = '',
   ): Promise<InboxConversation> {
     const profile = await this.getCompanyProfile(companySlug);
     const id = sessionId.trim();
@@ -1482,10 +1483,22 @@ export class ConversationMemoryService {
       throw new Error('La conversación no existe para esta empresa.');
     }
 
-    const { data: messageRows, error: messageError } = await client
+    const requestedAfter = afterCreatedAt.trim();
+    const validAfter =
+      requestedAfter && !Number.isNaN(Date.parse(requestedAfter))
+        ? requestedAfter
+        : '';
+
+    let messagesQuery = client
       .from('conversations')
       .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at')
-      .eq('session_id', id)
+      .eq('session_id', id);
+
+    if (validAfter) {
+      messagesQuery = messagesQuery.gte('created_at', validAfter);
+    }
+
+    const { data: messageRows, error: messageError } = await messagesQuery
       .order('created_at', { ascending: true });
 
     if (messageError) {

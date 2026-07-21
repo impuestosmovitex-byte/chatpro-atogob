@@ -1019,7 +1019,11 @@ export default function Home() {
     }
   }
 
-  async function openConversation(sessionId: string, silent = false) {
+  async function openConversation(
+    sessionId: string,
+    silent = false,
+    afterCreatedAt = "",
+  ) {
     const requestId = ++conversationRequestRef.current;
 
     if (!silent) {
@@ -1027,10 +1031,15 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch(
-        `/api/inbox?sessionId=${encodeURIComponent(sessionId)}`,
-        { cache: "no-store" },
-      );
+      const params = new URLSearchParams({ sessionId });
+
+      if (silent && afterCreatedAt) {
+        params.set("after", afterCreatedAt);
+      }
+
+      const response = await fetch(`/api/inbox?${params.toString()}`, {
+        cache: "no-store",
+      });
       const data = (await readJson(response)) as ApiConversation;
 
       if (requestId !== conversationRequestRef.current) {
@@ -1041,15 +1050,61 @@ export default function Home() {
         throw new Error(data.error || "No se pudo abrir la conversación.");
       }
 
-      setSelected({
-        company: data.company,
-        session: data.session,
-        contact: data.contact ?? null,
-        messages: data.messages ?? [],
-        historyRestricted: data.historyRestricted === true,
-      });
+      const company = data.company;
+      const session = data.session;
 
-      if (!silent) {
+      if (silent) {
+        setSelected((current) => {
+          if (!current || current.session.id !== sessionId) {
+            return current;
+          }
+
+          const combined = [...current.messages, ...(data.messages ?? [])];
+          const uniqueMessages: InboxMessage[] = [];
+          const seen = new Set<string>();
+
+          for (const item of combined) {
+            const key =
+              item.id ??
+              `${item.sessionId}-${item.createdAt ?? ""}-${item.authorType}-${item.message}`;
+
+            if (seen.has(key)) {
+              continue;
+            }
+
+            seen.add(key);
+            uniqueMessages.push(item);
+          }
+
+          uniqueMessages.sort((first, second) => {
+            const firstTime = first.createdAt
+              ? new Date(first.createdAt).getTime()
+              : 0;
+            const secondTime = second.createdAt
+              ? new Date(second.createdAt).getTime()
+              : 0;
+
+            return firstTime - secondTime;
+          });
+
+          return {
+            ...current,
+            company,
+            session,
+            contact: data.contact ?? current.contact,
+            messages: uniqueMessages,
+            historyRestricted: data.historyRestricted === true,
+          };
+        });
+      } else {
+        setSelected({
+          company,
+          session,
+          contact: data.contact ?? null,
+          messages: data.messages ?? [],
+          historyRestricted: data.historyRestricted === true,
+        });
+
         setMessage("");
         setQuickReplyOpen(false);
         setActionMessage("");
@@ -1702,6 +1757,9 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [filter]);
 
+  const selectedLastMessageAt =
+    selected?.messages[selected.messages.length - 1]?.createdAt ?? "";
+
   useEffect(() => {
     const sessionId = selected?.session.id;
     const isInternal = selected?.session.context?.internal_test === true;
@@ -1712,12 +1770,16 @@ export default function Home() {
 
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        void openConversation(sessionId, true);
+        void openConversation(sessionId, true, selectedLastMessageAt);
       }
     }, 5000);
 
     return () => window.clearInterval(timer);
-  }, [selected?.session.id, selected?.session.context?.internal_test]);
+  }, [
+    selected?.session.id,
+    selected?.session.context?.internal_test,
+    selectedLastMessageAt,
+  ]);
 
   const isInternalTest = Boolean(
     selected?.session.context?.internal_test === true,

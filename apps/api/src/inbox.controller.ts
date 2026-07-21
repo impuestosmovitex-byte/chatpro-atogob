@@ -135,6 +135,7 @@ export class InboxController {
     @Headers('x-chatpro-company-id') headerCompanyId = '',
     @Headers('x-chatpro-role-key') roleKey = '',
     @Query('company') company = '',
+    @Query('after') after = '',
     @Param('sessionId') sessionId = '',
   ) {
     this.authorize(key);
@@ -143,6 +144,7 @@ export class InboxController {
       await this.conversationMemoryService.getInboxConversation(
         this.requiredCompany(company),
         sessionId,
+        after,
       );
     const actor = await this.actor(
       sessionType,

@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
     const { apiBase, inboxKey } = config();
     const company = session.companySlug;
     const sessionId = request.nextUrl.searchParams.get('sessionId')?.trim() ?? '';
+    const after = request.nextUrl.searchParams.get('after')?.trim() ?? '';
     const mode = request.nextUrl.searchParams.get('mode')?.trim() ?? '';
     const status = request.nextUrl.searchParams.get('status')?.trim() ?? 'all';
     const limit = request.nextUrl.searchParams.get('limit')?.trim() ?? '60';
@@ -89,6 +90,10 @@ export async function GET(request: NextRequest) {
           : `${apiBase}/inbox`,
     );
     target.searchParams.set('company', company);
+
+    if (sessionId && after) {
+      target.searchParams.set('after', after);
+    }
 
     if (!sessionId && mode !== 'transfer-targets') {
       target.searchParams.set('status', status);
