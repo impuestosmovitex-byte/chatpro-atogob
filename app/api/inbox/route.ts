@@ -80,7 +80,9 @@ export async function GET(request: NextRequest) {
     const after = request.nextUrl.searchParams.get('after')?.trim() ?? '';
     const mode = request.nextUrl.searchParams.get('mode')?.trim() ?? '';
     const status = request.nextUrl.searchParams.get('status')?.trim() ?? 'all';
-    const limit = request.nextUrl.searchParams.get('limit')?.trim() ?? '60';
+    const limit = request.nextUrl.searchParams.get('limit')?.trim() ?? '20';
+    const offset = request.nextUrl.searchParams.get('offset')?.trim() ?? '0';
+    const search = request.nextUrl.searchParams.get('search')?.trim() ?? '';
 
     const target = new URL(
       mode === 'transfer-targets'
@@ -98,6 +100,11 @@ export async function GET(request: NextRequest) {
     if (!sessionId && mode !== 'transfer-targets') {
       target.searchParams.set('status', status);
       target.searchParams.set('limit', limit);
+      target.searchParams.set('offset', offset);
+
+      if (search) {
+        target.searchParams.set('search', search);
+      }
     }
 
     const response = await fetch(target, {

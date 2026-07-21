@@ -2125,3 +2125,34 @@ h2 {
   color: #2f3945;
   font-weight: 800;
 }
+
+
+/* BLOQUE 1B: paginación de conversaciones */
+.conversation-load-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.conversation-load-more {
+  width: 100%;
+  border: 1px solid #cfe2d6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #176b3f;
+  background: #f1faf5;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.conversation-load-more:hover:not(:disabled) {
+  background: #e5f6ec;
+}
+
+.conversation-load-more:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}

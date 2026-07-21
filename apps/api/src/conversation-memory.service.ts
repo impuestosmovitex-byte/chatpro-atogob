@@ -1187,49 +1187,291 @@ export class ConversationMemoryService {
 
   async listInboxSessions(
     companySlug: string,
-    status: string = 'all',
-    limit: number = 60,
+    options: {
+      status?: string;
+      limit?: number;
+      offset?: number;
+      search?: string;
+      visibility?: {
+        isFullAccess: boolean;
+        userId: string;
+        canViewOwn: boolean;
+        canViewAi: boolean;
+        canViewWaiting: boolean;
+        canViewTeam: boolean;
+        canTake: boolean;
+        advisorsCanTakeAi: boolean;
+        aiTakeAfterMinutes: number;
+      };
+    } = {},
   ): Promise<{
     company: { id: string; slug: string; name: string };
     sessions: InboxSessionSummary[];
+    hasMore: boolean;
+    nextOffset: number;
+    pendingTotal: number;
   }> {
     const profile = await this.getCompanyProfile(companySlug);
-    const max = Math.min(Math.max(Math.trunc(limit) || 60, 1), 150);
-    const normalizedStatus = this.normalizeStatusFilter(status);
+    const limit = Math.min(
+      Math.max(Math.trunc(options.limit ?? 20) || 20, 1),
+      50,
+    );
+    const offset = Math.max(Math.trunc(options.offset ?? 0) || 0, 0);
+    const searchText = options.search?.trim() ?? '';
+    const normalizedStatus = this.normalizeStatusFilter(options.status ?? 'all');
+    const visibility = options.visibility;
     const client = this.supabaseService.getClient();
 
-    let query = client
-      .from('conversation_sessions')
-      .select(SESSION_FIELDS)
-      .eq('company_id', profile.id)
-      .order('last_message_at', { ascending: false })
-      .limit(max);
+    const matchedSessionIds = new Set<string>();
 
-    if (normalizedStatus) {
-      query = query.eq('attention_status', normalizedStatus);
+    if (searchText) {
+      const normalizedPhoneSearch = this.normalizePhone(searchText);
+
+      if (normalizedPhoneSearch) {
+        const { data: phoneRows, error: phoneError } = await client
+          .from('conversation_sessions')
+          .select('id')
+          .eq('company_id', profile.id)
+          .ilike('customer_phone', `%${normalizedPhoneSearch}%`)
+          .limit(500);
+
+        if (phoneError) {
+          throw new Error(
+            `No se pudieron buscar conversaciones por teléfono: ${phoneError.message}`,
+          );
+        }
+
+        for (const row of phoneRows ?? []) {
+          if (typeof row.id === 'string') {
+            matchedSessionIds.add(row.id);
+          }
+        }
+      }
+
+      const { data: contactRows, error: contactError } = await client
+        .from('contacts')
+        .select('phone')
+        .eq('company_id', profile.id)
+        .ilike('display_name', `%${searchText}%`)
+        .limit(500);
+
+      if (contactError) {
+        throw new Error(
+          `No se pudieron buscar conversaciones por nombre: ${contactError.message}`,
+        );
+      }
+
+      const contactPhones = (contactRows ?? [])
+        .map((row) => row.phone)
+        .filter(
+          (phone): phone is string =>
+            typeof phone === 'string' && Boolean(phone.trim()),
+        );
+
+      if (contactPhones.length) {
+        const { data: contactSessionRows, error: contactSessionError } =
+          await client
+            .from('conversation_sessions')
+            .select('id')
+            .eq('company_id', profile.id)
+            .in('customer_phone', contactPhones)
+            .limit(500);
+
+        if (contactSessionError) {
+          throw new Error(
+            `No se pudieron relacionar los contactos encontrados: ${contactSessionError.message}`,
+          );
+        }
+
+        for (const row of contactSessionRows ?? []) {
+          if (typeof row.id === 'string') {
+            matchedSessionIds.add(row.id);
+          }
+        }
+      }
+
+      const { data: messageRows, error: messageSearchError } = await client
+        .from('conversations')
+        .select('session_id')
+        .eq('company_id', profile.id)
+        .ilike('message', `%${searchText}%`)
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      if (messageSearchError) {
+        throw new Error(
+          `No se pudieron buscar conversaciones por mensaje: ${messageSearchError.message}`,
+        );
+      }
+
+      for (const row of messageRows ?? []) {
+        if (typeof row.session_id === 'string') {
+          matchedSessionIds.add(row.session_id);
+        }
+      }
+
+      if (!matchedSessionIds.size) {
+        return {
+          company: { id: profile.id, slug: profile.slug, name: profile.name },
+          sessions: [],
+          hasMore: false,
+          nextOffset: offset,
+          pendingTotal: 0,
+        };
+      }
     }
 
-    const { data: sessionRows, error: sessionError } = await query;
+    const applyCommonFilters = (query: any) => {
+      let filtered = query.eq('company_id', profile.id);
 
-    if (sessionError) {
+      if (normalizedStatus) {
+        filtered = filtered.eq('attention_status', normalizedStatus);
+      }
+
+      if (searchText) {
+        filtered = filtered.in('id', Array.from(matchedSessionIds));
+      }
+
+      if (visibility && !visibility.isFullAccess) {
+        const conditions: string[] = [];
+
+        if (visibility.canViewOwn && visibility.userId) {
+          conditions.push(
+            `assigned_to_user_id.eq.${visibility.userId}`,
+          );
+        }
+
+        if (visibility.canViewAi) {
+          conditions.push('attention_status.eq.ai');
+        }
+
+        if (visibility.canViewWaiting) {
+          conditions.push('attention_status.eq.waiting');
+        }
+
+        if (visibility.canViewTeam) {
+          conditions.push('attention_status.eq.human');
+        }
+
+        if (visibility.canTake) {
+          conditions.push('attention_status.eq.waiting');
+
+          if (visibility.advisorsCanTakeAi) {
+            const cutoff = new Date(
+              Date.now() -
+                Math.max(0, visibility.aiTakeAfterMinutes) * 60_000,
+            ).toISOString();
+
+            conditions.push(
+              `and(attention_status.eq.ai,last_message_at.lte.${cutoff})`,
+            );
+          }
+        }
+
+        if (!conditions.length) {
+          filtered = filtered.eq('id', '__no_visible_sessions__');
+        } else {
+          filtered = filtered.or(conditions.join(','));
+        }
+      }
+
+      return filtered;
+    };
+
+    let pendingQuery = applyCommonFilters(
+      client
+        .from('conversation_sessions')
+        .select(SESSION_FIELDS)
+        .gt('pending_count', 0),
+    )
+      .order('pending_since', { ascending: true, nullsFirst: false })
+      .order('last_message_at', { ascending: true });
+
+    const { data: pendingRows, error: pendingError } = await pendingQuery;
+
+    if (pendingError) {
       throw new Error(
-        `No se pudieron consultar las conversaciones: ${sessionError.message}`,
+        `No se pudieron consultar las conversaciones pendientes: ${pendingError.message}`,
       );
     }
 
-    const sessions = (sessionRows ?? []).map((row) => this.toSession(row));
+    const pendingSessions = (pendingRows ?? []).map((row) =>
+      this.toSession(row),
+    );
 
-    if (!sessions.length) {
+    const recentPageSize =
+      offset === 0
+        ? Math.max(0, limit - pendingSessions.length)
+        : limit;
+
+    let recentSessions: ConversationSession[] = [];
+    let hasMore = false;
+
+    if (recentPageSize > 0) {
+      const recentQuery = applyCommonFilters(
+        client
+          .from('conversation_sessions')
+          .select(SESSION_FIELDS)
+          .eq('pending_count', 0),
+      )
+        .order('last_message_at', { ascending: false })
+        .range(offset, offset + recentPageSize);
+
+      const { data: recentRows, error: recentError } = await recentQuery;
+
+      if (recentError) {
+        throw new Error(
+          `No se pudieron consultar las conversaciones recientes: ${recentError.message}`,
+        );
+      }
+
+      const recentCandidates = (recentRows ?? []).map((row) =>
+        this.toSession(row),
+      );
+
+      hasMore = recentCandidates.length > recentPageSize;
+      recentSessions = recentCandidates.slice(0, recentPageSize);
+    } else {
+      const countQuery = applyCommonFilters(
+        client
+          .from('conversation_sessions')
+          .select('id', { count: 'exact', head: true })
+          .eq('pending_count', 0),
+      );
+
+      const { count, error: countError } = await countQuery;
+
+      if (countError) {
+        throw new Error(
+          `No se pudo verificar si existen más conversaciones: ${countError.message}`,
+        );
+      }
+
+      hasMore = (count ?? 0) > offset;
+    }
+
+    const sessions = [...pendingSessions, ...recentSessions];
+    const uniqueSessions = Array.from(
+      new Map(sessions.map((session) => [session.id, session])).values(),
+    );
+
+    if (!uniqueSessions.length) {
       return {
         company: { id: profile.id, slug: profile.slug, name: profile.name },
         sessions: [],
+        hasMore,
+        nextOffset: offset + recentSessions.length,
+        pendingTotal: pendingSessions.length,
       };
     }
 
-    const sessionIds = sessions.map((session) => session.id);
+    const sessionIds = uniqueSessions.map((session) => session.id);
+
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at')
+      .select(
+        'id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at',
+      )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false });
 
@@ -1251,16 +1493,19 @@ export class ConversationMemoryService {
 
     const contactsByPhone = await this.getContactsByPhones(
       profile.id,
-      sessions.map((session) => session.customerPhone),
+      uniqueSessions.map((session) => session.customerPhone),
     );
 
     return {
       company: { id: profile.id, slug: profile.slug, name: profile.name },
-      sessions: sessions.map((session) => ({
+      sessions: uniqueSessions.map((session) => ({
         ...session,
         contact: contactsByPhone.get(session.customerPhone) ?? null,
         lastMessage: latestBySession.get(session.id) ?? null,
       })),
+      hasMore,
+      nextOffset: offset + recentSessions.length,
+      pendingTotal: pendingSessions.length,
     };
   }
 

@@ -34,6 +34,8 @@ type ConversationSession = {
   stage: string;
   context: Record<string, unknown>;
   lastMessageAt: string;
+  pendingCount: number;
+  pendingSince: string | null;
   attentionStatus: AttentionStatus;
   assignedToUserId: string | null;
   assignedToName: string | null;
@@ -46,7 +48,6 @@ type ConversationSession = {
 type InboxSession = ConversationSession & {
   contact?: Contact | null;
   lastMessage: InboxMessage | null;
-  pendingCount: number;
 };
 
 type QuickReply = {
@@ -152,6 +153,9 @@ type ApiList = {
   error?: string;
   company?: { id: string; slug: string; name: string };
   sessions?: InboxSession[];
+  hasMore?: boolean;
+  nextOffset?: number;
+  pendingTotal?: number;
 };
 
 type ApiConversation = {
@@ -597,8 +601,12 @@ export default function Home() {
   const [canSendAudio, setCanSendAudio] = useState(false);
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [mobileSearch, setMobileSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [sessions, setSessions] = useState<InboxSession[]>([]);
+  const [hasMoreSessions, setHasMoreSessions] = useState(false);
+  const [nextSessionsOffset, setNextSessionsOffset] = useState(0);
+  const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
   const [selected, setSelected] = useState<InboxConversation | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [presence, setPresence] = useState<AdvisorPresence | null>(null);
@@ -654,6 +662,8 @@ export default function Home() {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const conversationRequestRef = useRef(0);
+  const nextSessionsOffsetRef = useRef(0);
+  const pendingSessionsTotalRef = useRef(0);
 
   useEffect(() => {
     setMobileActionsOpen(false);
@@ -808,11 +818,43 @@ export default function Home() {
     return response.json();
   }
 
-  async function loadList(showSpinner = true) {
-    if (showSpinner) setLoadingList(true);
+  async function loadList(
+    showSpinner = true,
+    options: {
+      append?: boolean;
+      reset?: boolean;
+    } = {},
+  ) {
+    const append = options.append === true;
+    const reset = options.reset === true;
+
+    if (append) {
+      setLoadingMoreSessions(true);
+    } else if (showSpinner) {
+      setLoadingList(true);
+    }
 
     try {
-      const response = await fetch(`/api/inbox?status=${filter}&limit=80`, {
+      const loadedOffset = nextSessionsOffsetRef.current;
+      const loadedPending = pendingSessionsTotalRef.current;
+      const requestedOffset = append ? loadedOffset : 0;
+      const requestedLimit = append
+        ? 20
+        : reset
+          ? 20
+          : Math.max(loadedOffset + loadedPending, 20);
+
+      const params = new URLSearchParams({
+        status: filter,
+        limit: String(requestedLimit),
+        offset: String(requestedOffset),
+      });
+
+      if (debouncedSearch.trim()) {
+        params.set("search", debouncedSearch.trim());
+      }
+
+      const response = await fetch(`/api/inbox?${params.toString()}`, {
         cache: "no-store",
       });
       const data = (await readJson(response)) as ApiList;
@@ -821,7 +863,59 @@ export default function Home() {
         throw new Error(data.error || "No se pudo cargar la bandeja.");
       }
 
-      setSessions(data.sessions ?? []);
+      const incoming = data.sessions ?? [];
+
+      if (append) {
+        setSessions((current) => {
+          const merged = new Map(
+            current.map((session) => [session.id, session]),
+          );
+
+          for (const session of incoming) {
+            merged.set(session.id, session);
+          }
+
+          return Array.from(merged.values()).sort((a, b) => {
+            const aPending = a.pendingCount > 0;
+            const bPending = b.pendingCount > 0;
+
+            if (aPending !== bPending) {
+              return aPending ? -1 : 1;
+            }
+
+            if (aPending && bPending) {
+              const aSince = new Date(
+                a.pendingSince ?? a.lastMessageAt,
+              ).getTime();
+              const bSince = new Date(
+                b.pendingSince ?? b.lastMessageAt,
+              ).getTime();
+
+              return aSince - bSince;
+            }
+
+            return (
+              new Date(b.lastMessageAt).getTime() -
+              new Date(a.lastMessageAt).getTime()
+            );
+          });
+        });
+      } else {
+        setSessions(incoming);
+      }
+
+      setHasMoreSessions(data.hasMore === true);
+      const resolvedNextOffset = Math.max(
+        0,
+        Number(data.nextOffset) || 0,
+      );
+
+      nextSessionsOffsetRef.current = resolvedNextOffset;
+      pendingSessionsTotalRef.current = Math.max(
+        0,
+        Number(data.pendingTotal) || 0,
+      );
+      setNextSessionsOffset(resolvedNextOffset);
       setError("");
     } catch (caught) {
       setError(
@@ -830,7 +924,11 @@ export default function Home() {
           : "No se pudo cargar la bandeja.",
       );
     } finally {
-      if (showSpinner) setLoadingList(false);
+      if (append) {
+        setLoadingMoreSessions(false);
+      } else if (showSpinner) {
+        setLoadingList(false);
+      }
     }
   }
 
@@ -1765,21 +1863,37 @@ export default function Home() {
   }, [audioPreviewUrl]);
 
   useEffect(() => {
-    void loadList();
     void loadQuickReplies();
     void loadIdentityAndPresence();
 
     const targetSession = new URLSearchParams(window.location.search).get(
       "session",
     );
+
     if (targetSession) {
       void openConversation(targetSession);
     }
+  }, []);
 
-    const timer = window.setInterval(() => void loadList(false), 12000);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(mobileSearch.trim());
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [mobileSearch]);
+
+  useEffect(() => {
+    void loadList(true, { reset: true });
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadList(false);
+      }
+    }, 12000);
 
     return () => window.clearInterval(timer);
-  }, [filter]);
+  }, [filter, debouncedSearch]);
 
   const selectedLastMessageAt =
     selected?.messages[selected.messages.length - 1]?.createdAt ?? "";
@@ -2011,26 +2125,7 @@ export default function Home() {
     setQuickReplyOpen(false);
   }
 
-  const visibleSessions = useMemo(() => {
-    const query = mobileSearch.trim().toLowerCase();
-
-    if (!query) return sessions;
-
-    return sessions.filter((session) => {
-      const label = customerLabel(
-        session.customerPhone,
-        session.contact,
-      ).toLowerCase();
-      const phone = session.customerPhone.toLowerCase();
-      const preview = session.lastMessage?.message?.toLowerCase() ?? "";
-
-      return (
-        label.includes(query) ||
-        phone.includes(query) ||
-        preview.includes(query)
-      );
-    });
-  }, [mobileSearch, sessions]);
+  const visibleSessions = sessions;
 
   const selectedStatus = selected?.session.attentionStatus;
   const showTakeButton =
@@ -2399,7 +2494,7 @@ export default function Home() {
               <button
                 className="refresh-button"
                 type="button"
-                onClick={() => void loadList()}
+                onClick={() => void loadList(true, { reset: true })}
                 aria-label="Actualizar conversaciones"
                 title="Actualizar conversaciones"
               >
@@ -2507,6 +2602,25 @@ export default function Home() {
                   </button>
                 );
               })}
+
+              {hasMoreSessions ? (
+                <div className="conversation-load-more-wrap">
+                  <button
+                    className="conversation-load-more"
+                    type="button"
+                    disabled={loadingMoreSessions}
+                    onClick={() =>
+                      void loadList(false, {
+                        append: true,
+                      })
+                    }
+                  >
+                    {loadingMoreSessions
+                      ? "Cargando…"
+                      : "Cargar 20 conversaciones más"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </section>
 

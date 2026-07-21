@@ -60,24 +60,47 @@ export class InboxController {
     @Headers('x-chatpro-role-key') roleKey = '',
     @Query('company') company = '',
     @Query('status') status = 'all',
-    @Query('limit') limit = '60',
+    @Query('limit') limit = '20',
+    @Query('offset') offset = '0',
+    @Query('search') search = '',
   ) {
     this.authorize(key);
 
-    const payload = await this.conversationMemoryService.listInboxSessions(
-      this.requiredCompany(company),
-      status,
-      Number(limit),
-    );
+    const companySlug = this.requiredCompany(company);
+    const profile =
+      await this.conversationMemoryService.getCompanyProfile(companySlug);
+
     const actor = await this.actor(
       sessionType,
       userId,
       fullName,
       headerCompanyId,
       roleKey,
-      payload.company.id,
+      profile.id,
     );
-    const settings = await this.getAiTakeSettings(payload.company.id);
+
+    const settings = await this.getAiTakeSettings(profile.id);
+
+    const payload = await this.conversationMemoryService.listInboxSessions(
+      companySlug,
+      {
+        status,
+        limit: Number(limit),
+        offset: Number(offset),
+        search,
+        visibility: {
+          isFullAccess: actor.isFullAccess,
+          userId: actor.userId,
+          canViewOwn: actor.permissions.has('inbox.view_own'),
+          canViewAi: actor.permissions.has('inbox.view_ai'),
+          canViewWaiting: actor.permissions.has('inbox.view_waiting'),
+          canViewTeam: actor.permissions.has('inbox.view_team'),
+          canTake: actor.permissions.has('inbox.take'),
+          advisorsCanTakeAi: settings.advisorsCanTakeAi,
+          aiTakeAfterMinutes: settings.aiTakeAfterMinutes,
+        },
+      },
+    );
 
     const sessions = payload.sessions
       .filter((session) => !this.isInternalTestSession(session))
