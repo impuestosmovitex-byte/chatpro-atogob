@@ -213,6 +213,29 @@ function customerLabel(phone: string, contact?: Contact | null) {
   );
 }
 
+function customerInitials(phone: string, contact?: Contact | null) {
+  const name = contact?.displayName?.trim();
+
+  if (name) {
+    const words = name
+      .split(/\s+/)
+      .map((word) => word.trim())
+      .filter(Boolean);
+
+    if (words.length >= 2) {
+      return `${words[0][0]}${words[1][0]}`.toUpperCase();
+    }
+
+    if (words.length === 1) {
+      return words[0].slice(0, 2).toUpperCase();
+    }
+  }
+
+  const phoneDigits = phone.replace(/\D/g, "");
+
+  return phoneDigits.slice(-2) || "CP";
+}
+
 function compactTransferText(
   value: unknown,
   fallback: string,
@@ -2415,34 +2438,62 @@ export default function Home() {
                     : "Aún no hay chats en este filtro."}
                 </div>
               ) : null}
-              {visibleSessions.map((session) => (
-                <button
-                  key={session.id}
-                  type="button"
-                  className={`conversation-row ${selected?.session.id === session.id ? "selected" : ""}`}
-                  onClick={() => void openConversation(session.id)}
-                >
-                  <span className="avatar">
-                    {session.customerPhone.slice(-2) || "CP"}
-                  </span>
-                  <span className="conversation-summary">
-                    <span className="conversation-topline">
-                      <strong>
-                        {customerLabel(session.customerPhone, session.contact)}
-                      </strong>
-                      <time>{formatDate(session.lastMessageAt)}</time>
+              {visibleSessions.map((session) => {
+                const customerName = customerLabel(
+                  session.customerPhone,
+                  session.contact,
+                );
+
+                const assignmentLabel =
+                  session.attentionStatus === "ai"
+                    ? session.takeAvailable
+                      ? "IA inactiva · disponible"
+                      : "IA"
+                    : session.attentionStatus === "human"
+                      ? session.assignedToName || "Asesor"
+                      : session.attentionStatus === "waiting"
+                        ? "Sin asignar"
+                        : "Finalizado";
+
+                return (
+                  <button
+                    key={session.id}
+                    type="button"
+                    className={`conversation-row status-${session.attentionStatus} ${
+                      selected?.session.id === session.id ? "selected" : ""
+                    }`}
+                    onClick={() => void openConversation(session.id)}
+                  >
+                    <span className="avatar" aria-hidden="true">
+                      {customerInitials(
+                        session.customerPhone,
+                        session.contact,
+                      )}
                     </span>
-                    <span className="conversation-preview">
-                      {session.lastMessage?.message || "Sin mensajes todavía"}
+
+                    <span className="conversation-summary">
+                      <span className="conversation-topline">
+                        <strong title={customerName}>{customerName}</strong>
+                        <time>{formatDate(session.lastMessageAt)}</time>
+                      </span>
+
+                      <span className="conversation-preview">
+                        {session.lastMessage?.message || "Sin mensajes todavía"}
+                      </span>
+
+                      <span
+                        className={`conversation-assignment ${session.attentionStatus}`}
+                      >
+                        <span
+                          className="conversation-status-dot"
+                          aria-hidden="true"
+                        />
+                        {assignmentLabel}
+                      </span>
                     </span>
-                    <span className={`status-pill ${session.attentionStatus}`}>
-                      {session.attentionStatus === "ai" && session.takeAvailable
-                        ? "IA inactiva · disponible"
-                        : statusLabel[session.attentionStatus]}
-                    </span>
-                  </span>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </section>
 
