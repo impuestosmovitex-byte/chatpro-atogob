@@ -1119,6 +1119,7 @@ export class ChatAgentService {
         : '';
     const shippingCost =
       this.normalizeCopAmount(args.shipping_cost_cop);
+    const hasShippingCost = shippingCost !== '';
     const next: JsonObject = { ...existing };
 
     if (city) {
@@ -1126,15 +1127,16 @@ export class ChatAgentService {
         typeof existing.city === 'string'
           ? this.normalizeText(existing.city)
           : '';
+      const cityChanged =
+        Boolean(previousCity) &&
+        previousCity !== this.normalizeText(city);
 
       next.city = city;
 
-      if (
-        previousCity &&
-        previousCity !== this.normalizeText(city) &&
-        !shippingCost
-      ) {
+      if (cityChanged && !hasShippingCost) {
         delete next.shipping_cost_cop;
+        next.payment_instructions_sent = false;
+        next.checkout_instructions_sent = false;
       }
     }
 
@@ -1143,27 +1145,47 @@ export class ChatAgentService {
         typeof existing.payment_method === 'string'
           ? this.normalizeText(existing.payment_method)
           : '';
+      const paymentChanged =
+        Boolean(previousPayment) &&
+        previousPayment !== this.normalizeText(paymentMethod);
 
       next.payment_method = paymentMethod;
 
-      if (
-        previousPayment &&
-        previousPayment !== this.normalizeText(paymentMethod)
-      ) {
+      if (paymentChanged) {
+        if (!hasShippingCost) {
+          delete next.shipping_cost_cop;
+        }
+
         next.payment_instructions_sent = false;
+        next.checkout_instructions_sent = false;
       }
     }
 
-    if (shippingCost) {
+    if (hasShippingCost) {
       next.shipping_cost_cop = shippingCost;
     }
 
-    if (args.payment_instructions_sent === true) {
-      next.payment_instructions_sent = true;
+    if (typeof args.cart_confirmation_requested === 'boolean') {
+      next.cart_confirmation_requested =
+        args.cart_confirmation_requested;
     }
 
-    if (args.checkout_instructions_sent === true) {
-      next.checkout_instructions_sent = true;
+    if (typeof args.cart_confirmed === 'boolean') {
+      next.cart_confirmed = args.cart_confirmed;
+
+      if (args.cart_confirmed === true) {
+        next.cart_confirmation_requested = true;
+      }
+    }
+
+    if (typeof args.payment_instructions_sent === 'boolean') {
+      next.payment_instructions_sent =
+        args.payment_instructions_sent;
+    }
+
+    if (typeof args.checkout_instructions_sent === 'boolean') {
+      next.checkout_instructions_sent =
+        args.checkout_instructions_sent;
     }
 
     next.updated_at = new Date().toISOString();
@@ -1193,6 +1215,46 @@ export class ChatAgentService {
       ok: true,
       sale_context: this.readSaleContext(currentSession.context),
     };
+  }
+
+  private async invalidateSaleContextAfterCartChange(
+    session: ConversationSession,
+  ): Promise<void> {
+    const currentSession =
+      await this.conversationMemoryService.getSessionById(session.id);
+    const recoveryContext = currentSession.context.cart_recovery;
+    const isRecoveryCart =
+      Boolean(recoveryContext) &&
+      typeof recoveryContext === 'object' &&
+      !Array.isArray(recoveryContext);
+
+    if (isRecoveryCart) {
+      return;
+    }
+
+    const existing =
+      this.readSaleContext(currentSession.context);
+    const next: JsonObject = {
+      ...existing,
+      cart_confirmation_requested: false,
+      cart_confirmed: false,
+      payment_instructions_sent: false,
+      checkout_instructions_sent: false,
+      cart_changed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    delete next.shipping_cost_cop;
+
+    await this.conversationMemoryService.updateSession(
+      currentSession.id,
+      {
+        context: {
+          ...currentSession.context,
+          sale_context: next,
+        },
+      },
+    );
   }
 
   private async enrichCartToolResult(
@@ -1345,6 +1407,9 @@ export class ChatAgentService {
       '- session.context.previous_purchase_context es solo un respaldo histórico. No lo uses ni lo agregues al carrito salvo que el mensaje ACTUAL pida explícitamente retomar esa compra; antes de retomarla valida nuevamente productos, variantes, disponibilidad y condiciones reales.',
       '- Después de 72 horas sin actividad, solo consulta una compra anterior si el mensaje ACTUAL del cliente pregunta explícitamente por un pedido, guía, pago, cambio, garantía, devolución o algo que compró antes.',
       '- No llames lookup_order solo porque exista un pedido o dato antiguo en el historial o contexto. Debe existir una solicitud actual y clara del cliente sobre esa compra.',
+      '- Consultar un pedido es una pausa temporal y no borra la venta activa. Conserva selectedProduct, selectedVariant, cart y sale_context.',
+      '- Si después de consultar el pedido la persona retoma el producto que ya estaba revisando, usa get_selected_product y get_cart. No vuelvas a abrir la colección ni a pedir el enlace si el producto ya está identificado.',
+
         '- Si la persona dice que quiere comprar algo nuevo, “solo quiero”, “solo esa”, “solo la blusa”, “ese pedido ya lo pagué” o corrige que los productos anteriores no van, separa la compra nueva del pedido anterior. Usa get_cart y quita productos no solicitados con remove_cart_line antes de crear checkout.',
       '- Pregunta solo por el dato que falte. No repitas ciudad, color, talla o medio de pago ya informado.',
       '- Entrega la información de forma progresiva: responde primero al paso actual y no mezcles catálogo, variantes, envío, pago y checkout en un solo mensaje.',
@@ -1366,7 +1431,11 @@ export class ChatAgentService {
       '- No asumas que cualquier número enviado por el cliente es un pedido. Si el cliente envía solo un número sin contexto, pregunta brevemente si corresponde al número de pedido, guía o celular registrado en la compra antes de usar lookup_order.',
       '- Interpreta respuestas numéricas según el último menú que tú acabas de enviar. Si el último menú fue 1 Ventas / 2 Servicio al cliente, entonces 2 significa Servicio al cliente y debes mostrar el menú de servicio. Solo interpreta 2 como problema con pedido cuando el último menú enviado haya sido el menú de servicio al cliente con opciones 1 a 5.',
       '- La regla anterior solo aplica cuando NO hay contexto. Si tú acabas de pedir número de pedido, correo o celular para consultar una compra, usa ese dato con lookup_order. Si no aparece el pedido, pide otro dato concreto como correo o celular, o ofrece pasar a asesor; no vuelvas a preguntar lo mismo.',
-      '- Después de lookup_order, responde únicamente con datos reales encontrados. Si hay guía, comparte transportadora, número y link de seguimiento. Si no hay guía o el caso es complejo, explica con claridad y ofrece pasar a asesor.',
+      '- Después de lookup_order, responde únicamente con datos reales encontrados.',
+      '- Nunca muestres estados internos como FULFILLED, UNFULFILLED, PAID, PENDING, OPEN o CLOSED. Comunica su significado en lenguaje natural.',
+      '- Si hay guía, comparte transportadora, número, enlace e instrucciones para consultarla. No preguntes “¿quieres que lo rastree?” ni afirmes que puedes rastrear en tiempo real si la integración no entregó ese estado.',
+      '- Después de responder la consulta del pedido, conserva la venta que estaba en curso y espera el siguiente mensaje.',
+
       '- Si lookup_order devuelve next_action ask_alternate_identifier, no uses request_human_attention todavía. Pide un dato diferente y concreto: correo o celular si ya tienes pedido, o número de pedido si ya tienes celular/correo.',
       '- Si lookup_order devuelve next_action offer_human_attention o requires_human true, ofrece dejar el caso con un asesor. No pidas de nuevo el mismo dato y no inventes estado del pedido.',
       '- session.context.last_visual_reference contiene el análisis y la validación de la última imagen. Úsalo cuando el mensaje actual se refiera a “esta”, “esa”, “esto”, “la foto”, “la imagen”, “la de arriba” o pida precio, disponibilidad, talla o color.',
@@ -1381,15 +1450,24 @@ export class ChatAgentService {
       '- No preguntes “¿lo agrego?” después de que la persona ya confirmó color, talla o variante.',
         '- Antes de crear checkout, usa get_cart y verifica que el carrito contenga únicamente productos que la persona pidió para esta compra actual. Si hay productos de un pedido anterior, carrito recuperado viejo o artículos no solicitados, usa remove_cart_line para quitarlos antes de crear el checkout.',
         '- Si la persona corrige “solo quiero X” o “por qué me vas a cobrar todo”, acepta la corrección, deja solo los productos confirmados para la compra actual y vuelve a resumir el carrito.',
-      '- session.context.sale_context conserva ciudad, costo de envío, medio de pago y pasos ya enviados. Úsalo antes de volver a preguntar. Cuando la persona entregue o cambie uno de esos datos, llama remember_sale_context.',
-      '- Después de recibir la ciudad, informa el costo de envío correspondiente según la configuración y guárdalo con remember_sale_context antes de preguntar el medio de pago.',
-      '- Cuando debas preguntar cómo pagará, presenta todos los medios reales configurados. “Pago antes del despacho” no es un medio de pago.',
-      '- Cuando la persona seleccione un medio, habla únicamente de ese medio. Antes de responder usa get_cart para obtener productos, envío y total general.',
-      '- Antes de enviar datos de transferencia, tarjeta o crédito, muestra una sola vez producto, subtotal, envío y total general. No repitas el resumen si ya fue informado y nada cambió.',
-      '- No solicites dirección, nombre ni teléfono por WhatsApp para crear el envío. Esos datos se completan en el checkout.',
-      '- Antes de crear checkout, sigue las instrucciones de la empresa: pide solo los datos que falten, confirma ciudad, envío, medio de pago y resumen.',
-      '- Cuando producto, variante, ciudad y medio de pago estén listos, usa create_checkout_link también para transferencia, tarjeta o crédito, para que la persona complete los datos de entrega.',
-      '- Usa create_checkout_link únicamente cuando la persona confirme que desea finalizar la compra o ya seleccionó el medio de pago con la compra lista.',
+      '- session.context.sale_context conserva ciudad, costo de envío, medio de pago, confirmación del carrito y pasos enviados. Úsalo antes de volver a preguntar.',
+      '- Cuando la persona entregue o cambie ciudad o medio de pago, llama remember_sale_context.',
+      '- Antes de confirmar una tarifa, verifica la combinación real de empresa, ciudad, medio de pago y subtotal.',
+      '- Si todas las formas de pago tienen la misma tarifa para esa ciudad, informa el envío y pregunta cómo pagará.',
+      '- Si la tarifa cambia según el medio de pago, guarda la ciudad, no confirmes todavía un valor único y pregunta primero cómo pagará.',
+      '- Cuando seleccione el medio de pago, calcula y guarda la tarifa exacta correspondiente. El valor 0 significa envío gratis y es válido.',
+      '- Cuando el carrito cambie, vuelve a calcular envío y total. No reutilices una tarifa anterior.',
+      '- Presenta únicamente los medios habilitados para la ubicación y el pedido. “Pago antes del despacho” no es un medio de pago.',
+      '- Cuando seleccione un medio, habla únicamente de ese medio y usa get_cart antes de responder.',
+      '- Antes del checkout pregunta una sola vez si desea agregar otro producto, salvo que ya haya dicho “solo eso”, “finalizar”, “pagar” o algo equivalente.',
+      '- Cuando hagas esa pregunta, usa remember_sale_context con cart_confirmation_requested=true y cart_confirmed=false.',
+      '- Cuando confirme que no agregará más o que desea finalizar, usa remember_sale_context con cart_confirmed=true.',
+      '- Si agrega, elimina o cambia un producto, la confirmación anterior deja de ser válida. Recalcula el envío y presenta nuevamente el resumen.',
+      '- Antes del resumen final, guarda la tarifa correcta y usa get_cart. Muestra producto y variante, subtotal, envío y total general.',
+      '- No solicites dirección, nombre ni teléfono por WhatsApp. Esos datos se completan en el checkout.',
+      '- Usa create_checkout_link solo cuando ciudad, medio de pago, envío y carrito estén confirmados.',
+      '- Si create_checkout_link devuelve next_action confirm_cart, pregunta si desea agregar algo más y no envíes un enlace todavía.',
+      '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para completar datos y finalizar. Nunca lo sustituyas por un cart_url.',
       '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para completar datos y finalizar. Nunca sustituyas ese enlace por un cart_url.',
       '- Si sale_context.payment_instructions_sent es true, no vuelvas a enviar los mismos datos; pide únicamente el comprobante o el paso pendiente.',
       '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
@@ -2335,7 +2413,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'remember_sale_context',
   description:
-    'Guarda ciudad, costo de envío, medio de pago y si ya se enviaron instrucciones. Úsala cada vez que el cliente entregue o cambie uno de esos datos.',
+    'Guarda ciudad, costo de envío, medio de pago, confirmación del carrito y pasos enviados. Úsala cada vez que uno de esos datos cambie.',
   strict: true,
   parameters: {
     type: 'object',
@@ -2356,6 +2434,16 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         description:
           'Costo de envío numérico en COP, sin símbolos. Usa cadena vacía si todavía no se conoce.',
       },
+      cart_confirmation_requested: {
+        type: 'boolean',
+        description:
+          'true cuando ya preguntaste si desea agregar otro producto antes del checkout.',
+      },
+      cart_confirmed: {
+        type: 'boolean',
+        description:
+          'true únicamente cuando confirmó que no agregará más o pidió finalizar.',
+      },
       payment_instructions_sent: {
         type: 'boolean',
         description:
@@ -2371,6 +2459,8 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       'city',
       'payment_method',
       'shipping_cost_cop',
+      'cart_confirmation_requested',
+      'cart_confirmed',
       'payment_instructions_sent',
       'checkout_instructions_sent',
     ],
@@ -2510,6 +2600,15 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           this.readInteger(args, 'quantity'),
         );
 
+        if (
+          result &&
+          typeof result === 'object' &&
+          !Array.isArray(result) &&
+          (result as { ok?: unknown }).ok === true
+        ) {
+          await this.invalidateSaleContextAfterCartChange(session);
+        }
+
         return this.enrichCartToolResult(session, result);
       }
 
@@ -2521,6 +2620,15 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             this.readInteger(args, 'quantity'),
           );
 
+        if (
+          result &&
+          typeof result === 'object' &&
+          !Array.isArray(result) &&
+          (result as { ok?: unknown }).ok === true
+        ) {
+          await this.invalidateSaleContextAfterCartChange(session);
+        }
+
         return this.enrichCartToolResult(session, result);
       }
 
@@ -2531,6 +2639,15 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           this.readInteger(args, 'quantity'),
         );
 
+        if (
+          result &&
+          typeof result === 'object' &&
+          !Array.isArray(result) &&
+          (result as { ok?: unknown }).ok === true
+        ) {
+          await this.invalidateSaleContextAfterCartChange(session);
+        }
+
         return this.enrichCartToolResult(session, result);
       }
 
@@ -2539,6 +2656,15 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           session,
           this.readString(args, 'variant_id'),
         );
+
+        if (
+          result &&
+          typeof result === 'object' &&
+          !Array.isArray(result) &&
+          (result as { ok?: unknown }).ok === true
+        ) {
+          await this.invalidateSaleContextAfterCartChange(session);
+        }
 
         return this.enrichCartToolResult(session, result);
       }
@@ -2619,10 +2745,59 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       }
 
       if (name === 'create_checkout_link') {
-        const result =
-          await this.cartService.createCheckoutLink(session);
+        const currentSession =
+          await this.conversationMemoryService.getSessionById(session.id);
+        const saleContext =
+          this.readSaleContext(currentSession.context);
+        const recoveryContext = currentSession.context.cart_recovery;
+        const isRecoveryCart =
+          Boolean(recoveryContext) &&
+          typeof recoveryContext === 'object' &&
+          !Array.isArray(recoveryContext);
 
-        return this.enrichCartToolResult(session, result);
+        const hasCity =
+          typeof saleContext.city === 'string' &&
+          saleContext.city.trim().length > 0;
+        const hasPayment =
+          typeof saleContext.payment_method === 'string' &&
+          saleContext.payment_method.trim().length > 0;
+        const shippingValue =
+          typeof saleContext.shipping_cost_cop === 'string' ||
+          typeof saleContext.shipping_cost_cop === 'number'
+            ? Number(saleContext.shipping_cost_cop)
+            : NaN;
+        const hasShipping = Number.isFinite(shippingValue);
+
+        if (
+          !isRecoveryCart &&
+          (!hasCity || !hasPayment || !hasShipping)
+        ) {
+          return {
+            ok: false,
+            next_action: 'complete_sale_context',
+            error:
+              'Antes del checkout confirma ciudad, medio de pago y costo de envío.',
+            sale_context: saleContext,
+          };
+        }
+
+        if (
+          !isRecoveryCart &&
+          saleContext.cart_confirmed !== true
+        ) {
+          return {
+            ok: false,
+            next_action: 'confirm_cart',
+            error:
+              'Pregunta una sola vez si desea agregar otro producto. Cuando confirme que no, guarda cart_confirmed=true.',
+            sale_context: saleContext,
+          };
+        }
+
+        const result =
+          await this.cartService.createCheckoutLink(currentSession);
+
+        return this.enrichCartToolResult(currentSession, result);
       }
 
       return {

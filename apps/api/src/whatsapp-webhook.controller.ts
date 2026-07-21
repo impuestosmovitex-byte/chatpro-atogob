@@ -473,10 +473,23 @@ export class WhatsappWebhookController {
       }
 
       if (visualMatch.matchType !== 'exact') {
+        const candidateUrl =
+          visualMatch.candidates.find((item) => item.url?.trim())?.url || '';
+        let storeUrl = '';
+
+        try {
+          storeUrl = candidateUrl ? new URL(candidateUrl).origin : '';
+        } catch {
+          storeUrl = '';
+        }
+
+        const storeInstruction = storeUrl
+          ? `Ingresa a nuestra tienda virtual:\n${storeUrl}\nBusca el producto y envíame su enlace exacto para revisar precio, opciones y disponibilidad.`
+          : 'Busca el producto en nuestra tienda virtual y envíame su enlace exacto para revisar precio, opciones y disponibilidad.';
         const uncertainReply =
           visualMatch.matchType === 'similar'
-            ? 'Veo el producto, pero hay varias publicaciones muy parecidas en el catálogo. Envíame el enlace exacto para confirmarlo y ayudarte con las opciones.'
-            : 'No pude confirmar la referencia exacta con esa imagen. Envíame el enlace del producto o una foto donde se vea el nombre para ayudarte.';
+            ? `Veo el producto, pero hay varias publicaciones muy parecidas en el catálogo. ${storeInstruction}`
+            : `No pude confirmar la referencia exacta con esa imagen. ${storeInstruction}`;
 
         await this.whatsappMessagingService.sendText(
           profile.id,
