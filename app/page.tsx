@@ -629,6 +629,7 @@ export default function Home() {
   const [imageSending, setImageSending] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const conversationRequestRef = useRef(0);
 
   useEffect(() => {
     setMobileActionsOpen(false);
@@ -1019,6 +1020,8 @@ export default function Home() {
   }
 
   async function openConversation(sessionId: string, silent = false) {
+    const requestId = ++conversationRequestRef.current;
+
     if (!silent) {
       setLoadingChat(true);
     }
@@ -1029,6 +1032,10 @@ export default function Home() {
         { cache: "no-store" },
       );
       const data = (await readJson(response)) as ApiConversation;
+
+      if (requestId !== conversationRequestRef.current) {
+        return;
+      }
 
       if (!response.ok || !data.ok || !data.session || !data.company) {
         throw new Error(data.error || "No se pudo abrir la conversación.");
@@ -1046,18 +1053,19 @@ export default function Home() {
         setMessage("");
         setQuickReplyOpen(false);
         setActionMessage("");
-
-        if (selected?.session.id !== sessionId) {
-          setPreparedTemplate(null);
-          setTemplateOpen(false);
-          setSelectedTemplateId("");
-          setTemplateVariables({});
-          setTemplateError("");
-        }
+        setPreparedTemplate(null);
+        setTemplateOpen(false);
+        setSelectedTemplateId("");
+        setTemplateVariables({});
+        setTemplateError("");
       }
 
       setError("");
     } catch (caught) {
+      if (requestId !== conversationRequestRef.current) {
+        return;
+      }
+
       if (!silent) {
         setError(
           caught instanceof Error
@@ -1066,7 +1074,7 @@ export default function Home() {
         );
       }
     } finally {
-      if (!silent) {
+      if (!silent && requestId === conversationRequestRef.current) {
         setLoadingChat(false);
       }
     }
