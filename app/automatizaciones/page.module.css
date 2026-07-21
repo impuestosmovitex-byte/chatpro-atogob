@@ -412,3 +412,21 @@
   font-size: 13px;
   line-height: 1.45;
 }
+
+/* CHATPRO: scroll interno de páginas en escritorio */
+@media (min-width: 901px) {
+  .shell {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace {
+    min-height: 0;
+    max-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+

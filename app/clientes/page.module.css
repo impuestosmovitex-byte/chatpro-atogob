@@ -1220,3 +1220,21 @@
     border-radius: 13px;
   }
 }
+
+/* CHATPRO: scroll interno de páginas en escritorio */
+@media (min-width: 901px) {
+  .shell {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace {
+    min-height: 0;
+    max-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
