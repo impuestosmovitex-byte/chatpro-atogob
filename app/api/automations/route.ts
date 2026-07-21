@@ -109,6 +109,30 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    const action =
+      typeof body.action === 'string' ? body.action.trim() : '';
+
+    if (action === 'set-delivery-mode') {
+      const { apiBase, inboxKey } = config();
+      const target = new URL(
+        `${apiBase}/automations/delivery-mode`,
+      );
+      target.searchParams.set('company', current.companySlug);
+      const { action: _action, ...payload } = body;
+
+      return proxy(
+        await fetch(target, {
+          method: 'PUT',
+          headers: {
+            'content-type': 'application/json',
+            'x-chatpro-inbox-key': inboxKey,
+          },
+          body: JSON.stringify(payload),
+          cache: 'no-store',
+        }),
+      );
+    }
+
     const automationKey =
       typeof body.automationKey === 'string'
         ? body.automationKey.trim()
@@ -182,18 +206,26 @@ export async function POST(request: NextRequest) {
         ? body.executionId.trim()
         : '';
 
-    if (body.action !== 'send-test' || !executionId) {
+    const action =
+      typeof body.action === 'string' ? body.action.trim() : '';
+
+    if (
+      !executionId ||
+      !['send-test', 'retry-send'].includes(action)
+    ) {
       return NextResponse.json(
-        { ok: false, error: 'Falta la ejecución de prueba.' },
+        { ok: false, error: 'Falta la ejecución o la acción de envío.' },
         { status: 400 },
       );
     }
 
     const { apiBase, inboxKey } = config();
+    const endpoint =
+      action === 'retry-send' ? 'retry' : 'test-send';
     const target = new URL(
       `${apiBase}/automations/executions/${encodeURIComponent(
         executionId,
-      )}/test-send`,
+      )}/${endpoint}`,
     );
     target.searchParams.set('company', current.companySlug);
 
@@ -213,7 +245,7 @@ export async function POST(request: NextRequest) {
         error:
           error instanceof Error
             ? error.message
-            : 'No se pudo enviar la prueba.',
+            : 'No se pudo procesar el envío.',
       },
       { status: 500 },
     );

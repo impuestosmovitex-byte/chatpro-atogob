@@ -165,6 +165,12 @@ export class AutomationRuntimeService {
     }
 
     const settings = this.object(settingsResult.data?.settings);
+    const recoverySettings = this.object(settings.cart_recovery);
+    const deliveryMode =
+      settings.automation_delivery_mode === 'production' ||
+      recoverySettings.test_mode === false
+        ? 'production'
+        : 'test';
     const allowedTestPhones = this.testPhones(settings);
 
     const automations = (automationResult.data ?? []).map((row) =>
@@ -197,9 +203,10 @@ export class AutomationRuntimeService {
           this.text(payload.prepared_message) || null,
         testSendAllowed:
           payload.prepared_only === true &&
-          typeof row.recipient === 'string' &&
-          allowedTestPhones.includes(row.recipient) &&
-          row.status !== 'sent',
+          row.status !== 'sent' &&
+          (deliveryMode === 'production' ||
+            (typeof row.recipient === 'string' &&
+              allowedTestPhones.includes(row.recipient))),
         orderNumber: this.text(payload.order_number) || null,
         sourceTopic: this.text(payload.source_topic) || null,
         createdAt: row.created_at,
@@ -209,8 +216,9 @@ export class AutomationRuntimeService {
     return {
       automations,
       executions,
+      deliveryMode,
       testSafety: {
-        enabled: allowedTestPhones.length > 0,
+        enabled: deliveryMode === 'test',
         allowedPhones: allowedTestPhones,
       },
       abandonedCartSchedule: (recoveryResult.data ?? []).map(
@@ -228,6 +236,77 @@ export class AutomationRuntimeService {
         ).length,
       },
     };
+  }
+
+  async updateDeliveryMode(
+    companyId: string,
+    body: Record<string, unknown>,
+  ): Promise<{ mode: 'test' | 'production' }> {
+    const requestedMode = this.text(body.mode);
+    const mode =
+      requestedMode === 'production'
+        ? 'production'
+        : requestedMode === 'test'
+          ? 'test'
+          : '';
+
+    if (!mode) {
+      throw new BadRequestException(
+        'El modo debe ser test o production.',
+      );
+    }
+
+    if (
+      mode === 'production' &&
+      this.text(body.confirmation) !== 'ACTIVAR PRODUCCIÓN'
+    ) {
+      throw new BadRequestException(
+        'Para activar producción escribe exactamente ACTIVAR PRODUCCIÓN.',
+      );
+    }
+
+    const client = this.supabaseService.getClient();
+    const { data, error } = await client
+      .from('company_settings')
+      .select('settings')
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        `No se pudo consultar la configuración de envío: ${error.message}`,
+      );
+    }
+
+    if (!data) {
+      throw new BadRequestException(
+        'La empresa todavía no tiene una configuración guardada.',
+      );
+    }
+
+    const settings = this.object(data.settings);
+    const recovery = this.object(settings.cart_recovery);
+    const nextSettings = {
+      ...settings,
+      automation_delivery_mode: mode,
+      cart_recovery: {
+        ...recovery,
+        test_mode: mode === 'test',
+      },
+    };
+
+    const { error: updateError } = await client
+      .from('company_settings')
+      .update({ settings: nextSettings })
+      .eq('company_id', companyId);
+
+    if (updateError) {
+      throw new BadRequestException(
+        `No se pudo cambiar el modo de envío: ${updateError.message}`,
+      );
+    }
+
+    return { mode };
   }
 
   async updateDefinition(

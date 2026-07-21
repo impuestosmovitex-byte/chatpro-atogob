@@ -75,13 +75,17 @@ export class ShopifyAutomaticTestSendService {
       );
     }
 
-    const allowedPhones = await this.allowedTestPhones(companyId);
+    const delivery = await this.deliveryPolicy(companyId);
 
-    if (!recipient || !allowedPhones.includes(recipient)) {
+    if (
+      !recipient ||
+      (delivery.mode === 'test' &&
+        !delivery.allowedPhones.includes(recipient))
+    ) {
       const reason = !recipient
         ? 'Bloqueado: el evento no tiene un teléfono válido.'
-        : allowedPhones.length
-          ? `Bloqueado por modo de prueba. Solo se permite: ${allowedPhones.join(', ')}.`
+        : delivery.allowedPhones.length
+          ? `Bloqueado por modo de prueba. Solo se permite: ${delivery.allowedPhones.join(', ')}.`
           : 'Bloqueado: no hay teléfonos autorizados para pruebas.';
 
       await this.markBlocked(execution, payload, reason);
@@ -98,7 +102,7 @@ export class ShopifyAutomaticTestSendService {
         status: 'running',
         attempt_count: nextAttempt,
         locked_at: now,
-        locked_by: 'shopify-automatic-test-send',
+        locked_by: 'shopify-automatic-send',
         failed_at: null,
         error_message: null,
         updated_at: now,
@@ -151,10 +155,13 @@ export class ShopifyAutomaticTestSendService {
           payload: {
             ...payload,
             prepared_only: true,
-            test_send: true,
-            automatic_test_send: true,
-            test_sent_at: sentAt,
-            test_recipient: recipient,
+            test_send: delivery.mode === 'test',
+            automatic_test_send: delivery.mode === 'test',
+            production_send: delivery.mode === 'production',
+            delivery_mode: delivery.mode,
+            test_sent_at: delivery.mode === 'test' ? sentAt : null,
+            test_recipient:
+              delivery.mode === 'test' ? recipient : null,
             auto_test_blocked: false,
             send_blocked_reason: null,
             used_assigned_template: Boolean(templateResult),
@@ -296,9 +303,12 @@ export class ShopifyAutomaticTestSendService {
     return clean;
   }
 
-  private async allowedTestPhones(
+  private async deliveryPolicy(
     companyId: string,
-  ): Promise<string[]> {
+  ): Promise<{
+    mode: 'test' | 'production';
+    allowedPhones: string[];
+  }> {
     const { data, error } = await this.supabaseService
       .getClient()
       .from('company_settings')
@@ -308,12 +318,17 @@ export class ShopifyAutomaticTestSendService {
 
     if (error) {
       throw new BadRequestException(
-        `No se pudo consultar el modo de prueba: ${error.message}`,
+        `No se pudo consultar el modo de envío: ${error.message}`,
       );
     }
 
     const settings = this.object(data?.settings);
     const recovery = this.object(settings.cart_recovery);
+    const mode =
+      settings.automation_delivery_mode === 'production' ||
+      recovery.test_mode === false
+        ? 'production'
+        : 'test';
     const value =
       recovery.test_phones ??
       settings.cart_recovery_test_phones;
@@ -322,21 +337,24 @@ export class ShopifyAutomaticTestSendService {
         recovery.default_country_code ??
           settings.cart_recovery_default_country_code,
       ) || '57'
-    ).replace(/\\D/g, '');
+    ).replace(/\D/g, '');
 
-    if (!Array.isArray(value)) {
-      return [];
-    }
+    const phones = Array.isArray(value)
+      ? Array.from(
+          new Set(
+            value
+              .map((phone) =>
+                this.normalizePhone(phone, countryCode),
+              )
+              .filter((phone): phone is string => Boolean(phone)),
+          ),
+        )
+      : [];
 
-    return Array.from(
-      new Set(
-        value
-          .map((phone) =>
-            this.normalizePhone(phone, countryCode),
-          )
-          .filter((phone): phone is string => Boolean(phone)),
-      ),
-    );
+    return {
+      mode,
+      allowedPhones: phones,
+    };
   }
 
   private normalizePhone(

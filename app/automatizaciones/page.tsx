@@ -64,6 +64,7 @@ type ResponseData = {
     delayMinutes: number;
   }>;
   automation?: Automation;
+  deliveryMode?: 'test' | 'production';
   testSafety?: {
     enabled: boolean;
     allowedPhones: string[];
@@ -174,6 +175,10 @@ export default function AutomationsPage() {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState('');
   const [sendingExecutionId, setSendingExecutionId] = useState('');
+  const [savingDeliveryMode, setSavingDeliveryMode] = useState(false);
+  const [deliveryMode, setDeliveryMode] = useState<'test' | 'production'>(
+    'test',
+  );
   const [testPhones, setTestPhones] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -198,6 +203,7 @@ export default function AutomationsPage() {
       setAutomations(data.automations || []);
       setExecutions(data.executions || []);
       setAbandonedCartSchedule(data.abandonedCartSchedule || []);
+      setDeliveryMode(data.deliveryMode || 'test');
       setTestPhones(data.testSafety?.allowedPhones || []);
       setSummary(
         data.summary || {
@@ -270,6 +276,60 @@ export default function AutomationsPage() {
       setSavingKey('');
     }
   }
+  async function changeDeliveryMode(
+    nextMode: 'test' | 'production',
+  ) {
+    if (nextMode === deliveryMode) return;
+
+    let confirmation = '';
+    if (nextMode === 'production') {
+      confirmation =
+        window.prompt(
+          'Para permitir envíos a clientes reales escribe exactamente: ACTIVAR PRODUCCIÓN',
+        ) || '';
+
+      if (confirmation !== 'ACTIVAR PRODUCCIÓN') {
+        setError('No se activó producción porque la confirmación no coincide.');
+        return;
+      }
+    }
+
+    setSavingDeliveryMode(true);
+    setMessage('');
+    setError('');
+
+    try {
+      const response = await fetch('/api/automations', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'set-delivery-mode',
+          mode: nextMode,
+          confirmation,
+        }),
+      });
+      const data = (await response.json()) as ResponseData;
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || 'No se pudo cambiar el modo de envío.',
+        );
+      }
+
+      setDeliveryMode(data.deliveryMode || nextMode);
+      setMessage(data.message || 'Modo de envío actualizado.');
+      await load();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'No se pudo cambiar el modo de envío.',
+      );
+    } finally {
+      setSavingDeliveryMode(false);
+    }
+  }
+
 
   async function sendTest(execution: Execution) {
     setSendingExecutionId(execution.id);
@@ -281,7 +341,10 @@ export default function AutomationsPage() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          action: 'send-test',
+          action:
+              deliveryMode === 'production'
+                ? 'retry-send'
+                : 'send-test',
           executionId: execution.id,
         }),
       });
@@ -439,12 +502,67 @@ export default function AutomationsPage() {
         </section>
 
         <div className={styles.testSafety}>
-          <strong>Modo de prueba protegido</strong>
+
+          <strong>
+
+            {deliveryMode === 'production'
+
+              ? 'Modo producción activo'
+
+              : 'Modo de prueba protegido'}
+
+          </strong>
+
           <span>
-            {testPhones.length
-              ? `Solo se permite enviar a: ${testPhones.join(', ')}`
-              : 'No hay teléfonos autorizados. Configúralos en Configuración → IA.'}
+
+            {deliveryMode === 'production'
+
+              ? 'Los nuevos eventos se enviarán al teléfono real y válido registrado por el cliente en Shopify.'
+
+              : testPhones.length
+
+                ? `Solo se permite enviar a: ${testPhones.join(', ')}`
+
+                : 'No hay teléfonos autorizados para pruebas.'}
+
           </span>
+
+          <button
+
+            type="button"
+
+            className={styles.testSendButton}
+
+            disabled={savingDeliveryMode}
+
+            onClick={() =>
+
+              void changeDeliveryMode(
+
+                deliveryMode === 'production'
+
+                  ? 'test'
+
+                  : 'production',
+
+              )
+
+            }
+
+          >
+
+            {savingDeliveryMode
+
+              ? 'Guardando…'
+
+              : deliveryMode === 'production'
+
+                ? 'Volver a prueba protegida'
+
+                : 'Activar producción'}
+
+          </button>
+
         </div>
 
         <section className={styles.history}>
@@ -518,13 +636,17 @@ export default function AutomationsPage() {
                                 onClick={() => void sendTest(execution)}
                               >
                                 {sendingExecutionId === execution.id
-                                  ? 'Enviando prueba…'
-                                  : 'Enviar prueba'}
+                                    ? 'Enviando…'
+                                    : deliveryMode === 'production'
+                                      ? 'Reintentar envío'
+                                      : 'Enviar prueba'}
                               </button>
                             ) : execution.status !== 'sent' ? (
                               <small className={styles.testBlocked}>
-                                Número no autorizado para pruebas
-                              </small>
+                                  {deliveryMode === 'production'
+                                    ? 'Este registro no se puede reintentar'
+                                    : 'Número no autorizado para pruebas'}
+                                </small>
                             ) : null}
                           </div>
                         ) : (
