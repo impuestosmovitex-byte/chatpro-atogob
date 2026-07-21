@@ -406,3 +406,40 @@
     justify-self: start;
   }
 }
+
+/* FIX-ROLES-SCROLL — permitir navegar y guardar permisos */
+.shell {
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+
+.workspace {
+  min-height: 100vh;
+  overflow: visible;
+}
+
+.editor,
+.roleListCard {
+  overflow: visible;
+}
+
+.editor {
+  position: static;
+}
+
+.permissionGroups {
+  max-height: none;
+  overflow: visible;
+}
+
+.formActions {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin: 0 -22px -22px;
+  padding: 14px 22px;
+  border-top: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(8px);
+}
