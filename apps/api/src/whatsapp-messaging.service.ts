@@ -1,12 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { spawn } from 'node:child_process';
-import {
-  access,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { CompanyIntegrationService } from './company-integration.service';
@@ -20,6 +14,11 @@ export type WhatsappSendResult = {
 };
 
 export type WhatsappAudioSendResult = WhatsappSendResult & {
+  mediaId: string;
+  mimeType: string;
+};
+
+export type WhatsappImageSendResult = WhatsappSendResult & {
   mediaId: string;
   mimeType: string;
 };
@@ -75,8 +74,7 @@ export class WhatsappMessagingService {
 
     return {
       phoneNumberId: channel.phoneNumberId,
-      displayPhoneNumber:
-        this.readText(data.display_phone_number) || null,
+      displayPhoneNumber: this.readText(data.display_phone_number) || null,
       verifiedName: this.readText(data.verified_name) || null,
       qualityRating: this.readText(data.quality_rating) || null,
       apiVersion: channel.apiVersion,
@@ -135,6 +133,62 @@ export class WhatsappMessagingService {
     };
   }
 
+  async sendImage(
+    companyId: string,
+    to: string,
+    input: {
+      buffer: Buffer;
+      mimeType: string;
+      filename: string;
+      caption?: string;
+    },
+  ): Promise<WhatsappImageSendResult> {
+    if (!input.buffer.length) {
+      throw new Error('La imagen está vacía.');
+    }
+
+    if (input.buffer.length > 8 * 1024 * 1024) {
+      throw new Error('La imagen supera el límite de 8 MB.');
+    }
+
+    const mimeType = input.mimeType.split(';')[0].trim().toLowerCase();
+
+    const allowed = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+    ]);
+
+    if (!allowed.has(mimeType)) {
+      throw new Error('Formato de imagen no permitido. Usa JPG, PNG o WEBP.');
+    }
+
+    const channel = await this.resolveChannel(companyId);
+    const mediaId = await this.uploadMedia(channel, {
+      buffer: input.buffer,
+      mimeType,
+      filename: input.filename || 'imagen',
+    });
+    const caption = input.caption?.trim().slice(0, 1024) || undefined;
+
+    const sent = await this.send(channel, {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'image',
+      image: {
+        id: mediaId,
+        ...(caption ? { caption } : {}),
+      },
+    });
+
+    return {
+      ...sent,
+      mediaId,
+      mimeType,
+    };
+  }
+
   async downloadRawMedia(
     companyId: string,
     mediaId: string,
@@ -161,22 +215,17 @@ export class WhatsappMessagingService {
     let metadata: JsonObject = {};
 
     try {
-      metadata = metadataRaw
-        ? (JSON.parse(metadataRaw) as JsonObject)
-        : {};
+      metadata = metadataRaw ? (JSON.parse(metadataRaw) as JsonObject) : {};
     } catch {
       metadata = {};
     }
 
     if (!metadataResponse.ok) {
-      throw new Error(
-        `Meta no permitió consultar el archivo: ${metadataRaw}`,
-      );
+      throw new Error(`Meta no permitió consultar el archivo: ${metadataRaw}`);
     }
 
     const url = this.readText(metadata.url);
-    const mimeType =
-      this.readText(metadata.mime_type) || fallbackMimeType;
+    const mimeType = this.readText(metadata.mime_type) || fallbackMimeType;
 
     if (!url) {
       throw new Error('Meta no devolvió la URL temporal del archivo.');
@@ -197,8 +246,7 @@ export class WhatsappMessagingService {
     }
 
     const responseMimeType =
-      mediaResponse.headers.get('content-type')?.trim() ||
-      mimeType;
+      mediaResponse.headers.get('content-type')?.trim() || mimeType;
 
     return {
       buffer: Buffer.from(await mediaResponse.arrayBuffer()),
@@ -220,8 +268,7 @@ export class WhatsappMessagingService {
     return this.transcodeToMp3({
       ...downloaded,
       filename:
-        `audio-${mediaId.trim()}.` +
-        this.extensionForMime(downloaded.mimeType),
+        `audio-${mediaId.trim()}.` + this.extensionForMime(downloaded.mimeType),
     });
   }
 
@@ -313,8 +360,7 @@ export class WhatsappMessagingService {
         buffer: input.buffer,
         mimeType: cleanMime,
         filename:
-          input.filename.trim() ||
-          `audio.${this.extensionForMime(cleanMime)}`,
+          input.filename.trim() || `audio.${this.extensionForMime(cleanMime)}`,
       };
     }
 
@@ -365,11 +411,8 @@ export class WhatsappMessagingService {
 
   private assertWhatsappOggOpus(buffer: Buffer): void {
     const hasOggContainer =
-      buffer.length >= 4 &&
-      buffer.subarray(0, 4).toString('ascii') === 'OggS';
-    const hasOpusCodec = buffer.includes(
-      Buffer.from('OpusHead', 'ascii'),
-    );
+      buffer.length >= 4 && buffer.subarray(0, 4).toString('ascii') === 'OggS';
+    const hasOpusCodec = buffer.includes(Buffer.from('OpusHead', 'ascii'));
 
     if (!hasOggContainer || !hasOpusCodec) {
       throw new Error(
@@ -434,8 +477,7 @@ export class WhatsappMessagingService {
 
     const directory = await mkdtemp(join(tmpdir(), 'chatpro-audio-'));
     const extension =
-      extname(input.filename) ||
-      `.${this.extensionForMime(input.mimeType)}`;
+      extname(input.filename) || `.${this.extensionForMime(input.mimeType)}`;
     const source = join(directory, `source${extension}`);
     const target = join(directory, output.outputFilename);
 
@@ -510,17 +552,12 @@ export class WhatsappMessagingService {
       filename: string;
     },
   ): Promise<string> {
-    const baseMime = input.mimeType
-      .split(';')[0]
-      .trim()
-      .toLowerCase();
+    const baseMime = input.mimeType.split(';')[0].trim().toLowerCase();
     const uploadMime =
-      baseMime === 'audio/ogg'
-        ? 'audio/ogg; codecs=opus'
-        : baseMime;
+      baseMime === 'audio/ogg' ? 'audio/ogg; codecs=opus' : baseMime;
 
     if (!uploadMime) {
-      throw new Error('El audio no tiene un tipo MIME válido.');
+      throw new Error('El archivo no tiene un tipo MIME válido.');
     }
 
     const form = new FormData();
@@ -554,7 +591,7 @@ export class WhatsappMessagingService {
     }
 
     if (!response.ok) {
-      throw new Error(`Meta no aceptó el audio: ${raw}`);
+      throw new Error(`Meta no aceptó el archivo: ${raw}`);
     }
 
     const mediaId = this.readText(data.id);
@@ -679,25 +716,17 @@ export class WhatsappMessagingService {
     let data: JsonObject = {};
 
     try {
-      data = rawResponse
-        ? (JSON.parse(rawResponse) as JsonObject)
-        : {};
+      data = rawResponse ? (JSON.parse(rawResponse) as JsonObject) : {};
     } catch {
       data = {};
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Meta no aceptó el mensaje: ${rawResponse}`,
-      );
+      throw new Error(`Meta no aceptó el mensaje: ${rawResponse}`);
     }
 
-    const messages = Array.isArray(data.messages)
-      ? data.messages
-      : [];
-    const contacts = Array.isArray(data.contacts)
-      ? data.contacts
-      : [];
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+    const contacts = Array.isArray(data.contacts) ? data.contacts : [];
     const message = this.object(messages[0]);
     const contact = this.object(contacts[0]);
     const messageId = this.readText(message.id);

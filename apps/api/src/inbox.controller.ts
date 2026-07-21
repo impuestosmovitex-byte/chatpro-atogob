@@ -1,8 +1,27 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, HttpCode, Param, Post, Query, Res, UnauthorizedException, UploadedFile, UseInterceptors } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  Res,
+  UnauthorizedException,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ChatAgentService } from './chat-agent.service';
-import { ConversationMemoryService, type ConversationSession, type InboxSessionSummary } from './conversation-memory.service';
+import {
+  ConversationMemoryService,
+  type ConversationSession,
+  type InboxSessionSummary,
+} from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
@@ -15,7 +34,12 @@ type InboxBody = {
   variables?: unknown;
 };
 const INTERNAL_TEST_PHONE = '000000000000000';
-type Actor = { userId:string; fullName:string; permissions:Set<string>; isFullAccess:boolean };
+type Actor = {
+  userId: string;
+  fullName: string;
+  permissions: Set<string>;
+  isFullAccess: boolean;
+};
 
 @Controller('inbox')
 export class InboxController {
@@ -40,12 +64,11 @@ export class InboxController {
   ) {
     this.authorize(key);
 
-    const payload =
-      await this.conversationMemoryService.listInboxSessions(
-        this.requiredCompany(company),
-        status,
-        Number(limit),
-      );
+    const payload = await this.conversationMemoryService.listInboxSessions(
+      this.requiredCompany(company),
+      status,
+      Number(limit),
+    );
     const actor = await this.actor(
       sessionType,
       userId,
@@ -54,26 +77,17 @@ export class InboxController {
       roleKey,
       payload.company.id,
     );
-    const settings = await this.getAiTakeSettings(
-      payload.company.id,
-    );
+    const settings = await this.getAiTakeSettings(payload.company.id);
 
     const sessions = payload.sessions
-      .filter(
-        (session) => !this.isInternalTestSession(session),
-      )
+      .filter((session) => !this.isInternalTestSession(session))
       .map((session) => ({
         ...session,
-        ...this.takeAvailability(
-          actor,
-          session,
-          settings,
-        ),
+        ...this.takeAvailability(actor, session, settings),
       }))
       .filter(
         (session) =>
-          this.canView(actor, session) ||
-          session.takeAvailable === true,
+          this.canView(actor, session) || session.takeAvailable === true,
       );
 
     return {
@@ -85,13 +99,13 @@ export class InboxController {
 
   @Get('transfer-targets')
   async transferTargets(
-    @Headers('x-chatpro-inbox-key') key='',
-    @Headers('x-chatpro-session-type') sessionType='',
-    @Headers('x-chatpro-user-id') userId='',
-    @Headers('x-chatpro-user-name') fullName='',
-    @Headers('x-chatpro-company-id') headerCompanyId='',
-    @Headers('x-chatpro-role-key') roleKey='',
-    @Query('company') company='',
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
   ) {
     this.authorize(key);
     const profile = await this.conversationMemoryService.getCompanyProfile(
@@ -139,17 +153,13 @@ export class InboxController {
       conversation.company.id,
     );
 
-    if (
-      conversation.session.attentionStatus === 'closed'
-    ) {
+    if (conversation.session.attentionStatus === 'closed') {
       throw new BadRequestException(
         'La conversación está finalizada. Si el cliente vuelve a escribir, la IA la reabrirá automáticamente.',
       );
     }
 
-    const settings = await this.getAiTakeSettings(
-      conversation.company.id,
-    );
+    const settings = await this.getAiTakeSettings(conversation.company.id);
     const availability = this.takeAvailability(
       actor,
       conversation.session,
@@ -186,16 +196,17 @@ export class InboxController {
     );
   }
 
-  @Post('internal-test') @HttpCode(200)
+  @Post('internal-test')
+  @HttpCode(200)
   async internalTest(
-    @Headers('x-chatpro-inbox-key') key='',
-    @Headers('x-chatpro-session-type') sessionType='',
-    @Headers('x-chatpro-user-id') userId='',
-    @Headers('x-chatpro-user-name') fullName='',
-    @Headers('x-chatpro-company-id') headerCompanyId='',
-    @Headers('x-chatpro-role-key') roleKey='',
-    @Query('company') company='',
-    @Body() body: InboxBody={},
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Body() body: InboxBody = {},
   ) {
     this.authorize(key);
 
@@ -266,11 +277,10 @@ export class InboxController {
       return {
         ok: true,
         internal_test: true,
-        conversation:
-          await this.conversationMemoryService.getInboxConversation(
-            profile.slug,
-            session.id,
-          ),
+        conversation: await this.conversationMemoryService.getInboxConversation(
+          profile.slug,
+          session.id,
+        ),
       };
     }
 
@@ -282,14 +292,15 @@ export class InboxController {
     const message = this.readText(body.message);
 
     if (!sessionId || !message) {
-      throw new BadRequestException('Escribe un mensaje para probar el agente.');
+      throw new BadRequestException(
+        'Escribe un mensaje para probar el agente.',
+      );
     }
 
-    const current =
-      await this.conversationMemoryService.getInboxConversation(
-        profile.slug,
-        sessionId,
-      );
+    const current = await this.conversationMemoryService.getInboxConversation(
+      profile.slug,
+      sessionId,
+    );
 
     if (!this.isInternalTestSession(current.session)) {
       throw new ForbiddenException(
@@ -341,11 +352,10 @@ export class InboxController {
     return {
       ok: true,
       internal_test: true,
-      conversation:
-        await this.conversationMemoryService.getInboxConversation(
-          profile.slug,
-          afterAgent.id,
-        ),
+      conversation: await this.conversationMemoryService.getInboxConversation(
+        profile.slug,
+        afterAgent.id,
+      ),
     };
   }
 
@@ -376,9 +386,7 @@ export class InboxController {
       roleKey,
       conversation.company.id,
     );
-    const settings = await this.getAiTakeSettings(
-      conversation.company.id,
-    );
+    const settings = await this.getAiTakeSettings(conversation.company.id);
     const availability = this.takeAvailability(
       actor,
       conversation.session,
@@ -387,8 +395,7 @@ export class InboxController {
 
     if (!availability.takeAvailable) {
       throw new ForbiddenException(
-        availability.takeBlockedReason ||
-          'No puedes tomar esta conversación.',
+        availability.takeBlockedReason || 'No puedes tomar esta conversación.',
       );
     }
 
@@ -397,31 +404,29 @@ export class InboxController {
           userId: actor.userId,
           fullName: actor.fullName,
         }
-      : await this.resolveBootstrapOwner(
-          conversation.company.id,
-        );
+      : await this.resolveBootstrapOwner(conversation.company.id);
 
     return {
       ok: true,
-      session:
-        await this.conversationMemoryService.takeConversation(
-          sessionId,
-          advisor,
-        ),
+      session: await this.conversationMemoryService.takeConversation(
+        sessionId,
+        advisor,
+      ),
     };
   }
 
-  @Post(':sessionId/transfer') @HttpCode(200)
+  @Post(':sessionId/transfer')
+  @HttpCode(200)
   async transferConversation(
-    @Headers('x-chatpro-inbox-key') key='',
-    @Headers('x-chatpro-session-type') sessionType='',
-    @Headers('x-chatpro-user-id') userId='',
-    @Headers('x-chatpro-user-name') fullName='',
-    @Headers('x-chatpro-company-id') headerCompanyId='',
-    @Headers('x-chatpro-role-key') roleKey='',
-    @Query('company') company='',
-    @Param('sessionId') sessionId='',
-    @Body() body:InboxBody={},
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+    @Body() body: InboxBody = {},
   ) {
     this.authorize(key);
     const conversation =
@@ -489,22 +494,72 @@ export class InboxController {
     };
   }
 
-  @Post(':sessionId/close') @HttpCode(200)
-  async closeConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
+  @Post(':sessionId/close')
+  @HttpCode(200)
+  async closeConversation(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+  ) {
     this.authorize(key);
-    const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
-    this.assertManageOwn(actor,conversation.session,'inbox.close');
-    return {ok:true,session:await this.conversationMemoryService.closeConversation(sessionId)};
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+    this.assertManageOwn(actor, conversation.session, 'inbox.close');
+    return {
+      ok: true,
+      session:
+        await this.conversationMemoryService.closeConversation(sessionId),
+    };
   }
 
-  @Post(':sessionId/resume-ai') @HttpCode(200)
-  async resumeAiConversation(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='') {
+  @Post(':sessionId/resume-ai')
+  @HttpCode(200)
+  async resumeAiConversation(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+  ) {
     this.authorize(key);
-    const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
-    this.assertManageOwn(actor,conversation.session,'inbox.return_to_ai');
-    return {ok:true,session:await this.conversationMemoryService.resumeAiConversation(sessionId)};
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+    this.assertManageOwn(actor, conversation.session, 'inbox.return_to_ai');
+    return {
+      ok: true,
+      session:
+        await this.conversationMemoryService.resumeAiConversation(sessionId),
+    };
   }
 
   @Post(':sessionId/audio')
@@ -546,16 +601,10 @@ export class InboxController {
       conversation.company.id,
     );
 
-    this.assertManageOwn(
-      actor,
-      conversation.session,
-      'inbox.reply',
-    );
+    this.assertManageOwn(actor, conversation.session, 'inbox.reply');
 
     if (!actor.isFullAccess && !actor.permissions.has('inbox.audio')) {
-      throw new ForbiddenException(
-        'No tienes permiso para enviar audios.',
-      );
+      throw new ForbiddenException('No tienes permiso para enviar audios.');
     }
 
     if (conversation.session.attentionStatus !== 'human') {
@@ -584,9 +633,7 @@ export class InboxController {
       );
     } catch (error) {
       const detail =
-        error instanceof Error
-          ? error.message
-          : 'Meta rechazó el audio.';
+        error instanceof Error ? error.message : 'Meta rechazó el audio.';
 
       console.error('No se pudo enviar el audio del asesor:', error);
 
@@ -608,17 +655,129 @@ export class InboxController {
       mediaFilename: 'audio.ogg',
       mediaVoice: true,
     });
-    await this.conversationMemoryService.touchSession(
-      conversation.session.id,
-    );
+    await this.conversationMemoryService.touchSession(conversation.session.id);
 
     return {
       ok: true,
-      conversation:
-        await this.conversationMemoryService.getInboxConversation(
-          conversation.company.slug,
-          conversation.session.id,
-        ),
+      conversation: await this.conversationMemoryService.getInboxConversation(
+        conversation.company.slug,
+        conversation.session.id,
+      ),
+    };
+  }
+
+  @Post(':sessionId/image')
+  @HttpCode(200)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  async sendAdvisorImage(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+    @Body('caption') caption = '',
+    @UploadedFile()
+    file?: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname: string;
+      size: number;
+    },
+  ) {
+    this.authorize(key);
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+
+    this.assertManageOwn(actor, conversation.session, 'inbox.reply');
+
+    if (conversation.session.attentionStatus !== 'human') {
+      throw new BadRequestException(
+        'La conversación debe estar tomada por un asesor para enviar imágenes.',
+      );
+    }
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Selecciona una imagen antes de enviarla.');
+    }
+
+    let sent;
+
+    try {
+      sent = await this.whatsappMessagingService.sendImage(
+        conversation.company.id,
+        conversation.session.customerPhone,
+        {
+          buffer: file.buffer,
+          mimeType: file.mimetype || 'image/jpeg',
+          filename: file.originalname || 'imagen.jpg',
+          caption,
+        },
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : 'Meta rechazó la imagen.';
+
+      console.error('No se pudo enviar la imagen del asesor:', error);
+      throw new BadRequestException(detail.slice(0, 900));
+    }
+
+    const cleanCaption = caption.trim().slice(0, 1024);
+    const messageText = cleanCaption
+      ? `📷 Imagen enviada: ${cleanCaption}`
+      : '📷 Imagen enviada.';
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: conversation.company.id,
+      sessionId: conversation.session.id,
+      customerPhone: conversation.session.customerPhone,
+      message: messageText,
+      sender: 'assistant',
+      authorType: 'advisor',
+      aiResponse: null,
+      providerMessageId: sent.messageId,
+      messageType: 'image',
+      mediaId: sent.mediaId,
+      mediaMimeType: sent.mimeType,
+      mediaFilename: file.originalname || 'imagen.jpg',
+      mediaVoice: false,
+    });
+
+    await this.conversationMemoryService.persistIncomingMedia({
+      companyId: conversation.company.id,
+      sessionId: conversation.session.id,
+      mediaId: sent.mediaId,
+      providerMessageId: sent.messageId,
+      buffer: file.buffer,
+      mimeType: sent.mimeType,
+      filename: file.originalname || 'imagen.jpg',
+    });
+
+    await this.conversationMemoryService.touchSession(conversation.session.id);
+
+    return {
+      ok: true,
+      conversation: await this.conversationMemoryService.getInboxConversation(
+        conversation.company.slug,
+        conversation.session.id,
+      ),
     };
   }
 
@@ -698,8 +857,7 @@ export class InboxController {
 
         if (storageError || !data) {
           throw new Error(
-            storageError?.message ||
-              'No se encontró el archivo permanente.',
+            storageError?.message || 'No se encontró el archivo permanente.',
           );
         }
 
@@ -708,23 +866,17 @@ export class InboxController {
           mimeType:
             data.type ||
             row.media_mime_type ||
-            (row.message_type === 'image'
-              ? 'image/jpeg'
-              : 'audio/ogg'),
+            (row.message_type === 'image' ? 'image/jpeg' : 'audio/ogg'),
           filename:
             row.media_storage_path.split('/').pop() ||
-            (row.message_type === 'image'
-              ? 'imagen'
-              : 'audio.ogg'),
+            (row.message_type === 'image' ? 'imagen' : 'audio.ogg'),
         };
       } else {
         media = await this.whatsappMessagingService.downloadRawMedia(
           conversation.company.id,
           row.media_id,
           row.media_mime_type ||
-            (row.message_type === 'image'
-              ? 'image/jpeg'
-              : 'audio/ogg'),
+            (row.message_type === 'image' ? 'image/jpeg' : 'audio/ogg'),
         );
       }
     } catch (error) {
@@ -781,18 +933,13 @@ export class InboxController {
       conversation.company.id,
     );
 
-    if (
-      !actor.isFullAccess &&
-      !actor.permissions.has('inbox.reply')
-    ) {
+    if (!actor.isFullAccess && !actor.permissions.has('inbox.reply')) {
       throw new ForbiddenException(
         'No tienes permiso para enviar plantillas desde la bandeja.',
       );
     }
 
-    const settings = await this.getAiTakeSettings(
-      conversation.company.id,
-    );
+    const settings = await this.getAiTakeSettings(conversation.company.id);
     const availability = this.takeAvailability(
       actor,
       conversation.session,
@@ -800,15 +947,8 @@ export class InboxController {
     );
 
     if (conversation.session.attentionStatus === 'human') {
-      this.assertManageOwn(
-        actor,
-        conversation.session,
-        'inbox.reply',
-      );
-    } else if (
-      !actor.isFullAccess &&
-      !availability.takeAvailable
-    ) {
+      this.assertManageOwn(actor, conversation.session, 'inbox.reply');
+    } else if (!actor.isFullAccess && !availability.takeAvailable) {
       throw new ForbiddenException(
         availability.takeBlockedReason ||
           'No puedes reabrir esta conversación.',
@@ -818,20 +958,17 @@ export class InboxController {
     const templateId = this.readText(body.templateId);
 
     if (!templateId) {
-      throw new BadRequestException(
-        'Selecciona una plantilla aprobada.',
-      );
+      throw new BadRequestException('Selecciona una plantilla aprobada.');
     }
 
     const variables = this.readTemplateVariables(body.variables);
-    const { data: template, error: templateError } =
-      await this.supabaseService
-        .getClient()
-        .from('company_whatsapp_templates')
-        .select('id,name,language,status,components')
-        .eq('company_id', conversation.company.id)
-        .eq('id', templateId)
-        .maybeSingle();
+    const { data: template, error: templateError } = await this.supabaseService
+      .getClient()
+      .from('company_whatsapp_templates')
+      .select('id,name,language,status,components')
+      .eq('company_id', conversation.company.id)
+      .eq('id', templateId)
+      .maybeSingle();
 
     if (templateError) {
       throw new BadRequestException(
@@ -845,9 +982,7 @@ export class InboxController {
       );
     }
 
-    if (
-      this.readText(template.status).toUpperCase() !== 'APPROVED'
-    ) {
+    if (this.readText(template.status).toUpperCase() !== 'APPROVED') {
       throw new BadRequestException(
         'La plantilla ya no está aprobada en Meta. Sincronízala antes de enviarla.',
       );
@@ -862,18 +997,14 @@ export class InboxController {
       );
     }
 
-    const prepared = this.prepareManualTemplate(
-      template.components,
-      variables,
+    const prepared = this.prepareManualTemplate(template.components, variables);
+    const sent = await this.whatsappMessagingService.sendTemplateComponents(
+      conversation.company.id,
+      conversation.session.customerPhone,
+      templateName,
+      language,
+      prepared.components,
     );
-    const sent =
-      await this.whatsappMessagingService.sendTemplateComponents(
-        conversation.company.id,
-        conversation.session.customerPhone,
-        templateName,
-        language,
-        prepared.components,
-      );
 
     const historyMessage = [
       `Plantilla enviada: ${templateName}`,
@@ -893,9 +1024,7 @@ export class InboxController {
       aiResponse: null,
       providerMessageId: sent.messageId,
     });
-    await this.conversationMemoryService.touchSession(
-      conversation.session.id,
-    );
+    await this.conversationMemoryService.touchSession(conversation.session.id);
 
     const advisor = actor.userId
       ? {
@@ -929,36 +1058,74 @@ export class InboxController {
       ok: true,
       messageId: sent.messageId,
       warning: warning || null,
-      conversation:
-        await this.conversationMemoryService.getInboxConversation(
-          conversation.company.slug,
-          conversation.session.id,
-        ),
+      conversation: await this.conversationMemoryService.getInboxConversation(
+        conversation.company.slug,
+        conversation.session.id,
+      ),
     };
   }
 
-  @Post(':sessionId/messages') @HttpCode(200)
-  async sendAdvisorMessage(@Headers('x-chatpro-inbox-key') key='', @Headers('x-chatpro-session-type') sessionType='', @Headers('x-chatpro-user-id') userId='', @Headers('x-chatpro-user-name') fullName='', @Headers('x-chatpro-company-id') headerCompanyId='', @Headers('x-chatpro-role-key') roleKey='', @Query('company') company='', @Param('sessionId') sessionId='', @Body() body:InboxBody={}) {
+  @Post(':sessionId/messages')
+  @HttpCode(200)
+  async sendAdvisorMessage(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+    @Body() body: InboxBody = {},
+  ) {
     this.authorize(key);
-    const conversation=await this.conversationMemoryService.getInboxConversation(this.requiredCompany(company),sessionId);
-    const actor=await this.actor(sessionType,userId,fullName,headerCompanyId,roleKey,conversation.company.id);
-    this.assertManageOwn(actor,conversation.session,'inbox.reply');
-    if(conversation.session.attentionStatus!=='human') throw new BadRequestException('La conversación debe estar tomada por un asesor para responder.');
-    const message=this.readText(body.message); if(!message) throw new BadRequestException('Escribe un mensaje antes de enviarlo.');
-    await this.whatsappMessagingService.sendText(conversation.company.id,conversation.session.customerPhone,message);
-    await this.conversationMemoryService.saveMessage({companyId:conversation.company.id,sessionId:conversation.session.id,customerPhone:conversation.session.customerPhone,message,sender:'assistant',authorType:'advisor',aiResponse:null});
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+    this.assertManageOwn(actor, conversation.session, 'inbox.reply');
+    if (conversation.session.attentionStatus !== 'human')
+      throw new BadRequestException(
+        'La conversación debe estar tomada por un asesor para responder.',
+      );
+    const message = this.readText(body.message);
+    if (!message)
+      throw new BadRequestException('Escribe un mensaje antes de enviarlo.');
+    await this.whatsappMessagingService.sendText(
+      conversation.company.id,
+      conversation.session.customerPhone,
+      message,
+    );
+    await this.conversationMemoryService.saveMessage({
+      companyId: conversation.company.id,
+      sessionId: conversation.session.id,
+      customerPhone: conversation.session.customerPhone,
+      message,
+      sender: 'assistant',
+      authorType: 'advisor',
+      aiResponse: null,
+    });
     await this.conversationMemoryService.touchSession(conversation.session.id);
-    return {ok:true,conversation:await this.conversationMemoryService.getInboxConversation(conversation.company.slug,conversation.session.id)};
+    return {
+      ok: true,
+      conversation: await this.conversationMemoryService.getInboxConversation(
+        conversation.company.slug,
+        conversation.session.id,
+      ),
+    };
   }
 
-  private readTemplateVariables(
-    value: unknown,
-  ): Record<string, string> {
-    if (
-      !value ||
-      typeof value !== 'object' ||
-      Array.isArray(value)
-    ) {
+  private readTemplateVariables(value: unknown): Record<string, string> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return {};
     }
 
@@ -968,7 +1135,10 @@ export class InboxController {
       const key = rawKey.trim().slice(0, 80);
       const text =
         typeof rawValue === 'string'
-          ? rawValue.replace(/\u0000/g, '').trim().slice(0, 2000)
+          ? rawValue
+              .replace(/\u0000/g, '')
+              .trim()
+              .slice(0, 2000)
           : '';
 
       if (key && text) {
@@ -979,18 +1149,14 @@ export class InboxController {
     return result;
   }
 
-  private templateObjectList(
-    value: unknown,
-  ): Array<Record<string, unknown>> {
+  private templateObjectList(value: unknown): Array<Record<string, unknown>> {
     if (!Array.isArray(value)) {
       return [];
     }
 
     return value.filter(
       (item): item is Record<string, unknown> =>
-        Boolean(item) &&
-        typeof item === 'object' &&
-        !Array.isArray(item),
+        Boolean(item) && typeof item === 'object' && !Array.isArray(item),
     );
   }
 
@@ -1054,10 +1220,7 @@ export class InboxController {
       let text = typeof value === 'string' ? value.trim() : '';
 
       for (const key of this.templatePlaceholderKeys(text)) {
-        const escaped = key.replace(
-          /[.*+?^${}()|[\]\\]/g,
-          '\\$&',
-        );
+        const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         text = text.replace(
           new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`, 'g'),
           variables[key] || `[Variable ${key}]`,
@@ -1072,14 +1235,9 @@ export class InboxController {
       const text = this.readText(component.text);
 
       if (type === 'HEADER') {
-        const format =
-          this.readText(component.format).toUpperCase();
+        const format = this.readText(component.format).toUpperCase();
 
-        if (
-          format &&
-          format !== 'TEXT' &&
-          format !== 'NONE'
-        ) {
+        if (format && format !== 'TEXT' && format !== 'NONE') {
           throw new BadRequestException(
             'Esta plantilla requiere una imagen, video, documento o ubicación en el encabezado. Ese tipo de plantilla todavía no puede enviarse manualmente desde la bandeja.',
           );
@@ -1130,8 +1288,7 @@ export class InboxController {
         const buttons = this.templateObjectList(component.buttons);
 
         buttons.forEach((button, index) => {
-          const buttonType =
-            this.readText(button.type).toUpperCase();
+          const buttonType = this.readText(button.type).toUpperCase();
           const label = this.readText(button.text);
           const url = this.readText(button.url);
 
@@ -1159,9 +1316,7 @@ export class InboxController {
       }
     }
 
-    const missing = required.filter(
-      (key) => !variables[key]?.trim(),
-    );
+    const missing = required.filter((key) => !variables[key]?.trim());
 
     if (missing.length) {
       throw new BadRequestException(
@@ -1179,243 +1334,318 @@ export class InboxController {
     };
   }
 
-  private async actor(sessionType:string,userId:string,fullName:string,headerCompanyId:string,roleKey:string,companyId:string):Promise<Actor>{
-    const type=sessionType.trim().toLowerCase(),id=userId.trim(),name=fullName.trim(),role=roleKey.trim().toLowerCase();
+  private async actor(
+    sessionType: string,
+    userId: string,
+    fullName: string,
+    headerCompanyId: string,
+    roleKey: string,
+    companyId: string,
+  ): Promise<Actor> {
+    const type = sessionType.trim().toLowerCase(),
+      id = userId.trim(),
+      name = fullName.trim(),
+      role = roleKey.trim().toLowerCase();
 
     // La sesión bootstrap es el propietario durante la configuración inicial.
     // Solo se acepta como owner y para la empresa firmada por la web.
-    if(type==='bootstrap'){
-      if(role!=='owner'||headerCompanyId.trim()!==companyId) throw new UnauthorizedException('Sesión inicial no válida.');
-      return {userId:'',fullName:name||'Configuración inicial',permissions:new Set<string>(),isFullAccess:true};
+    if (type === 'bootstrap') {
+      if (role !== 'owner' || headerCompanyId.trim() !== companyId)
+        throw new UnauthorizedException('Sesión inicial no válida.');
+      return {
+        userId: '',
+        fullName: name || 'Configuración inicial',
+        permissions: new Set<string>(),
+        isFullAccess: true,
+      };
     }
 
-    if(type!=='user'||!id||!name||headerCompanyId.trim()!==companyId) throw new UnauthorizedException('Sesión de asesor no válida.');
-    const c=this.supabaseService.getClient();
-    const {data:membership,error:me}=await c.from('company_memberships').select('role_id,active').eq('company_id',companyId).eq('user_id',id).maybeSingle();
-    if(me||!membership?.active||!membership.role_id) throw new UnauthorizedException('Tu acceso a esta empresa no está activo.');
-    const {data:links,error:le}=await c.from('app_role_permissions').select('permission_id').eq('role_id',membership.role_id);
-    if(le) throw new BadRequestException(`No se pudieron validar tus permisos: ${le.message}`);
-    const ids=(links??[]).map((x:any)=>x.permission_id).filter((x:unknown):x is string=>typeof x==='string');
-    const {data:rows,error:pe}=ids.length?await c.from('app_permissions').select('key').in('id',ids):{data:[],error:null};
-    if(pe) throw new BadRequestException(`No se pudieron cargar tus permisos: ${pe.message}`);
-    const permissions=new Set((rows??[]).map((x:any)=>x.key).filter((x:unknown):x is string=>typeof x==='string'));
-    if(!permissions.has('inbox.view')) throw new ForbiddenException('No tienes permiso para ver la bandeja.');
-    return {userId:id,fullName:name,permissions,isFullAccess:role==='owner'||role==='admin'};
+    if (type !== 'user' || !id || !name || headerCompanyId.trim() !== companyId)
+      throw new UnauthorizedException('Sesión de asesor no válida.');
+    const c = this.supabaseService.getClient();
+    const { data: membership, error: me } = await c
+      .from('company_memberships')
+      .select('role_id,active')
+      .eq('company_id', companyId)
+      .eq('user_id', id)
+      .maybeSingle();
+    if (me || !membership?.active || !membership.role_id)
+      throw new UnauthorizedException(
+        'Tu acceso a esta empresa no está activo.',
+      );
+    const { data: links, error: le } = await c
+      .from('app_role_permissions')
+      .select('permission_id')
+      .eq('role_id', membership.role_id);
+    if (le)
+      throw new BadRequestException(
+        `No se pudieron validar tus permisos: ${le.message}`,
+      );
+    const ids = (links ?? [])
+      .map((x: any) => x.permission_id)
+      .filter((x: unknown): x is string => typeof x === 'string');
+    const { data: rows, error: pe } = ids.length
+      ? await c.from('app_permissions').select('key').in('id', ids)
+      : { data: [], error: null };
+    if (pe)
+      throw new BadRequestException(
+        `No se pudieron cargar tus permisos: ${pe.message}`,
+      );
+    const permissions = new Set(
+      (rows ?? [])
+        .map((x: any) => x.key)
+        .filter((x: unknown): x is string => typeof x === 'string'),
+    );
+    if (!permissions.has('inbox.view'))
+      throw new ForbiddenException('No tienes permiso para ver la bandeja.');
+    return {
+      userId: id,
+      fullName: name,
+      permissions,
+      isFullAccess: role === 'owner' || role === 'admin',
+    };
   }
-  private async resolveBootstrapOwner(companyId:string):Promise<{userId:string;fullName:string}>{
-    const c=this.supabaseService.getClient();
+  private async resolveBootstrapOwner(
+    companyId: string,
+  ): Promise<{ userId: string; fullName: string }> {
+    const c = this.supabaseService.getClient();
 
-    const {data:memberships,error:membershipError}=await c
+    const { data: memberships, error: membershipError } = await c
       .from('company_memberships')
       .select('user_id,role_id')
-      .eq('company_id',companyId)
-      .eq('active',true);
+      .eq('company_id', companyId)
+      .eq('active', true);
 
-    if(membershipError) throw new BadRequestException(`No se pudo resolver el propietario: ${membershipError.message}`);
+    if (membershipError)
+      throw new BadRequestException(
+        `No se pudo resolver el propietario: ${membershipError.message}`,
+      );
 
-    const rows=(memberships??[]).filter((row:any)=>typeof row.user_id==='string'&&typeof row.role_id==='string');
-    const roleIds=rows.map((row:any)=>row.role_id);
+    const rows = (memberships ?? []).filter(
+      (row: any) =>
+        typeof row.user_id === 'string' && typeof row.role_id === 'string',
+    );
+    const roleIds = rows.map((row: any) => row.role_id);
 
-    if(!roleIds.length) throw new ForbiddenException('No hay un propietario activo configurado para tomar conversaciones.');
+    if (!roleIds.length)
+      throw new ForbiddenException(
+        'No hay un propietario activo configurado para tomar conversaciones.',
+      );
 
-    const {data:roles,error:rolesError}=await c
+    const { data: roles, error: rolesError } = await c
       .from('app_roles')
       .select('id,key')
-      .in('id',roleIds);
+      .in('id', roleIds);
 
-    if(rolesError) throw new BadRequestException(`No se pudieron cargar los roles: ${rolesError.message}`);
+    if (rolesError)
+      throw new BadRequestException(
+        `No se pudieron cargar los roles: ${rolesError.message}`,
+      );
 
-    const ownerRoleIds=new Set(
-      (roles??[])
-        .filter((role:any)=>role?.key==='owner')
-        .map((role:any)=>role.id)
-        .filter((id:unknown):id is string=>typeof id==='string'),
+    const ownerRoleIds = new Set(
+      (roles ?? [])
+        .filter((role: any) => role?.key === 'owner')
+        .map((role: any) => role.id)
+        .filter((id: unknown): id is string => typeof id === 'string'),
     );
 
-    const owner=rows.find((row:any)=>ownerRoleIds.has(row.role_id));
+    const owner = rows.find((row: any) => ownerRoleIds.has(row.role_id));
 
-    if(!owner) throw new ForbiddenException('No hay un propietario activo configurado para tomar conversaciones.');
+    if (!owner)
+      throw new ForbiddenException(
+        'No hay un propietario activo configurado para tomar conversaciones.',
+      );
 
-    const {data:profile,error:profileError}=await c
+    const { data: profile, error: profileError } = await c
       .from('app_profiles')
       .select('full_name')
-      .eq('user_id',owner.user_id)
+      .eq('user_id', owner.user_id)
       .maybeSingle();
 
-    if(profileError) throw new BadRequestException(`No se pudo cargar el propietario: ${profileError.message}`);
+    if (profileError)
+      throw new BadRequestException(
+        `No se pudo cargar el propietario: ${profileError.message}`,
+      );
 
     return {
       userId: owner.user_id,
-      fullName: typeof profile?.full_name==='string'&&profile.full_name.trim()
-        ? profile.full_name.trim()
-        : 'Propietario',
+      fullName:
+        typeof profile?.full_name === 'string' && profile.full_name.trim()
+          ? profile.full_name.trim()
+          : 'Propietario',
     };
   }
 
   private async listTransferTargets(
-    companyId:string,
-    excludeUserId:string='',
-  ):Promise<Array<{userId:string;fullName:string;roleName:string}>>{
-    const client=this.supabaseService.getClient();
-    const {data:memberships,error:membershipsError}=await client
+    companyId: string,
+    excludeUserId: string = '',
+  ): Promise<Array<{ userId: string; fullName: string; roleName: string }>> {
+    const client = this.supabaseService.getClient();
+    const { data: memberships, error: membershipsError } = await client
       .from('company_memberships')
       .select('user_id,role_id')
-      .eq('company_id',companyId)
-      .eq('active',true);
+      .eq('company_id', companyId)
+      .eq('active', true);
 
-    if(membershipsError){
+    if (membershipsError) {
       throw new BadRequestException(
         `No se pudieron consultar los asesores: ${membershipsError.message}`,
       );
     }
 
-    const membershipRows=(memberships??[]).filter(
-      (item:any)=>
-        typeof item?.user_id==='string'&&
-        typeof item?.role_id==='string'&&
-        item.user_id!==excludeUserId,
+    const membershipRows = (memberships ?? []).filter(
+      (item: any) =>
+        typeof item?.user_id === 'string' &&
+        typeof item?.role_id === 'string' &&
+        item.user_id !== excludeUserId,
     );
 
-    if(!membershipRows.length)return [];
+    if (!membershipRows.length) return [];
 
-    const roleIds=Array.from(
-      new Set(membershipRows.map((item:any)=>item.role_id)),
+    const roleIds = Array.from(
+      new Set(membershipRows.map((item: any) => item.role_id)),
     );
-    const userIds=membershipRows.map((item:any)=>item.user_id);
+    const userIds = membershipRows.map((item: any) => item.user_id);
 
-    const {data:roles,error:rolesError}=await client
+    const { data: roles, error: rolesError } = await client
       .from('app_roles')
       .select('id,key,name')
-      .in('id',roleIds);
+      .in('id', roleIds);
 
-    if(rolesError){
+    if (rolesError) {
       throw new BadRequestException(
         `No se pudieron consultar los roles: ${rolesError.message}`,
       );
     }
 
-    const {data:links,error:linksError}=await client
+    const { data: links, error: linksError } = await client
       .from('app_role_permissions')
       .select('role_id,permission_id')
-      .in('role_id',roleIds);
+      .in('role_id', roleIds);
 
-    if(linksError){
+    if (linksError) {
       throw new BadRequestException(
         `No se pudieron consultar los permisos: ${linksError.message}`,
       );
     }
 
-    const permissionIds=Array.from(
+    const permissionIds = Array.from(
       new Set(
-        (links??[])
-          .map((item:any)=>item.permission_id)
-          .filter((value:unknown):value is string=>typeof value==='string'),
+        (links ?? [])
+          .map((item: any) => item.permission_id)
+          .filter(
+            (value: unknown): value is string => typeof value === 'string',
+          ),
       ),
     );
 
-    const permissionResult=permissionIds.length
-      ? await client.from('app_permissions').select('id,key').in('id',permissionIds)
-      : {data:[],error:null};
+    const permissionResult = permissionIds.length
+      ? await client
+          .from('app_permissions')
+          .select('id,key')
+          .in('id', permissionIds)
+      : { data: [], error: null };
 
-    if(permissionResult.error){
+    if (permissionResult.error) {
       throw new BadRequestException(
         `No se pudieron cargar los permisos: ${permissionResult.error.message}`,
       );
     }
 
-    const permissionKeyById=new Map<string,string>(
-      (permissionResult.data??[])
+    const permissionKeyById = new Map<string, string>(
+      (permissionResult.data ?? [])
         .filter(
-          (item:any)=>
-            typeof item?.id==='string'&&typeof item?.key==='string',
+          (item: any) =>
+            typeof item?.id === 'string' && typeof item?.key === 'string',
         )
-        .map((item:any)=>[item.id,item.key]),
+        .map((item: any) => [item.id, item.key]),
     );
-    const permissionKeysByRole=new Map<string,Set<string>>();
+    const permissionKeysByRole = new Map<string, Set<string>>();
 
-    for(const link of links??[]){
-      const roleId=typeof (link as any).role_id==='string'
-        ? (link as any).role_id
-        : '';
-      const permissionId=typeof (link as any).permission_id==='string'
-        ? (link as any).permission_id
-        : '';
-      const permissionKey=permissionKeyById.get(permissionId);
+    for (const link of links ?? []) {
+      const roleId =
+        typeof (link as any).role_id === 'string' ? (link as any).role_id : '';
+      const permissionId =
+        typeof (link as any).permission_id === 'string'
+          ? (link as any).permission_id
+          : '';
+      const permissionKey = permissionKeyById.get(permissionId);
 
-      if(!roleId||!permissionKey)continue;
+      if (!roleId || !permissionKey) continue;
 
-      const current=permissionKeysByRole.get(roleId)??new Set<string>();
+      const current = permissionKeysByRole.get(roleId) ?? new Set<string>();
       current.add(permissionKey);
-      permissionKeysByRole.set(roleId,current);
+      permissionKeysByRole.set(roleId, current);
     }
 
-    const roleById=new Map<string,{key:string;name:string}>(
-      (roles??[])
+    const roleById = new Map<string, { key: string; name: string }>(
+      (roles ?? [])
         .filter(
-          (item:any)=>
-            typeof item?.id==='string'&&
-            typeof item?.key==='string'&&
-            typeof item?.name==='string',
+          (item: any) =>
+            typeof item?.id === 'string' &&
+            typeof item?.key === 'string' &&
+            typeof item?.name === 'string',
         )
-        .map((item:any)=>[
+        .map((item: any) => [
           item.id,
-          {key:item.key.trim().toLowerCase(),name:item.name.trim()},
+          { key: item.key.trim().toLowerCase(), name: item.name.trim() },
         ]),
     );
 
-    const {data:profiles,error:profilesError}=await client
+    const { data: profiles, error: profilesError } = await client
       .from('app_profiles')
       .select('user_id,full_name')
-      .in('user_id',userIds);
+      .in('user_id', userIds);
 
-    if(profilesError){
+    if (profilesError) {
       throw new BadRequestException(
         `No se pudieron consultar los perfiles: ${profilesError.message}`,
       );
     }
 
-    const nameByUserId=new Map<string,string>(
-      (profiles??[])
+    const nameByUserId = new Map<string, string>(
+      (profiles ?? [])
         .filter(
-          (item:any)=>
-            typeof item?.user_id==='string'&&
-            typeof item?.full_name==='string'&&
+          (item: any) =>
+            typeof item?.user_id === 'string' &&
+            typeof item?.full_name === 'string' &&
             item.full_name.trim(),
         )
-        .map((item:any)=>[item.user_id,item.full_name.trim()]),
+        .map((item: any) => [item.user_id, item.full_name.trim()]),
     );
 
     return membershipRows
-      .filter((membership:any)=>{
-        const role=roleById.get(membership.role_id);
-        if(!role)return false;
-        if(role.key==='owner'||role.key==='admin')return true;
-        const permissions=permissionKeysByRole.get(membership.role_id);
+      .filter((membership: any) => {
+        const role = roleById.get(membership.role_id);
+        if (!role) return false;
+        if (role.key === 'owner' || role.key === 'admin') return true;
+        const permissions = permissionKeysByRole.get(membership.role_id);
         return Boolean(
-          permissions?.has('inbox.view')&&permissions.has('inbox.reply'),
+          permissions?.has('inbox.view') && permissions.has('inbox.reply'),
         );
       })
-      .map((membership:any)=>{
-        const role=roleById.get(membership.role_id)!;
+      .map((membership: any) => {
+        const role = roleById.get(membership.role_id)!;
         return {
-          userId:membership.user_id,
-          fullName:nameByUserId.get(membership.user_id)??'Usuario sin nombre',
-          roleName:role.name||'Asesor',
+          userId: membership.user_id,
+          fullName:
+            nameByUserId.get(membership.user_id) ?? 'Usuario sin nombre',
+          roleName: role.name || 'Asesor',
         };
       })
-      .sort((left,right)=>
-        left.fullName.localeCompare(right.fullName,'es-CO'),
+      .sort((left, right) =>
+        left.fullName.localeCompare(right.fullName, 'es-CO'),
       );
   }
 
   private async resolveTransferTarget(
-    companyId:string,
-    targetUserId:string,
-  ):Promise<{userId:string;fullName:string;roleName:string}>{
-    const targets=await this.listTransferTargets(companyId);
-    const target=targets.find((item)=>item.userId===targetUserId);
+    companyId: string,
+    targetUserId: string,
+  ): Promise<{ userId: string; fullName: string; roleName: string }> {
+    const targets = await this.listTransferTargets(companyId);
+    const target = targets.find((item) => item.userId === targetUserId);
 
-    if(!target){
+    if (!target) {
       throw new BadRequestException(
         'El asesor seleccionado no está activo o no tiene permisos para recibir conversaciones.',
       );
@@ -1424,18 +1654,14 @@ export class InboxController {
     return target;
   }
 
-  private async getAiTakeSettings(
-    companyId: string,
-  ): Promise<{
+  private async getAiTakeSettings(companyId: string): Promise<{
     advisorsCanTakeAi: boolean;
     aiTakeAfterMinutes: number;
   }> {
     const { data, error } = await this.supabaseService
       .getClient()
       .from('company_support_settings')
-      .select(
-        'advisors_can_take_ai,ai_take_after_minutes',
-      )
+      .select('advisors_can_take_ai,ai_take_after_minutes')
       .eq('company_id', companyId)
       .maybeSingle();
 
@@ -1449,25 +1675,19 @@ export class InboxController {
       advisors_can_take_ai?: boolean | null;
       ai_take_after_minutes?: number | null;
     } | null;
-    const configuredMinutes = Number(
-      settings?.ai_take_after_minutes,
-    );
+    const configuredMinutes = Number(settings?.ai_take_after_minutes);
 
     return {
-      advisorsCanTakeAi:
-        settings?.advisors_can_take_ai === true,
-      aiTakeAfterMinutes:
-        Number.isInteger(configuredMinutes)
-          ? configuredMinutes
-          : 60,
+      advisorsCanTakeAi: settings?.advisors_can_take_ai === true,
+      aiTakeAfterMinutes: Number.isInteger(configuredMinutes)
+        ? configuredMinutes
+        : 60,
     };
   }
 
   private takeAvailability(
     actor: Actor,
-    session:
-      | ConversationSession
-      | InboxSessionSummary,
+    session: ConversationSession | InboxSessionSummary,
     settings: {
       advisorsCanTakeAi: boolean;
       aiTakeAfterMinutes: number;
@@ -1479,29 +1699,23 @@ export class InboxController {
     if (session.attentionStatus === 'closed') {
       return {
         takeAvailable: false,
-        takeBlockedReason:
-          'La conversación está finalizada.',
+        takeBlockedReason: 'La conversación está finalizada.',
       };
     }
 
     if (session.attentionStatus === 'human') {
       return {
         takeAvailable: false,
-        takeBlockedReason:
-          session.assignedToUserId
-            ? 'La conversación ya está asignada a un asesor. Debe transferirse.'
-            : 'La conversación ya está siendo atendida por una persona.',
+        takeBlockedReason: session.assignedToUserId
+          ? 'La conversación ya está asignada a un asesor. Debe transferirse.'
+          : 'La conversación ya está siendo atendida por una persona.',
       };
     }
 
-    if (
-      !actor.isFullAccess &&
-      !actor.permissions.has('inbox.take')
-    ) {
+    if (!actor.isFullAccess && !actor.permissions.has('inbox.take')) {
       return {
         takeAvailable: false,
-        takeBlockedReason:
-          'No tienes permiso para tomar conversaciones.',
+        takeBlockedReason: 'No tienes permiso para tomar conversaciones.',
       };
     }
 
@@ -1515,8 +1729,7 @@ export class InboxController {
     if (session.attentionStatus !== 'ai') {
       return {
         takeAvailable: false,
-        takeBlockedReason:
-          'Esta conversación no está disponible.',
+        takeBlockedReason: 'Esta conversación no está disponible.',
       };
     }
 
@@ -1535,32 +1748,25 @@ export class InboxController {
       };
     }
 
-    const lastActivity = new Date(
-      session.lastMessageAt,
-    ).getTime();
+    const lastActivity = new Date(session.lastMessageAt).getTime();
 
     if (!Number.isFinite(lastActivity)) {
       return {
         takeAvailable: false,
-        takeBlockedReason:
-          'No se pudo validar la última actividad.',
+        takeBlockedReason: 'No se pudo validar la última actividad.',
       };
     }
 
-    const elapsedMinutes = Math.floor(
-      (Date.now() - lastActivity) / 60000,
-    );
+    const elapsedMinutes = Math.floor((Date.now() - lastActivity) / 60000);
     const remainingMinutes = Math.max(
       0,
-      settings.aiTakeAfterMinutes -
-        elapsedMinutes,
+      settings.aiTakeAfterMinutes - elapsedMinutes,
     );
 
     if (remainingMinutes > 0) {
       return {
         takeAvailable: false,
-        takeBlockedReason:
-          `La IA sigue activa. Podrás tomar esta conversación en ${remainingMinutes} minuto${remainingMinutes === 1 ? '' : 's'}.`,
+        takeBlockedReason: `La IA sigue activa. Podrás tomar esta conversación en ${remainingMinutes} minuto${remainingMinutes === 1 ? '' : 's'}.`,
       };
     }
 
@@ -1570,21 +1776,69 @@ export class InboxController {
     };
   }
 
-  private isInternalTestSession(session:ConversationSession|InboxSessionSummary){return session.customerPhone===INTERNAL_TEST_PHONE;}
-  private canView(actor:Actor,session:ConversationSession|InboxSessionSummary){
-    if(actor.isFullAccess)return true;
-    if(actor.permissions.has('inbox.view_own')&&session.assignedToUserId===actor.userId)return true;
-    if(actor.permissions.has('inbox.view_ai')&&session.attentionStatus==='ai')return true;
-    if(actor.permissions.has('inbox.view_waiting')&&session.attentionStatus==='waiting')return true;
-    if(actor.permissions.has('inbox.view_team')&&session.attentionStatus==='human')return true;
+  private isInternalTestSession(
+    session: ConversationSession | InboxSessionSummary,
+  ) {
+    return session.customerPhone === INTERNAL_TEST_PHONE;
+  }
+  private canView(
+    actor: Actor,
+    session: ConversationSession | InboxSessionSummary,
+  ) {
+    if (actor.isFullAccess) return true;
+    if (
+      actor.permissions.has('inbox.view_own') &&
+      session.assignedToUserId === actor.userId
+    )
+      return true;
+    if (
+      actor.permissions.has('inbox.view_ai') &&
+      session.attentionStatus === 'ai'
+    )
+      return true;
+    if (
+      actor.permissions.has('inbox.view_waiting') &&
+      session.attentionStatus === 'waiting'
+    )
+      return true;
+    if (
+      actor.permissions.has('inbox.view_team') &&
+      session.attentionStatus === 'human'
+    )
+      return true;
     return false;
   }
-  private assertView(actor:Actor,session:ConversationSession){if(!this.canView(actor,session))throw new ForbiddenException('No tienes permiso para ver esta conversación.');}
-  private assertManageOwn(actor:Actor,session:ConversationSession,permission:string){
-    if(!actor.isFullAccess&&!actor.permissions.has(permission))throw new ForbiddenException('No tienes permiso para realizar esta acción.');
-    if(!actor.isFullAccess&&session.assignedToUserId!==actor.userId)throw new ForbiddenException('Solo puedes gestionar conversaciones asignadas a tu usuario.');
+  private assertView(actor: Actor, session: ConversationSession) {
+    if (!this.canView(actor, session))
+      throw new ForbiddenException(
+        'No tienes permiso para ver esta conversación.',
+      );
   }
-  private authorize(value:string){const expected=process.env.CHATPRO_INBOX_KEY?.trim();if(!expected||value.trim()!==expected)throw new UnauthorizedException('No autorizado para usar la bandeja.');}
-  private requiredCompany(value:string){const company=value.trim().toLowerCase();if(!company)throw new BadRequestException('Falta la empresa.');return company;}
-  private readText(value:unknown){return typeof value==='string'?value.trim():'';}
+  private assertManageOwn(
+    actor: Actor,
+    session: ConversationSession,
+    permission: string,
+  ) {
+    if (!actor.isFullAccess && !actor.permissions.has(permission))
+      throw new ForbiddenException(
+        'No tienes permiso para realizar esta acción.',
+      );
+    if (!actor.isFullAccess && session.assignedToUserId !== actor.userId)
+      throw new ForbiddenException(
+        'Solo puedes gestionar conversaciones asignadas a tu usuario.',
+      );
+  }
+  private authorize(value: string) {
+    const expected = process.env.CHATPRO_INBOX_KEY?.trim();
+    if (!expected || value.trim() !== expected)
+      throw new UnauthorizedException('No autorizado para usar la bandeja.');
+  }
+  private requiredCompany(value: string) {
+    const company = value.trim().toLowerCase();
+    if (!company) throw new BadRequestException('Falta la empresa.');
+    return company;
+  }
+  private readText(value: unknown) {
+    return typeof value === 'string' ? value.trim() : '';
+  }
 }

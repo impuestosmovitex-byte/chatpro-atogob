@@ -1,8 +1,7 @@
 "use client";
 
-
-import { AppSidebar } from './components/AppSidebar';
-import { FormEvent, useEffect, useMemo, useState, useRef} from "react";
+import { AppSidebar } from "./components/AppSidebar";
+import { FormEvent, useEffect, useMemo, useState, useRef } from "react";
 
 type AttentionStatus = "ai" | "waiting" | "human" | "closed";
 
@@ -98,7 +97,6 @@ type PreparedWhatsappTemplate = {
   usageLabels: string[];
 };
 
-
 type StorefrontResponse = {
   ok?: boolean;
   error?: string;
@@ -106,7 +104,12 @@ type StorefrontResponse = {
 };
 
 type AdvisorStatus = "available" | "busy" | "away" | "offline";
-type CurrentUser = { userId: string; companyName: string; fullName: string; roleName: string };
+type CurrentUser = {
+  userId: string;
+  companyName: string;
+  fullName: string;
+  roleName: string;
+};
 type AdvisorPresence = {
   status: AdvisorStatus;
   lastSeenAt?: string | null;
@@ -128,7 +131,12 @@ type TransferTargetsResponse = {
   error?: string;
   targets?: TransferTarget[];
 };
-const advisorStatusLabel: Record<AdvisorStatus, string> = { available: "Disponible", busy: "Ocupado", away: "Ausente", offline: "Desconectado" };
+const advisorStatusLabel: Record<AdvisorStatus, string> = {
+  available: "Disponible",
+  busy: "Ocupado",
+  away: "Ausente",
+  offline: "Desconectado",
+};
 
 type InboxConversation = {
   company: { id: string; slug: string; name: string };
@@ -199,7 +207,10 @@ function formatMoney(value: unknown) {
 }
 
 function customerLabel(phone: string, contact?: Contact | null) {
-  return contact?.displayName?.trim() || (phone ? `Cliente ${phone}` : "Cliente sin número");
+  return (
+    contact?.displayName?.trim() ||
+    (phone ? `Cliente ${phone}` : "Cliente sin número")
+  );
 }
 
 function compactTransferText(
@@ -208,16 +219,13 @@ function compactTransferText(
   maxLength: number,
 ) {
   const text =
-    typeof value === "string"
-      ? value.replace(/\s+/g, " ").trim()
-      : "";
+    typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 
   if (!text) return fallback;
   if (text.length <= maxLength) return text;
 
   return `${text.slice(0, Math.max(1, maxLength - 1)).trim()}…`;
 }
-
 
 function templateObjectList(value: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
@@ -237,9 +245,7 @@ function whatsappTemplateVisibleText(template: WhatsappTemplate): string {
         ? component.type.trim().toUpperCase()
         : "";
     const text =
-      typeof component.text === "string"
-        ? component.text.trim()
-        : "";
+      typeof component.text === "string" ? component.text.trim() : "";
 
     if (text && ["HEADER", "BODY", "FOOTER"].includes(type)) {
       sections.push(text);
@@ -253,9 +259,7 @@ function whatsappTemplateVisibleText(template: WhatsappTemplate): string {
         .filter(Boolean);
 
       if (buttons.length) {
-        sections.push(
-          buttons.map((button) => `[Botón: ${button}]`).join("\n"),
-        );
+        sections.push(buttons.map((button) => `[Botón: ${button}]`).join("\n"));
       }
     }
   }
@@ -266,26 +270,18 @@ function whatsappTemplateVisibleText(template: WhatsappTemplate): string {
   );
 }
 
-function whatsappTemplateVariableKeys(
-  template: WhatsappTemplate,
-): string[] {
+function whatsappTemplateVariableKeys(template: WhatsappTemplate): string[] {
   const keys = new Set<string>();
   const sources = [whatsappTemplateVisibleText(template)];
   const expression = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
   for (const component of templateObjectList(template.components)) {
-    if (
-      typeof component.text === "string" &&
-      component.text.trim()
-    ) {
+    if (typeof component.text === "string" && component.text.trim()) {
       sources.push(component.text);
     }
 
     for (const button of templateObjectList(component.buttons)) {
-      if (
-        typeof button.url === "string" &&
-        button.url.trim()
-      ) {
+      if (typeof button.url === "string" && button.url.trim()) {
         sources.push(button.url);
       }
     }
@@ -318,8 +314,7 @@ function renderWhatsappTemplatePreview(
   let preview = whatsappTemplateVisibleText(template);
 
   for (const key of whatsappTemplateVariableKeys(template)) {
-    const replacement =
-      variables[key]?.trim() || `[Variable ${key}]`;
+    const replacement = variables[key]?.trim() || `[Variable ${key}]`;
     const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     preview = preview.replace(
@@ -336,15 +331,12 @@ function whatsappTemplateUsageLabels(
   bindings: WhatsappTemplateBinding[],
   events: WhatsappTemplateEvent[],
 ): string[] {
-  const eventNames = new Map(
-    events.map((event) => [event.key, event.label]),
-  );
+  const eventNames = new Map(events.map((event) => [event.key, event.label]));
 
   return bindings
     .filter((binding) => binding.templateId === templateId)
     .map((binding) => {
-      const label =
-        eventNames.get(binding.eventKey) || binding.eventKey;
+      const label = eventNames.get(binding.eventKey) || binding.eventKey;
 
       return binding.enabled ? label : `${label} · pausada`;
     });
@@ -361,11 +353,7 @@ function getCart(context: Record<string, unknown>) {
   );
 }
 
-function ImageMessageViewer({
-  item,
-}: {
-  item: InboxMessage;
-}) {
+function ImageMessageViewer({ item }: { item: InboxMessage }) {
   const [source, setSource] = useState("");
   const [loading, setLoading] = useState(true);
   const [imageError, setImageError] = useState("");
@@ -396,8 +384,7 @@ function ImageMessageViewer({
         );
 
         if (!response.ok) {
-          const contentType =
-            response.headers.get("content-type") ?? "";
+          const contentType = response.headers.get("content-type") ?? "";
           let detail = "No se pudo cargar la imagen.";
 
           if (contentType.includes("application/json")) {
@@ -473,11 +460,7 @@ function ImageMessageViewer({
   );
 }
 
-function AudioMessagePlayer({
-  item,
-}: {
-  item: InboxMessage;
-}) {
+function AudioMessagePlayer({ item }: { item: InboxMessage }) {
   const [source, setSource] = useState("");
   const [loading, setLoading] = useState(true);
   const [playbackError, setPlaybackError] = useState("");
@@ -508,8 +491,7 @@ function AudioMessagePlayer({
         );
 
         if (!response.ok) {
-          const contentType =
-            response.headers.get("content-type") ?? "";
+          const contentType = response.headers.get("content-type") ?? "";
           let detail = "No se pudo cargar el audio.";
 
           if (contentType.includes("application/json")) {
@@ -571,18 +553,14 @@ function AudioMessagePlayer({
           preload="metadata"
           src={source}
           onError={() =>
-            setPlaybackError(
-              "El navegador no pudo reproducir este audio.",
-            )
+            setPlaybackError("El navegador no pudo reproducir este audio.")
           }
         >
           Tu navegador no permite reproducir este audio.
         </audio>
       )}
       <small>
-        {item.authorType === "customer"
-          ? "Audio del cliente"
-          : "Audio enviado"}
+        {item.authorType === "customer" ? "Audio del cliente" : "Audio enviado"}
       </small>
     </div>
   );
@@ -610,10 +588,12 @@ export default function Home() {
   const [whatsappTemplates, setWhatsappTemplates] = useState<
     WhatsappTemplate[]
   >([]);
-  const [whatsappTemplateBindings, setWhatsappTemplateBindings] =
-    useState<WhatsappTemplateBinding[]>([]);
-  const [whatsappTemplateEvents, setWhatsappTemplateEvents] =
-    useState<WhatsappTemplateEvent[]>([]);
+  const [whatsappTemplateBindings, setWhatsappTemplateBindings] = useState<
+    WhatsappTemplateBinding[]
+  >([]);
+  const [whatsappTemplateEvents, setWhatsappTemplateEvents] = useState<
+    WhatsappTemplateEvent[]
+  >([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [templateVariables, setTemplateVariables] = useState<
     Record<string, string>
@@ -644,6 +624,10 @@ export default function Home() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState("");
   const [audioSending, setAudioSending] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
+  const [imageSending, setImageSending] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   useEffect(() => {
@@ -655,17 +639,32 @@ export default function Home() {
 
   async function loadIdentityAndPresence() {
     try {
-      const meResponse = await fetch("/api/auth/session", { cache: "no-store" });
-      const me = await readJson(meResponse) as { ok?: boolean; error?: string; session?: CurrentUser };
-      if (!meResponse.ok || !me.ok || !me.session?.userId) throw new Error(me.error || "No se pudo identificar al usuario.");
+      const meResponse = await fetch("/api/auth/session", {
+        cache: "no-store",
+      });
+      const me = (await readJson(meResponse)) as {
+        ok?: boolean;
+        error?: string;
+        session?: CurrentUser;
+      };
+      if (!meResponse.ok || !me.ok || !me.session?.userId)
+        throw new Error(me.error || "No se pudo identificar al usuario.");
       setCurrentUser(me.session);
-      const presenceResponse = await fetch("/api/advisor-presence", { cache: "no-store" });
-      const data =
-        await readJson(presenceResponse) as AdvisorPresenceResponse;
-      if (!presenceResponse.ok || !data.ok || !data.advisor) throw new Error(data.error || "No se pudo cargar la disponibilidad.");
+      const presenceResponse = await fetch("/api/advisor-presence", {
+        cache: "no-store",
+      });
+      const data = (await readJson(
+        presenceResponse,
+      )) as AdvisorPresenceResponse;
+      if (!presenceResponse.ok || !data.ok || !data.advisor)
+        throw new Error(data.error || "No se pudo cargar la disponibilidad.");
       setPresence(data.advisor);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudo cargar tu disponibilidad.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo cargar tu disponibilidad.",
+      );
     }
   }
 
@@ -678,20 +677,19 @@ export default function Home() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      const data =
-        await readJson(response) as AdvisorPresenceResponse;
+      const data = (await readJson(response)) as AdvisorPresenceResponse;
 
       if (!response.ok || !data.ok || !data.advisor) {
-        throw new Error(
-          data.error || "No se pudo guardar la disponibilidad.",
-        );
+        throw new Error(data.error || "No se pudo guardar la disponibilidad.");
       }
 
       setPresence(data.advisor);
       setError("");
 
-      const assignedPendingCount =
-        Math.max(0, Number(data.assignedPendingCount) || 0);
+      const assignedPendingCount = Math.max(
+        0,
+        Number(data.assignedPendingCount) || 0,
+      );
 
       if (assignedPendingCount > 0) {
         setActionMessage(
@@ -713,20 +711,14 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (
-      !currentUser?.userId ||
-      presence?.status !== "available"
-    ) {
+    if (!currentUser?.userId || presence?.status !== "available") {
       return;
     }
 
     let cancelled = false;
 
     const heartbeat = async () => {
-      if (
-        cancelled ||
-        document.visibilityState !== "visible"
-      ) {
+      if (cancelled || document.visibilityState !== "visible") {
         return;
       }
 
@@ -737,25 +729,18 @@ export default function Home() {
           body: JSON.stringify({ status: "available" }),
           cache: "no-store",
         });
-        const data =
-          await readJson(response) as AdvisorPresenceResponse;
+        const data = (await readJson(response)) as AdvisorPresenceResponse;
 
-        if (
-          cancelled ||
-          !response.ok ||
-          !data.ok ||
-          !data.advisor
-        ) {
+        if (cancelled || !response.ok || !data.ok || !data.advisor) {
           return;
         }
 
         setPresence(data.advisor);
 
-        const assignedPendingCount =
-          Math.max(
-            0,
-            Number(data.assignedPendingCount) || 0,
-          );
+        const assignedPendingCount = Math.max(
+          0,
+          Number(data.assignedPendingCount) || 0,
+        );
 
         if (assignedPendingCount > 0) {
           setActionMessage(
@@ -777,22 +762,13 @@ export default function Home() {
     };
 
     void heartbeat();
-    const interval = window.setInterval(
-      () => void heartbeat(),
-      60_000,
-    );
-    document.addEventListener(
-      "visibilitychange",
-      onVisibilityChange,
-    );
+    const interval = window.setInterval(() => void heartbeat(), 60_000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
-      document.removeEventListener(
-        "visibilitychange",
-        onVisibilityChange,
-      );
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [currentUser?.userId, presence?.status]);
 
@@ -811,10 +787,9 @@ export default function Home() {
     if (showSpinner) setLoadingList(true);
 
     try {
-      const response = await fetch(
-        `/api/inbox?status=${filter}&limit=80`,
-        { cache: "no-store" },
-      );
+      const response = await fetch(`/api/inbox?status=${filter}&limit=80`, {
+        cache: "no-store",
+      });
       const data = (await readJson(response)) as ApiList;
 
       if (!response.ok || !data.ok) {
@@ -824,12 +799,15 @@ export default function Home() {
       setSessions(data.sessions ?? []);
       setError("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudo cargar la bandeja.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo cargar la bandeja.",
+      );
     } finally {
       if (showSpinner) setLoadingList(false);
     }
   }
-
 
   function blankTemplateVariables(
     template: WhatsappTemplate,
@@ -846,9 +824,7 @@ export default function Home() {
     const template =
       whatsappTemplates.find((item) => item.id === templateId) ?? null;
 
-    setTemplateVariables(
-      template ? blankTemplateVariables(template) : {},
-    );
+    setTemplateVariables(template ? blankTemplateVariables(template) : {});
   }
 
   async function openWhatsappTemplateDialog() {
@@ -862,18 +838,14 @@ export default function Home() {
       const response = await fetch("/api/whatsapp-templates", {
         cache: "no-store",
       });
-      const data =
-        (await readJson(response)) as WhatsappTemplatesResponse;
+      const data = (await readJson(response)) as WhatsappTemplatesResponse;
 
       if (!response.ok || !data.ok) {
-        throw new Error(
-          data.error || "No se pudieron cargar las plantillas.",
-        );
+        throw new Error(data.error || "No se pudieron cargar las plantillas.");
       }
 
       const approved = (data.templates ?? []).filter(
-        (template) =>
-          template.status.trim().toUpperCase() === "APPROVED",
+        (template) => template.status.trim().toUpperCase() === "APPROVED",
       );
       const bindings = data.bindings ?? [];
       const events = data.eventDefinitions ?? [];
@@ -884,10 +856,9 @@ export default function Home() {
 
       const existing =
         preparedTemplate?.sessionId === selected.session.id
-          ? approved.find(
-              (template) =>
-                template.id === preparedTemplate.templateId,
-            ) ?? null
+          ? (approved.find(
+              (template) => template.id === preparedTemplate.templateId,
+            ) ?? null)
           : null;
       const initial = existing ?? approved[0] ?? null;
 
@@ -919,9 +890,7 @@ export default function Home() {
     if (!selected) return;
 
     const template =
-      whatsappTemplates.find(
-        (item) => item.id === selectedTemplateId,
-      ) ?? null;
+      whatsappTemplates.find((item) => item.id === selectedTemplateId) ?? null;
 
     if (!template) {
       setTemplateError("Selecciona una plantilla aprobada.");
@@ -956,10 +925,7 @@ export default function Home() {
       name: template.name,
       language: template.language,
       variables: { ...templateVariables },
-      preview: renderWhatsappTemplatePreview(
-        template,
-        templateVariables,
-      ),
+      preview: renderWhatsappTemplatePreview(template, templateVariables),
       usageLabels,
     });
     setTemplateOpen(false);
@@ -982,9 +948,7 @@ export default function Home() {
     if (!selected || !preparedTemplate || templateSending) return;
 
     if (preparedTemplate.sessionId !== selected.session.id) {
-      setError(
-        "La plantilla preparada no corresponde a esta conversación.",
-      );
+      setError("La plantilla preparada no corresponde a esta conversación.");
       return;
     }
 
@@ -1010,9 +974,7 @@ export default function Home() {
       };
 
       if (!response.ok || !data.ok) {
-        throw new Error(
-          data.error || "No se pudo enviar la plantilla.",
-        );
+        throw new Error(data.error || "No se pudo enviar la plantilla.");
       }
 
       const sessionId = selected.session.id;
@@ -1040,10 +1002,7 @@ export default function Home() {
 
   async function loadQuickReplies() {
     try {
-      const response = await fetch(
-        "/api/quick-replies",
-        { cache: "no-store" },
-      );
+      const response = await fetch("/api/quick-replies", { cache: "no-store" });
       const data = (await readJson(response)) as {
         ok?: boolean;
         quickReplies?: QuickReply[];
@@ -1080,8 +1039,7 @@ export default function Home() {
         session: data.session,
         contact: data.contact ?? null,
         messages: data.messages ?? [],
-        historyRestricted:
-          data.historyRestricted === true,
+        historyRestricted: data.historyRestricted === true,
       });
 
       if (!silent) {
@@ -1144,7 +1102,9 @@ export default function Home() {
       };
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || data.message || "No se pudo completar la acción.");
+        throw new Error(
+          data.error || data.message || "No se pudo completar la acción.",
+        );
       }
 
       if (action === "message") {
@@ -1155,7 +1115,10 @@ export default function Home() {
       await loadList(false);
       await openConversation(selected.session.id);
 
-      const actionLabels: Record<"take" | "close" | "resume_ai" | "message", string> = {
+      const actionLabels: Record<
+        "take" | "close" | "resume_ai" | "message",
+        string
+      > = {
         take: "Conversación tomada. La IA queda pausada mientras respondes.",
         message: "Mensaje enviado por WhatsApp.",
         resume_ai: "Conversación devuelta a la IA.",
@@ -1165,7 +1128,11 @@ export default function Home() {
       setActionMessage(actionLabels[action]);
     } catch (caught) {
       setActionMessage("");
-      setError(caught instanceof Error ? caught.message : "No se pudo completar la acción.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo completar la acción.",
+      );
     } finally {
       setActionLoading(false);
     }
@@ -1239,7 +1206,9 @@ export default function Home() {
 
       if (!response.ok || !data.ok) {
         throw new Error(
-          data.error || data.message || "No se pudo transferir la conversación.",
+          data.error ||
+            data.message ||
+            "No se pudo transferir la conversación.",
         );
       }
 
@@ -1276,7 +1245,9 @@ export default function Home() {
       const data = (await readJson(response)) as ApiConversation;
 
       if (!response.ok || !data.ok || !data.conversation) {
-        throw new Error(data.error || "No se pudo iniciar la prueba del agente.");
+        throw new Error(
+          data.error || "No se pudo iniciar la prueba del agente.",
+        );
       }
 
       setSelected(data.conversation);
@@ -1295,9 +1266,7 @@ export default function Home() {
     }
   }
 
-  async function sendInternalTestMessage(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function sendInternalTestMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!selected || !message.trim()) return;
@@ -1317,7 +1286,9 @@ export default function Home() {
       const data = (await readJson(response)) as ApiConversation;
 
       if (!response.ok || !data.ok || !data.conversation) {
-        throw new Error(data.error || "No se pudo enviar el mensaje de prueba.");
+        throw new Error(
+          data.error || "No se pudo enviar el mensaje de prueba.",
+        );
       }
 
       setSelected(data.conversation);
@@ -1496,9 +1467,7 @@ export default function Home() {
 
       if (!response.ok || !data.ok || !data.conversation) {
         throw new Error(
-          data.error ||
-            data.message ||
-            "No se pudo enviar el audio.",
+          data.error || data.message || "No se pudo enviar el audio.",
         );
       }
 
@@ -1517,6 +1486,92 @@ export default function Home() {
     }
   }
 
+  function clearImageDraft() {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+
+    setImageFile(null);
+    setImagePreviewUrl("");
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  }
+
+  function selectImage(file?: File | null) {
+    if (!file) return;
+
+    const allowed = new Set([
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/webp",
+    ]);
+
+    if (!allowed.has(file.type)) {
+      setError("Formato no permitido. Usa JPG, PNG o WEBP.");
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setError("La imagen supera el límite de 8 MB.");
+      return;
+    }
+
+    clearImageDraft();
+    setImageFile(file);
+    setImagePreviewUrl(URL.createObjectURL(file));
+    setQuickReplyOpen(false);
+    setError("");
+  }
+
+  async function sendSelectedImage() {
+    if (!selected?.session.id || !imageFile) return;
+
+    setImageSending(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const form = new FormData();
+      form.set("sessionId", selected.session.id);
+      form.set("image", imageFile, imageFile.name || "imagen.jpg");
+
+      if (message.trim()) {
+        form.set("caption", message.trim().slice(0, 1024));
+      }
+
+      const response = await fetch("/api/inbox/image", {
+        method: "POST",
+        body: form,
+      });
+      const data = (await readJson(response)) as ApiConversation & {
+        message?: string;
+      };
+
+      if (!response.ok || !data.ok || !data.conversation) {
+        throw new Error(
+          data.error || data.message || "No se pudo enviar la imagen.",
+        );
+      }
+
+      setSelected(data.conversation);
+      clearImageDraft();
+      setMessage("");
+      setActionMessage("Imagen enviada.");
+      await loadList(false);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo enviar la imagen.",
+      );
+    } finally {
+      setImageSending(false);
+    }
+  }
+
   function formatRecordingTime(seconds: number) {
     const minutes = Math.floor(seconds / 60);
     const rest = seconds % 60;
@@ -1526,6 +1581,11 @@ export default function Home() {
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (imageFile) {
+      await sendSelectedImage();
+      return;
+    }
 
     if (!message.trim()) return;
 
@@ -1538,11 +1598,7 @@ export default function Home() {
     }
 
     const handleEnter = (event: KeyboardEvent) => {
-      if (
-        event.key === "Enter" &&
-        !event.shiftKey &&
-        !event.isComposing
-      ) {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
         void sendAudioRecording();
       }
@@ -1553,20 +1609,15 @@ export default function Home() {
     return () => {
       window.removeEventListener("keydown", handleEnter);
     };
-  }, [
-    audioBlob,
-    recording,
-    audioSending,
-    selected?.session.id,
-  ]);
+  }, [audioBlob, recording, audioSending, selected?.session.id]);
 
   useEffect(() => {
     let alive = true;
 
     async function loadCapabilities() {
       try {
-        const response = await fetch('/api/auth/capabilities', {
-          cache: 'no-store',
+        const response = await fetch("/api/auth/capabilities", {
+          cache: "no-store",
         });
         const data = (await response.json()) as {
           ok?: boolean;
@@ -1580,26 +1631,16 @@ export default function Home() {
 
         if (alive) {
           const allowed =
-            response.ok &&
-            data.ok === true &&
-            Boolean(data.capabilities);
+            response.ok && data.ok === true && Boolean(data.capabilities);
 
-          setCanTestAgent(
-            allowed &&
-            data.capabilities?.testAgent === true,
-          );
+          setCanTestAgent(allowed && data.capabilities?.testAgent === true);
           setCanOpenStorefront(
-            allowed &&
-            data.capabilities?.storefront === true,
+            allowed && data.capabilities?.storefront === true,
           );
           setCanManageClients(
-            allowed &&
-            data.capabilities?.manageClients === true,
+            allowed && data.capabilities?.manageClients === true,
           );
-          setCanSendAudio(
-            allowed &&
-            data.capabilities?.sendAudio === true,
-          );
+          setCanSendAudio(allowed && data.capabilities?.sendAudio === true);
         }
       } catch {
         if (alive) {
@@ -1641,7 +1682,9 @@ export default function Home() {
     void loadQuickReplies();
     void loadIdentityAndPresence();
 
-    const targetSession = new URLSearchParams(window.location.search).get("session");
+    const targetSession = new URLSearchParams(window.location.search).get(
+      "session",
+    );
     if (targetSession) {
       void openConversation(targetSession);
     }
@@ -1653,8 +1696,7 @@ export default function Home() {
 
   useEffect(() => {
     const sessionId = selected?.session.id;
-    const isInternal =
-      selected?.session.context?.internal_test === true;
+    const isInternal = selected?.session.context?.internal_test === true;
 
     if (!sessionId || isInternal) {
       return;
@@ -1667,10 +1709,7 @@ export default function Home() {
     }, 5000);
 
     return () => window.clearInterval(timer);
-  }, [
-    selected?.session.id,
-    selected?.session.context?.internal_test,
-  ]);
+  }, [selected?.session.id, selected?.session.context?.internal_test]);
 
   const isInternalTest = Boolean(
     selected?.session.context?.internal_test === true,
@@ -1690,7 +1729,6 @@ export default function Home() {
       ),
     [cartLines],
   );
-
 
   const selectedContactTags = selected?.contact?.tags?.join(", ") ?? "";
 
@@ -1761,7 +1799,6 @@ export default function Home() {
     return () => window.clearTimeout(timeoutId);
   }, [actionMessage]);
 
-
   const quickReplyQuery = message.trimStart().startsWith("/")
     ? message.trimStart().slice(1).toLowerCase()
     : "";
@@ -1794,9 +1831,7 @@ export default function Home() {
       });
       const data = (await readJson(response)) as StorefrontResponse;
       const url =
-        typeof data.storefrontUrl === "string"
-          ? data.storefrontUrl.trim()
-          : "";
+        typeof data.storefrontUrl === "string" ? data.storefrontUrl.trim() : "";
 
       if (!response.ok || !data.ok || !url) {
         throw new Error(data.error || "No se pudo abrir la tienda conectada.");
@@ -1806,7 +1841,9 @@ export default function Home() {
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (caught) {
       setStorefrontError(
-        caught instanceof Error ? caught.message : "No se pudo abrir la tienda conectada.",
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo abrir la tienda conectada.",
       );
     } finally {
       setStorefrontLoading(false);
@@ -1842,7 +1879,9 @@ export default function Home() {
       };
 
       if (!response.ok || !data.ok || !data.contact) {
-        throw new Error(data.error || "No se pudo guardar la ficha del cliente.");
+        throw new Error(
+          data.error || "No se pudo guardar la ficha del cliente.",
+        );
       }
 
       const savedContact = data.contact;
@@ -1863,7 +1902,11 @@ export default function Home() {
 
       setActionMessage("Ficha comercial del cliente guardada.");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudo guardar la ficha del cliente.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo guardar la ficha del cliente.",
+      );
     } finally {
       setContactSaving(false);
     }
@@ -1897,15 +1940,12 @@ export default function Home() {
 
   const selectedStatus = selected?.session.attentionStatus;
   const showTakeButton =
-    !isInternalTest &&
-    selected?.session.takeAvailable === true;
+    !isInternalTest && selected?.session.takeAvailable === true;
   const showHumanActions = !isInternalTest && selectedStatus === "human";
 
   return (
     <main
-      className={`chatpro-shell ${
-        selected ? "mobile-conversation-shell" : ""
-      }`}
+      className={`chatpro-shell ${selected ? "mobile-conversation-shell" : ""}`}
     >
       <AppSidebar
         companyName={currentUser?.companyName ?? "Empresa"}
@@ -1924,8 +1964,18 @@ export default function Home() {
               <b>{currentUser?.fullName ?? "Cargando usuario…"}</b>
               <small>{currentUser?.roleName ?? "Asesor"}</small>
             </div>
-            <select value={presence?.status ?? "offline"} disabled={presenceLoading || !currentUser} onChange={(event) => void changePresence(event.target.value as AdvisorStatus)}>
-              {Object.entries(advisorStatusLabel).map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+            <select
+              value={presence?.status ?? "offline"}
+              disabled={presenceLoading || !currentUser}
+              onChange={(event) =>
+                void changePresence(event.target.value as AdvisorStatus)
+              }
+            >
+              {Object.entries(advisorStatusLabel).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
             </select>
           </div>
         </header>
@@ -1935,14 +1985,14 @@ export default function Home() {
             <span className="whatsapp-icon">◔</span> WhatsApp
           </button>
           {canTestAgent ? (
-          <button
-            className="channel-tab"
-            type="button"
-            onClick={() => void startInternalTest()}
-            disabled={internalTestLoading}
-          >
-            {internalTestLoading ? "Preparando prueba…" : "Probar agente"}
-          </button>
+            <button
+              className="channel-tab"
+              type="button"
+              onClick={() => void startInternalTest()}
+              disabled={internalTestLoading}
+            >
+              {internalTestLoading ? "Preparando prueba…" : "Probar agente"}
+            </button>
           ) : null}
           <button className="channel-tab" type="button" disabled>
             Instagram <small>Próximamente</small>
@@ -1953,306 +2003,304 @@ export default function Home() {
         </div>
 
         {error ? <div className="error-banner">{error}</div> : null}
-        {actionMessage ? <div className="success-banner">{actionMessage}</div> : null}
+        {actionMessage ? (
+          <div className="success-banner">{actionMessage}</div>
+        ) : null}
 
         {transferOpen ? (
-        <div
-          className="transfer-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !transferLoading) {
-              setTransferOpen(false);
-            }
-          }}
-        >
-          <section
-            className="transfer-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="transfer-dialog-title"
+          <div
+            className="transfer-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !transferLoading) {
+                setTransferOpen(false);
+              }
+            }}
           >
-            <div className="transfer-dialog-heading">
-              <div>
-                <p className="eyebrow">Transferencia</p>
-                <h2 id="transfer-dialog-title">Transferir conversación</h2>
-              </div>
-              <button
-                type="button"
-                aria-label="Cerrar"
-                disabled={transferLoading}
-                onClick={() => setTransferOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-
-            <p className="transfer-dialog-copy">
-              El nuevo asesor podrá ver inmediatamente todo el historial y
-              responder. Tú dejarás de tener acceso a esta conversación.
-            </p>
-
-            {transferTargets.length ? (
-              <label className="transfer-field">
-                <span>Nuevo asesor</span>
-                <select
-                  value={transferTargetUserId}
+            <section
+              className="transfer-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="transfer-dialog-title"
+            >
+              <div className="transfer-dialog-heading">
+                <div>
+                  <p className="eyebrow">Transferencia</p>
+                  <h2 id="transfer-dialog-title">Transferir conversación</h2>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Cerrar"
                   disabled={transferLoading}
-                  onChange={(event) =>
-                    setTransferTargetUserId(event.target.value)
-                  }
+                  onClick={() => setTransferOpen(false)}
                 >
-                  {transferTargets.map((target) => (
-                    <option key={target.userId} value={target.userId}>
-                      {target.fullName} · {target.roleName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <p className="transfer-empty">
-                No hay otro asesor activo con permisos para recibir esta
-                conversación.
-              </p>
-            )}
-
-            <div className="transfer-dialog-actions">
-              <button
-                className="button quiet"
-                type="button"
-                disabled={transferLoading}
-                onClick={() => setTransferOpen(false)}
-              >
-                Cancelar
-              </button>
-              <button
-                className="button primary"
-                type="button"
-                disabled={transferLoading || !transferTargetUserId}
-                onClick={() => void confirmTransfer()}
-              >
-                {transferLoading ? "Transfiriendo…" : "Confirmar transferencia"}
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-
-      {templateOpen ? (
-        <div
-          className="transfer-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (
-              event.target === event.currentTarget &&
-              !templateLoading
-            ) {
-              setTemplateOpen(false);
-            }
-          }}
-        >
-          <section
-            className="transfer-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="template-dialog-title"
-            style={{ maxWidth: 680 }}
-          >
-            <div className="transfer-dialog-heading">
-              <div>
-                <p className="eyebrow">WhatsApp</p>
-                <h2 id="template-dialog-title">
-                  Preparar plantilla aprobada
-                </h2>
+                  ×
+                </button>
               </div>
-              <button
-                type="button"
-                aria-label="Cerrar"
-                disabled={templateLoading}
-                onClick={() => setTemplateOpen(false)}
-              >
-                ×
-              </button>
-            </div>
 
-            <p className="transfer-dialog-copy">
-              Revisa el contenido y completa las variables. En este
-              bloque la plantilla quedará preparada, pero no será
-              enviada.
-            </p>
-
-            {templateLoading ? (
-              <p className="transfer-empty">
-                Cargando plantillas aprobadas…
+              <p className="transfer-dialog-copy">
+                El nuevo asesor podrá ver inmediatamente todo el historial y
+                responder. Tú dejarás de tener acceso a esta conversación.
               </p>
-            ) : templateError && !whatsappTemplates.length ? (
-              <p className="error-banner">{templateError}</p>
-            ) : !whatsappTemplates.length ? (
-              <p className="transfer-empty">
-                Esta empresa no tiene plantillas aprobadas disponibles.
+
+              {transferTargets.length ? (
+                <label className="transfer-field">
+                  <span>Nuevo asesor</span>
+                  <select
+                    value={transferTargetUserId}
+                    disabled={transferLoading}
+                    onChange={(event) =>
+                      setTransferTargetUserId(event.target.value)
+                    }
+                  >
+                    {transferTargets.map((target) => (
+                      <option key={target.userId} value={target.userId}>
+                        {target.fullName} · {target.roleName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <p className="transfer-empty">
+                  No hay otro asesor activo con permisos para recibir esta
+                  conversación.
+                </p>
+              )}
+
+              <div className="transfer-dialog-actions">
+                <button
+                  className="button quiet"
+                  type="button"
+                  disabled={transferLoading}
+                  onClick={() => setTransferOpen(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="button primary"
+                  type="button"
+                  disabled={transferLoading || !transferTargetUserId}
+                  onClick={() => void confirmTransfer()}
+                >
+                  {transferLoading
+                    ? "Transfiriendo…"
+                    : "Confirmar transferencia"}
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {templateOpen ? (
+          <div
+            className="transfer-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !templateLoading) {
+                setTemplateOpen(false);
+              }
+            }}
+          >
+            <section
+              className="transfer-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="template-dialog-title"
+              style={{ maxWidth: 680 }}
+            >
+              <div className="transfer-dialog-heading">
+                <div>
+                  <p className="eyebrow">WhatsApp</p>
+                  <h2 id="template-dialog-title">
+                    Preparar plantilla aprobada
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Cerrar"
+                  disabled={templateLoading}
+                  onClick={() => setTemplateOpen(false)}
+                >
+                  ×
+                </button>
+              </div>
+
+              <p className="transfer-dialog-copy">
+                Revisa el contenido y completa las variables. En este bloque la
+                plantilla quedará preparada, pero no será enviada.
               </p>
-            ) : (
-              (() => {
-                const currentTemplate =
-                  whatsappTemplates.find(
-                    (template) =>
-                      template.id === selectedTemplateId,
-                  ) ??
-                  whatsappTemplates[0] ??
-                  null;
 
-                if (!currentTemplate) return null;
+              {templateLoading ? (
+                <p className="transfer-empty">Cargando plantillas aprobadas…</p>
+              ) : templateError && !whatsappTemplates.length ? (
+                <p className="error-banner">{templateError}</p>
+              ) : !whatsappTemplates.length ? (
+                <p className="transfer-empty">
+                  Esta empresa no tiene plantillas aprobadas disponibles.
+                </p>
+              ) : (
+                (() => {
+                  const currentTemplate =
+                    whatsappTemplates.find(
+                      (template) => template.id === selectedTemplateId,
+                    ) ??
+                    whatsappTemplates[0] ??
+                    null;
 
-                const variableKeys =
-                  whatsappTemplateVariableKeys(currentTemplate);
-                const usageLabels =
-                  whatsappTemplateUsageLabels(
+                  if (!currentTemplate) return null;
+
+                  const variableKeys =
+                    whatsappTemplateVariableKeys(currentTemplate);
+                  const usageLabels = whatsappTemplateUsageLabels(
                     currentTemplate.id,
                     whatsappTemplateBindings,
                     whatsappTemplateEvents,
                   );
 
-                return (
-                  <>
-                    <label className="transfer-field">
-                      <span>Plantilla</span>
-                      <select
-                        value={currentTemplate.id}
-                        disabled={templateLoading}
-                        onChange={(event) =>
-                          selectWhatsappTemplate(event.target.value)
-                        }
-                      >
-                        {whatsappTemplates.map((template) => (
-                          <option
-                            key={template.id}
-                            value={template.id}
-                          >
-                            {template.name} · {template.language}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                  return (
+                    <>
+                      <label className="transfer-field">
+                        <span>Plantilla</span>
+                        <select
+                          value={currentTemplate.id}
+                          disabled={templateLoading}
+                          onChange={(event) =>
+                            selectWhatsappTemplate(event.target.value)
+                          }
+                        >
+                          {whatsappTemplates.map((template) => (
+                            <option key={template.id} value={template.id}>
+                              {template.name} · {template.language}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: 8,
-                        padding: 14,
-                        border: "1px solid rgba(148, 163, 184, 0.28)",
-                        borderRadius: 14,
-                        background: "rgba(15, 23, 42, 0.04)",
-                      }}
-                    >
-                      <strong>Vista previa</strong>
-                      <p
-                        style={{
-                          margin: 0,
-                          whiteSpace: "pre-wrap",
-                          lineHeight: 1.55,
-                        }}
-                      >
-                        {renderWhatsappTemplatePreview(
-                          currentTemplate,
-                          templateVariables,
-                        )}
-                      </p>
-
-                      <small>
-                        Categoría: {currentTemplate.category || "Sin categoría"}
-                      </small>
-
-                      {usageLabels.length ? (
-                        <small>
-                          Uso configurado: {usageLabels.join(" · ")}
-                        </small>
-                      ) : (
-                        <small>
-                          Sin automatización asignada. Puede prepararse
-                          manualmente desde esta conversación.
-                        </small>
-                      )}
-                    </div>
-
-                    {variableKeys.length ? (
                       <div
                         style={{
                           display: "grid",
-                          gap: 12,
-                          marginTop: 14,
+                          gap: 8,
+                          padding: 14,
+                          border: "1px solid rgba(148, 163, 184, 0.28)",
+                          borderRadius: 14,
+                          background: "rgba(15, 23, 42, 0.04)",
                         }}
                       >
-                        {variableKeys.map((key) => (
-                          <label
-                            className="transfer-field"
-                            key={key}
-                          >
-                            <span>Variable {"{{"}{key}{"}}"}</span>
-                            <input
-                              value={templateVariables[key] ?? ""}
-                              disabled={templateLoading}
-                              placeholder={`Valor para la variable ${key}`}
-                              onChange={(event) =>
-                                setTemplateVariables((current) => ({
-                                  ...current,
-                                  [key]: event.target.value,
-                                }))
-                              }
-                            />
-                          </label>
-                        ))}
+                        <strong>Vista previa</strong>
+                        <p
+                          style={{
+                            margin: 0,
+                            whiteSpace: "pre-wrap",
+                            lineHeight: 1.55,
+                          }}
+                        >
+                          {renderWhatsappTemplatePreview(
+                            currentTemplate,
+                            templateVariables,
+                          )}
+                        </p>
+
+                        <small>
+                          Categoría:{" "}
+                          {currentTemplate.category || "Sin categoría"}
+                        </small>
+
+                        {usageLabels.length ? (
+                          <small>
+                            Uso configurado: {usageLabels.join(" · ")}
+                          </small>
+                        ) : (
+                          <small>
+                            Sin automatización asignada. Puede prepararse
+                            manualmente desde esta conversación.
+                          </small>
+                        )}
                       </div>
-                    ) : (
-                      <p className="transfer-empty">
-                        Esta plantilla no requiere variables.
-                      </p>
-                    )}
 
-                    {templateError ? (
-                      <p className="error-banner">{templateError}</p>
-                    ) : null}
-                  </>
-                );
-              })()
-            )}
+                      {variableKeys.length ? (
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 12,
+                            marginTop: 14,
+                          }}
+                        >
+                          {variableKeys.map((key) => (
+                            <label className="transfer-field" key={key}>
+                              <span>
+                                Variable {"{{"}
+                                {key}
+                                {"}}"}
+                              </span>
+                              <input
+                                value={templateVariables[key] ?? ""}
+                                disabled={templateLoading}
+                                placeholder={`Valor para la variable ${key}`}
+                                onChange={(event) =>
+                                  setTemplateVariables((current) => ({
+                                    ...current,
+                                    [key]: event.target.value,
+                                  }))
+                                }
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="transfer-empty">
+                          Esta plantilla no requiere variables.
+                        </p>
+                      )}
 
-            <div className="transfer-dialog-actions">
-              <button
-                className="button quiet"
-                type="button"
-                disabled={templateLoading}
-                onClick={() => setTemplateOpen(false)}
-              >
-                Cancelar
-              </button>
-              <button
-                className="button primary"
-                type="button"
-                disabled={
-                  templateLoading ||
-                  !whatsappTemplates.length ||
-                  !selectedTemplateId
-                }
-                onClick={prepareWhatsappTemplate}
-              >
-                Dejar preparada
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
+                      {templateError ? (
+                        <p className="error-banner">{templateError}</p>
+                      ) : null}
+                    </>
+                  );
+                })()
+              )}
 
-      <div
-        className={`inbox-layout ${
-          selected ? "mobile-chat-open" : "mobile-list-open"
-        }`}
-      >
+              <div className="transfer-dialog-actions">
+                <button
+                  className="button quiet"
+                  type="button"
+                  disabled={templateLoading}
+                  onClick={() => setTemplateOpen(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="button primary"
+                  type="button"
+                  disabled={
+                    templateLoading ||
+                    !whatsappTemplates.length ||
+                    !selectedTemplateId
+                  }
+                  onClick={prepareWhatsappTemplate}
+                >
+                  Dejar preparada
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        <div
+          className={`inbox-layout ${
+            selected ? "mobile-chat-open" : "mobile-list-open"
+          }`}
+        >
           <section className="conversation-list-panel">
             <div className="list-panel-heading">
               <div>
                 <p className="mobile-list-eyebrow">Bandeja</p>
                 <h2>Chats</h2>
-                <p>{loadingList ? "Actualizando…" : `${visibleSessions.length} conversaciones`}</p>
+                <p>
+                  {loadingList
+                    ? "Actualizando…"
+                    : `${visibleSessions.length} conversaciones`}
+                </p>
               </div>
               <button
                 className="refresh-button"
@@ -2304,16 +2352,21 @@ export default function Home() {
                   className={`conversation-row ${selected?.session.id === session.id ? "selected" : ""}`}
                   onClick={() => void openConversation(session.id)}
                 >
-                  <span className="avatar">{session.customerPhone.slice(-2) || "CP"}</span>
+                  <span className="avatar">
+                    {session.customerPhone.slice(-2) || "CP"}
+                  </span>
                   <span className="conversation-summary">
                     <span className="conversation-topline">
-                      <strong>{customerLabel(session.customerPhone, session.contact)}</strong>
+                      <strong>
+                        {customerLabel(session.customerPhone, session.contact)}
+                      </strong>
                       <time>{formatDate(session.lastMessageAt)}</time>
                     </span>
-                    <span className="conversation-preview">{session.lastMessage?.message || "Sin mensajes todavía"}</span>
+                    <span className="conversation-preview">
+                      {session.lastMessage?.message || "Sin mensajes todavía"}
+                    </span>
                     <span className={`status-pill ${session.attentionStatus}`}>
-                      {session.attentionStatus === "ai" &&
-                      session.takeAvailable
+                      {session.attentionStatus === "ai" && session.takeAvailable
                         ? "IA inactiva · disponible"
                         : statusLabel[session.attentionStatus]}
                     </span>
@@ -2328,7 +2381,10 @@ export default function Home() {
               <div className="chat-placeholder">
                 <div className="placeholder-orb">◔</div>
                 <h2>Abre una conversación</h2>
-                <p>Desde aquí podrás ver el historial, tomar el chat y responder como asesor.</p>
+                <p>
+                  Desde aquí podrás ver el historial, tomar el chat y responder
+                  como asesor.
+                </p>
               </div>
             ) : (
               <>
@@ -2348,12 +2404,17 @@ export default function Home() {
                     </span>
                     <div className="chat-heading-copy">
                       <p className="eyebrow">
-                        {isInternalTest ? "Prueba interna · no envía WhatsApp" : "WhatsApp"}
+                        {isInternalTest
+                          ? "Prueba interna · no envía WhatsApp"
+                          : "WhatsApp"}
                       </p>
                       <h2>
                         {isInternalTest
                           ? `Probar a ${selected.company.name}`
-                          : customerLabel(selected.session.customerPhone, selected.contact)}
+                          : customerLabel(
+                              selected.session.customerPhone,
+                              selected.contact,
+                            )}
                       </h2>
                       <p className="chat-subtitle">
                         {isInternalTest
@@ -2510,19 +2571,14 @@ export default function Home() {
                       </button>
                     ) : null}
 
-                    {!isInternalTest &&
-                    selected.historyRestricted !== true ? (
+                    {!isInternalTest && selected.historyRestricted !== true ? (
                       <button
                         className="button quiet"
                         type="button"
                         disabled={templateLoading}
-                        onClick={() =>
-                          void openWhatsappTemplateDialog()
-                        }
+                        onClick={() => void openWhatsappTemplateDialog()}
                       >
-                        {templateLoading
-                          ? "Cargando plantillas…"
-                          : "Plantilla"}
+                        {templateLoading ? "Cargando plantillas…" : "Plantilla"}
                       </button>
                     ) : null}
                     {showTakeButton ? (
@@ -2551,7 +2607,9 @@ export default function Home() {
                           disabled={actionLoading || transferLoading}
                           onClick={() => void openTransferDialog()}
                         >
-                          {transferLoading ? "Cargando…" : "Transferir conversación"}
+                          {transferLoading
+                            ? "Cargando…"
+                            : "Transferir conversación"}
                         </button>
                         <button
                           className="button quiet"
@@ -2559,18 +2617,23 @@ export default function Home() {
                           disabled={actionLoading}
                           onClick={() => void runAction("close")}
                         >
-                          {actionLoading ? "Finalizando…" : "Finalizar conversación"}
+                          {actionLoading
+                            ? "Finalizando…"
+                            : "Finalizar conversación"}
                         </button>
                       </>
                     ) : null}
-                    {!isInternalTest && selected.session.attentionStatus === "closed" ? (
+                    {!isInternalTest &&
+                    selected.session.attentionStatus === "closed" ? (
                       <span className="history-badge">En historial</span>
                     ) : null}
                   </div>
                 </header>
 
                 <div className="message-feed" ref={messageFeedRef}>
-                  {loadingChat ? <p className="feed-loading">Abriendo historial…</p> : null}
+                  {loadingChat ? (
+                    <p className="feed-loading">Abriendo historial…</p>
+                  ) : null}
                   {!loadingChat && !selected.messages.length ? (
                     <p className="feed-loading">
                       {isInternalTest
@@ -2581,10 +2644,20 @@ export default function Home() {
                     </p>
                   ) : null}
                   {selected.messages.map((item) => (
-                    <div key={item.id ?? `${item.sessionId}-${item.createdAt}-${item.message}`} className={`message-row ${item.authorType}`}>
+                    <div
+                      key={
+                        item.id ??
+                        `${item.sessionId}-${item.createdAt}-${item.message}`
+                      }
+                      className={`message-row ${item.authorType}`}
+                    >
                       <div className="message-bubble">
                         <span className="message-author">
-                          {item.authorType === "customer" ? "Cliente" : item.authorType === "advisor" ? "Asesor" : "IA"}
+                          {item.authorType === "customer"
+                            ? "Cliente"
+                            : item.authorType === "advisor"
+                              ? "Asesor"
+                              : "IA"}
                         </span>
                         {item.messageType === "audio" && item.id ? (
                           <AudioMessagePlayer item={item} />
@@ -2605,9 +2678,7 @@ export default function Home() {
                   ))}
                 </div>
 
-
-                {preparedTemplate?.sessionId ===
-                selected.session.id ? (
+                {preparedTemplate?.sessionId === selected.session.id ? (
                   <div
                     style={{
                       margin: "0 16px 12px",
@@ -2642,8 +2713,7 @@ export default function Home() {
                         </p>
                         {preparedTemplate.usageLabels.length ? (
                           <small>
-                            Uso:{" "}
-                            {preparedTemplate.usageLabels.join(" · ")}
+                            Uso: {preparedTemplate.usageLabels.join(" · ")}
                           </small>
                         ) : null}
                       </div>
@@ -2658,13 +2728,9 @@ export default function Home() {
                           className="button primary"
                           type="button"
                           disabled={templateSending}
-                          onClick={() =>
-                            void sendPreparedWhatsappTemplate()
-                          }
+                          onClick={() => void sendPreparedWhatsappTemplate()}
                         >
-                          {templateSending
-                            ? "Enviando…"
-                            : "Enviar plantilla"}
+                          {templateSending ? "Enviando…" : "Enviar plantilla"}
                         </button>
                         <button
                           className="button quiet"
@@ -2680,9 +2746,7 @@ export default function Home() {
                           disabled={templateSending}
                           onClick={() => {
                             setPreparedTemplate(null);
-                            setActionMessage(
-                              "Plantilla preparada descartada.",
-                            );
+                            setActionMessage("Plantilla preparada descartada.");
                           }}
                         >
                           Descartar
@@ -2690,15 +2754,18 @@ export default function Home() {
                       </div>
                     </div>
                     <small>
-                      Al enviarla, ChatPro la registrará en el historial
-                      y dejará la conversación tomada para continuar
-                      con texto o audio como asesor.
+                      Al enviarla, ChatPro la registrará en el historial y
+                      dejará la conversación tomada para continuar con texto o
+                      audio como asesor.
                     </small>
                   </div>
                 ) : null}
 
                 {isInternalTest ? (
-                  <form className="reply-box" onSubmit={sendInternalTestMessage}>
+                  <form
+                    className="reply-box"
+                    onSubmit={sendInternalTestMessage}
+                  >
                     <textarea
                       value={message}
                       onChange={(event) => {
@@ -2790,6 +2857,31 @@ export default function Home() {
                       </div>
                     ) : (
                       <>
+                        {imageFile && imagePreviewUrl ? (
+                          <div className="wa-image-composer">
+                            <button
+                              type="button"
+                              className="wa-image-remove"
+                              onClick={clearImageDraft}
+                              disabled={imageSending}
+                              aria-label="Quitar imagen"
+                              title="Quitar imagen"
+                            >
+                              ×
+                            </button>
+                            <img
+                              src={imagePreviewUrl}
+                              alt="Vista previa de la imagen"
+                            />
+                            <div>
+                              <strong>{imageFile.name || "Imagen"}</strong>
+                              <small>
+                                {(imageFile.size / 1024 / 1024).toFixed(2)} MB
+                              </small>
+                            </div>
+                          </div>
+                        ) : null}
+
                         <div className="reply-compose">
                           <div className="quick-reply-wrap">
                             <textarea
@@ -2844,6 +2936,41 @@ export default function Home() {
                             ) : null}
                           </div>
 
+                          <input
+                            ref={imageInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            hidden
+                            onChange={(event) =>
+                              selectImage(event.target.files?.[0])
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="wa-idle-icon"
+                            onClick={() => imageInputRef.current?.click()}
+                            disabled={
+                              actionLoading ||
+                              audioSending ||
+                              imageSending ||
+                              recording
+                            }
+                            aria-label="Adjuntar imagen"
+                            title="Adjuntar imagen"
+                          >
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M21.44 11.05 12 20.5a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                            </svg>
+                          </button>
+
                           {canSendAudio ? (
                             <button
                               type="button"
@@ -2862,7 +2989,13 @@ export default function Home() {
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                               >
-                                <rect x="9" y="2" width="6" height="12" rx="3" />
+                                <rect
+                                  x="9"
+                                  y="2"
+                                  width="6"
+                                  height="12"
+                                  rx="3"
+                                />
                                 <path d="M5 10a7 7 0 0 0 14 0" />
                                 <path d="M12 17v5" />
                                 <path d="M8 22h8" />
@@ -2874,12 +3007,16 @@ export default function Home() {
                         <button
                           className="wa-text-send"
                           type="submit"
-                          disabled={actionLoading || !message.trim()}
+                          disabled={
+                            actionLoading ||
+                            imageSending ||
+                            (!message.trim() && !imageFile)
+                          }
                           aria-label="Enviar mensaje"
                           title="Enviar mensaje"
                         >
                           <span aria-hidden="true">
-                            {actionLoading ? "…" : "➤"}
+                            {actionLoading || imageSending ? "…" : "➤"}
                           </span>
                         </button>
                       </>
@@ -2902,7 +3039,9 @@ export default function Home() {
           <aside className="context-panel">
             <h2>Contexto del cliente</h2>
             {!selected ? (
-              <p className="muted-copy">Selecciona un chat para ver el contexto comercial.</p>
+              <p className="muted-copy">
+                Selecciona un chat para ver el contexto comercial.
+              </p>
             ) : (
               <>
                 <dl className="context-list">
@@ -2934,9 +3073,16 @@ export default function Home() {
                   <section className="storefront-card">
                     <div>
                       <h3>Tienda conectada</h3>
-                      <p>Abre la web pública de la empresa para copiar links y enviarlos al cliente.</p>
+                      <p>
+                        Abre la web pública de la empresa para copiar links y
+                        enviarlos al cliente.
+                      </p>
                     </div>
-                    <button type="button" onClick={() => void openStorefront()} disabled={storefrontLoading}>
+                    <button
+                      type="button"
+                      onClick={() => void openStorefront()}
+                      disabled={storefrontLoading}
+                    >
                       {storefrontLoading ? "Abriendo…" : "Abrir tienda ↗"}
                     </button>
                     {storefrontError ? <small>{storefrontError}</small> : null}
@@ -2944,7 +3090,10 @@ export default function Home() {
                 ) : null}
 
                 {!isInternalTest && canManageClients ? (
-                  <form className="contact-card-form" onSubmit={saveContactFromInbox}>
+                  <form
+                    className="contact-card-form"
+                    onSubmit={saveContactFromInbox}
+                  >
                     <div className="contact-card-heading">
                       <h3>Ficha comercial</h3>
                       <button type="submit" disabled={contactSaving}>
@@ -2974,24 +3123,29 @@ export default function Home() {
                       <span>Notas internas</span>
                       <textarea
                         value={contactNotes}
-                        onChange={(event) => setContactNotes(event.target.value)}
+                        onChange={(event) =>
+                          setContactNotes(event.target.value)
+                        }
                         placeholder="Datos útiles para vender y atender mejor. No lo ve el cliente."
                         rows={4}
                       />
                     </label>
 
                     <p className="contact-card-helper">
-                      Separa las etiquetas con comas. Las notas son solo para el equipo.
+                      Separa las etiquetas con comas. Las notas son solo para el
+                      equipo.
                     </p>
                   </form>
                 ) : null}
 
-                {typeof (selected.session.context as Record<string, unknown>).handoff === "object" ? (
+                {typeof (selected.session.context as Record<string, unknown>)
+                  .handoff === "object" ? (
                   <section className="contact-notes-context">
                     <h3>Transferencia a asesor</h3>
                     <p>
                       {compactTransferText(
-                        (selected.session.context as Record<string, any>).handoff?.summary,
+                        (selected.session.context as Record<string, any>)
+                          .handoff?.summary,
                         "Revisa el último mensaje del cliente y continúa la atención.",
                         280,
                       )}
@@ -2999,7 +3153,8 @@ export default function Home() {
                     <small>
                       <strong>Motivo:</strong>{" "}
                       {compactTransferText(
-                        (selected.session.context as Record<string, any>).handoff?.reason,
+                        (selected.session.context as Record<string, any>)
+                          .handoff?.reason,
                         "Requiere atención de un asesor.",
                         160,
                       )}
@@ -3007,11 +3162,12 @@ export default function Home() {
                   </section>
                 ) : null}
 
-
                 <section className="cart-context">
                   <div className="cart-context-heading">
                     <h3>Carrito actual</h3>
-                    <strong>{cartLines.length ? formatMoney(cartTotal) : "Vacío"}</strong>
+                    <strong>
+                      {cartLines.length ? formatMoney(cartTotal) : "Vacío"}
+                    </strong>
                   </div>
                   {cartLines.length ? (
                     <ul>
@@ -3020,13 +3176,18 @@ export default function Home() {
                           <span>{String(line.productTitle ?? "Producto")}</span>
                           <small>
                             {String(line.variantTitle ?? "")}
-                            {line.quantity ? ` · ${String(line.quantity)} und.` : ""}
+                            {line.quantity
+                              ? ` · ${String(line.quantity)} und.`
+                              : ""}
                           </small>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="muted-copy">No hay productos guardados en el carrito de esta conversación.</p>
+                    <p className="muted-copy">
+                      No hay productos guardados en el carrito de esta
+                      conversación.
+                    </p>
                   )}
                 </section>
               </>
