@@ -352,6 +352,93 @@ export class WhatsappWebhookController {
         input.mimeType || 'image/jpeg',
       );
 
+      session = await this.attachRecoveryContext(
+        session,
+        profile.id,
+        input.phone,
+      );
+
+      const multimodalIntent =
+        await this.classifyIncomingImageIntent({
+          buffer: media.buffer,
+          mimeType: media.mimeType,
+          caption: input.caption,
+          profile,
+          session,
+        });
+
+      console.log(
+        `[ChatPro][multimodal-intent] phone=${input.phone} ` +
+          `type=${multimodalIntent.imageType} ` +
+          `payment=${multimodalIntent.hasPaymentIntent} ` +
+          `product=${multimodalIntent.hasProductIntent} ` +
+          `confidence=${multimodalIntent.confidence}`,
+      );
+
+      if (
+        multimodalIntent.hasPaymentIntent &&
+        (multimodalIntent.primaryIntent === 'validate_payment' ||
+          multimodalIntent.imageType === 'payment_proof' ||
+          multimodalIntent.imageType === 'mixed')
+      ) {
+        await this.transferIncomingPaymentProof({
+          profile,
+          session,
+          phone: input.phone,
+          intent: multimodalIntent,
+        });
+        replySent = true;
+        return;
+      }
+
+      if (
+        multimodalIntent.imageType !== 'product' &&
+        multimodalIntent.imageType !== 'mixed'
+      ) {
+        const contextualImageMessage = [
+          '[IMAGEN_NO_PRODUCTO]',
+          input.caption
+            ? `Texto del cliente: ${input.caption}`
+            : 'La imagen llegó sin texto adjunto.',
+          `Tipo interpretado: ${multimodalIntent.imageType}.`,
+          `Intención principal: ${multimodalIntent.primaryIntent}.`,
+          `Motivo: ${multimodalIntent.reason}.`,
+          'Responde usando el historial reciente y las reglas de la empresa.',
+          'No busques esta imagen en el catálogo ni la trates como producto.',
+          multimodalIntent.imageType === 'ambiguous'
+            ? 'Si falta información, formula una sola pregunta breve para aclarar qué necesita.'
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+
+        const contextualReply = await this.resolveReply(
+          profile,
+          session,
+          contextualImageMessage,
+        );
+
+        await this.whatsappMessagingService.sendText(
+          profile.id,
+          input.phone,
+          contextualReply,
+        );
+        replySent = true;
+
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: contextualReply,
+          sender: 'assistant',
+          authorType: 'ai',
+          aiResponse: contextualReply,
+        });
+
+        await this.conversationMemoryService.touchSession(session.id);
+        return;
+      }
+
       const analysis = await this.analyzeIncomingImage({
         buffer: media.buffer,
         mimeType: media.mimeType,
@@ -359,12 +446,6 @@ export class WhatsappWebhookController {
         companyName: profile.name,
         companyInstructions: profile.aiInstructions,
       });
-
-      session = await this.attachRecoveryContext(
-        session,
-        profile.id,
-        input.phone,
-      );
 
       const visualMimeType =
         media.mimeType.split(';')[0].trim().toLowerCase() ||
@@ -612,6 +693,242 @@ export class WhatsappWebhookController {
         }
       }
     }
+  }
+
+  private async classifyIncomingImageIntent(input: {
+    buffer: Buffer;
+    mimeType: string;
+    caption: string;
+    profile: CompanyProfile;
+    session: ConversationSession;
+  }): Promise<{
+    imageType:
+      | 'payment_proof'
+      | 'product'
+      | 'mixed'
+      | 'warranty_or_return'
+      | 'shipping_or_document'
+      | 'other'
+      | 'ambiguous';
+    primaryIntent:
+      | 'validate_payment'
+      | 'add_or_review_product'
+      | 'customer_service'
+      | 'clarify';
+    hasPaymentIntent: boolean;
+    hasProductIntent: boolean;
+    confidence: 'low' | 'medium' | 'high';
+    reason: string;
+    advisorSummary: string;
+  }> {
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+
+    if (!apiKey) {
+      throw new Error(
+        'OPENAI_API_KEY no está configurada para interpretar imágenes.',
+      );
+    }
+
+    const mimeType =
+      input.mimeType.split(';')[0].trim().toLowerCase() || 'image/jpeg';
+    const recentMessages =
+      await this.conversationMemoryService.getRecentMessagesForAi(
+        input.session.id,
+        16,
+      );
+
+    const history = recentMessages
+      .map((item) => {
+        const role =
+          item.authorType === 'customer'
+            ? 'CLIENTE'
+            : item.authorType === 'advisor'
+              ? 'ASESOR'
+              : 'IA';
+        const media = item.mediaMimeType
+          ? ` [archivo ${item.mediaMimeType}]`
+          : '';
+        return `${role}${media}: ${item.message}`;
+      })
+      .join('\n')
+      .slice(-12000);
+
+    const client = new OpenAI({ apiKey });
+    const model =
+      process.env.OPENAI_VISION_MODEL?.trim() ||
+      process.env.OPENAI_MODEL?.trim() ||
+      'gpt-5-mini';
+    const dataUrl =
+      `data:${mimeType};base64,${input.buffer.toString('base64')}`;
+
+    const response = await client.responses.create({
+      model,
+      instructions: [
+        'Eres el clasificador central de intención multimodal de una plataforma comercial multiempresa.',
+        'Analiza conjuntamente la imagen actual, el texto que la acompaña, el historial reciente, lo que la IA pidió y el contexto de la sesión.',
+        'Las personas escriben de forma desordenada, cambian de tema y pueden expresar varias intenciones. No decidas solo por el mensaje anterior ni solo por la imagen.',
+        'Debes distinguir comprobantes de pago, productos, imágenes de cambios/garantías, documentos o guías.',
+        'payment_proof: recibo, transferencia, comprobante, consignación, pantalla de pago o evidencia de una transacción.',
+        'product: prenda, artículo, captura de catálogo o referencia de producto.',
+        'mixed: el bloque reciente contiene simultáneamente pago y solicitud/interés de producto, aunque la imagen actual muestre solo uno de ellos.',
+        'Si la IA solicitó un comprobante y la imagen parece evidencia de pago, hasPaymentIntent debe ser true.',
+        'Si el cliente dice "esta también", "quiero agregar esta", "quiero esta" o equivalente y la imagen es un producto, hasProductIntent debe ser true aunque antes estuvieran hablando de pago.',
+        'Si hay pago confirmado o comprobante recibido, la intención principal debe ser validate_payment y se debe transferir a un asesor.',
+        'No marques pago únicamente porque antes se mencionó pagar: exige evidencia actual, texto actual de pago o una solicitud explícita previa de comprobante que la imagen responda.',
+        'Devuelve únicamente JSON válido, sin markdown, con esta estructura exacta:',
+        '{"image_type":"payment_proof|product|mixed|warranty_or_return|shipping_or_document|other|ambiguous","primary_intent":"validate_payment|add_or_review_product|customer_service|clarify","has_payment_intent":true,"has_product_intent":false,"confidence":"low|medium|high","reason":"...","advisor_summary":"..."}',
+        'reason debe ser breve.',
+        'advisor_summary debe resumir en máximo 240 caracteres qué envió el cliente y qué queda pendiente. Si también hay producto, inclúyelo.',
+        `Empresa activa: ${input.profile.name}.`,
+        `Instrucciones configuradas: ${(input.profile.aiInstructions || 'Sin instrucciones adicionales.').slice(0, 5000)}`,
+        `Contexto de sesión: ${JSON.stringify(input.session.context).slice(0, 7000)}`,
+        `Historial reciente:\n${history || 'Sin historial previo.'}`,
+      ].join('\n'),
+      input: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: input.caption
+                ? `Texto enviado junto a la imagen: ${input.caption}`
+                : 'La imagen llegó sin texto adjunto. Interprétala usando el historial completo.',
+            },
+            {
+              type: 'input_image',
+              image_url: dataUrl,
+              detail: 'auto',
+            },
+          ],
+        },
+      ],
+    } as any);
+
+    const raw = response.output_text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
+
+    let parsed: Record<string, unknown>;
+
+    try {
+      const value = JSON.parse(raw) as unknown;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('JSON inválido');
+      }
+      parsed = value as Record<string, unknown>;
+    } catch {
+      throw new Error(
+        'OpenAI no devolvió una clasificación multimodal estructurada.',
+      );
+    }
+
+    const readText = (key: string, max: number) =>
+      typeof parsed[key] === 'string'
+        ? String(parsed[key]).replace(/\s+/g, ' ').trim().slice(0, max)
+        : '';
+
+    const rawType = readText('image_type', 50);
+    const allowedTypes = new Set([
+      'payment_proof',
+      'product',
+      'mixed',
+      'warranty_or_return',
+      'shipping_or_document',
+      'other',
+      'ambiguous',
+    ]);
+    const rawIntent = readText('primary_intent', 50);
+    const allowedIntents = new Set([
+      'validate_payment',
+      'add_or_review_product',
+      'customer_service',
+      'clarify',
+    ]);
+    const rawConfidence = readText('confidence', 20);
+
+    return {
+      imageType: allowedTypes.has(rawType)
+        ? (rawType as any)
+        : 'ambiguous',
+      primaryIntent: allowedIntents.has(rawIntent)
+        ? (rawIntent as any)
+        : 'clarify',
+      hasPaymentIntent: parsed.has_payment_intent === true,
+      hasProductIntent: parsed.has_product_intent === true,
+      confidence:
+        rawConfidence === 'high' || rawConfidence === 'medium'
+          ? rawConfidence
+          : 'low',
+      reason: readText('reason', 500) || 'Clasificación multimodal.',
+      advisorSummary:
+        readText('advisor_summary', 240) ||
+        'Revisar la última imagen y continuar desde el contexto reciente.',
+    };
+  }
+
+  private async transferIncomingPaymentProof(input: {
+    profile: CompanyProfile;
+    session: ConversationSession;
+    phone: string;
+    intent: {
+      imageType: string;
+      hasPaymentIntent: boolean;
+      hasProductIntent: boolean;
+      confidence: string;
+      reason: string;
+      advisorSummary: string;
+    };
+  }): Promise<void> {
+    const current =
+      await this.conversationMemoryService.getSessionById(input.session.id);
+    const now = new Date().toISOString();
+
+    await this.conversationMemoryService.updateSession(current.id, {
+      context: {
+        ...current.context,
+        multimodal_last_intent: {
+          image_type: input.intent.imageType,
+          has_payment_intent: input.intent.hasPaymentIntent,
+          has_product_intent: input.intent.hasProductIntent,
+          confidence: input.intent.confidence,
+          reason: input.intent.reason,
+          received_at: now,
+        },
+      },
+    });
+
+    const updated =
+      await this.conversationMemoryService.requestHumanAttention(
+        current.id,
+        {
+          reason: 'Cliente envió evidencia o comprobante de pago.',
+          summary: input.intent.advisorSummary,
+        },
+      );
+
+    const reply =
+      updated.attentionStatus === 'human'
+        ? 'Recibí la imagen ✅ Te comunicaré con un asesor para que verifique el pago y continúe con tu solicitud.'
+        : 'Recibí la imagen ✅ Dejé la solicitud pendiente para que un asesor verifique el pago y continúe contigo lo antes posible.';
+
+    await this.whatsappMessagingService.sendText(
+      input.profile.id,
+      input.phone,
+      reply,
+    );
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: input.profile.id,
+      sessionId: current.id,
+      customerPhone: input.phone,
+      message: reply,
+      sender: 'assistant',
+      authorType: 'ai',
+      aiResponse: reply,
+    });
+
+    await this.conversationMemoryService.touchSession(current.id);
   }
 
   private async analyzeIncomingImage(input: {

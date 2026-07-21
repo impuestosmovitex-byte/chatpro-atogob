@@ -1506,6 +1506,60 @@ export class ConversationMemoryService {
     };
   }
 
+  async getRecentMessagesForAi(
+    sessionId: string,
+    limit = 14,
+  ): Promise<
+    Array<{
+      sender: string;
+      authorType: string;
+      message: string;
+      messageType: string;
+      mediaMimeType: string | null;
+      createdAt: string | null;
+    }>
+  > {
+    const id = sessionId.trim();
+    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 30);
+
+    if (!id) {
+      return [];
+    }
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('conversations')
+      .select(
+        'sender, author_type, message, message_type, media_mime_type, created_at',
+      )
+      .eq('session_id', id)
+      .order('created_at', { ascending: false })
+      .limit(safeLimit);
+
+    if (error) {
+      throw new Error(
+        `No se pudo consultar el contexto reciente: ${error.message}`,
+      );
+    }
+
+    return (data ?? [])
+      .reverse()
+      .map((row) => ({
+        sender: typeof row.sender === 'string' ? row.sender : '',
+        authorType:
+          typeof row.author_type === 'string' ? row.author_type : '',
+        message: typeof row.message === 'string' ? row.message : '',
+        messageType:
+          typeof row.message_type === 'string' ? row.message_type : 'text',
+        mediaMimeType:
+          typeof row.media_mime_type === 'string'
+            ? row.media_mime_type
+            : null,
+        createdAt:
+          typeof row.created_at === 'string' ? row.created_at : null,
+      }));
+  }
+
   async saveMessage(input: SaveMessageInput): Promise<'saved' | 'duplicate'> {
     const providerMessageId = input.providerMessageId?.trim() || null;
     const authorType =
