@@ -1588,10 +1588,12 @@ export class WhatsappWebhookController {
 
     switch (input.action) {
       case 'tracking_information':
-        return this.resolveTrackingButtonReply(
-          input.profile,
-          input.phone,
-        );
+        return [
+          'Para consultar tu envío necesito verificar el pedido.',
+          '',
+          'Envíame el número del pedido o el correo utilizado en la compra.',
+          'Por seguridad no mostraré información usando únicamente el botón de rastreo.',
+        ].join('\n');
 
       case 'accept_order_updates':
         await this.conversationMemoryService.updateSession(
@@ -2295,23 +2297,36 @@ export class WhatsappWebhookController {
       return 'Para revisarlo necesito un dato concreto 😊 Envíame el número de pedido, el celular o el correo usado en la compra.';
     }
 
-    const previousIdentifiers =
-      flow.identifiers &&
-      typeof flow.identifiers === 'object' &&
-      !Array.isArray(flow.identifiers)
-        ? flow.identifiers as Record<string, unknown>
-        : {};
+    const sessionPhone = String(session.customerPhone || '')
+      .replace(/\D/g, '');
+
+    const providedPhone = String(identifier.phone || '')
+      .replace(/\D/g, '');
+
+    if (
+      providedPhone &&
+      sessionPhone &&
+      providedPhone.slice(-10) !== sessionPhone.slice(-10)
+    ) {
+      return [
+        'Ese número no coincide con el teléfono de esta conversación.',
+        '',
+        'Por seguridad, envíame el número del pedido o el correo utilizado en la compra.',
+      ].join('\n');
+    }
+
+    if (!identifier.orderReference && !identifier.email) {
+      return [
+        'Para proteger la información de tu compra necesito un dato adicional.',
+        '',
+        'Envíame el número del pedido o el correo utilizado en la compra.',
+      ].join('\n');
+    }
 
     const lookupIdentifiers = {
-      orderReference:
-        identifier.orderReference ||
-        this.cleanFlowString(previousIdentifiers.orderReference),
-      email:
-        identifier.email ||
-        this.cleanFlowString(previousIdentifiers.email),
-      phone:
-        identifier.phone ||
-        this.cleanFlowString(previousIdentifiers.phone),
+      orderReference: identifier.orderReference,
+      email: identifier.email,
+      phone: sessionPhone,
     };
 
     let result: Record<string, any>;
