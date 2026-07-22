@@ -458,7 +458,10 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
       medio_pago: paymentMethod,
       enlace_pedido: statusUrl,
       enlace_pago: statusUrl,
-      url_tienda: this.storefrontUrl(row.shop_domain),
+      url_tienda: await this.storefrontUrl(
+        row.company_id,
+        row.shop_domain,
+      ),
     };
     const config = await this.messageConfig(
       row.company_id,
@@ -519,7 +522,10 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     const variables: JsonObject = {
       nombre_cliente: orderContext.customerName,
       numero_pedido: orderContext.orderNumber,
-      url_tienda: this.storefrontUrl(row.shop_domain),
+      url_tienda: await this.storefrontUrl(
+        row.company_id,
+        row.shop_domain,
+      ),
     };
 
     const config = await this.messageConfig(
@@ -750,7 +756,25 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     );
   }
 
-  private storefrontUrl(shopDomain: string): string {
+  private async storefrontUrl(
+    companyId: string,
+    shopDomain: string,
+  ): Promise<string> {
+    try {
+      const publicUrl =
+        await this.companyShopifyService.getStorefrontUrl(companyId);
+
+      if (publicUrl) {
+        return publicUrl.trim().replace(/\/+$/, '');
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo obtener el dominio público de Shopify para ${companyId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
     const domain = shopDomain.trim().replace(/^https?:\/\//i, '');
 
     return domain ? `https://${domain}` : '';
