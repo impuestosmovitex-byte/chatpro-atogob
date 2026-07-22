@@ -1254,7 +1254,11 @@ export default function Home() {
           }
 
           const confirmedCurrentMessages = current.messages.filter(
-            (item) => !item.id?.startsWith("optimistic-"),
+            (item) =>
+              !(
+                typeof item.id === "string" &&
+                item.id.startsWith("optimistic-")
+              ),
           );
 
           const combined = [
