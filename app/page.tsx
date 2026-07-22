@@ -2278,6 +2278,19 @@ export default function Home() {
     ? visibleSessions.filter((session) => session.pendingCount > 0)
     : visibleSessions;
 
+  const visibleConversationCount = displayedSessions.length;
+
+  const conversationCountLabel = unreadOnly
+    ? `${visibleConversationCount} sin leer`
+    : mobileSearch.trim()
+      ? `${visibleConversationCount} resultados`
+      : `${visibleConversationCount} conversaciones`;
+
+  const showLoadMoreConversations =
+    hasMoreSessions &&
+    !unreadOnly &&
+    !mobileSearch.trim();
+
   const selectedStatus = selected?.session.attentionStatus;
   const showTakeButton =
     !isInternalTest && selected?.session.takeAvailable === true;
@@ -2659,8 +2672,9 @@ export default function Home() {
                 type="search"
                 value={mobileSearch}
                 onChange={(event) => setMobileSearch(event.target.value)}
-                placeholder="Buscar cliente o mensaje"
-                aria-label="Buscar cliente o mensaje"
+                placeholder="Buscar por nombre, número o mensaje"
+                aria-label="Buscar por nombre, número o mensaje"
+                autoComplete="off"
               />
             </label>
 
@@ -2832,7 +2846,7 @@ export default function Home() {
                 );
               })}
 
-              {hasMoreSessions ? (
+              {showLoadMoreConversations ? (
                 <div className="conversation-load-more-wrap">
                   <button
                     className="conversation-load-more"

@@ -2306,3 +2306,51 @@ h2 {
   background: #16a34a;
   flex: 0 0 auto;
 }
+
+
+/* Buscador principal de conversaciones */
+.conversation-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 10px 14px 12px;
+}
+
+.conversation-search input {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 40px 10px 42px;
+  border: 1px solid #dfe5ec;
+  border-radius: 12px;
+  background: #f5f7fa;
+  color: #172033;
+  font-size: 14px;
+  outline: none;
+}
+
+.conversation-search input:focus {
+  border-color: #2563eb;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.conversation-search-icon {
+  position: absolute;
+  left: 14px;
+  z-index: 1;
+  color: #64748b;
+  font-size: 22px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .conversation-search {
+    margin: 8px 12px 10px;
+  }
+
+  .conversation-search input {
+    min-height: 46px;
+    font-size: 16px;
+  }
+}
