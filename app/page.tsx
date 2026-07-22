@@ -205,6 +205,35 @@ function formatDate(value: string | null) {
   }).format(date);
 }
 
+function readHandoff(context: Record<string, unknown>) {
+  const raw =
+    context.handoff &&
+    typeof context.handoff === "object" &&
+    !Array.isArray(context.handoff)
+      ? (context.handoff as Record<string, unknown>)
+      : null;
+
+  if (!raw) return null;
+
+  const reason =
+    typeof raw.reason === "string" ? raw.reason.trim() : "";
+  const summary =
+    typeof raw.summary === "string" ? raw.summary.trim() : "";
+  const areaName =
+    typeof raw.area_name === "string" ? raw.area_name.trim() : "";
+  const status =
+    typeof raw.status === "string" ? raw.status.trim() : "";
+
+  if (!reason && !summary) return null;
+
+  return {
+    reason,
+    summary,
+    areaName,
+    status,
+  };
+}
+
 function formatMoney(value: unknown) {
   const amount = Number(value);
 
@@ -607,6 +636,7 @@ export default function Home() {
   const [canSendAudio, setCanSendAudio] = useState(false);
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [advisorFilter, setAdvisorFilter] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [advisorFilters, setAdvisorFilters] = useState<AdvisorFilterOption[]>([]);
   const [mobileSearch, setMobileSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -1189,6 +1219,9 @@ export default function Home() {
 
     if (!silent) {
       setLoadingChat(true);
+      setSelected(null);
+      setActionMessage("");
+      setError("");
     }
 
     try {
@@ -1220,7 +1253,15 @@ export default function Home() {
             return current;
           }
 
-          const combined = [...current.messages, ...(data.messages ?? [])];
+          const confirmedCurrentMessages = current.messages.filter(
+            (item) => !item.id?.startsWith("optimistic-"),
+          );
+
+          const combined = [
+            ...confirmedCurrentMessages,
+            ...(data.messages ?? []),
+          ];
+
           const uniqueMessages: InboxMessage[] = [];
           const seen = new Set<string>();
 
@@ -1299,9 +1340,48 @@ export default function Home() {
   async function runAction(action: "take" | "close" | "resume_ai" | "message") {
     if (!selected) return;
 
+    const sessionId = selected.session.id;
     const cleanMessage = message.trim();
 
     if (action === "message" && !cleanMessage) return;
+
+    const optimisticId = `optimistic-${Date.now()}`;
+    const optimisticCreatedAt = new Date().toISOString();
+
+    if (action === "message") {
+      const optimisticMessage: InboxMessage = {
+        id: optimisticId,
+        sessionId,
+        message: cleanMessage,
+        sender: "assistant",
+        authorType: "advisor",
+        messageType: "text",
+        mediaMimeType: null,
+        mediaStoragePath: null,
+        mediaVoice: false,
+        createdAt: optimisticCreatedAt,
+      };
+
+      setSelected((current) => {
+        if (!current || current.session.id !== sessionId) {
+          return current;
+        }
+
+        return {
+          ...current,
+          session: {
+            ...current.session,
+            lastMessageAt: optimisticCreatedAt,
+            pendingCount: 0,
+            pendingSince: null,
+          },
+          messages: [...current.messages, optimisticMessage],
+        };
+      });
+
+      setMessage("");
+      setQuickReplyOpen(false);
+    }
 
     setActionLoading(true);
     setActionMessage("");
@@ -1312,7 +1392,7 @@ export default function Home() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          sessionId: selected.session.id,
+          sessionId,
           action,
           message: action === "message" ? cleanMessage : undefined,
         }),
@@ -1332,12 +1412,16 @@ export default function Home() {
       }
 
       if (action === "message") {
-        setMessage("");
-        setQuickReplyOpen(false);
+        /*
+         * El mensaje ya apareció en pantalla. Ahora reemplazamos
+         * silenciosamente la copia temporal por el mensaje confirmado.
+         */
+        await openConversation(sessionId, true);
+        void loadList(false);
+      } else {
+        await loadList(false);
+        await openConversation(sessionId);
       }
-
-      await loadList(false);
-      await openConversation(selected.session.id);
 
       const actionLabels: Record<
         "take" | "close" | "resume_ai" | "message",
@@ -1351,6 +1435,23 @@ export default function Home() {
 
       setActionMessage(actionLabels[action]);
     } catch (caught) {
+      if (action === "message") {
+        setSelected((current) => {
+          if (!current || current.session.id !== sessionId) {
+            return current;
+          }
+
+          return {
+            ...current,
+            messages: current.messages.filter(
+              (item) => item.id !== optimisticId,
+            ),
+          };
+        });
+
+        setMessage(cleanMessage);
+      }
+
       setActionMessage("");
       setError(
         caught instanceof Error
@@ -2172,6 +2273,11 @@ export default function Home() {
 
   const visibleSessions = sessions;
 
+
+  const displayedSessions = unreadOnly
+    ? visibleSessions.filter((session) => session.pendingCount > 0)
+    : visibleSessions;
+
   const selectedStatus = selected?.session.attentionStatus;
   const showTakeButton =
     !isInternalTest && selected?.session.takeAvailable === true;
@@ -2565,11 +2671,12 @@ export default function Home() {
               <button
                 type="button"
                 className={`filter-chip ${
-                  filter === "ai" && !advisorFilter
+                  filter === "ai" && !advisorFilter && !unreadOnly
                     ? "selected"
                     : ""
                 }`}
                 onClick={() => {
+                  setUnreadOnly(false);
                   setAdvisorFilter("");
                   setFilter("ai");
                 }}
@@ -2583,11 +2690,13 @@ export default function Home() {
                   type="button"
                   className={`filter-chip advisor-chip ${
                     filter === "human" &&
-                    advisorFilter === advisor.userId
+                    advisorFilter === advisor.userId &&
+                    !unreadOnly
                       ? "selected"
                       : ""
                   }`}
                   onClick={() => {
+                    setUnreadOnly(false);
                     setAdvisorFilter(advisor.userId);
                     setFilter("human");
                   }}
@@ -2599,12 +2708,29 @@ export default function Home() {
 
               <button
                 type="button"
+                className={`filter-chip unread-filter ${
+                  unreadOnly ? "selected" : ""
+                }`}
+                onClick={() => {
+                  setUnreadOnly(true);
+                  setAdvisorFilter("");
+                  setFilter("all");
+                }}
+              >
+                Sin leer
+              </button>
+
+              <button
+                type="button"
                 className={`filter-chip ${
-                  filter === "waiting" && !advisorFilter
+                  filter === "waiting" &&
+                  !advisorFilter &&
+                  !unreadOnly
                     ? "selected"
                     : ""
                 }`}
                 onClick={() => {
+                  setUnreadOnly(false);
                   setAdvisorFilter("");
                   setFilter("waiting");
                 }}
@@ -2615,11 +2741,12 @@ export default function Home() {
               <button
                 type="button"
                 className={`filter-chip ${
-                  filter === "all" && !advisorFilter
+                  filter === "all" && !advisorFilter && !unreadOnly
                     ? "selected"
                     : ""
                 }`}
                 onClick={() => {
+                  setUnreadOnly(false);
                   setAdvisorFilter("");
                   setFilter("all");
                 }}
@@ -2629,14 +2756,14 @@ export default function Home() {
             </div>
 
             <div className="conversation-list">
-              {!loadingList && !visibleSessions.length ? (
+              {!loadingList && !displayedSessions.length ? (
                 <div className="empty-list">
                   {mobileSearch.trim()
                     ? "No encontramos chats con esa búsqueda."
                     : "Aún no hay chats en este filtro."}
                 </div>
               ) : null}
-              {visibleSessions.map((session) => {
+              {displayedSessions.map((session) => {
                 const customerName = customerLabel(
                   session.customerPhone,
                   session.contact,
@@ -2993,6 +3120,45 @@ export default function Home() {
                           : "No hay mensajes todavía."}
                     </p>
                   ) : null}
+                  {(() => {
+                    const handoff = readHandoff(selected.session.context);
+
+                    if (!handoff) {
+                      return null;
+                    }
+
+                    return (
+                      <div className="handoff-note">
+                        <div className="handoff-note-title">
+                          <span aria-hidden="true">🤖</span>
+                          Transferencia de la IA
+                        </div>
+
+                        {handoff.reason ? (
+                          <p>
+                            <strong>Motivo:</strong> {handoff.reason}
+                          </p>
+                        ) : null}
+
+                        {handoff.summary ? (
+                          <p>
+                            <strong>Resumen:</strong> {handoff.summary}
+                          </p>
+                        ) : null}
+
+                        {handoff.areaName ? (
+                          <p>
+                            <strong>Área:</strong> {handoff.areaName}
+                          </p>
+                        ) : null}
+
+                        <span className="handoff-note-status">
+                          Pendiente de atención
+                        </span>
+                      </div>
+                    );
+                  })()}
+
                   {selected.messages.map((item) => (
                     <div
                       key={

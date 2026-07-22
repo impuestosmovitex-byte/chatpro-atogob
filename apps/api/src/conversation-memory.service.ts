@@ -1747,17 +1747,33 @@ export class ConversationMemoryService {
         ? requestedAfter
         : '';
 
-    let messagesQuery = client
-      .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at')
-      .eq('session_id', id);
+    const messageFields =
+      'id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at';
+
+    let messageRows: any[] | null = null;
+    let messageError: { message: string } | null = null;
 
     if (validAfter) {
-      messagesQuery = messagesQuery.gte('created_at', validAfter);
-    }
+      const result = await client
+        .from('conversations')
+        .select(messageFields)
+        .eq('session_id', id)
+        .gte('created_at', validAfter)
+        .order('created_at', { ascending: true });
 
-    const { data: messageRows, error: messageError } = await messagesQuery
-      .order('created_at', { ascending: true });
+      messageRows = result.data;
+      messageError = result.error;
+    } else {
+      const result = await client
+        .from('conversations')
+        .select(messageFields)
+        .eq('session_id', id)
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      messageRows = result.data ? [...result.data].reverse() : [];
+      messageError = result.error;
+    }
 
     if (messageError) {
       throw new Error(
@@ -1942,6 +1958,68 @@ export class ConversationMemoryService {
       }
 
       throw new Error(`No se pudo guardar el mensaje: ${error.message}`);
+    }
+
+    if (input.sender === 'assistant' && authorType === 'ai') {
+      try {
+        const client = this.supabaseService.getClient();
+
+        const { data: sessionRow } = await client
+          .from('conversation_sessions')
+          .select(
+            'attention_status, context, pending_count, pending_since',
+          )
+          .eq('id', input.sessionId)
+          .eq('company_id', input.companyId)
+          .maybeSingle();
+
+        const context =
+          sessionRow?.context &&
+          typeof sessionRow.context === 'object' &&
+          !Array.isArray(sessionRow.context)
+            ? sessionRow.context as Record<string, unknown>
+            : {};
+
+        const handoff =
+          context.handoff &&
+          typeof context.handoff === 'object' &&
+          !Array.isArray(context.handoff)
+            ? context.handoff as Record<string, unknown>
+            : null;
+
+        const handoffPending =
+          handoff &&
+          typeof handoff.status === 'string' &&
+          handoff.status.startsWith('pending');
+
+        const humanAttention =
+          sessionRow?.attention_status === 'waiting' ||
+          sessionRow?.attention_status === 'human';
+
+        if (handoffPending && humanAttention) {
+          const currentPending = Number(sessionRow?.pending_count ?? 0);
+          const existingPendingSince =
+            typeof sessionRow?.pending_since === 'string' &&
+            sessionRow.pending_since.trim()
+              ? sessionRow.pending_since
+              : null;
+
+          await client
+            .from('conversation_sessions')
+            .update({
+              pending_count: Math.max(1, currentPending),
+              pending_since:
+                existingPendingSince ?? new Date().toISOString(),
+            })
+            .eq('id', input.sessionId)
+            .eq('company_id', input.companyId);
+        }
+      } catch (handoffPendingError) {
+        console.error(
+          `No se pudo conservar la alerta de transferencia de la sesión ${input.sessionId}:`,
+          handoffPendingError,
+        );
+      }
     }
 
     if (input.sender === 'customer' && authorType === 'customer') {
