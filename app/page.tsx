@@ -2666,7 +2666,7 @@ export default function Home() {
               </button>
             </div>
 
-            <label className="mobile-chat-search">
+            <label className="conversation-search">
               <span aria-hidden="true">⌕</span>
               <input
                 type="search"
