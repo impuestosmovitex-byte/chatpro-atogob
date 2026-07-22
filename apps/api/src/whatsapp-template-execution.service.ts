@@ -441,7 +441,10 @@ export class WhatsappTemplateExecutionService {
 
   private scalarText(value: unknown): string {
     if (typeof value === 'string') {
-      return value.trim();
+      return value
+        .replace(/[\r\n\t]+/g, ' ')
+        .replace(/ {2,}/g, ' ')
+        .trim();
     }
 
     if (
