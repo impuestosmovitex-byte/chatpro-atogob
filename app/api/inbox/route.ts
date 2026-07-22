@@ -83,6 +83,7 @@ export async function GET(request: NextRequest) {
     const limit = request.nextUrl.searchParams.get('limit')?.trim() ?? '20';
     const offset = request.nextUrl.searchParams.get('offset')?.trim() ?? '0';
     const search = request.nextUrl.searchParams.get('search')?.trim() ?? '';
+    const advisor = request.nextUrl.searchParams.get('advisor')?.trim() ?? '';
 
     const target = new URL(
       mode === 'transfer-targets'
@@ -104,6 +105,10 @@ export async function GET(request: NextRequest) {
 
       if (search) {
         target.searchParams.set('search', search);
+      }
+
+      if (advisor) {
+        target.searchParams.set('advisor', advisor);
       }
     }
 

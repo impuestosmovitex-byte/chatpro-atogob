@@ -1192,6 +1192,7 @@ export class ConversationMemoryService {
       limit?: number;
       offset?: number;
       search?: string;
+      advisorUserId?: string;
       visibility?: {
         isFullAccess: boolean;
         userId: string;
@@ -1218,6 +1219,7 @@ export class ConversationMemoryService {
     );
     const offset = Math.max(Math.trunc(options.offset ?? 0) || 0, 0);
     const searchText = options.search?.trim() ?? '';
+    const advisorUserId = options.advisorUserId?.trim() ?? '';
     const normalizedStatus = this.normalizeStatusFilter(options.status ?? 'all');
     const visibility = options.visibility;
     const client = this.supabaseService.getClient();
@@ -1332,6 +1334,13 @@ export class ConversationMemoryService {
         filtered = filtered.in('id', Array.from(matchedSessionIds));
       }
 
+      if (advisorUserId) {
+        filtered = filtered.eq(
+          'assigned_to_user_id',
+          advisorUserId,
+        );
+      }
+
       if (visibility && !visibility.isFullAccess) {
         const conditions: string[] = [];
 
@@ -1384,8 +1393,7 @@ export class ConversationMemoryService {
         .select(SESSION_FIELDS)
         .gt('pending_count', 0),
     )
-      .order('pending_since', { ascending: true, nullsFirst: false })
-      .order('last_message_at', { ascending: true });
+      .order('last_message_at', { ascending: false });
 
     const { data: pendingRows, error: pendingError } = await pendingQuery;
 
@@ -1399,10 +1407,7 @@ export class ConversationMemoryService {
       this.toSession(row),
     );
 
-    const recentPageSize =
-      offset === 0
-        ? Math.max(0, limit - pendingSessions.length)
-        : limit;
+    const recentPageSize = limit;
 
     let recentSessions: ConversationSession[] = [];
     let hasMore = false;
@@ -1453,6 +1458,10 @@ export class ConversationMemoryService {
     const sessions = [...pendingSessions, ...recentSessions];
     const uniqueSessions = Array.from(
       new Map(sessions.map((session) => [session.id, session])).values(),
+    ).sort(
+      (left, right) =>
+        new Date(right.lastMessageAt).getTime() -
+        new Date(left.lastMessageAt).getTime(),
     );
 
     if (!uniqueSessions.length) {

@@ -133,6 +133,11 @@ type TransferTargetsResponse = {
   error?: string;
   targets?: TransferTarget[];
 };
+
+type AdvisorFilterOption = {
+  userId: string;
+  fullName: string;
+};
 const advisorStatusLabel: Record<AdvisorStatus, string> = {
   available: "Disponible",
   busy: "Ocupado",
@@ -600,6 +605,8 @@ export default function Home() {
   const [canManageClients, setCanManageClients] = useState(false);
   const [canSendAudio, setCanSendAudio] = useState(false);
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
+  const [advisorFilter, setAdvisorFilter] = useState("");
+  const [advisorFilters, setAdvisorFilters] = useState<AdvisorFilterOption[]>([]);
   const [mobileSearch, setMobileSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
@@ -818,6 +825,52 @@ export default function Home() {
     return response.json();
   }
 
+  async function loadAdvisorFilters() {
+    try {
+      const response = await fetch(
+        "/api/inbox?mode=transfer-targets",
+        { cache: "no-store" },
+      );
+
+      const data =
+        (await readJson(response)) as TransferTargetsResponse;
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || "No se pudieron cargar los asesores.",
+        );
+      }
+
+      const options = new Map<string, AdvisorFilterOption>();
+
+      if (currentUser?.userId) {
+        options.set(currentUser.userId, {
+          userId: currentUser.userId,
+          fullName: currentUser.fullName,
+        });
+      }
+
+      for (const target of data.targets ?? []) {
+        options.set(target.userId, {
+          userId: target.userId,
+          fullName: target.fullName,
+        });
+      }
+
+      setAdvisorFilters(
+        Array.from(options.values()).sort((left, right) =>
+          left.fullName.localeCompare(right.fullName, "es-CO"),
+        ),
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudieron cargar los asesores.",
+      );
+    }
+  }
+
   async function loadList(
     showSpinner = true,
     options: {
@@ -854,6 +907,10 @@ export default function Home() {
         params.set("search", debouncedSearch.trim());
       }
 
+      if (filter === "human" && advisorFilter) {
+        params.set("advisor", advisorFilter);
+      }
+
       const response = await fetch(`/api/inbox?${params.toString()}`, {
         cache: "no-store",
       });
@@ -875,30 +932,11 @@ export default function Home() {
             merged.set(session.id, session);
           }
 
-          return Array.from(merged.values()).sort((a, b) => {
-            const aPending = a.pendingCount > 0;
-            const bPending = b.pendingCount > 0;
-
-            if (aPending !== bPending) {
-              return aPending ? -1 : 1;
-            }
-
-            if (aPending && bPending) {
-              const aSince = new Date(
-                a.pendingSince ?? a.lastMessageAt,
-              ).getTime();
-              const bSince = new Date(
-                b.pendingSince ?? b.lastMessageAt,
-              ).getTime();
-
-              return aSince - bSince;
-            }
-
-            return (
+          return Array.from(merged.values()).sort(
+            (a, b) =>
               new Date(b.lastMessageAt).getTime() -
-              new Date(a.lastMessageAt).getTime()
-            );
-          });
+              new Date(a.lastMessageAt).getTime(),
+          );
         });
       } else {
         setSessions(incoming);
@@ -1884,6 +1922,14 @@ export default function Home() {
   }, [mobileSearch]);
 
   useEffect(() => {
+    if (filter === "human") {
+      void loadAdvisorFilters();
+    } else {
+      setAdvisorFilter("");
+    }
+  }, [filter, currentUser?.userId]);
+
+  useEffect(() => {
     void loadList(true, { reset: true });
 
     const timer = window.setInterval(() => {
@@ -1893,7 +1939,7 @@ export default function Home() {
     }, 12000);
 
     return () => window.clearInterval(timer);
-  }, [filter, debouncedSearch]);
+  }, [filter, debouncedSearch, advisorFilter]);
 
   const selectedLastMessageAt =
     selected?.messages[selected.messages.length - 1]?.createdAt ?? "";
@@ -2525,6 +2571,28 @@ export default function Home() {
                 </button>
               ))}
             </div>
+
+            {filter === "human" ? (
+              <label className="advisor-filter">
+                <span>Asesor</span>
+                <select
+                  value={advisorFilter}
+                  onChange={(event) =>
+                    setAdvisorFilter(event.target.value)
+                  }
+                >
+                  <option value="">Todos los asesores</option>
+                  {advisorFilters.map((advisor) => (
+                    <option
+                      key={advisor.userId}
+                      value={advisor.userId}
+                    >
+                      {advisor.fullName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
             <div className="conversation-list">
               {!loadingList && !visibleSessions.length ? (

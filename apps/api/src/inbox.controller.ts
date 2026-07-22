@@ -63,6 +63,7 @@ export class InboxController {
     @Query('limit') limit = '20',
     @Query('offset') offset = '0',
     @Query('search') search = '',
+    @Query('advisor') advisor = '',
   ) {
     this.authorize(key);
 
@@ -88,6 +89,7 @@ export class InboxController {
         limit: Number(limit),
         offset: Number(offset),
         search,
+        advisorUserId: advisor,
         visibility: {
           isFullAccess: actor.isFullAccess,
           userId: actor.userId,
