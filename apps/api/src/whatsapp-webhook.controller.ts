@@ -1588,12 +1588,23 @@ export class WhatsappWebhookController {
 
     switch (input.action) {
       case 'tracking_information':
-        return [
-          'Para consultar tu envío necesito verificar el pedido.',
-          '',
-          'Envíame el número del pedido o el correo utilizado en la compra.',
-          'Por seguridad no mostraré información usando únicamente el botón de rastreo.',
-        ].join('\n');
+        await this.conversationMemoryService.updateSession(
+          input.session.id,
+          {
+            stage: 'active',
+            context: {
+              ...input.session.context,
+              customer_service_flow: {
+                type: 'order_lookup',
+                identifiers: {},
+                attempts: 0,
+                updated_at: now,
+              },
+            },
+          },
+        );
+
+        return 'Claro 😊 Envíame el número del pedido o el correo utilizado en la compra.';
 
       case 'accept_order_updates':
         await this.conversationMemoryService.updateSession(
@@ -2220,7 +2231,7 @@ export class WhatsappWebhookController {
         },
       });
 
-      return 'Perfecto 😊 ¿Me puedes enviar el número de pedido o el celular que usaste en la compra para consultarlo?';
+      return 'Claro 😊 Envíame el número del pedido o el correo utilizado en la compra.';
     }
 
     if (cleanText === '2') {
@@ -2294,7 +2305,7 @@ export class WhatsappWebhookController {
     const identifier = this.parseOrderIdentifier(originalText);
 
     if (!identifier.orderReference && !identifier.email && !identifier.phone) {
-      return 'Para revisarlo necesito un dato concreto 😊 Envíame el número de pedido, el celular o el correo usado en la compra.';
+      return 'Envíame el número del pedido o el correo utilizado en la compra 😊';
     }
 
     const sessionPhone = String(session.customerPhone || '')
@@ -2308,19 +2319,11 @@ export class WhatsappWebhookController {
       sessionPhone &&
       providedPhone.slice(-10) !== sessionPhone.slice(-10)
     ) {
-      return [
-        'Ese número no coincide con el teléfono de esta conversación.',
-        '',
-        'Por seguridad, envíame el número del pedido o el correo utilizado en la compra.',
-      ].join('\n');
+      return 'Envíame el número del pedido o el correo utilizado en la compra 😊';
     }
 
     if (!identifier.orderReference && !identifier.email) {
-      return [
-        'Para proteger la información de tu compra necesito un dato adicional.',
-        '',
-        'Envíame el número del pedido o el correo utilizado en la compra.',
-      ].join('\n');
+      return 'Envíame el número del pedido o el correo utilizado en la compra 😊';
     }
 
     const lookupIdentifiers = {
