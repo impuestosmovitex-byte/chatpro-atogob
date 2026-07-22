@@ -626,6 +626,13 @@ export default function AutomationsPage() {
                               <pre>{execution.preparedMessage}</pre>
                             </details>
 
+                            {execution.error ? (
+                              <div>
+                                <strong>Error del envío</strong>
+                                <pre>{execution.error}</pre>
+                              </div>
+                            ) : null}
+
                             {execution.testSendAllowed ? (
                               <button
                                 type="button"
