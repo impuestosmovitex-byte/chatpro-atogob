@@ -181,12 +181,13 @@ const statusLabel: Record<AttentionStatus, string> = {
   closed: "Finalizado",
 };
 
-const filters: Array<{ value: "all" | AttentionStatus; label: string }> = [
-  { value: "all", label: "Todos" },
-  { value: "waiting", label: "Pendientes" },
+const filters: Array<{
+  value: "all" | "waiting" | "ai";
+  label: string;
+}> = [
   { value: "ai", label: "IA atendiendo" },
-  { value: "human", label: "Tomados" },
-  { value: "closed", label: "Historial" },
+  { value: "waiting", label: "Pendientes" },
+  { value: "all", label: "Todos" },
 ];
 
 function formatDate(value: string | null) {
@@ -1922,12 +1923,10 @@ export default function Home() {
   }, [mobileSearch]);
 
   useEffect(() => {
-    if (filter === "human") {
+    if (currentUser?.userId) {
       void loadAdvisorFilters();
-    } else {
-      setAdvisorFilter("");
     }
-  }, [filter, currentUser?.userId]);
+  }, [currentUser?.userId]);
 
   useEffect(() => {
     void loadList(true, { reset: true });
@@ -2559,40 +2558,75 @@ export default function Home() {
               />
             </label>
 
-            <div className="filter-row">
-              {filters.map((item) => (
+            <div
+              className="filter-row"
+              aria-label="Filtros de conversaciones"
+            >
+              <button
+                type="button"
+                className={`filter-chip ${
+                  filter === "ai" && !advisorFilter
+                    ? "selected"
+                    : ""
+                }`}
+                onClick={() => {
+                  setAdvisorFilter("");
+                  setFilter("ai");
+                }}
+              >
+                IA atendiendo
+              </button>
+
+              {advisorFilters.map((advisor) => (
                 <button
-                  key={item.value}
+                  key={advisor.userId}
                   type="button"
-                  className={`filter-chip ${filter === item.value ? "selected" : ""}`}
-                  onClick={() => setFilter(item.value)}
+                  className={`filter-chip advisor-chip ${
+                    filter === "human" &&
+                    advisorFilter === advisor.userId
+                      ? "selected"
+                      : ""
+                  }`}
+                  onClick={() => {
+                    setAdvisorFilter(advisor.userId);
+                    setFilter("human");
+                  }}
+                  title={`Conversaciones asignadas a ${advisor.fullName}`}
                 >
-                  {item.label}
+                  {advisor.fullName.split(/\s+/)[0]}
                 </button>
               ))}
-            </div>
 
-            {filter === "human" ? (
-              <label className="advisor-filter">
-                <span>Asesor</span>
-                <select
-                  value={advisorFilter}
-                  onChange={(event) =>
-                    setAdvisorFilter(event.target.value)
-                  }
-                >
-                  <option value="">Todos los asesores</option>
-                  {advisorFilters.map((advisor) => (
-                    <option
-                      key={advisor.userId}
-                      value={advisor.userId}
-                    >
-                      {advisor.fullName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
+              <button
+                type="button"
+                className={`filter-chip ${
+                  filter === "waiting" && !advisorFilter
+                    ? "selected"
+                    : ""
+                }`}
+                onClick={() => {
+                  setAdvisorFilter("");
+                  setFilter("waiting");
+                }}
+              >
+                Pendientes
+              </button>
+
+              <button
+                type="button"
+                className={`filter-chip ${
+                  filter === "all" && !advisorFilter
+                    ? "selected"
+                    : ""
+                }`}
+                onClick={() => {
+                  setAdvisorFilter("");
+                  setFilter("all");
+                }}
+              >
+                Todos
+              </button>
+            </div>
 
             <div className="conversation-list">
               {!loadingList && !visibleSessions.length ? (
