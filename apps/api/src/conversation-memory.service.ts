@@ -880,21 +880,31 @@ export class ConversationMemoryService {
         !Array.isArray(row.context)
           ? row.context as JsonObject
           : {};
-      const area = this.readSelectedServiceArea(context);
+      const area = await this.resolveWaitingAreaForAdvisor(
+        companyId,
+        context,
+        advisor.userId,
+      );
 
       if (!area) {
         continue;
       }
 
-      const selectedAdvisor =
-        await this.findAvailableAdvisorForArea(
+      const canReceive =
+        await this.advisorCanReceiveArea(
           companyId,
           area.id,
+          advisor.userId,
         );
 
-      if (!selectedAdvisor) {
+      if (!canReceive) {
         continue;
       }
+
+      const selectedAdvisor = {
+        userId: advisor.userId.trim(),
+        fullName: advisor.fullName.trim(),
+      };
 
       const now = new Date().toISOString();
       const handoff =
@@ -903,8 +913,19 @@ export class ConversationMemoryService {
         !Array.isArray(context.handoff)
           ? context.handoff as JsonObject
           : {};
+      const existingArea =
+        this.readSelectedServiceArea(context);
+
       const nextContext: JsonObject = {
         ...context,
+        ...(existingArea
+          ? {}
+          : {
+              service_area: {
+                id: area.id,
+                name: area.name,
+              },
+            }),
         handoff: {
           ...handoff,
           status: 'assigned',
@@ -1079,6 +1100,118 @@ export class ConversationMemoryService {
         : 180;
 
     return new Date(Date.now() - seconds * 1000).toISOString();
+  }
+
+  private async advisorCanReceiveArea(
+    companyId: string,
+    areaId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const cleanCompanyId = companyId.trim();
+    const cleanAreaId = areaId.trim();
+    const cleanUserId = userId.trim();
+
+    if (!cleanCompanyId || !cleanAreaId || !cleanUserId) {
+      return false;
+    }
+
+    const client = this.supabaseService.getClient();
+
+    const [
+      { data: assignment, error: assignmentError },
+      { data: membership, error: membershipError },
+    ] = await Promise.all([
+      client
+        .from('advisor_service_areas')
+        .select('user_id')
+        .eq('company_id', cleanCompanyId)
+        .eq('area_id', cleanAreaId)
+        .eq('user_id', cleanUserId)
+        .maybeSingle(),
+      client
+        .from('company_memberships')
+        .select('user_id')
+        .eq('company_id', cleanCompanyId)
+        .eq('user_id', cleanUserId)
+        .eq('active', true)
+        .maybeSingle(),
+    ]);
+
+    if (assignmentError || membershipError) {
+      throw new Error(
+        `No se pudo validar el área del asesor: ${
+          assignmentError?.message ??
+          membershipError?.message ??
+          'error desconocido'
+        }`,
+      );
+    }
+
+    return Boolean(assignment?.user_id && membership?.user_id);
+  }
+
+  private async resolveWaitingAreaForAdvisor(
+    companyId: string,
+    context: JsonObject,
+    userId: string,
+  ): Promise<{ id: string; name: string } | null> {
+    const selectedArea = this.readSelectedServiceArea(context);
+
+    if (selectedArea) {
+      return selectedArea;
+    }
+
+    const client = this.supabaseService.getClient();
+
+    const { data: rows, error } = await client
+      .from('advisor_service_areas')
+      .select('area_id, service_areas!inner(id, name, is_active)')
+      .eq('company_id', companyId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error(
+        `No se pudieron consultar las áreas del asesor: ${error.message}`,
+      );
+    }
+
+    const availableAreas = (rows ?? [])
+      .map((row: any) => {
+        const rawArea = Array.isArray(row.service_areas)
+          ? row.service_areas[0]
+          : row.service_areas;
+
+        const id =
+          typeof rawArea?.id === 'string'
+            ? rawArea.id.trim()
+            : typeof row.area_id === 'string'
+              ? row.area_id.trim()
+              : '';
+
+        const name =
+          typeof rawArea?.name === 'string'
+            ? rawArea.name.trim()
+            : '';
+
+        const isActive = rawArea?.is_active !== false;
+
+        return { id, name, isActive };
+      })
+      .filter(
+        (area) =>
+          area.id &&
+          area.name &&
+          area.isActive,
+      );
+
+    if (availableAreas.length !== 1) {
+      return null;
+    }
+
+    return {
+      id: availableAreas[0].id,
+      name: availableAreas[0].name,
+    };
   }
 
   private async findAvailableAdvisorForArea(
@@ -1411,7 +1544,11 @@ export class ConversationMemoryService {
         );
       }
 
-      if (visibility && !visibility.isFullAccess) {
+      if (
+        visibility &&
+        !visibility.isFullAccess &&
+        !searchText
+      ) {
         const conditions: string[] = [];
 
         if (visibility.canViewOwn && visibility.userId) {

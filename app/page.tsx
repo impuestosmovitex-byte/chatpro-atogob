@@ -43,6 +43,7 @@ type ConversationSession = {
   closedAt: string | null;
   takeAvailable?: boolean;
   takeBlockedReason?: string | null;
+  restricted?: boolean;
 };
 
 type InboxSession = ConversationSession & {
@@ -144,6 +145,68 @@ const advisorStatusLabel: Record<AdvisorStatus, string> = {
   away: "Ausente",
   offline: "Desconectado",
 };
+
+
+type ConversationCategory = 'all' | 'sales' | 'service' | 'unclassified';
+
+function conversationAreaName(
+  session: ConversationSession,
+): string {
+  const rawArea = session.context?.service_area;
+
+  if (
+    !rawArea ||
+    typeof rawArea !== 'object' ||
+    Array.isArray(rawArea)
+  ) {
+    return '';
+  }
+
+  const area = rawArea as Record<string, unknown>;
+
+  return typeof area.name === 'string'
+    ? area.name.trim()
+    : '';
+}
+
+function conversationCategory(
+  session: ConversationSession,
+): Exclude<ConversationCategory, 'all'> {
+  const areaName = conversationAreaName(session)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (
+    areaName.includes('venta') ||
+    areaName.includes('comercial')
+  ) {
+    return 'sales';
+  }
+
+  if (
+    areaName.includes('servicio') ||
+    areaName.includes('soporte') ||
+    areaName.includes('pedido') ||
+    areaName.includes('postventa')
+  ) {
+    return 'service';
+  }
+
+  return 'unclassified';
+}
+
+function conversationCategoryLabel(
+  session: ConversationSession,
+): string {
+  const category = conversationCategory(session);
+
+  if (category === 'sales') return 'Ventas';
+  if (category === 'service') return 'Servicio';
+
+  const areaName = conversationAreaName(session);
+  return areaName || 'Sin clasificar';
+}
 
 type InboxConversation = {
   company: { id: string; slug: string; name: string };
@@ -640,6 +703,8 @@ export default function Home() {
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [advisorFilter, setAdvisorFilter] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [categoryFilter, setCategoryFilter] =
+    useState<ConversationCategory>('all');
   const [advisorFilters, setAdvisorFilters] = useState<AdvisorFilterOption[]>([]);
   const [mobileSearch, setMobileSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -2308,7 +2373,13 @@ export default function Home() {
     setQuickReplyOpen(false);
   }
 
-  const visibleSessions = sessions;
+  const visibleSessions =
+    categoryFilter === 'all'
+      ? sessions
+      : sessions.filter(
+          (session) =>
+            conversationCategory(session) === categoryFilter,
+        );
 
 
   const displayedSessions = unreadOnly
@@ -2759,6 +2830,34 @@ export default function Home() {
 
               <button
                 type="button"
+                className={`filter-chip category-sales ${
+                  categoryFilter === 'sales' ? 'selected' : ''
+                }`}
+                onClick={() =>
+                  setCategoryFilter((current) =>
+                    current === 'sales' ? 'all' : 'sales',
+                  )
+                }
+              >
+                Ventas
+              </button>
+
+              <button
+                type="button"
+                className={`filter-chip category-service ${
+                  categoryFilter === 'service' ? 'selected' : ''
+                }`}
+                onClick={() =>
+                  setCategoryFilter((current) =>
+                    current === 'service' ? 'all' : 'service',
+                  )
+                }
+              >
+                Servicio
+              </button>
+
+              <button
+                type="button"
                 className={`filter-chip unread-filter ${
                   unreadOnly ? "selected" : ""
                 }`}
@@ -2823,13 +2922,15 @@ export default function Home() {
                 const assignmentLabel =
                   session.attentionStatus === "ai"
                     ? session.takeAvailable
-                      ? "IA inactiva · disponible"
-                      : "IA"
+                      ? "Atendido por IA · disponible"
+                      : "Atendido por IA"
                     : session.attentionStatus === "human"
-                      ? session.assignedToName || "Asesor"
+                      ? `Atendido por ${
+                          session.assignedToName || "asesor"
+                        }`
                       : session.attentionStatus === "waiting"
-                        ? "Sin asignar"
-                        : "Finalizado";
+                        ? "Pendiente de asesor"
+                        : "Chat finalizado";
 
                 return (
                   <button
@@ -2837,8 +2938,23 @@ export default function Home() {
                     type="button"
                     className={`conversation-row status-${session.attentionStatus} ${
                       selected?.session.id === session.id ? "selected" : ""
-                    } ${session.pendingCount > 0 ? "has-pending" : ""}`}
-                    onClick={() => void openConversation(session.id)}
+                    } ${session.pendingCount > 0 ? "has-pending" : ""} ${
+                      session.restricted ? "restricted-search-result" : ""
+                    }`}
+                    onClick={() => {
+                      if (session.restricted) {
+                        setActionMessage(
+                          session.assignedToName
+                            ? `Este chat está siendo atendido por ${session.assignedToName}. Solicita que te lo transfiera para poder abrirlo.`
+                            : session.attentionStatus === "ai"
+                              ? "Este chat está siendo atendido por la IA."
+                              : "No tienes permiso para abrir este chat.",
+                        );
+                        return;
+                      }
+
+                      void openConversation(session.id);
+                    }}
                   >
                     <span className="avatar" aria-hidden="true">
                       {customerInitials(
@@ -2854,7 +2970,10 @@ export default function Home() {
                       </span>
 
                       <span className="conversation-preview">
-                        {session.lastMessage?.message || "Sin mensajes todavía"}
+                        {session.restricted
+                          ? "Conversación encontrada · historial restringido"
+                          : session.lastMessage?.message ||
+                            "Sin mensajes todavía"}
                       </span>
 
                       <span className="conversation-bottomline">
@@ -2866,6 +2985,15 @@ export default function Home() {
                             aria-hidden="true"
                           />
                           {assignmentLabel}
+                        </span>
+
+                        <span
+                          className={`conversation-category ${conversationCategory(
+                            session,
+                          )}`}
+                          title={`Área: ${conversationAreaName(session) || "Sin clasificar"}`}
+                        >
+                          {conversationCategoryLabel(session)}
                         </span>
 
                         {session.pendingCount > 0 ? (

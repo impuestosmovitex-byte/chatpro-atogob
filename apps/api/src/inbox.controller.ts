@@ -104,15 +104,38 @@ export class InboxController {
       },
     );
 
+    const isSearch = Boolean(search.trim());
+
     const sessions = payload.sessions
       .filter((session) => !this.isInternalTestSession(session))
-      .map((session) => ({
-        ...session,
-        ...this.takeAvailability(actor, session, settings),
-      }))
+      .map((session) => {
+        const takeAvailability =
+          this.takeAvailability(actor, session, settings);
+        const canView = this.canView(actor, session);
+        const restricted =
+          isSearch &&
+          !canView &&
+          takeAvailability.takeAvailable !== true;
+
+        return {
+          ...session,
+          ...takeAvailability,
+          restricted,
+          contact: restricted
+            ? null
+            : (
+                session as InboxSessionSummary & {
+                  contact?: unknown;
+                }
+              ).contact,
+          lastMessage: restricted ? null : session.lastMessage,
+        };
+      })
       .filter(
         (session) =>
-          this.canView(actor, session) || session.takeAvailable === true,
+          isSearch ||
+          this.canView(actor, session) ||
+          session.takeAvailable === true,
       );
 
     return {

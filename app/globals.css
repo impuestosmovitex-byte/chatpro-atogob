@@ -2404,3 +2404,69 @@ h2 {
     font-size: 16px;
   }
 }
+
+
+/* Clasificación de conversaciones */
+
+.conversation-category {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.conversation-category.sales {
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+}
+
+.conversation-category.service {
+  color: #1d4ed8;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+}
+
+.conversation-category.unclassified {
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+}
+
+.filter-chip.category-sales::before,
+.filter-chip.category-service::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.filter-chip.category-sales::before {
+  background: #22c55e;
+}
+
+.filter-chip.category-service::before {
+  background: #3b82f6;
+}
+
+.conversation-row.restricted-search-result {
+  border-style: dashed;
+  cursor: default;
+  opacity: 0.86;
+}
+
+.conversation-row.restricted-search-result:hover {
+  transform: none;
+}
+
+.conversation-row.restricted-search-result .conversation-preview {
+  font-style: italic;
+}
+
