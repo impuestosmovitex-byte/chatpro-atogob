@@ -196,6 +196,103 @@ function shippingTrackingFrom(value: unknown): ShippingTracking {
 }
 
 
+const SETTINGS_TEXT_LIMITS = {
+  salesInstructions: 50_000,
+  shippingInstructions: 50_000,
+  paymentInstructions: 50_000,
+  checkoutInstructions: 60_000,
+  termsConditions: 60_000,
+  exchangesReturns: 60_000,
+  warranties: 40_000,
+  policiesFaq: 80_000,
+  aiInstructions: 100_000,
+} as const;
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function validateTextLimit(
+  value: unknown,
+  limit: number,
+  label: string,
+) {
+  if (typeof value !== 'string') {
+    return;
+  }
+
+  if (value.length > limit) {
+    throw new BadRequestException(
+      `${label} supera el máximo permitido de ${limit.toLocaleString(
+        'es-CO',
+      )} caracteres. Actualmente tiene ${value.length.toLocaleString(
+        'es-CO',
+      )}.`,
+    );
+  }
+}
+
+function validateSettingsTextLimits(body: SettingsBody) {
+  const commercialFlow = recordValue(body?.commercialFlow);
+  const knowledgeBase = recordValue(body?.knowledgeBase);
+
+  validateTextLimit(
+    commercialFlow.salesInstructions,
+    SETTINGS_TEXT_LIMITS.salesInstructions,
+    'Proceso de ventas',
+  );
+
+  validateTextLimit(
+    commercialFlow.shippingInstructions,
+    SETTINGS_TEXT_LIMITS.shippingInstructions,
+    'Ciudades y envíos',
+  );
+
+  validateTextLimit(
+    commercialFlow.paymentInstructions,
+    SETTINGS_TEXT_LIMITS.paymentInstructions,
+    'Medios de pago',
+  );
+
+  validateTextLimit(
+    commercialFlow.checkoutInstructions,
+    SETTINGS_TEXT_LIMITS.checkoutInstructions,
+    'Finalización de compra y checkout',
+  );
+
+  validateTextLimit(
+    knowledgeBase.termsConditions,
+    SETTINGS_TEXT_LIMITS.termsConditions,
+    'Términos y condiciones',
+  );
+
+  validateTextLimit(
+    knowledgeBase.exchangesReturns,
+    SETTINGS_TEXT_LIMITS.exchangesReturns,
+    'Cambios y devoluciones',
+  );
+
+  validateTextLimit(
+    knowledgeBase.warranties,
+    SETTINGS_TEXT_LIMITS.warranties,
+    'Garantías',
+  );
+
+  validateTextLimit(
+    knowledgeBase.policiesFaq,
+    SETTINGS_TEXT_LIMITS.policiesFaq,
+    'Preguntas frecuentes y políticas adicionales',
+  );
+
+  validateTextLimit(
+    body?.aiInstructions,
+    SETTINGS_TEXT_LIMITS.aiInstructions,
+    'Promociones, estilo y casos especiales',
+  );
+}
+
 @Controller('settings')
 export class CompanySettingsController {
   constructor(
@@ -228,6 +325,7 @@ export class CompanySettingsController {
     @Body() body: SettingsBody,
   ) {
     this.requireAccess(accessKey);
+    validateSettingsTextLimits(body);
 
     const slug = company?.trim().toLowerCase();
     if (!slug) {

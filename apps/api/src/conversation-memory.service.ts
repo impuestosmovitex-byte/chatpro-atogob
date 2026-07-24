@@ -2575,8 +2575,7 @@ export class ConversationMemoryService {
 
     for (const [storedKey, inputKey] of mapping) {
       const raw = source[inputKey];
-      const text =
-        typeof raw === 'string' ? raw.trim().slice(0, 20000) : '';
+      const text = typeof raw === 'string' ? raw.trim() : '';
 
       if (text) {
         result[storedKey] = text;
@@ -2630,8 +2629,7 @@ export class ConversationMemoryService {
 
     for (const [storedKey, inputKey] of mapping) {
       const raw = source[inputKey];
-      const text =
-        typeof raw === 'string' ? raw.trim().slice(0, 30000) : '';
+      const text = typeof raw === 'string' ? raw.trim() : '';
 
       if (text) {
         result[storedKey] = text;
