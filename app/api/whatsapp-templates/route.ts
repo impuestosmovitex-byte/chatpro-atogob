@@ -24,12 +24,12 @@ async function currentSession(request: NextRequest) {
   );
 }
 
-async function canManage(
+async function capabilitiesFor(
   session: Awaited<ReturnType<typeof getInboxSession>>,
 ) {
-  if (!session) return false;
+  if (!session) return null;
 
-  return (await getAccessCapabilities(session)).automations;
+  return getAccessCapabilities(session);
 }
 
 async function relay(response: Response) {
@@ -54,7 +54,9 @@ async function authorize(request: NextRequest) {
     };
   }
 
-  if (!(await canManage(session))) {
+  const capabilities = await capabilitiesFor(session);
+
+  if (!capabilities?.automations) {
     return {
       response: NextResponse.json(
         {
@@ -69,8 +71,37 @@ async function authorize(request: NextRequest) {
   return { session };
 }
 
+async function authorizeRead(request: NextRequest) {
+  const session = await currentSession(request);
+
+  if (!session) {
+    return {
+      response: NextResponse.json(
+        { ok: false, error: 'Sesión requerida.' },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const capabilities = await capabilitiesFor(session);
+
+  if (!capabilities?.sendTemplates && !capabilities?.automations) {
+    return {
+      response: NextResponse.json(
+        {
+          ok: false,
+          error: 'No tienes permiso para consultar plantillas.',
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return { session };
+}
+
 export async function GET(request: NextRequest) {
-  const access = await authorize(request);
+  const access = await authorizeRead(request);
 
   if ('response' in access) return access.response;
 
