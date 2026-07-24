@@ -1448,7 +1448,11 @@ export class ChatAgentService {
       '- Cuando la persona confirme claramente una variante, valida con select_variant y agrega de inmediato con add_selected_variant_to_cart.',
       '- En venta al detal, si no indica cantidad, usa 1.',
       '- No preguntes “¿lo agrego?” después de que la persona ya confirmó color, talla o variante.',
-        '- Antes de crear checkout, usa get_cart y verifica que el carrito contenga únicamente productos que la persona pidió para esta compra actual. Si hay productos de un pedido anterior, carrito recuperado viejo o artículos no solicitados, usa remove_cart_line para quitarlos antes de crear el checkout.',
+        '- Antes de crear checkout, usa get_cart y verifica que el carrito contenga únicamente productos que la persona pidió para esta compra actual. Si hay productos de un pedido anterior, carrito recuperado viejo o artículos no solicitados, elimínalos antes de crear el checkout.',
+      '- Cuando la persona diga “solo ese”, “solo el buzo”, “no quiero lo otro” o equivalente, usa get_cart y después keep_only_cart_line para conservar el producto solicitado y eliminar todos los demás en una sola operación. No vacíes primero el carrito y no vuelvas a pedir confirmación.',
+      '- Una respuesta afirmativa como “sí”, “sii”, “quiero ese”, “agrégalo”, “me lo llevo” o “solo ese” confirma la acción pendiente más reciente. Ejecuta la acción inmediatamente y no preguntes otra vez lo mismo.',
+      '- Los productos, cantidades y valores que menciones deben salir siempre del resultado real de get_cart o de una herramienta de carrito. Nunca reconstruyas el carrito usando mensajes anteriores.',
+      '- Cambiar el medio de pago no puede agregar, eliminar ni reemplazar productos. Conserva exactamente el carrito real y modifica únicamente pago, envío, promociones aplicables y total.',
         '- Si la persona corrige “solo quiero X” o “por qué me vas a cobrar todo”, acepta la corrección, deja solo los productos confirmados para la compra actual y vuelve a resumir el carrito.',
       '- session.context.sale_context conserva ciudad, costo de envío, medio de pago, confirmación del carrito y pasos enviados. Úsalo antes de volver a preguntar.',
       '- Cuando la persona entregue o cambie ciudad o medio de pago, llama remember_sale_context.',
@@ -2398,9 +2402,28 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 },
 {
   type: 'function',
+  name: 'keep_only_cart_line',
+  description:
+    'Deja únicamente una variante en el carrito y elimina todos los demás productos en una sola operación. Úsala cuando el cliente diga “solo ese”, “solo el buzo”, “deja únicamente este” o equivalente. No vuelvas a pedir confirmación.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      variant_id: {
+        type: 'string',
+        description:
+          'ID de la variante que el cliente quiere conservar.',
+      },
+    },
+    required: ['variant_id'],
+  },
+},
+{
+  type: 'function',
   name: 'get_cart',
   description:
-    'Consulta el resumen, cantidades y total actual del carrito.',
+    'Consulta el resumen, IDs, cantidades y total real del carrito.',
   strict: true,
   parameters: {
     type: 'object',
@@ -2653,6 +2676,24 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (name === 'remove_cart_line') {
         const result = await this.cartService.removeCartLine(
+          session,
+          this.readString(args, 'variant_id'),
+        );
+
+        if (
+          result &&
+          typeof result === 'object' &&
+          !Array.isArray(result) &&
+          (result as { ok?: unknown }).ok === true
+        ) {
+          await this.invalidateSaleContextAfterCartChange(session);
+        }
+
+        return this.enrichCartToolResult(session, result);
+      }
+
+      if (name === 'keep_only_cart_line') {
+        const result = await this.cartService.keepOnlyCartLine(
           session,
           this.readString(args, 'variant_id'),
         );

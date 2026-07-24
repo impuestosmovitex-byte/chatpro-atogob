@@ -62,7 +62,94 @@ export class CartService {
   private async refreshSession(
     session: ConversationSession,
   ): Promise<ConversationSession> {
-    return this.conversationMemoryService.getSessionById(session.id);
+    const currentSession =
+      await this.conversationMemoryService.getSessionById(session.id);
+
+    const lastCartUpdatedAt =
+      typeof currentSession.context.lastCartUpdatedAt === 'string'
+        ? currentSession.context.lastCartUpdatedAt.trim()
+        : '';
+
+    if (!lastCartUpdatedAt) {
+      return currentSession;
+    }
+
+    const lastUpdateTime = Date.parse(lastCartUpdatedAt);
+
+    if (
+      !Number.isFinite(lastUpdateTime) ||
+      Date.now() - lastUpdateTime < 72 * 60 * 60 * 1000
+    ) {
+      return currentSession;
+    }
+
+    const previousContext = currentSession.context;
+    const nextContext: JsonObject = { ...previousContext };
+
+    delete nextContext.cart;
+    delete nextContext.lastCartUrl;
+    delete nextContext.lastCheckoutUrl;
+    delete nextContext.lastCartUpdatedAt;
+    delete nextContext.checkoutCreatedAt;
+    delete nextContext.selectedProduct;
+    delete nextContext.selectedVariant;
+    delete nextContext.selectedVariants;
+    delete nextContext.sale_context;
+    delete nextContext.saleContext;
+    delete nextContext.cart_recovery;
+
+    await this.closeExpiredRecoveryCart(currentSession);
+
+    return this.conversationMemoryService.updateSession(currentSession.id, {
+      stage: 'idle',
+      context: nextContext,
+    });
+  }
+
+  private async closeExpiredRecoveryCart(
+    session: ConversationSession,
+  ): Promise<void> {
+    const client = this.supabaseService.getClient();
+    const recoveryCartId = this.readRecoveryCartId(session.context);
+    const now = new Date().toISOString();
+
+    try {
+      if (recoveryCartId) {
+        const { error } = await client
+          .from('abandoned_carts')
+          .update({
+            cart_state: 'closed',
+            updated_at: now,
+          })
+          .eq('id', recoveryCartId)
+          .eq('company_id', session.companyId);
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        return;
+      }
+
+      const { error } = await client
+        .from('abandoned_carts')
+        .update({
+          cart_state: 'closed',
+          updated_at: now,
+        })
+        .eq('company_id', session.companyId)
+        .eq('session_id', session.id)
+        .in('cart_state', ['active', 'checkout_sent']);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+    } catch (error) {
+      console.error(
+        'No se pudo cerrar el carrito vencido:',
+        error,
+      );
+    }
   }
 
   async addSelectedVariant(
@@ -348,6 +435,40 @@ export class CartService {
         error: 'El producto ya no está en el carrito actual.',
       };
     }
+
+    return this.persistEditedCart(currentSession, cart);
+  }
+
+  async keepOnlyCartLine(
+    session: ConversationSession,
+    variantId: string,
+  ) {
+    if (!variantId.trim()) {
+      return {
+        ok: false,
+        error: 'Falta identificar el producto que debe conservarse.',
+      };
+    }
+
+    const currentSession = await this.refreshSession(session);
+    const current = this.readCart(currentSession.context);
+    const selectedLine = current.find(
+      (line) => line.variantId === variantId,
+    );
+
+    if (!selectedLine) {
+      return {
+        ok: false,
+        error: 'El producto que se quiere conservar no está en el carrito actual.',
+      };
+    }
+
+    const cart: CartLine[] = [
+      {
+        ...selectedLine,
+        options: selectedLine.options.map((option) => ({ ...option })),
+      },
+    ];
 
     return this.persistEditedCart(currentSession, cart);
   }
@@ -659,6 +780,8 @@ export class CartService {
       ),
       products_total_cop: String(itemsTotal),
       lines: cart.map((line) => ({
+        product_id: line.productId,
+        variant_id: line.variantId,
         product_title: line.productTitle,
         variant_title: line.variantTitle,
         options: line.options,
