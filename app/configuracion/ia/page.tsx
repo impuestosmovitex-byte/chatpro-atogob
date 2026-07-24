@@ -208,6 +208,88 @@ function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
   };
 }
 
+
+const INSTRUCTION_LIMITS = {
+  salesInstructions: 50_000,
+  shippingInstructions: 50_000,
+  paymentInstructions: 50_000,
+  checkoutInstructions: 60_000,
+  termsConditions: 60_000,
+  exchangesReturns: 60_000,
+  warranties: 40_000,
+  policiesFaq: 80_000,
+  aiInstructions: 100_000,
+} as const;
+
+type InstructionLimitKey = keyof typeof INSTRUCTION_LIMITS;
+
+const INSTRUCTION_LABELS: Record<InstructionLimitKey, string> = {
+  salesInstructions: 'Proceso de ventas',
+  shippingInstructions: 'Ciudades y envíos',
+  paymentInstructions: 'Medios de pago',
+  checkoutInstructions: 'Finalización de compra y checkout',
+  termsConditions: 'Términos y condiciones',
+  exchangesReturns: 'Cambios y devoluciones',
+  warranties: 'Garantías',
+  policiesFaq: 'Preguntas frecuentes y políticas adicionales',
+  aiInstructions: 'Promociones, estilo y casos especiales',
+};
+
+function formatCharacters(value: number) {
+  return new Intl.NumberFormat('es-CO').format(value);
+}
+
+function CharacterCounter({
+  value,
+  limit,
+}: {
+  value: string;
+  limit: number;
+}) {
+  const used = value.length;
+  const remaining = limit - used;
+  const exceeded = remaining < 0;
+
+  return (
+    <small
+      className={
+        exceeded ? styles.characterCounterOver : styles.characterCounter
+      }
+    >
+      {exceeded
+        ? `${formatCharacters(used)} utilizados · límite superado por ${formatCharacters(
+            Math.abs(remaining),
+          )} · máximo ${formatCharacters(limit)}`
+        : `${formatCharacters(used)} utilizados · ${formatCharacters(
+            remaining,
+          )} disponibles · máximo ${formatCharacters(limit)}`}
+    </small>
+  );
+}
+
+function getExceededInstructionFields(configuration: Configuration) {
+  const values: Record<InstructionLimitKey, string> = {
+    salesInstructions: configuration.commercialFlow.salesInstructions,
+    shippingInstructions: configuration.commercialFlow.shippingInstructions,
+    paymentInstructions: configuration.commercialFlow.paymentInstructions,
+    checkoutInstructions: configuration.commercialFlow.checkoutInstructions,
+    termsConditions: configuration.knowledgeBase.termsConditions,
+    exchangesReturns: configuration.knowledgeBase.exchangesReturns,
+    warranties: configuration.knowledgeBase.warranties,
+    policiesFaq: configuration.knowledgeBase.policiesFaq,
+    aiInstructions: configuration.aiInstructions,
+  };
+
+  return (Object.keys(INSTRUCTION_LIMITS) as InstructionLimitKey[])
+    .filter((key) => values[key].length > INSTRUCTION_LIMITS[key])
+    .map((key) => ({
+      key,
+      label: INSTRUCTION_LABELS[key],
+      used: values[key].length,
+      limit: INSTRUCTION_LIMITS[key],
+    }));
+}
+
 export default function ConfiguracionPage() {
   const [configuration, setConfiguration] =
     useState<Configuration>(EMPTY);
@@ -215,6 +297,11 @@ export default function ConfiguracionPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+
+  const exceededInstructionFields =
+    getExceededInstructionFields(configuration);
+  const hasExceededInstructionLimits =
+    exceededInstructionFields.length > 0;
 
   useEffect(() => {
     async function load() {
@@ -345,6 +432,25 @@ export default function ConfiguracionPage() {
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const exceeded = getExceededInstructionFields(configuration);
+
+    if (exceeded.length > 0) {
+      const details = exceeded
+        .map(
+          (field) =>
+            `${field.label}: ${formatCharacters(field.used)} de ${formatCharacters(
+              field.limit,
+            )}`,
+        )
+        .join(' · ');
+
+      setMessage(
+        `No se pudo guardar. Estos campos superan el límite: ${details}`,
+      );
+      return;
+    }
+
     setSaving(true);
     setMessage('');
 
@@ -606,7 +712,12 @@ export default function ConfiguracionPage() {
                 }
                 placeholder="Ejemplo: En Ventas, primero pregunta qué producto busca y para qué ciudad. Cuando comparta un enlace, confirma el producto real, la variante y acompaña la decisión de compra."
                 rows={6}
+                maxLength={INSTRUCTION_LIMITS.salesInstructions}
                 disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.commercialFlow.salesInstructions}
+                limit={INSTRUCTION_LIMITS.salesInstructions}
               />
             </label>
 
@@ -619,7 +730,12 @@ export default function ConfiguracionPage() {
                 }
                 placeholder="Ejemplo: Para Cali el envío cuesta $13.900. Confirma ciudad antes de hablar de tiempos, costo o disponibilidad de contraentrega. No inventes condiciones."
                 rows={5}
+                maxLength={INSTRUCTION_LIMITS.shippingInstructions}
                 disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.commercialFlow.shippingInstructions}
+                limit={INSTRUCTION_LIMITS.shippingInstructions}
               />
             </label>
 
@@ -632,7 +748,12 @@ export default function ConfiguracionPage() {
                 }
                 placeholder="Ejemplo: Contraentrega solo está disponible en Bogotá. Para otras ciudades ofrece Addi, Sistecrédito, SUMAS, transferencia o tarjeta según corresponda."
                 rows={5}
+                maxLength={INSTRUCTION_LIMITS.paymentInstructions}
                 disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.commercialFlow.paymentInstructions}
+                limit={INSTRUCTION_LIMITS.paymentInstructions}
               />
             </label>
 
@@ -645,7 +766,12 @@ export default function ConfiguracionPage() {
                 }
                 placeholder="Ejemplo: Solo envía el checkout después de confirmar producto, variante, ciudad y medio de pago. Para Addi, indica que complete sus datos en Shopify y seleccione Addi al final."
                 rows={5}
+                maxLength={INSTRUCTION_LIMITS.checkoutInstructions}
                 disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.commercialFlow.checkoutInstructions}
+                limit={INSTRUCTION_LIMITS.checkoutInstructions}
               />
             </label>
           </section>
@@ -903,7 +1029,12 @@ export default function ConfiguracionPage() {
                 }
                 placeholder="Pega aquí condiciones generales, tiempos, restricciones, consentimiento, políticas de compra o reglas legales de la empresa."
                 rows={5}
+                maxLength={INSTRUCTION_LIMITS.termsConditions}
                 disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.knowledgeBase.termsConditions}
+                limit={INSTRUCTION_LIMITS.termsConditions}
               />
             </label>
 
@@ -916,7 +1047,12 @@ export default function ConfiguracionPage() {
                 }
                 placeholder="Ejemplo: Cambios dentro de 30 días, producto sin uso, con etiquetas, aplica o no aplica a promociones, quién paga el envío."
                 rows={5}
+                maxLength={INSTRUCTION_LIMITS.exchangesReturns}
                 disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.knowledgeBase.exchangesReturns}
+                limit={INSTRUCTION_LIMITS.exchangesReturns}
               />
             </label>
 
@@ -929,7 +1065,12 @@ export default function ConfiguracionPage() {
                 }
                 placeholder="Ejemplo: Tiempo de garantía, qué cubre, qué no cubre, cómo reportarla y cuándo debe pasar a un asesor."
                 rows={5}
+                maxLength={INSTRUCTION_LIMITS.warranties}
                 disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.knowledgeBase.warranties}
+                limit={INSTRUCTION_LIMITS.warranties}
               />
             </label>
 
@@ -942,7 +1083,12 @@ export default function ConfiguracionPage() {
                 }
                 placeholder="Horarios, rastreos, estados de pedidos, condiciones especiales, mensajes que debe usar o casos que debe escalar."
                 rows={6}
+                maxLength={INSTRUCTION_LIMITS.policiesFaq}
                 disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.knowledgeBase.policiesFaq}
+                limit={INSTRUCTION_LIMITS.policiesFaq}
               />
             </label>
           </section>
@@ -967,7 +1113,12 @@ export default function ConfiguracionPage() {
                 }
                 placeholder="Escribe promociones vigentes, venta cruzada, garantías, mensajes que deben usarse, políticas o cuándo transferir a un asesor."
                 rows={10}
+                maxLength={INSTRUCTION_LIMITS.aiInstructions}
                 disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.aiInstructions}
+                limit={INSTRUCTION_LIMITS.aiInstructions}
               />
             </label>
 
@@ -976,12 +1127,24 @@ export default function ConfiguracionPage() {
             </div>
           </section>
 
+          {hasExceededInstructionLimits ? (
+            <div className={styles.limitError}>
+              <strong>No se puede guardar todavía.</strong>
+              {exceededInstructionFields.map((field) => (
+                <span key={field.key}>
+                  {field.label}: {formatCharacters(field.used)} utilizados de{' '}
+                  {formatCharacters(field.limit)}.
+                </span>
+              ))}
+            </div>
+          ) : null}
+
           {message ? <p className={styles.message}>{message}</p> : null}
 
           <button
             className={styles.save}
             type="submit"
-            disabled={loading || saving}
+            disabled={loading || saving || hasExceededInstructionLimits}
           >
             {saving ? 'Guardando…' : 'Guardar configuración comercial'}
           </button>
