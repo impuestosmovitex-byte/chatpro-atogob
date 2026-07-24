@@ -436,7 +436,7 @@ export class ConversationMemoryService {
     customerPhone: string,
   ): Promise<ConversationSession> {
     const id = companyId.trim();
-    const phone = customerPhone.trim();
+    const phone = this.normalizePhone(customerPhone);
 
     if (!id) {
       throw new Error('Falta el identificador de la empresa.');
@@ -448,12 +448,27 @@ export class ConversationMemoryService {
 
     const client = this.supabaseService.getClient();
 
-    const { data: existingSession, error: existingError } = await client
+    const localPhone =
+      phone.length > 10 ? phone.slice(-10) : phone;
+
+    const phoneCandidates = Array.from(
+      new Set(
+        [
+          phone,
+          `+${phone}`,
+          localPhone,
+          `+${localPhone}`,
+        ].filter(Boolean),
+      ),
+    );
+
+    const { data: existingSessions, error: existingError } = await client
       .from('conversation_sessions')
       .select(SESSION_FIELDS)
       .eq('company_id', id)
-      .eq('customer_phone', phone)
-      .maybeSingle();
+      .in('customer_phone', phoneCandidates)
+      .order('last_message_at', { ascending: false })
+      .limit(20);
 
     if (existingError) {
       throw new Error(
@@ -461,14 +476,69 @@ export class ConversationMemoryService {
       );
     }
 
+    const matchingSessions = (existingSessions ?? []) as unknown as Array<
+      Record<string, unknown>
+    >;
+
+    const existingSession =
+      matchingSessions.find(
+        (row) =>
+          typeof row.customer_phone === 'string' &&
+          this.normalizePhone(row.customer_phone) === phone,
+      ) ??
+      matchingSessions.find(
+        (row) =>
+          typeof row.customer_phone === 'string' &&
+          this.normalizePhone(row.customer_phone).slice(-10) === localPhone,
+      ) ??
+      null;
+
+    if (matchingSessions.length > 1) {
+      console.warn(
+        `[ChatPro][duplicate-phone-sessions] company=${id} phone=${phone} sessions=${matchingSessions
+          .map((row) => String(row.id ?? ''))
+          .filter(Boolean)
+          .join(',')}`,
+      );
+    }
+
     if (existingSession) {
+      let sessionRow: Record<string, unknown> = existingSession;
+
+      if (
+        matchingSessions.length === 1 &&
+        typeof existingSession.customer_phone === 'string' &&
+        existingSession.customer_phone !== phone
+      ) {
+        const { data: normalizedSession, error: normalizeSessionError } =
+          await client
+            .from('conversation_sessions')
+            .update({
+              customer_phone: phone,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', String(existingSession.id))
+            .eq('company_id', id)
+            .select(SESSION_FIELDS)
+            .single();
+
+        if (normalizeSessionError) {
+          console.error(
+            `No se pudo normalizar el teléfono de la sesión ${String(existingSession.id)}:`,
+            normalizeSessionError,
+          );
+        } else if (normalizedSession) {
+          sessionRow = normalizedSession as unknown as Record<string, unknown>;
+        }
+      }
+
       await this.upsertContact(id, {
         phone,
         primaryChannel: 'whatsapp',
         lastActivityAt: new Date().toISOString(),
       });
 
-      return this.toSession(existingSession);
+      return this.toSession(sessionRow);
     }
 
     const now = new Date().toISOString();
@@ -1927,6 +1997,12 @@ export class ConversationMemoryService {
   }
 
   async saveMessage(input: SaveMessageInput): Promise<'saved' | 'duplicate'> {
+    const customerPhone = this.normalizePhone(input.customerPhone);
+
+    if (!customerPhone) {
+      throw new Error('El mensaje no tiene un teléfono de cliente válido.');
+    }
+
     const providerMessageId = input.providerMessageId?.trim() || null;
     const authorType =
       input.authorType ?? (input.sender === 'customer' ? 'customer' : 'ai');
@@ -1937,7 +2013,7 @@ export class ConversationMemoryService {
       .insert({
         company_id: input.companyId,
         session_id: input.sessionId,
-        customer_phone: input.customerPhone,
+        customer_phone: customerPhone,
         message: input.message,
         sender: input.sender,
         author_type: authorType,
@@ -2217,7 +2293,7 @@ export class ConversationMemoryService {
   }
 
   private normalizePhone(value: string): string {
-    return value.trim().replace(/[^\d+]/g, '');
+    return value.trim().replace(/\D/g, '');
   }
 
   private async updateAttention(
