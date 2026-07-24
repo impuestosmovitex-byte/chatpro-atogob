@@ -172,6 +172,17 @@ function conversationAreaName(
 function conversationCategory(
   session: ConversationSession,
 ): Exclude<ConversationCategory, 'all'> {
+  const storedCategory =
+    session.context?.conversation_category;
+
+  if (storedCategory === 'sales') {
+    return 'sales';
+  }
+
+  if (storedCategory === 'service') {
+    return 'service';
+  }
+
   const areaName = conversationAreaName(session)
     .toLowerCase()
     .normalize('NFD')

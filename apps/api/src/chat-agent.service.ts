@@ -60,6 +60,180 @@ export class ChatAgentService {
     private readonly conversationMemoryService: ConversationMemoryService,
   ) {}
 
+  private readConversationCategory(
+    context: JsonObject,
+  ): 'sales' | 'service' | 'unclassified' {
+    const value = context.conversation_category;
+
+    return value === 'sales' || value === 'service'
+      ? value
+      : 'unclassified';
+  }
+
+  private classifyConversationCategory(
+    session: ConversationSession,
+    customerMessage: string,
+    routingIntent: string,
+  ): 'sales' | 'service' | 'unclassified' {
+    const normalized = customerMessage
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9@#\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const current =
+      this.readConversationCategory(session.context);
+
+    const customerServiceFlow =
+      session.context.customer_service_flow &&
+      typeof session.context.customer_service_flow === 'object' &&
+      !Array.isArray(session.context.customer_service_flow);
+
+    const serviceArea =
+      session.context.service_area &&
+      typeof session.context.service_area === 'object' &&
+      !Array.isArray(session.context.service_area)
+        ? session.context.service_area as JsonObject
+        : null;
+
+    const areaName =
+      typeof serviceArea?.name === 'string'
+        ? serviceArea.name
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+        : '';
+
+    const servicePatterns = [
+      /\bmi pedido\b/,
+      /\bpedido\s*#?\s*\d+/,
+      /\bnumero de pedido\b/,
+      /\bestado (de|del) pedido\b/,
+      /\bdonde esta mi pedido\b/,
+      /\brastre/,
+      /\bseguimiento\b/,
+      /\bguia\b/,
+      /\btransportadora\b/,
+      /\bdespach/,
+      /\benviado\b/,
+      /\bentrega\b/,
+      /\bdemora\b/,
+      /\bretras/,
+      /\bcambio\b/,
+      /\bdevoluci/,
+      /\bgarantia\b/,
+      /\bcancel/,
+      /\banular\b/,
+      /\breembolso\b/,
+      /\bproducto recibido\b/,
+      /\bme llego\b/,
+      /\bno me llego\b/,
+      /\bpedido existente\b/,
+      /\bcomprobante\b/,
+      /\bpago pendiente\b/,
+      /\bpago rechazado\b/,
+    ];
+
+    const salesPatterns = [
+      /\bquiero comprar\b/,
+      /\bquiero este\b/,
+      /\bme lo llevo\b/,
+      /\bprecio\b/,
+      /\bcuanto vale\b/,
+      /\bcuanto cuesta\b/,
+      /\bcatalogo\b/,
+      /\bcoleccion\b/,
+      /\bproducto\b/,
+      /\btalla\b/,
+      /\bcolor\b/,
+      /\bdisponible\b/,
+      /\bagreg/,
+      /\bcarrito\b/,
+      /\bcheckout\b/,
+      /\bfinalizar compra\b/,
+      /\bquiero pagar\b/,
+      /\bmedio de pago\b/,
+      /\bcredito\b/,
+      /\baddi\b/,
+      /\bsistecredito\b/,
+      /\bsumas\b/,
+      /\bcontraentrega\b/,
+    ];
+
+    if (
+      servicePatterns.some((pattern) => pattern.test(normalized))
+    ) {
+      return 'service';
+    }
+
+    if (
+      routingIntent === 'new_catalog_search' ||
+      salesPatterns.some((pattern) => pattern.test(normalized))
+    ) {
+      return 'sales';
+    }
+
+    const looksLikePendingIdentifier =
+      /^#?\d{4,}$/.test(normalized) ||
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) ||
+      /^\d{7,15}$/.test(normalized.replace(/\D/g, ''));
+
+    if (
+      looksLikePendingIdentifier &&
+      (
+        current === 'service' ||
+        customerServiceFlow ||
+        areaName.includes('servicio') ||
+        areaName.includes('soporte') ||
+        areaName.includes('postventa')
+      )
+    ) {
+      return 'service';
+    }
+
+    if (
+      normalized === '1' &&
+      current === 'unclassified'
+    ) {
+      return 'sales';
+    }
+
+    if (
+      normalized === '2' &&
+      current === 'unclassified'
+    ) {
+      return 'service';
+    }
+
+    return current;
+  }
+
+  private async rememberConversationCategory(
+    session: ConversationSession,
+    category: 'sales' | 'service' | 'unclassified',
+  ): Promise<ConversationSession> {
+    if (
+      category === 'unclassified' ||
+      this.readConversationCategory(session.context) === category
+    ) {
+      return session;
+    }
+
+    return this.conversationMemoryService.updateSession(
+      session.id,
+      {
+        context: {
+          ...session.context,
+          conversation_category: category,
+          conversation_category_updated_at:
+            new Date().toISOString(),
+        },
+      },
+    );
+  }
+
   async reply(
     profile: CompanyProfile,
     session: ConversationSession,
@@ -99,6 +273,19 @@ export class ChatAgentService {
     }
 
     const currentIntent = routing.intent;
+
+    const conversationCategory =
+      this.classifyConversationCategory(
+        activeSession,
+        customerMessage,
+        currentIntent,
+      );
+
+    activeSession =
+      await this.rememberConversationCategory(
+        activeSession,
+        conversationCategory,
+      );
 
     activeSession =
       currentIntent === 'new_catalog_search'
@@ -2725,6 +2912,16 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       }
 
       if (name === 'lookup_order') {
+        const currentSession =
+          await this.conversationMemoryService.getSessionById(
+            session.id,
+          );
+
+        await this.rememberConversationCategory(
+          currentSession,
+          'service',
+        );
+
         return this.customerOrderService.lookup(session.companyId, {
           orderReference:
             typeof args.order_reference === 'string'
