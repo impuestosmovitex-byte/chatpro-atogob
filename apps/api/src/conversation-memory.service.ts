@@ -480,18 +480,56 @@ export class ConversationMemoryService {
       Record<string, unknown>
     >;
 
+    const matchingPhoneSessions = matchingSessions
+      .filter((row) => {
+        if (typeof row.customer_phone !== 'string') {
+          return false;
+        }
+
+        const normalized = this.normalizePhone(row.customer_phone);
+
+        return (
+          normalized === phone ||
+          normalized.slice(-10) === localPhone
+        );
+      })
+      .sort((left, right) => {
+        const priority = (row: Record<string, unknown>) => {
+          const status =
+            typeof row.attention_status === 'string'
+              ? row.attention_status
+              : '';
+
+          if (status === 'human') return 4;
+          if (status === 'waiting') return 3;
+          if (status === 'ai') return 2;
+          if (status === 'closed') return 1;
+
+          return 0;
+        };
+
+        const priorityDifference =
+          priority(right) - priority(left);
+
+        if (priorityDifference !== 0) {
+          return priorityDifference;
+        }
+
+        const rightDate =
+          typeof right.last_message_at === 'string'
+            ? new Date(right.last_message_at).getTime()
+            : 0;
+
+        const leftDate =
+          typeof left.last_message_at === 'string'
+            ? new Date(left.last_message_at).getTime()
+            : 0;
+
+        return rightDate - leftDate;
+      });
+
     const existingSession =
-      matchingSessions.find(
-        (row) =>
-          typeof row.customer_phone === 'string' &&
-          this.normalizePhone(row.customer_phone) === phone,
-      ) ??
-      matchingSessions.find(
-        (row) =>
-          typeof row.customer_phone === 'string' &&
-          this.normalizePhone(row.customer_phone).slice(-10) === localPhone,
-      ) ??
-      null;
+      matchingPhoneSessions[0] ?? null;
 
     if (matchingSessions.length > 1) {
       console.warn(
@@ -506,7 +544,6 @@ export class ConversationMemoryService {
       let sessionRow: Record<string, unknown> = existingSession;
 
       if (
-        matchingSessions.length === 1 &&
         typeof existingSession.customer_phone === 'string' &&
         existingSession.customer_phone !== phone
       ) {
@@ -1663,8 +1700,59 @@ export class ConversationMemoryService {
     }
 
     const sessions = [...pendingSessions, ...recentSessions];
+
+    const statusPriority = (
+      session: ConversationSession,
+    ): number => {
+      if (session.attentionStatus === 'human') return 4;
+      if (session.attentionStatus === 'waiting') return 3;
+      if (session.attentionStatus === 'ai') return 2;
+      if (session.attentionStatus === 'closed') return 1;
+
+      return 0;
+    };
+
+    const preferredByPhone =
+      new Map<string, ConversationSession>();
+
+    for (const session of sessions) {
+      const normalizedPhone =
+        this.normalizePhone(session.customerPhone);
+
+      const phoneKey =
+        normalizedPhone.length > 10
+          ? normalizedPhone.slice(-10)
+          : normalizedPhone;
+
+      const key = phoneKey || session.id;
+      const current = preferredByPhone.get(key);
+
+      if (!current) {
+        preferredByPhone.set(key, session);
+        continue;
+      }
+
+      const sessionPriority = statusPriority(session);
+      const currentPriority = statusPriority(current);
+
+      const sessionTime =
+        new Date(session.lastMessageAt).getTime();
+      const currentTime =
+        new Date(current.lastMessageAt).getTime();
+
+      if (
+        sessionPriority > currentPriority ||
+        (
+          sessionPriority === currentPriority &&
+          sessionTime > currentTime
+        )
+      ) {
+        preferredByPhone.set(key, session);
+      }
+    }
+
     const uniqueSessions = Array.from(
-      new Map(sessions.map((session) => [session.id, session])).values(),
+      preferredByPhone.values(),
     ).sort(
       (left, right) =>
         new Date(right.lastMessageAt).getTime() -
@@ -2358,6 +2446,35 @@ export class ConversationMemoryService {
       return new Map();
     }
 
+    const normalizedRequested = phones
+      .map((phone) => ({
+        original: phone,
+        normalized: this.normalizePhone(phone),
+      }))
+      .filter((item) => Boolean(item.normalized));
+
+    const candidates = Array.from(
+      new Set(
+        normalizedRequested.flatMap((item) => {
+          const local =
+            item.normalized.length > 10
+              ? item.normalized.slice(-10)
+              : item.normalized;
+
+          return [
+            item.normalized,
+            `+${item.normalized}`,
+            local,
+            `+${local}`,
+          ];
+        }),
+      ),
+    );
+
+    if (!candidates.length) {
+      return new Map();
+    }
+
     const { data, error } = await this.supabaseService
       .getClient()
       .from('contacts')
@@ -2365,18 +2482,60 @@ export class ConversationMemoryService {
         'id, company_id, phone, display_name, primary_channel, tags, notes, first_seen_at, last_activity_at',
       )
       .eq('company_id', companyId)
-      .in('phone', phones);
+      .in('phone', candidates);
 
     if (error) {
-      throw new Error(`No se pudieron consultar los contactos: ${error.message}`);
+      throw new Error(
+        `No se pudieron consultar los contactos: ${error.message}`,
+      );
     }
 
-    return new Map(
-      (data ?? []).map((row) => {
-        const contact = this.toContact(row);
-        return [contact.phone, contact];
-      }),
+    const contacts = (data ?? []).map((row) =>
+      this.toContact(row),
     );
+
+    const byCanonicalPhone =
+      new Map<string, ContactRecord>();
+
+    for (const contact of contacts) {
+      const normalized =
+        this.normalizePhone(contact.phone);
+
+      const canonical =
+        normalized.length > 10
+          ? normalized.slice(-10)
+          : normalized;
+
+      const current = byCanonicalPhone.get(canonical);
+
+      if (
+        !current ||
+        (
+          !current.displayName &&
+          Boolean(contact.displayName)
+        )
+      ) {
+        byCanonicalPhone.set(canonical, contact);
+      }
+    }
+
+    const result = new Map<string, ContactRecord>();
+
+    for (const item of normalizedRequested) {
+      const canonical =
+        item.normalized.length > 10
+          ? item.normalized.slice(-10)
+          : item.normalized;
+
+      const contact =
+        byCanonicalPhone.get(canonical);
+
+      if (contact) {
+        result.set(item.original, contact);
+      }
+    }
+
+    return result;
   }
 
   private toContact(value: unknown): ContactRecord {
