@@ -634,6 +634,9 @@ export default function Home() {
   const [canOpenStorefront, setCanOpenStorefront] = useState(false);
   const [canManageClients, setCanManageClients] = useState(false);
   const [canSendAudio, setCanSendAudio] = useState(false);
+  const [canSendTemplates, setCanSendTemplates] = useState(false);
+  const [canUseQuickReplies, setCanUseQuickReplies] = useState(false);
+  const [canSendMedia, setCanSendMedia] = useState(false);
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [advisorFilter, setAdvisorFilter] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -1020,7 +1023,11 @@ export default function Home() {
   }
 
   async function openWhatsappTemplateDialog() {
-    if (!selected || selected.historyRestricted) return;
+    if (
+      !canSendTemplates ||
+      !selected ||
+      selected.historyRestricted
+    ) return;
 
     setTemplateOpen(true);
     setTemplateLoading(true);
@@ -1955,6 +1962,9 @@ export default function Home() {
             storefront?: boolean;
             manageClients?: boolean;
             sendAudio?: boolean;
+            sendTemplates?: boolean;
+            useQuickReplies?: boolean;
+            sendMedia?: boolean;
           };
         };
 
@@ -1970,6 +1980,15 @@ export default function Home() {
             allowed && data.capabilities?.manageClients === true,
           );
           setCanSendAudio(allowed && data.capabilities?.sendAudio === true);
+          setCanSendTemplates(
+            allowed && data.capabilities?.sendTemplates === true,
+          );
+          setCanUseQuickReplies(
+            allowed && data.capabilities?.useQuickReplies === true,
+          );
+          setCanSendMedia(
+            allowed && data.capabilities?.sendMedia === true,
+          );
         }
       } catch {
         if (alive) {
@@ -1977,6 +1996,9 @@ export default function Home() {
           setCanOpenStorefront(false);
           setCanManageClients(false);
           setCanSendAudio(false);
+          setCanSendTemplates(false);
+          setCanUseQuickReplies(false);
+          setCanSendMedia(false);
         }
       }
     }
@@ -2007,7 +2029,6 @@ export default function Home() {
   }, [audioPreviewUrl]);
 
   useEffect(() => {
-    void loadQuickReplies();
     void loadIdentityAndPresence();
 
     const targetSession = new URLSearchParams(window.location.search).get(
@@ -2018,6 +2039,16 @@ export default function Home() {
       void openConversation(targetSession);
     }
   }, []);
+
+  useEffect(() => {
+    if (canUseQuickReplies) {
+      void loadQuickReplies();
+      return;
+    }
+
+    setQuickReplies([]);
+    setQuickReplyOpen(false);
+  }, [canUseQuickReplies]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -2162,7 +2193,9 @@ export default function Home() {
     : "";
 
   const visibleQuickReplies =
-    quickReplyOpen && message.trimStart().startsWith("/")
+    canUseQuickReplies &&
+    quickReplyOpen &&
+    message.trimStart().startsWith("/")
       ? quickReplies
           .filter(
             (reply) =>
@@ -2972,6 +3005,7 @@ export default function Home() {
                             ) : null}
 
                             {!isInternalTest &&
+                            canSendTemplates &&
                             selected.historyRestricted !== true ? (
                               <button
                                 type="button"
@@ -3066,7 +3100,9 @@ export default function Home() {
                       </button>
                     ) : null}
 
-                    {!isInternalTest && selected.historyRestricted !== true ? (
+                    {!isInternalTest &&
+                    canSendTemplates &&
+                    selected.historyRestricted !== true ? (
                       <button
                         className="button quiet"
                         type="button"
@@ -3424,12 +3460,14 @@ export default function Home() {
                                 const next = event.target.value;
                                 setMessage(next);
                                 setQuickReplyOpen(
-                                  next.trimStart().startsWith("/"),
+                                  canUseQuickReplies &&
+                                    next.trimStart().startsWith("/"),
                                 );
                               }}
                               onFocus={() =>
                                 setQuickReplyOpen(
-                                  message.trimStart().startsWith("/"),
+                                  canUseQuickReplies &&
+                                    message.trimStart().startsWith("/"),
                                 )
                               }
                               onKeyDown={(event) => {
@@ -3445,7 +3483,11 @@ export default function Home() {
                                   }
                                 }
                               }}
-                              placeholder="Escribe un mensaje o usa / para atajos…"
+                              placeholder={
+                                canUseQuickReplies
+                                  ? "Escribe un mensaje o usa / para atajos…"
+                                  : "Escribe un mensaje…"
+                              }
                               rows={1}
                             />
                             {visibleQuickReplies.length ? (
@@ -3479,31 +3521,33 @@ export default function Home() {
                               selectImage(event.target.files?.[0])
                             }
                           />
-                          <button
-                            type="button"
-                            className="wa-idle-icon"
-                            onClick={() => imageInputRef.current?.click()}
-                            disabled={
-                              actionLoading ||
-                              audioSending ||
-                              imageSending ||
-                              recording
-                            }
-                            aria-label="Adjuntar imagen"
-                            title="Adjuntar imagen"
-                          >
-                            <svg
-                              aria-hidden="true"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                          {canSendMedia ? (
+                            <button
+                              type="button"
+                              className="wa-idle-icon"
+                              onClick={() => imageInputRef.current?.click()}
+                              disabled={
+                                actionLoading ||
+                                audioSending ||
+                                imageSending ||
+                                recording
+                              }
+                              aria-label="Adjuntar imagen"
+                              title="Adjuntar imagen"
                             >
-                              <path d="M21.44 11.05 12 20.5a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                            </svg>
-                          </button>
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M21.44 11.05 12 20.5a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                              </svg>
+                            </button>
+                          ) : null}
 
                           {canSendAudio ? (
                             <button

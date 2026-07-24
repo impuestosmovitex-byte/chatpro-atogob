@@ -15,6 +15,9 @@ type CapabilityKey =
   | 'startConversations'
   | 'storefront'
   | 'sendAudio'
+  | 'sendTemplates'
+  | 'useQuickReplies'
+  | 'sendMedia'
   | 'health'
   | 'automations'
   | 'configuration'
@@ -154,6 +157,15 @@ export class AccessCapabilitiesController {
         fullAccess || permissionKeys.includes('storefront.open'),
       sendAudio:
         fullAccess || permissionKeys.includes('inbox.audio'),
+      sendTemplates:
+        fullAccess ||
+        permissionKeys.includes('inbox.templates.send'),
+      useQuickReplies:
+        fullAccess ||
+        permissionKeys.includes('inbox.quick_replies.use'),
+      sendMedia:
+        fullAccess ||
+        permissionKeys.includes('inbox.media.send'),
       health: fullAccess,
       automations:
         fullAccess || hasPrefix('automation', 'automations'),

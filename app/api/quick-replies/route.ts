@@ -3,6 +3,7 @@ import {
   getInboxSession,
   INBOX_SESSION_COOKIE,
 } from '../../lib/inbox-auth';
+import { getAccessCapabilities } from '../../lib/access-capabilities';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +67,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const capabilities = await getAccessCapabilities(session);
+
+    if (!capabilities.useQuickReplies) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'No tienes permiso para usar respuestas rápidas.',
+        },
+        { status: 403 },
+      );
+    }
+
     const { apiBase, inboxKey } = config();
 
     return proxyResponse(

@@ -735,6 +735,15 @@ export class InboxController {
 
     this.assertManageOwn(actor, conversation.session, 'inbox.reply');
 
+    if (
+      !actor.isFullAccess &&
+      !actor.permissions.has('inbox.media.send')
+    ) {
+      throw new ForbiddenException(
+        'No tienes permiso para enviar imágenes o archivos.',
+      );
+    }
+
     if (conversation.session.attentionStatus !== 'human') {
       throw new BadRequestException(
         'La conversación debe estar tomada por un asesor para enviar imágenes.',
@@ -960,9 +969,12 @@ export class InboxController {
       conversation.company.id,
     );
 
-    if (!actor.isFullAccess && !actor.permissions.has('inbox.reply')) {
+    if (
+      !actor.isFullAccess &&
+      !actor.permissions.has('inbox.templates.send')
+    ) {
       throw new ForbiddenException(
-        'No tienes permiso para enviar plantillas desde la bandeja.',
+        'No tienes permiso para usar plantillas de WhatsApp.',
       );
     }
 
@@ -974,7 +986,11 @@ export class InboxController {
     );
 
     if (conversation.session.attentionStatus === 'human') {
-      this.assertManageOwn(actor, conversation.session, 'inbox.reply');
+      this.assertManageOwn(
+        actor,
+        conversation.session,
+        'inbox.templates.send',
+      );
     } else if (!actor.isFullAccess && !availability.takeAvailable) {
       throw new ForbiddenException(
         availability.takeBlockedReason ||

@@ -7,6 +7,9 @@ export type AccessCapabilities = {
   startConversations: boolean;
   storefront: boolean;
   sendAudio: boolean;
+  sendTemplates: boolean;
+  useQuickReplies: boolean;
+  sendMedia: boolean;
   health: boolean;
   automations: boolean;
   configuration: boolean;
@@ -26,6 +29,9 @@ const FULL_ACCESS: AccessCapabilities = {
   startConversations: true,
   storefront: true,
   sendAudio: true,
+  sendTemplates: true,
+  useQuickReplies: true,
+  sendMedia: true,
   health: true,
   automations: true,
   configuration: true,
@@ -82,6 +88,9 @@ export async function getAccessCapabilities(
       data.capabilities.startConversations === true,
     storefront: data.capabilities.storefront === true,
     sendAudio: data.capabilities.sendAudio === true,
+    sendTemplates: data.capabilities.sendTemplates === true,
+    useQuickReplies: data.capabilities.useQuickReplies === true,
+    sendMedia: data.capabilities.sendMedia === true,
     health: data.capabilities.health === true,
     automations: data.capabilities.automations === true,
     configuration: data.capabilities.configuration === true,
