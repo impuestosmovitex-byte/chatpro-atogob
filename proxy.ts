@@ -31,6 +31,7 @@ const ADVISOR_ALLOWED_APIS = [
   '/api/push-notifications',
   '/api/quick-replies',
   '/api/storefront',
+  '/api/whatsapp-templates',
 ];
 
 function matchesPath(pathname: string, allowedPath: string): boolean {
