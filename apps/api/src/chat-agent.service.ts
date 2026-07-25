@@ -210,14 +210,85 @@ export class ChatAgentService {
     return current;
   }
 
+  private async findConfiguredAreaForCategory(
+    companyId: string,
+    category: 'sales' | 'service',
+  ): Promise<{ id: string; name: string } | null> {
+    const areas =
+      await this.conversationMemoryService.listActiveServiceAreas(
+        companyId,
+      );
+
+    const normalize = (value: string) =>
+      value
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    const matches = areas.filter((area) => {
+      const name = normalize(area.name);
+
+      if (category === 'service') {
+        return (
+          name.includes('servicio') ||
+          name.includes('soporte') ||
+          name.includes('postventa') ||
+          name.includes('pedido') ||
+          name.includes('garantia')
+        );
+      }
+
+      return (
+        name.includes('venta') ||
+        name.includes('comercial')
+      );
+    });
+
+    return matches.length === 1
+      ? {
+          id: matches[0].id,
+          name: matches[0].name,
+        }
+      : null;
+  }
+
   private async rememberConversationCategory(
     session: ConversationSession,
     category: 'sales' | 'service' | 'unclassified',
   ): Promise<ConversationSession> {
-    if (
-      category === 'unclassified' ||
-      this.readConversationCategory(session.context) === category
-    ) {
+    if (category === 'unclassified') {
+      return session;
+    }
+
+    const currentCategory =
+      this.readConversationCategory(session.context);
+
+    const configuredArea =
+      await this.findConfiguredAreaForCategory(
+        session.companyId,
+        category,
+      );
+
+    const currentArea =
+      session.context.service_area &&
+      typeof session.context.service_area === 'object' &&
+      !Array.isArray(session.context.service_area)
+        ? session.context.service_area as JsonObject
+        : null;
+
+    const currentAreaId =
+      typeof currentArea?.id === 'string'
+        ? currentArea.id
+        : '';
+
+    const categoryChanged =
+      currentCategory !== category;
+
+    const areaChanged =
+      Boolean(configuredArea) &&
+      configuredArea?.id !== currentAreaId;
+
+    if (!categoryChanged && !areaChanged) {
       return session;
     }
 
@@ -229,9 +300,98 @@ export class ChatAgentService {
           conversation_category: category,
           conversation_category_updated_at:
             new Date().toISOString(),
+          ...(configuredArea
+            ? {
+                service_area: {
+                  id: configuredArea.id,
+                  name: configuredArea.name,
+                },
+              }
+            : {}),
         },
       },
     );
+  }
+
+  private configuredCompanyText(
+    profile: CompanyProfile,
+  ): string {
+    const values: string[] = [];
+
+    const collect = (value: unknown) => {
+      if (typeof value === 'string') {
+        values.push(value);
+        return;
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(collect);
+        return;
+      }
+
+      if (value && typeof value === 'object') {
+        Object.values(
+          value as Record<string, unknown>,
+        ).forEach(collect);
+      }
+    };
+
+    collect(profile.aiInstructions);
+    collect(profile.settings);
+
+    return values
+      .join('\n')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private companyForbidsRefundOrCancellation(
+    profile: CompanyProfile,
+  ): boolean {
+    const configured =
+      this.configuredCompanyText(profile);
+
+    const prohibitionPatterns = [
+      /no realizamos devolucion de dinero/,
+      /no se realizan devoluciones de dinero/,
+      /nunca.*devolucion de dinero/,
+      /no.*reembolso/,
+      /nunca.*reembolso/,
+      /no.*cancelacion/,
+      /nunca.*cancelacion/,
+      /no puede.*cancelar/,
+      /no ofrecer.*devolucion/,
+      /no mencionar.*devolucion/,
+      /no mencionar.*cancelacion/,
+    ];
+
+    return prohibitionPatterns.some((pattern) =>
+      pattern.test(configured),
+    );
+  }
+
+  private isRefundOrCancellationRequest(
+    message: string,
+  ): boolean {
+    const normalized = message
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return [
+      /devolver.*dinero/,
+      /retornar.*dinero/,
+      /regresar.*dinero/,
+      /reembolso/,
+      /cancelar.*pedido/,
+      /cancelacion/,
+      /anular.*pedido/,
+      /que me devuelvan/,
+      /devolucion de dinero/,
+    ].some((pattern) => pattern.test(normalized));
   }
 
   async reply(
@@ -250,6 +410,28 @@ export class ChatAgentService {
         profile,
         session,
       );
+
+    if (
+      this.companyForbidsRefundOrCancellation(profile) &&
+      this.isRefundOrCancellationRequest(customerMessage)
+    ) {
+      activeSession =
+        await this.rememberConversationCategory(
+          activeSession,
+          'service',
+        );
+
+      await this.conversationMemoryService.requestHumanAttention(
+        activeSession.id,
+        {
+          reason: 'Solicitud especial sobre un pedido.',
+          summary:
+            'El cliente solicita revisión especial de su pedido. Pendiente validación y respuesta del asesor.',
+        },
+      );
+
+      return 'Entiendo tu solicitud. Voy a transferirte con un asesor para que revise el caso y te indique cómo continuar.';
+    }
 
     const routingStartedAt = Date.now();
     const routing = await this.resolveMessageRouting(
@@ -1613,6 +1795,8 @@ export class ChatAgentService {
       '- Consulta productos, colecciones, variantes y carrito con las herramientas antes de dar datos definitivos.',
       '- Si preguntan por términos, cambios, devoluciones, garantías, pagos, envíos o políticas, responde usando la BASE DE CONOCIMIENTO APROBADA y las instrucciones de la empresa. Si falta una regla específica, dilo con claridad y escala si es necesario.',
         '- No ofrezcas cancelación, devolución, garantía, cambio especial, descuento, envío gratis ni excepción operativa si no está permitido explícitamente en la configuración de la empresa. Si no está configurado, no lo prometas: pide el dato necesario o escala a asesor.',
+      '- Cuando la configuración de la empresa prohíba devolver dinero, cancelar pedidos o presentar esas posibilidades, no las menciones como alternativa, solución posible ni resultado pendiente. Transfiere de forma neutral indicando únicamente que un asesor revisará el caso.',
+      '- Nunca inventes ni sugieras que el cliente puede elegir entre reenvío, devolución, compensación, cancelación u otra solución. Solo comunica resultados que estén confirmados por una política configurada o por una herramienta real.',
         '- Para cambios, garantías o devoluciones, pregunta lo necesario según la política configurada. No incluyas “cancelarlo” como opción salvo que la empresa lo permita explícitamente en su configuración.',
       '- Si preguntan por estado de pedido, número de guía, transportadora, seguimiento, pago de un pedido, cambio, garantía o devolución de una compra existente, usa lookup_order cuando tengas número de pedido, correo o celular. Si falta ese dato, pide solo un dato concreto.',
       '- No asumas que cualquier número enviado por el cliente es un pedido. Si el cliente envía solo un número sin contexto, pregunta brevemente si corresponde al número de pedido, guía o celular registrado en la compra antes de usar lookup_order.',

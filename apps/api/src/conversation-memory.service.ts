@@ -2036,6 +2036,62 @@ export class ConversationMemoryService {
       throw new Error('La conversación no existe para esta empresa.');
     }
 
+    const session = this.toSession(sessionRow);
+    const normalizedPhone =
+      this.normalizePhone(session.customerPhone);
+    const localPhone =
+      normalizedPhone.length > 10
+        ? normalizedPhone.slice(-10)
+        : normalizedPhone;
+
+    const phoneCandidates = Array.from(
+      new Set(
+        [
+          normalizedPhone,
+          `+${normalizedPhone}`,
+          localPhone,
+          `+${localPhone}`,
+        ].filter(Boolean),
+      ),
+    );
+
+    const { data: relatedSessionRows, error: relatedSessionsError } =
+      await client
+        .from('conversation_sessions')
+        .select('id, customer_phone')
+        .eq('company_id', profile.id)
+        .in('customer_phone', phoneCandidates);
+
+    if (relatedSessionsError) {
+      throw new Error(
+        `No se pudieron consultar las sesiones relacionadas: ${relatedSessionsError.message}`,
+      );
+    }
+
+    const relatedSessionIds = Array.from(
+      new Set(
+        [
+          id,
+          ...(relatedSessionRows ?? [])
+            .filter((row: any) => {
+              const rowPhone =
+                typeof row.customer_phone === 'string'
+                  ? this.normalizePhone(row.customer_phone)
+                  : '';
+
+              return (
+                rowPhone === normalizedPhone ||
+                rowPhone.slice(-10) === localPhone
+              );
+            })
+            .map((row: any) =>
+              typeof row.id === 'string' ? row.id : '',
+            )
+            .filter(Boolean),
+        ],
+      ),
+    );
+
     const requestedAfter = afterCreatedAt.trim();
     const validAfter =
       requestedAfter && !Number.isNaN(Date.parse(requestedAfter))
@@ -2045,38 +2101,29 @@ export class ConversationMemoryService {
     const messageFields =
       'id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at';
 
-    let messageRows: any[] | null = null;
-    let messageError: { message: string } | null = null;
+    let messagesQuery = client
+      .from('conversations')
+      .select(messageFields)
+      .in('session_id', relatedSessionIds)
+      .order('created_at', { ascending: true });
 
     if (validAfter) {
-      const result = await client
-        .from('conversations')
-        .select(messageFields)
-        .eq('session_id', id)
-        .gte('created_at', validAfter)
-        .order('created_at', { ascending: true });
-
-      messageRows = result.data;
-      messageError = result.error;
-    } else {
-      const result = await client
-        .from('conversations')
-        .select(messageFields)
-        .eq('session_id', id)
-        .order('created_at', { ascending: false })
-        .limit(30);
-
-      messageRows = result.data ? [...result.data].reverse() : [];
-      messageError = result.error;
-    }
-
-    if (messageError) {
-      throw new Error(
-        `No se pudo consultar el historial: ${messageError.message}`,
+      messagesQuery = messagesQuery.gte(
+        'created_at',
+        validAfter,
       );
     }
 
-    const session = this.toSession(sessionRow);
+    const {
+      data: messageRows,
+      error: messageError,
+    } = await messagesQuery;
+
+    if (messageError) {
+      throw new Error(
+        `No se pudo consultar el historial completo: ${messageError.message}`,
+      );
+    }
     const contactsByPhone = await this.getContactsByPhones(
       profile.id,
       [session.customerPhone],
