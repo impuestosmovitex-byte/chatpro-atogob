@@ -369,6 +369,163 @@ export class WhatsappWebhookController {
         input.phone,
       );
 
+      const sessionContext =
+        session.context &&
+        typeof session.context === 'object' &&
+        !Array.isArray(session.context)
+          ? session.context as Record<string, unknown>
+          : {};
+
+      const storedCategory =
+        typeof sessionContext.conversation_category === 'string'
+          ? sessionContext.conversation_category
+          : '';
+
+      const serviceFlow =
+        sessionContext.customer_service_flow &&
+        typeof sessionContext.customer_service_flow === 'object' &&
+        !Array.isArray(sessionContext.customer_service_flow);
+
+      const serviceAreaValue =
+        sessionContext.service_area &&
+        typeof sessionContext.service_area === 'object' &&
+        !Array.isArray(sessionContext.service_area)
+          ? sessionContext.service_area as Record<string, unknown>
+          : null;
+
+      const serviceAreaName =
+        typeof serviceAreaValue?.name === 'string'
+          ? serviceAreaValue.name
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+          : '';
+
+      const isServiceContext =
+        storedCategory === 'service' ||
+        Boolean(serviceFlow) ||
+        serviceAreaName.includes('servicio') ||
+        serviceAreaName.includes('soporte') ||
+        serviceAreaName.includes('postventa') ||
+        serviceAreaName.includes('pedido') ||
+        serviceAreaName.includes('garantia');
+
+      if (isServiceContext) {
+        const activeAreas =
+          await this.conversationMemoryService.listActiveServiceAreas(
+            profile.id,
+          );
+
+        const normalizeAreaName = (value: string) =>
+          value
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+
+        const serviceAreas = activeAreas.filter((area) => {
+          const name = normalizeAreaName(area.name);
+
+          return (
+            name.includes('servicio') ||
+            name.includes('soporte') ||
+            name.includes('postventa') ||
+            name.includes('pedido') ||
+            name.includes('garantia')
+          );
+        });
+
+        const configuredServiceArea =
+          serviceAreas.length === 1
+            ? serviceAreas[0]
+            : null;
+
+        const currentSession =
+          await this.conversationMemoryService.getSessionById(
+            session.id,
+          );
+
+        const nextContext: Record<string, unknown> = {
+          ...currentSession.context,
+          conversation_category: 'service',
+          conversation_category_updated_at:
+            new Date().toISOString(),
+          last_service_evidence: {
+            type: 'image',
+            caption: input.caption || null,
+            media_id: input.mediaId,
+            received_at: new Date().toISOString(),
+          },
+          ...(configuredServiceArea
+            ? {
+                service_area: {
+                  id: configuredServiceArea.id,
+                  name: configuredServiceArea.name,
+                },
+              }
+            : {}),
+        };
+
+        delete nextContext.last_visual_reference;
+
+        session =
+          await this.conversationMemoryService.updateSession(
+            currentSession.id,
+            {
+              context: nextContext,
+            },
+          );
+
+        const serviceEvidenceMessage = [
+          '[EVIDENCIA_SERVICIO]',
+          'El cliente envió una imagen dentro de una consulta, inconformidad o gestión de servicio al cliente.',
+          input.caption
+            ? `Texto enviado junto con la imagen: ${input.caption}`
+            : 'La imagen fue enviada sin texto adicional.',
+          'La imagen ya fue guardada y estará disponible para el asesor.',
+          'No busques la imagen en el catálogo.',
+          'No selecciones productos.',
+          'No hables de precios, colores, tallas, disponibilidad, carrito ni checkout.',
+          'No conviertas esta conversación en una venta.',
+          'Interpreta la imagen únicamente como evidencia del caso actual.',
+          'Responde según el historial de servicio y solicita solo el dato que realmente falte.',
+          'Si el caso requiere una decisión humana, transfiérelo sin prometer ninguna solución.',
+        ].join('\n');
+
+        const serviceReply = await this.resolveReply(
+          profile,
+          session,
+          serviceEvidenceMessage,
+        );
+
+        await this.whatsappMessagingService.sendText(
+          profile.id,
+          input.phone,
+          serviceReply,
+        );
+
+        replySent = true;
+
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: serviceReply,
+          sender: 'assistant',
+          authorType: 'ai',
+          aiResponse: serviceReply,
+        });
+
+        await this.conversationMemoryService.touchSession(
+          session.id,
+        );
+
+        console.log(
+          `Imagen conservada como evidencia de servicio para ${input.phone}`,
+        );
+
+        return;
+      }
+
       const multimodalIntent =
         await this.classifyIncomingImageIntent({
           buffer: media.buffer,

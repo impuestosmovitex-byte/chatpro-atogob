@@ -168,6 +168,21 @@ export class ChatAgentService {
       return 'service';
     }
 
+    const explicitNewPurchase =
+      /\bquiero (comprar|hacer una compra|pedir algo nuevo)\b/.test(
+        normalized,
+      ) ||
+      /\bvengo a comprar\b/.test(normalized) ||
+      /\bquiero ver el catalogo\b/.test(normalized) ||
+      /\bquiero comprar otro producto\b/.test(normalized);
+
+    if (
+      current === 'service' &&
+      !explicitNewPurchase
+    ) {
+      return 'service';
+    }
+
     if (
       routingIntent === 'new_catalog_search' ||
       salesPatterns.some((pattern) => pattern.test(normalized))
@@ -1776,7 +1791,7 @@ export class ChatAgentService {
       '- session.context.previous_purchase_context es solo un respaldo histórico. No lo uses ni lo agregues al carrito salvo que el mensaje ACTUAL pida explícitamente retomar esa compra; antes de retomarla valida nuevamente productos, variantes, disponibilidad y condiciones reales.',
       '- Después de 72 horas sin actividad, solo consulta una compra anterior si el mensaje ACTUAL del cliente pregunta explícitamente por un pedido, guía, pago, cambio, garantía, devolución o algo que compró antes.',
       '- No llames lookup_order solo porque exista un pedido o dato antiguo en el historial o contexto. Debe existir una solicitud actual y clara del cliente sobre esa compra.',
-      '- Consultar un pedido es una pausa temporal y no borra la venta activa. Conserva selectedProduct, selectedVariant, cart y sale_context.',
+      '- Cuando el mensaje actual trate sobre un pedido existente, guía, entrega, demora, producto faltante, producto incorrecto, cambio, garantía, devolución, inconformidad o reclamación, el contexto prioritario es Servicio. No continúes vendiendo ni uses productos, imágenes, variantes o carrito como respuesta al caso.',
       '- Si después de consultar el pedido la persona retoma el producto que ya estaba revisando, usa get_selected_product y get_cart. No vuelvas a abrir la colección ni a pedir el enlace si el producto ya está identificado.',
 
         '- Si la persona dice que quiere comprar algo nuevo, “solo quiero”, “solo esa”, “solo la blusa”, “ese pedido ya lo pagué” o corrige que los productos anteriores no van, separa la compra nueva del pedido anterior. Usa get_cart y quita productos no solicitados con remove_cart_line antes de crear checkout.',
@@ -1805,11 +1820,13 @@ export class ChatAgentService {
       '- Después de lookup_order, responde únicamente con datos reales encontrados.',
       '- Nunca muestres estados internos como FULFILLED, UNFULFILLED, PAID, PENDING, OPEN o CLOSED. Comunica su significado en lenguaje natural.',
       '- Si hay guía, comparte transportadora, número, enlace e instrucciones para consultarla. No preguntes “¿quieres que lo rastree?” ni afirmes que puedes rastrear en tiempo real si la integración no entregó ese estado.',
-      '- Después de responder la consulta del pedido, conserva la venta que estaba en curso y espera el siguiente mensaje.',
+      '- Después de responder una consulta o reclamación sobre un pedido, mantén la conversación en Servicio. Solo vuelve a Ventas cuando el cliente indique de forma explícita que desea realizar una compra nueva.',
 
       '- Si lookup_order devuelve next_action ask_alternate_identifier, no uses request_human_attention todavía. Pide un dato diferente y concreto: correo o celular si ya tienes pedido, o número de pedido si ya tienes celular/correo.',
       '- Si lookup_order devuelve next_action offer_human_attention o requires_human true, ofrece dejar el caso con un asesor. No pidas de nuevo el mismo dato y no inventes estado del pedido.',
-      '- session.context.last_visual_reference contiene el análisis y la validación de la última imagen. Úsalo cuando el mensaje actual se refiera a “esta”, “esa”, “esto”, “la foto”, “la imagen”, “la de arriba” o pida precio, disponibilidad, talla o color.',
+      '- Cuando session.context.conversation_category sea service, cualquier imagen, captura, comprobante, fotografía del pedido, etiqueta, empaque o producto recibido es evidencia del caso. No uses herramientas de catálogo, selección de producto, variantes, carrito ni checkout.',
+      '- session.context.last_service_evidence identifica evidencia enviada dentro de Servicio. Úsala únicamente para comprender la reclamación o preparar la transferencia al asesor.',
+      '- session.context.last_visual_reference contiene una referencia comercial únicamente cuando la conversación está realmente en Ventas. No la uses cuando conversation_category sea service.',
       '- Si last_visual_reference.match_type es exact y matched_product existe, esa referencia ya fue validada contra el catálogo real y quedó seleccionada. Usa get_selected_product para consultar precio y variantes reales.',
       '- Si match_type es similar, no afirmes que encontraste la referencia exacta. Presenta como máximo las opciones reales incluidas en candidates y pregunta cuál corresponde.',
       '- Si match_type es none, explica brevemente que no pudiste confirmar la referencia exacta y ofrece buscar por nombre, enlace o categoría.',
