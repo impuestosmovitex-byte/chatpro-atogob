@@ -499,6 +499,7 @@ function ImageMessageViewer({ item }: { item: InboxMessage }) {
   const [source, setSource] = useState("");
   const [loading, setLoading] = useState(true);
   const [imageError, setImageError] = useState("");
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -573,6 +574,28 @@ function ImageMessageViewer({ item }: { item: InboxMessage }) {
     };
   }, [item.id, item.sessionId]);
 
+  useEffect(() => {
+    if (!viewerOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setViewerOpen(false);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [viewerOpen]);
+
   if (loading) {
     return <small className="wa-image-loading">Cargando imagen…</small>;
   }
@@ -586,19 +609,52 @@ function ImageMessageViewer({ item }: { item: InboxMessage }) {
   }
 
   return (
-    <a
-      className="wa-image-link"
-      href={source}
-      target="_blank"
-      rel="noreferrer"
-      aria-label="Abrir imagen completa"
-    >
-      <img
-        className="wa-image-message"
-        src={source}
-        alt={item.message || "Imagen enviada por el cliente"}
-      />
-    </a>
+    <>
+      <button
+        type="button"
+        className="wa-image-link"
+        onClick={() => setViewerOpen(true)}
+        aria-label="Ampliar imagen"
+        title="Ampliar imagen"
+      >
+        <img
+          className="wa-image-message"
+          src={source}
+          alt={item.message || "Imagen enviada por el cliente"}
+        />
+      </button>
+
+      {viewerOpen ? (
+        <div
+          className="wa-image-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Imagen ampliada"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setViewerOpen(false);
+            }
+          }}
+        >
+          <div className="wa-image-lightbox-content">
+            <button
+              type="button"
+              className="wa-image-lightbox-close"
+              onClick={() => setViewerOpen(false)}
+              aria-label="Cerrar imagen"
+              title="Cerrar"
+            >
+              ×
+            </button>
+
+            <img
+              src={source}
+              alt={item.message || "Imagen enviada por el cliente"}
+            />
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
