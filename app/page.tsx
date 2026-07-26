@@ -24,6 +24,11 @@ type InboxMessage = {
   mediaMimeType: string | null;
   mediaStoragePath?: string | null;
   mediaVoice: boolean;
+  providerMessageId?: string | null;
+  replyToProviderMessageId?: string | null;
+  replyToMessage?: string | null;
+  messageSource?: string | null;
+  sourceName?: string | null;
   createdAt: string | null;
 };
 
@@ -3421,8 +3426,63 @@ export default function Home() {
                         `${item.sessionId}-${item.createdAt}-${item.message}`
                       }
                       className={`message-row ${item.authorType}`}
+                      data-provider-message-id={
+                        item.providerMessageId || undefined
+                      }
                     >
                       <div className="message-bubble">
+                        {item.replyToMessage ? (
+                          <button
+                            type="button"
+                            className="quoted-message"
+                            onClick={() => {
+                              const providerId =
+                                item.replyToProviderMessageId;
+
+                              if (!providerId) return;
+
+                              const escaped =
+                                typeof CSS !== "undefined" &&
+                                typeof CSS.escape === "function"
+                                  ? CSS.escape(providerId)
+                                  : providerId.replace(
+                                      /["\\]/g,
+                                      "\\$&",
+                                    );
+
+                              const original =
+                                document.querySelector(
+                                  `[data-provider-message-id="${escaped}"]`,
+                                );
+
+                              original?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "center",
+                              });
+
+                              if (original instanceof HTMLElement) {
+                                original.classList.add(
+                                  "message-highlight",
+                                );
+
+                                window.setTimeout(() => {
+                                  original.classList.remove(
+                                    "message-highlight",
+                                  );
+                                }, 1800);
+                              }
+                            }}
+                          >
+                            <strong>
+                              {item.sourceName ||
+                                (item.messageSource === "automation"
+                                  ? "Mensaje automático"
+                                  : "Respondiendo a")}
+                            </strong>
+                            <span>{item.replyToMessage}</span>
+                          </button>
+                        ) : null}
+
                         <span className="message-author">
                           {item.authorType === "customer"
                             ? "Cliente"

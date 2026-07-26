@@ -86,6 +86,8 @@ export class WhatsappWebhookController {
     const phone =
       typeof message.from === 'string' ? message.from.trim() : '';
     const incomingMessageId = this.getIncomingMessageId(message);
+    const replyToProviderMessageId =
+      this.getReplyToProviderMessageId(message);
 
     if (!phone) {
       return 'EVENT_RECEIVED';
@@ -114,6 +116,7 @@ export class WhatsappWebhookController {
             incomingPhoneNumberId,
             phone,
             incomingMessageId,
+            replyToProviderMessageId,
             mediaId,
             mimeType,
             voice: message.audio?.voice === true,
@@ -146,6 +149,7 @@ export class WhatsappWebhookController {
             incomingPhoneNumberId,
             phone,
             incomingMessageId,
+            replyToProviderMessageId,
             mediaId,
             mimeType,
             caption,
@@ -180,6 +184,7 @@ export class WhatsappWebhookController {
           phone,
           text,
           incomingMessageId,
+          replyToProviderMessageId,
           suppressReply,
           templateButton: Boolean(buttonText),
         }),
@@ -268,6 +273,7 @@ export class WhatsappWebhookController {
     incomingPhoneNumberId: string;
     phone: string;
     incomingMessageId: string | null;
+    replyToProviderMessageId: string | null;
     mediaId: string;
     mimeType: string;
     caption: string;
@@ -317,6 +323,8 @@ export class WhatsappWebhookController {
         sender: 'customer',
         authorType: 'customer',
         providerMessageId: input.incomingMessageId,
+        replyToProviderMessageId:
+          input.replyToProviderMessageId,
         messageType: 'image',
         mediaId: input.mediaId,
         mediaMimeType: input.mimeType,
@@ -1273,6 +1281,7 @@ export class WhatsappWebhookController {
     incomingPhoneNumberId: string;
     phone: string;
     incomingMessageId: string | null;
+    replyToProviderMessageId: string | null;
     mediaId: string;
     mimeType: string;
     voice: boolean;
@@ -1336,6 +1345,8 @@ export class WhatsappWebhookController {
         sender: 'customer',
         authorType: 'customer',
         providerMessageId: input.incomingMessageId,
+        replyToProviderMessageId:
+          input.replyToProviderMessageId,
         messageType: 'audio',
         mediaId: input.mediaId,
         mediaMimeType: input.mimeType,
@@ -1582,6 +1593,7 @@ export class WhatsappWebhookController {
     phone: string;
     text: string;
     incomingMessageId: string | null;
+    replyToProviderMessageId: string | null;
     suppressReply: boolean;
     templateButton: boolean;
   }): Promise<void> {
@@ -1619,6 +1631,8 @@ export class WhatsappWebhookController {
           sender: 'customer',
           authorType: 'customer',
           providerMessageId: input.incomingMessageId,
+          replyToProviderMessageId:
+            input.replyToProviderMessageId,
         });
 
       if (receivedMessage === 'duplicate') {
@@ -3233,6 +3247,16 @@ export class WhatsappWebhookController {
 
   private getIncomingMessage(body: any) {
     return body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0] ?? null;
+  }
+
+  private getReplyToProviderMessageId(
+    message: any,
+  ): string | null {
+    const contextId = message?.context?.id;
+
+    return typeof contextId === 'string' && contextId.trim()
+      ? contextId.trim()
+      : null;
   }
 
   private getIncomingMessageId(message: any): string | null {

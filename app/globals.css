@@ -2470,3 +2470,51 @@ h2 {
   font-style: italic;
 }
 
+
+
+/* Contexto de respuestas a plantillas y automatizaciones */
+.quoted-message {
+  width: 100%;
+  display: grid;
+  gap: 3px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-left: 3px solid currentColor;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.07);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.quoted-message strong {
+  font-size: 0.74rem;
+  line-height: 1.15;
+}
+
+.quoted-message span {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  opacity: 0.82;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.message-highlight .message-bubble {
+  animation: chatpro-message-highlight 1.8s ease;
+}
+
+@keyframes chatpro-message-highlight {
+  0%, 100% {
+    transform: scale(1);
+  }
+
+  35% {
+    transform: scale(1.025);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.22);
+  }
+}

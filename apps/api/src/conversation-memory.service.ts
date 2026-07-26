@@ -63,6 +63,11 @@ export type InboxMessage = {
   mediaMimeType: string | null;
   mediaStoragePath: string | null;
   mediaVoice: boolean;
+  providerMessageId: string | null;
+  replyToProviderMessageId: string | null;
+  replyToMessage: string | null;
+  messageSource: string | null;
+  sourceName: string | null;
   createdAt: string | null;
 };
 
@@ -126,6 +131,10 @@ type SaveMessageInput = {
   authorType?: 'customer' | 'ai' | 'advisor';
   aiResponse?: string | null;
   providerMessageId?: string | null;
+  replyToProviderMessageId?: string | null;
+  replyToMessage?: string | null;
+  messageSource?: string | null;
+  sourceName?: string | null;
   messageType?: 'text' | 'audio' | 'image';
   mediaId?: string | null;
   mediaMimeType?: string | null;
@@ -1774,7 +1783,7 @@ export class ConversationMemoryService {
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
       .select(
-        'id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at',
+        'id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at',
       )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false });
@@ -1907,7 +1916,7 @@ export class ConversationMemoryService {
     const sessionIds = sessions.map((session) => session.id);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
       .in('session_id', sessionIds)
       .order('created_at', { ascending: true });
 
@@ -1975,7 +1984,7 @@ export class ConversationMemoryService {
     const session = this.toSession(sessionRow);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
       .eq('session_id', session.id)
       .order('created_at', { ascending: true });
 
@@ -2099,7 +2108,7 @@ export class ConversationMemoryService {
         : '';
 
     const messageFields =
-      'id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, created_at';
+      'id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at';
 
     let messagesQuery = client
       .from('conversations')
@@ -2268,6 +2277,111 @@ export class ConversationMemoryService {
     return storagePath;
   }
 
+  private automationSourceName(eventKey: string): string {
+    const labels: Record<string, string> = {
+      abandoned_cart_step_1: 'Carrito abandonado',
+      abandoned_cart_step_2: 'Recordatorio de carrito',
+      abandoned_cart_step_3: 'Último recordatorio de carrito',
+      order_confirmation: 'Confirmación de pedido',
+      order_created: 'Confirmación de pedido',
+      order_paid: 'Pago confirmado',
+      order_fulfilled: 'Pedido enviado',
+      order_shipped: 'Pedido enviado',
+      payment_pending: 'Pago pendiente',
+      payment_reminder: 'Recordatorio de pago',
+    };
+
+    return labels[eventKey] || eventKey
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+  }
+
+  private async resolveReplyContext(input: {
+    companyId: string;
+    replyToProviderMessageId: string;
+  }): Promise<{
+    replyToMessage: string | null;
+    messageSource: string | null;
+    sourceName: string | null;
+  }> {
+    const providerId = input.replyToProviderMessageId.trim();
+
+    if (!providerId) {
+      return {
+        replyToMessage: null,
+        messageSource: null,
+        sourceName: null,
+      };
+    }
+
+    const client = this.supabaseService.getClient();
+
+    const { data: original } = await client
+      .from('conversations')
+      .select('message, message_source, source_name')
+      .eq('company_id', input.companyId)
+      .eq('provider_message_id', providerId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (original) {
+      return {
+        replyToMessage:
+          typeof original.message === 'string' &&
+          original.message.trim()
+            ? original.message.trim().slice(0, 600)
+            : null,
+        messageSource:
+          typeof original.message_source === 'string' &&
+          original.message_source.trim()
+            ? original.message_source
+            : 'message',
+        sourceName:
+          typeof original.source_name === 'string' &&
+          original.source_name.trim()
+            ? original.source_name
+            : null,
+      };
+    }
+
+    const { data: automation } = await client
+      .from('automation_runtime')
+      .select('event_key, automation_key, payload')
+      .eq('company_id', input.companyId)
+      .eq('provider_message_id', providerId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!automation) {
+      return {
+        replyToMessage: null,
+        messageSource: 'message',
+        sourceName: null,
+      };
+    }
+
+    const eventKey =
+      typeof automation.event_key === 'string'
+        ? automation.event_key.trim()
+        : '';
+
+    const automationKey =
+      typeof automation.automation_key === 'string'
+        ? automation.automation_key.trim()
+        : '';
+
+    const sourceName =
+      this.automationSourceName(eventKey || automationKey);
+
+    return {
+      replyToMessage: sourceName,
+      messageSource: 'automation',
+      sourceName,
+    };
+  }
+
   async saveMessage(input: SaveMessageInput): Promise<'saved' | 'duplicate'> {
     const customerPhone = this.normalizePhone(input.customerPhone);
 
@@ -2276,6 +2390,21 @@ export class ConversationMemoryService {
     }
 
     const providerMessageId = input.providerMessageId?.trim() || null;
+    const replyToProviderMessageId =
+      input.replyToProviderMessageId?.trim() || null;
+
+    const resolvedReply =
+      replyToProviderMessageId
+        ? await this.resolveReplyContext({
+            companyId: input.companyId,
+            replyToProviderMessageId,
+          })
+        : {
+            replyToMessage: null,
+            messageSource: null,
+            sourceName: null,
+          };
+
     const authorType =
       input.authorType ?? (input.sender === 'customer' ? 'customer' : 'ai');
 
@@ -2293,6 +2422,17 @@ export class ConversationMemoryService {
         status: input.sender === 'customer' ? 'received' : 'sent',
         ai_response: input.aiResponse ?? null,
         provider_message_id: providerMessageId,
+        reply_to_provider_message_id:
+          replyToProviderMessageId,
+        reply_to_message:
+          input.replyToMessage?.trim().slice(0, 600) ||
+          resolvedReply.replyToMessage,
+        message_source:
+          input.messageSource?.trim().slice(0, 80) ||
+          resolvedReply.messageSource,
+        source_name:
+          input.sourceName?.trim().slice(0, 180) ||
+          resolvedReply.sourceName,
         media_id: input.mediaId?.trim() || null,
         media_mime_type: input.mediaMimeType?.trim() || null,
         media_storage_path: input.mediaStoragePath?.trim() || null,
@@ -2786,6 +2926,11 @@ export class ConversationMemoryService {
     media_mime_type?: string | null;
     media_storage_path?: string | null;
     media_voice?: boolean | null;
+    provider_message_id?: string | null;
+    reply_to_provider_message_id?: string | null;
+    reply_to_message?: string | null;
+    message_source?: string | null;
+    source_name?: string | null;
     created_at?: string | null;
   }): InboxMessage {
     const authorType =
@@ -2820,6 +2965,31 @@ export class ConversationMemoryService {
           ? message.media_storage_path
           : null,
       mediaVoice: message.media_voice === true,
+      providerMessageId:
+        typeof message.provider_message_id === 'string' &&
+        message.provider_message_id.trim()
+          ? message.provider_message_id
+          : null,
+      replyToProviderMessageId:
+        typeof message.reply_to_provider_message_id === 'string' &&
+        message.reply_to_provider_message_id.trim()
+          ? message.reply_to_provider_message_id
+          : null,
+      replyToMessage:
+        typeof message.reply_to_message === 'string' &&
+        message.reply_to_message.trim()
+          ? message.reply_to_message
+          : null,
+      messageSource:
+        typeof message.message_source === 'string' &&
+        message.message_source.trim()
+          ? message.message_source
+          : null,
+      sourceName:
+        typeof message.source_name === 'string' &&
+        message.source_name.trim()
+          ? message.source_name
+          : null,
       createdAt: message.created_at ?? null,
     };
   }
