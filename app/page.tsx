@@ -2143,13 +2143,40 @@ export default function Home() {
   useEffect(() => {
     void loadList(true, { reset: true });
 
-    const timer = window.setInterval(() => {
+    const refreshVisibleList = () => {
       if (document.visibilityState === "visible") {
         void loadList(false);
       }
-    }, 12000);
+    };
 
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(
+      refreshVisibleList,
+      5000,
+    );
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadList(false);
+      }
+    };
+
+    window.addEventListener("focus", refreshVisibleList);
+    document.addEventListener(
+      "visibilitychange",
+      onVisibilityChange,
+    );
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener(
+        "focus",
+        refreshVisibleList,
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        onVisibilityChange,
+      );
+    };
   }, [filter, debouncedSearch, advisorFilter]);
 
   const selectedLastMessageAt =
@@ -2157,19 +2184,54 @@ export default function Home() {
 
   useEffect(() => {
     const sessionId = selected?.session.id;
-    const isInternal = selected?.session.context?.internal_test === true;
+    const isInternal =
+      selected?.session.context?.internal_test === true;
 
     if (!sessionId || isInternal) {
       return;
     }
 
-    const timer = window.setInterval(() => {
+    const refreshVisibleConversation = () => {
       if (document.visibilityState === "visible") {
-        void openConversation(sessionId, true, selectedLastMessageAt);
+        void openConversation(
+          sessionId,
+          true,
+          selectedLastMessageAt,
+        );
       }
-    }, 5000);
+    };
 
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(
+      refreshVisibleConversation,
+      2000,
+    );
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshVisibleConversation();
+      }
+    };
+
+    window.addEventListener(
+      "focus",
+      refreshVisibleConversation,
+    );
+    document.addEventListener(
+      "visibilitychange",
+      onVisibilityChange,
+    );
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener(
+        "focus",
+        refreshVisibleConversation,
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        onVisibilityChange,
+      );
+    };
   }, [
     selected?.session.id,
     selected?.session.context?.internal_test,
