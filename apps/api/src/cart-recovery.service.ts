@@ -382,6 +382,48 @@ export class CartRecoveryService {
         }
 
         providerMessageId = result.messageId;
+
+        if (cart.session_id) {
+          const automaticLabels: Record<number, string> = {
+            1: 'Carrito abandonado',
+            2: 'Recordatorio de carrito',
+            3: 'Último recordatorio de carrito',
+          };
+
+          const sourceName =
+            automaticLabels[rule.sequence] ||
+            `Recordatorio automático ${rule.sequence}`;
+
+          const templateName =
+            hasAssignedTemplate && assignedTemplateEventKey
+              ? assignedTemplateEventKey
+              : rule.template_name?.trim() ||
+                `carrito_abandonado_${rule.sequence}`;
+
+          const historyMessage = [
+            `Plantilla automática: ${sourceName}`,
+            `Plantilla: ${templateName}`,
+            cart.checkout_url?.trim()
+              ? `Enlace para finalizar compra: ${cart.checkout_url.trim()}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('\n\n')
+            .slice(0, 8000);
+
+          await this.conversationMemoryService.saveMessage({
+            companyId: cart.company_id,
+            sessionId: cart.session_id,
+            customerPhone: cart.customer_phone,
+            message: historyMessage,
+            sender: 'assistant',
+            authorType: 'ai',
+            aiResponse: historyMessage,
+            providerMessageId: result.messageId,
+            messageSource: 'automation',
+            sourceName,
+          });
+        }
       }
 
       await this.automationRuntimeService.markAccepted(
