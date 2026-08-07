@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from './supabase.service';
+import { ConversationEventsService } from './conversation-events.service';
 
 type ArchiveSetting = {
   company_id: string;
@@ -18,6 +19,7 @@ export class AiConversationArchiveService {
 
   constructor(
     private readonly supabaseService: SupabaseService,
+    private readonly conversationEventsService: ConversationEventsService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -107,7 +109,7 @@ export class AiConversationArchiveService {
       .eq('pending_count', 0)
       .neq('customer_phone', '__chatpro_internal_test__')
       .lte('last_message_at', cutoff)
-      .select('id');
+      .select('id, customer_phone');
 
     if (error) {
       throw new Error(
@@ -115,7 +117,29 @@ export class AiConversationArchiveService {
       );
     }
 
-    const archivedCount = data?.length ?? 0;
+    const archivedRows = data ?? [];
+    const archivedCount = archivedRows.length;
+
+    for (const row of archivedRows) {
+      await this.conversationEventsService.record({
+        companyId,
+        sessionId:
+          typeof row.id === 'string'
+            ? row.id
+            : null,
+        customerPhone:
+          typeof row.customer_phone === 'string'
+            ? row.customer_phone
+            : null,
+        eventType: 'conversation_closed',
+        eventSource: 'system',
+        metadata: {
+          close_reason: 'ai_inactivity',
+          inactivity_hours: hours,
+        },
+        createdAt: now,
+      });
+    }
 
     if (archivedCount > 0) {
       this.logger.log(

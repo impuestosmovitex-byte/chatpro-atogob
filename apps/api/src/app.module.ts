@@ -25,6 +25,7 @@ import { CompanyStorefrontController } from './company-storefront.controller';
 import { CompanySettingsController } from './company-settings.controller';
 import { CompanyProfileController } from './company-profile.controller';
 import { ConversationMemoryService } from './conversation-memory.service';
+import { ConversationEventsService } from './conversation-events.service';
 import { InboxController } from './inbox.controller';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationCredentialsService } from './integration-credentials.service';
@@ -111,6 +112,7 @@ import { AiConversationArchiveService } from './ai-conversation-archive.service'
     AiService,
     SupabaseService,
     ConversationMemoryService,
+    ConversationEventsService,
     CartService,
     ChatAgentService,
     CartRecoveryService,

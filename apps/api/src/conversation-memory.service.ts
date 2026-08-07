@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 import { PushNotificationService } from './push-notification.service';
+import { ConversationEventsService } from './conversation-events.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -148,6 +149,7 @@ export class ConversationMemoryService {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly pushNotificationService: PushNotificationService,
+    private readonly conversationEventsService: ConversationEventsService,
   ) {}
 
   async getCompanyProfile(companySlug: string): Promise<CompanyProfile> {
@@ -808,6 +810,20 @@ export class ConversationMemoryService {
       'Revisa el último mensaje del cliente y continúa la atención.',
       280,
     );
+    await this.conversationEventsService.record({
+      companyId: session.companyId,
+      sessionId: session.id,
+      customerPhone: session.customerPhone,
+      eventType: 'human_handoff_requested',
+      eventSource: 'ai',
+      serviceAreaId: area?.id ?? null,
+      serviceAreaName: area?.name ?? null,
+      metadata: {
+        reason: handoffReason,
+        summary: handoffSummary,
+      },
+    });
+
     const nextContext: JsonObject = {
       ...session.context,
       ...(area && !selectedArea
@@ -871,6 +887,18 @@ export class ConversationMemoryService {
     }
 
     await this.saveHandoffStatus(sessionId, nextContext, 'assigned');
+
+    await this.conversationEventsService.record({
+      companyId: session.companyId,
+      sessionId: session.id,
+      customerPhone: session.customerPhone,
+      eventType: 'human_handoff_assigned',
+      eventSource: 'system',
+      advisorUserId: advisor.userId,
+      advisorName: advisor.fullName,
+      serviceAreaId: area.id,
+      serviceAreaName: area.name,
+    });
 
     return this.updateAttention(sessionId, {
       attention_status: 'human',
@@ -1004,6 +1032,23 @@ export class ConversationMemoryService {
       }
 
       if (updated?.id) {
+        const assignedSession = await this.getSessionById(row.id);
+
+        await this.conversationEventsService.record({
+          companyId,
+          sessionId: row.id,
+          customerPhone: assignedSession.customerPhone,
+          eventType: 'human_handoff_assigned',
+          eventSource: 'system',
+          advisorUserId: selectedAdvisor.userId,
+          advisorName: selectedAdvisor.fullName,
+          serviceAreaId: area.id,
+          serviceAreaName: area.name,
+          metadata: {
+            assignment_source: 'waiting_queue',
+          },
+        });
+
         assigned += 1;
       }
     }
@@ -1408,6 +1453,18 @@ export class ConversationMemoryService {
     if (!userId || !name) throw new Error('Falta el asesor autenticado.');
     const now = new Date().toISOString();
 
+    const session = await this.getSessionById(sessionId);
+
+    await this.conversationEventsService.record({
+      companyId: session.companyId,
+      sessionId: session.id,
+      customerPhone: session.customerPhone,
+      eventType: 'human_handoff_assigned',
+      eventSource: 'advisor',
+      advisorUserId: userId,
+      advisorName: name,
+    });
+
     return this.updateAttention(sessionId, {
       attention_status: 'human',
       assigned_to_user_id: userId,
@@ -1418,6 +1475,16 @@ export class ConversationMemoryService {
   }
 
   async closeConversation(sessionId: string): Promise<ConversationSession> {
+    const session = await this.getSessionById(sessionId);
+
+    await this.conversationEventsService.record({
+      companyId: session.companyId,
+      sessionId: session.id,
+      customerPhone: session.customerPhone,
+      eventType: 'conversation_closed',
+      eventSource: 'system',
+    });
+
     return this.updateAttention(sessionId, {
       attention_status: 'closed',
       closed_at: new Date().toISOString(),
@@ -1425,6 +1492,16 @@ export class ConversationMemoryService {
   }
 
   async resumeAiConversation(sessionId: string): Promise<ConversationSession> {
+    const session = await this.getSessionById(sessionId);
+
+    await this.conversationEventsService.record({
+      companyId: session.companyId,
+      sessionId: session.id,
+      customerPhone: session.customerPhone,
+      eventType: 'conversation_resumed_ai',
+      eventSource: 'advisor',
+    });
+
     return this.updateAttention(sessionId, {
       attention_status: 'ai',
       assigned_to_user_id: null,
@@ -2447,6 +2524,29 @@ export class ConversationMemoryService {
 
       throw new Error(`No se pudo guardar el mensaje: ${error.message}`);
     }
+
+    await this.conversationEventsService.record({
+      companyId: input.companyId,
+      sessionId: input.sessionId,
+      customerPhone: input.customerPhone,
+      eventType:
+        authorType === 'customer'
+          ? 'customer_message'
+          : authorType === 'advisor'
+            ? 'advisor_message'
+            : 'ai_message',
+      eventSource:
+        authorType === 'customer'
+          ? 'customer'
+          : authorType === 'advisor'
+            ? 'advisor'
+            : 'ai',
+      metadata: {
+        message_type: input.messageType ?? 'text',
+        message_source: input.messageSource ?? null,
+        source_name: input.sourceName ?? null,
+      },
+    });
 
     if (input.sender === 'assistant' && authorType === 'ai') {
       try {

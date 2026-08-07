@@ -6,6 +6,7 @@ import {
 import { ShopifyService } from './shopify.service';
 import { CompanyCommerceService } from './company-commerce.service';
 import { SupabaseService } from './supabase.service';
+import { ConversationEventsService } from './conversation-events.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -57,6 +58,7 @@ export class CartService {
     private readonly shopifyService: ShopifyService,
     private readonly companyCommerceService: CompanyCommerceService,
     private readonly supabaseService: SupabaseService,
+    private readonly conversationEventsService: ConversationEventsService,
   ) {}
 
   private async refreshSession(
@@ -558,6 +560,19 @@ export class CartService {
       'checkout_sent',
       links.checkoutUrl,
     );
+
+    await this.conversationEventsService.record({
+      companyId: updatedSession.companyId,
+      sessionId: updatedSession.id,
+      customerPhone: updatedSession.customerPhone,
+      eventType: 'checkout_created',
+      eventSource: 'ai',
+      metadata: {
+        checkout_url: links.checkoutUrl,
+        cart_url: links.cartUrl,
+        items: cart.length,
+      },
+    });
 
     return {
       ok: true,
