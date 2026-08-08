@@ -60,6 +60,7 @@ import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.
 import { PushNotificationController } from './push-notification.controller';
 import { PushNotificationService } from './push-notification.service';
 import { AiConversationArchiveService } from './ai-conversation-archive.service';
+import { ContactTagsController } from './contact-tags.controller';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -77,6 +78,7 @@ import { AiConversationArchiveService } from './ai-conversation-archive.service'
     CompanyCommerceTestController,
     ShopifyCatalogPreviewController,
     ClientsController,
+    ContactTagsController,
     CompanySettingsController,
     CompanyProfileController,
     CompanyProductsController,

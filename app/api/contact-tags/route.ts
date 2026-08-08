@@ -1,0 +1,137 @@
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  getInboxSession,
+  INBOX_SESSION_COOKIE,
+} from '../../lib/inbox-auth';
+
+export const dynamic = 'force-dynamic';
+
+function config() {
+  const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
+  const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
+
+  if (!apiBase || !inboxKey) {
+    throw new Error(
+      'Faltan CHATPRO_API_URL o CHATPRO_INBOX_KEY en la web.',
+    );
+  }
+
+  return { apiBase, inboxKey };
+}
+
+async function currentSession(request: NextRequest) {
+  return getInboxSession(
+    request.cookies.get(INBOX_SESSION_COOKIE)?.value,
+  );
+}
+
+function trustedHeaders(
+  inboxKey: string,
+  session: NonNullable<Awaited<ReturnType<typeof currentSession>>>,
+) {
+  const headers: Record<string, string> = {
+    'x-chatpro-inbox-key': inboxKey,
+    'x-chatpro-session-type': session.type,
+    'x-chatpro-user-name': session.fullName,
+    'x-chatpro-company-id': session.companyId,
+    'x-chatpro-role-key': session.roleKey,
+  };
+
+  if (session.type === 'user' && session.userId) {
+    headers['x-chatpro-user-id'] = session.userId;
+  }
+
+  return headers;
+}
+
+function unauthorized() {
+  return NextResponse.json(
+    { ok: false, error: 'Sesión requerida.' },
+    { status: 401 },
+  );
+}
+
+async function proxyResponse(response: Response) {
+  return new NextResponse(await response.text(), {
+    status: response.status,
+    headers: {
+      'content-type':
+        response.headers.get('content-type') ?? 'application/json',
+    },
+  });
+}
+
+export async function GET(request: NextRequest) {
+  const session = await currentSession(request);
+
+  if (!session) {
+    return unauthorized();
+  }
+
+  try {
+    const { apiBase, inboxKey } = config();
+
+    const target = new URL(`${apiBase}/contact-tags`);
+    target.searchParams.set('company', session.companySlug);
+
+    const response = await fetch(target, {
+      headers: trustedHeaders(inboxKey, session),
+      cache: 'no-store',
+    });
+
+    return proxyResponse(response);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'No se pudieron consultar las etiquetas.',
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const session = await currentSession(request);
+
+  if (!session) {
+    return unauthorized();
+  }
+
+  try {
+    const { apiBase, inboxKey } = config();
+    const payload = await request.json();
+
+    const target = new URL(`${apiBase}/contact-tags`);
+    target.searchParams.set('company', session.companySlug);
+
+    const response = await fetch(target, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...trustedHeaders(inboxKey, session),
+      },
+      body: JSON.stringify({
+        ...payload,
+        company: session.companySlug,
+      }),
+      cache: 'no-store',
+    });
+
+    return proxyResponse(response);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'No se pudo guardar la etiqueta.',
+      },
+      { status: 500 },
+    );
+  }
+}

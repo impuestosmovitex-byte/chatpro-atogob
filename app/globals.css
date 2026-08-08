@@ -2632,3 +2632,223 @@ h2 {
     transform: none;
   }
 }
+
+/* Etiquetas CRM */
+.contact-tag-summary,
+.contact-tag-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.contact-tag-field {
+  display: grid;
+  gap: 8px;
+}
+
+.contact-tag-field-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.contact-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.contact-tag-chip-removable {
+  cursor: pointer;
+}
+
+.contact-tag-chip-removable strong {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.contact-tag-empty {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.contact-tag-add-button {
+  width: fit-content;
+  border: 1px dashed #c8cfda;
+  border-radius: 9px;
+  background: #fff;
+  color: #465267;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.contact-tag-picker {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e0e5ed;
+  border-radius: 12px;
+  padding: 10px;
+  background: #f9fafc;
+}
+
+.contact-tag-options {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.contact-tag-option {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid #e3e7ed;
+  border-radius: 9px;
+  background: #fff;
+  color: #344055;
+  padding: 8px 9px;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.contact-tag-option.is-selected {
+  border-color: #9fa8b8;
+  background: #f1f4f8;
+}
+
+.contact-tag-option strong {
+  font-size: 13px;
+}
+
+.contact-tag-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.contact-tag-create {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e6ed;
+}
+
+.contact-tag-create > span {
+  color: #4c586d;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.contact-tag-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.contact-tag-color-button {
+  width: 22px;
+  height: 22px;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px #d3d8e0;
+  cursor: pointer;
+}
+
+.contact-tag-color-button.is-selected {
+  box-shadow: 0 0 0 2px #222b39;
+}
+
+.contact-tag-create-button {
+  border: 0;
+  border-radius: 9px;
+  background: #17181d;
+  color: #fff;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.contact-tag-create-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.contact-tag-color-green {
+  background: #dff4e5;
+  border-color: #b9dfc4;
+  color: #27633b;
+}
+
+.contact-tag-color-yellow {
+  background: #fff3c7;
+  border-color: #ead88c;
+  color: #705c14;
+}
+
+.contact-tag-color-red {
+  background: #ffe1e1;
+  border-color: #efbcbc;
+  color: #8d3030;
+}
+
+.contact-tag-color-blue {
+  background: #e1edff;
+  border-color: #bdd2f3;
+  color: #315a91;
+}
+
+.contact-tag-color-purple {
+  background: #eee4ff;
+  border-color: #d3bdf3;
+  color: #64428e;
+}
+
+.contact-tag-color-orange {
+  background: #ffe9d2;
+  border-color: #edc79d;
+  color: #875426;
+}
+
+.contact-tag-color-gray {
+  background: #edf0f4;
+  border-color: #d4d8df;
+  color: #586273;
+}
+
+.contact-tag-color-pink {
+  background: #ffe3ef;
+  border-color: #efbfd2;
+  color: #8b3f61;
+}
+
+.contact-tag-color-teal {
+  background: #daf2ef;
+  border-color: #abd9d3;
+  color: #286861;
+}
+
+.contact-tag-dot-green { background: #57a96b; }
+.contact-tag-dot-yellow { background: #d2ad27; }
+.contact-tag-dot-red { background: #cf5959; }
+.contact-tag-dot-blue { background: #5c88c7; }
+.contact-tag-dot-purple { background: #8b68bb; }
+.contact-tag-dot-orange { background: #d88943; }
+.contact-tag-dot-gray { background: #7c8798; }
+.contact-tag-dot-pink { background: #ce6d94; }
+.contact-tag-dot-teal { background: #4a9b92; }

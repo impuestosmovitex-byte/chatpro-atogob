@@ -14,6 +14,28 @@ type Contact = {
   notes: string;
 };
 
+type ContactTagDefinition = {
+  id: string;
+  companyId: string;
+  name: string;
+  color: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+const CONTACT_TAG_COLORS = [
+  "green",
+  "yellow",
+  "red",
+  "blue",
+  "purple",
+  "orange",
+  "gray",
+  "pink",
+  "teal",
+] as const;
+
 type InboxMessage = {
   id: string | null;
   sessionId: string;
@@ -825,6 +847,11 @@ export default function Home() {
   const [contactName, setContactName] = useState("");
   const [contactTags, setContactTags] = useState("");
   const [contactNotes, setContactNotes] = useState("");
+  const [tagDefinitions, setTagDefinitions] = useState<ContactTagDefinition[]>([]);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("green");
+  const [tagSaving, setTagSaving] = useState(false);
   const [contactSaving, setContactSaving] = useState(false);
   const [storefrontUrl, setStorefrontUrl] = useState("");
   const [storefrontLoading, setStorefrontLoading] = useState(false);
@@ -2440,6 +2467,167 @@ export default function Home() {
     }
   }
 
+  function contactTagNames(value: string): string[] {
+    const unique = new Map<string, string>();
+
+    for (const raw of value.split(",")) {
+      const name = raw.trim();
+
+      if (!name) continue;
+
+      const key = name.toLocaleLowerCase("es");
+
+      if (!unique.has(key)) {
+        unique.set(key, name);
+      }
+    }
+
+    return Array.from(unique.values());
+  }
+
+  function contactTagDefinition(name: string) {
+    const normalized = name.trim().toLocaleLowerCase("es");
+
+    return tagDefinitions.find(
+      (tag) =>
+        tag.name.trim().toLocaleLowerCase("es") === normalized,
+    );
+  }
+
+  function contactTagColor(name: string): string {
+    return contactTagDefinition(name)?.color || "gray";
+  }
+
+  function hasContactTag(name: string): boolean {
+    const normalized = name.trim().toLocaleLowerCase("es");
+
+    return contactTagNames(contactTags).some(
+      (tag) =>
+        tag.trim().toLocaleLowerCase("es") === normalized,
+    );
+  }
+
+  function addContactTag(name: string) {
+    const clean = name.trim();
+
+    if (!clean || hasContactTag(clean)) {
+      return;
+    }
+
+    setContactTags((current) =>
+      [...contactTagNames(current), clean].join(", "),
+    );
+  }
+
+  function removeContactTag(name: string) {
+    const normalized = name.trim().toLocaleLowerCase("es");
+
+    setContactTags((current) =>
+      contactTagNames(current)
+        .filter(
+          (tag) =>
+            tag.trim().toLocaleLowerCase("es") !== normalized,
+        )
+        .join(", "),
+    );
+  }
+
+  function toggleContactTag(name: string) {
+    if (hasContactTag(name)) {
+      removeContactTag(name);
+      return;
+    }
+
+    addContactTag(name);
+  }
+
+  async function loadContactTags() {
+    try {
+      const response = await fetch("/api/contact-tags", {
+        cache: "no-store",
+      });
+
+      const data = (await readJson(response)) as {
+        ok?: boolean;
+        error?: string;
+        tags?: ContactTagDefinition[];
+      };
+
+      if (!response.ok || !data.ok) {
+        return;
+      }
+
+      setTagDefinitions(
+        Array.isArray(data.tags) ? data.tags : [],
+      );
+    } catch {
+      // Las etiquetas no deben bloquear la bandeja.
+    }
+  }
+
+  async function createContactTag() {
+    const name = newTagName.trim();
+
+    if (!name || tagSaving) {
+      return;
+    }
+
+    setTagSaving(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/contact-tags", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "create",
+          name,
+          color: newTagColor,
+        }),
+      });
+
+      const data = (await readJson(response)) as {
+        ok?: boolean;
+        error?: string;
+        tag?: ContactTagDefinition;
+      };
+
+      if (!response.ok || !data.ok || !data.tag) {
+        throw new Error(
+          data.error || "No se pudo crear la etiqueta.",
+        );
+      }
+
+      const createdTag = data.tag;
+
+      setTagDefinitions((current) =>
+        [...current, createdTag].sort((left, right) =>
+          left.name.localeCompare(right.name, "es", {
+            sensitivity: "base",
+          }),
+        ),
+      );
+
+      addContactTag(createdTag.name);
+      setNewTagName("");
+      setNewTagColor("green");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo crear la etiqueta.",
+      );
+    } finally {
+      setTagSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadContactTags();
+  }, []);
+
   async function saveContactFromInbox(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -3951,7 +4139,16 @@ export default function Home() {
                   {selected.contact?.tags?.length ? (
                     <div>
                       <dt>Etiquetas</dt>
-                      <dd>{selected.contact.tags.join(" · ")}</dd>
+                      <dd className="contact-tag-summary">
+                        {selected.contact.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className={`contact-tag-chip contact-tag-color-${contactTagColor(tag)}`}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </dd>
                     </div>
                   ) : null}
                   <div>
@@ -4005,14 +4202,136 @@ export default function Home() {
                       />
                     </label>
 
-                    <label>
-                      <span>Etiquetas</span>
-                      <input
-                        value={contactTags}
-                        onChange={(event) => setContactTags(event.target.value)}
-                        placeholder="Ej. mayorista, seguimiento, VIP"
-                      />
-                    </label>
+                    <div className="contact-tag-field">
+                      <span className="contact-tag-field-label">
+                        Etiquetas
+                      </span>
+
+                      <div className="contact-tag-selected">
+                        {contactTagNames(contactTags).length ? (
+                          contactTagNames(contactTags).map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              className={`contact-tag-chip contact-tag-chip-removable contact-tag-color-${contactTagColor(tag)}`}
+                              onClick={() => removeContactTag(tag)}
+                              title={`Quitar ${tag}`}
+                            >
+                              <span>{tag}</span>
+                              <strong aria-hidden="true">×</strong>
+                            </button>
+                          ))
+                        ) : (
+                          <span className="contact-tag-empty">
+                            Sin etiquetas
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        className="contact-tag-add-button"
+                        onClick={() =>
+                          setTagPickerOpen((current) => !current)
+                        }
+                      >
+                        {tagPickerOpen
+                          ? "Cerrar etiquetas"
+                          : "+ Etiqueta"}
+                      </button>
+
+                      {tagPickerOpen ? (
+                        <div className="contact-tag-picker">
+                          <div className="contact-tag-options">
+                            {tagDefinitions
+                              .filter((tag) => tag.isActive)
+                              .map((tag) => {
+                                const selectedTag =
+                                  hasContactTag(tag.name);
+
+                                return (
+                                  <button
+                                    key={tag.id}
+                                    type="button"
+                                    className={`contact-tag-option ${
+                                      selectedTag
+                                        ? "is-selected"
+                                        : ""
+                                    }`}
+                                    onClick={() =>
+                                      toggleContactTag(tag.name)
+                                    }
+                                  >
+                                    <span
+                                      className={`contact-tag-dot contact-tag-dot-${tag.color}`}
+                                    />
+                                    <span>{tag.name}</span>
+                                    <strong>
+                                      {selectedTag ? "✓" : "+"}
+                                    </strong>
+                                  </button>
+                                );
+                              })}
+
+                            {!tagDefinitions.filter(
+                              (tag) => tag.isActive,
+                            ).length ? (
+                              <p className="contact-tag-empty">
+                                Todavía no hay etiquetas.
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="contact-tag-create">
+                            <span>Nueva etiqueta</span>
+
+                            <input
+                              value={newTagName}
+                              onChange={(event) =>
+                                setNewTagName(event.target.value)
+                              }
+                              placeholder="Ej. Preventa"
+                              maxLength={60}
+                            />
+
+                            <div className="contact-tag-colors">
+                              {CONTACT_TAG_COLORS.map((color) => (
+                                <button
+                                  key={color}
+                                  type="button"
+                                  className={`contact-tag-color-button contact-tag-dot-${color} ${
+                                    newTagColor === color
+                                      ? "is-selected"
+                                      : ""
+                                  }`}
+                                  onClick={() =>
+                                    setNewTagColor(color)
+                                  }
+                                  aria-label={`Color ${color}`}
+                                  title={color}
+                                />
+                              ))}
+                            </div>
+
+                            <button
+                              type="button"
+                              className="contact-tag-create-button"
+                              onClick={() =>
+                                void createContactTag()
+                              }
+                              disabled={
+                                !newTagName.trim() ||
+                                tagSaving
+                              }
+                            >
+                              {tagSaving
+                                ? "Creando…"
+                                : "Crear etiqueta"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
 
                     <label>
                       <span>Notas internas</span>
@@ -4027,8 +4346,8 @@ export default function Home() {
                     </label>
 
                     <p className="contact-card-helper">
-                      Separa las etiquetas con comas. Las notas son solo para el
-                      equipo.
+                      Selecciona o crea etiquetas para organizar la conversación.
+                      Las notas son solo para el equipo.
                     </p>
                   </form>
                 ) : null}
