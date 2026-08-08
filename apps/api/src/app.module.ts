@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AccessAuthService } from './access-auth.service';
 import { AccessController } from './access.controller';
 import { AccessCapabilitiesController } from './access-capabilities.controller';
+import { StatisticsController } from './statistics.controller';
 import { AiService } from './ai.service';
 import { AutomationRuntimeService } from './automation-runtime.service';
 import { AutomationTestSendService } from './automation-test-send.service';
@@ -85,6 +86,7 @@ import { AiConversationArchiveService } from './ai-conversation-archive.service'
     QuickRepliesController,
     AccessController,
     AccessCapabilitiesController,
+    StatisticsController,
     SupportSettingsController,
     AdvisorPresenceController,
     ServiceAreasController,
