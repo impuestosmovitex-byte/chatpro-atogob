@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAccessCapabilities } from '../../lib/access-capabilities';
 import {
   getInboxSession,
   INBOX_SESSION_COOKIE,
@@ -44,6 +45,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const capabilities = await getAccessCapabilities(session);
+
+    if (!capabilities.statistics) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'No tienes permiso para consultar estadísticas.',
+        },
+        { status: 403 },
+      );
+    }
+
     const { apiBase, inboxKey } = config();
 
     const from = text(request.nextUrl.searchParams.get('from'));

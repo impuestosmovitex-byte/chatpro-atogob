@@ -29,6 +29,7 @@ type Capabilities = {
   inbox: boolean;
   clients: boolean;
   automations: boolean;
+  statistics: boolean;
   configuration: boolean;
   testAgent: boolean;
   health: boolean;
@@ -59,6 +60,12 @@ const baseNavigation: Array<{
     label: 'Automatizaciones',
     icon: '◈',
     capability: 'automations',
+  },
+  {
+    href: '/estadisticas',
+    label: 'Estadísticas',
+    icon: '▥',
+    capability: 'statistics',
   },
   {
     href: '/plantillas-whatsapp',
@@ -144,6 +151,7 @@ export function AppSidebar({
               inbox: true,
               clients: true,
               automations: fullAccess,
+              statistics: fullAccess,
               configuration: fullAccess,
               testAgent: fullAccess,
               health: fullAccess,
@@ -181,6 +189,7 @@ export function AppSidebar({
     inbox: true,
     clients: true,
     automations: fullAccess,
+    statistics: fullAccess,
     configuration: fullAccess,
     testAgent: fullAccess,
     health: fullAccess,
@@ -355,7 +364,19 @@ export function AppSidebar({
           </Link>
         ) : null}
 
-        <button
+        {effectiveCapabilities.statistics ? (
+      <Link
+        className={`${styles.mobileNavItem} ${
+          isActive(pathname, '/estadisticas') ? styles.mobileNavActive : ''
+        }`}
+        href="/estadisticas"
+      >
+        <span aria-hidden="true">▥</span>
+        <small>Estadísticas</small>
+      </Link>
+    ) : null}
+
+    <button
           type="button"
           className={styles.mobileNavItem}
           onClick={() => void logout()}

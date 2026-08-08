@@ -19,6 +19,7 @@ type CapabilityKey =
   | 'useQuickReplies'
   | 'sendMedia'
   | 'health'
+  | 'statistics'
   | 'automations'
   | 'configuration'
   | 'testAgent';
@@ -167,6 +168,10 @@ export class AccessCapabilitiesController {
         fullAccess ||
         permissionKeys.includes('inbox.media.send'),
       health: fullAccess,
+      statistics:
+        fullAccess ||
+        permissionKeys.includes('statistics.view') ||
+        hasPrefix('statistics', 'report', 'reports'),
       automations:
         fullAccess || hasPrefix('automation', 'automations'),
       configuration:

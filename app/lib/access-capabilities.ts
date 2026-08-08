@@ -11,6 +11,7 @@ export type AccessCapabilities = {
   useQuickReplies: boolean;
   sendMedia: boolean;
   health: boolean;
+  statistics: boolean;
   automations: boolean;
   configuration: boolean;
   testAgent: boolean;
@@ -33,6 +34,7 @@ const FULL_ACCESS: AccessCapabilities = {
   useQuickReplies: true,
   sendMedia: true,
   health: true,
+  statistics: true,
   automations: true,
   configuration: true,
   testAgent: true,
@@ -92,6 +94,7 @@ export async function getAccessCapabilities(
     useQuickReplies: data.capabilities.useQuickReplies === true,
     sendMedia: data.capabilities.sendMedia === true,
     health: data.capabilities.health === true,
+    statistics: data.capabilities.statistics === true,
     automations: data.capabilities.automations === true,
     configuration: data.capabilities.configuration === true,
     testAgent: data.capabilities.testAgent === true,
