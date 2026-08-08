@@ -848,7 +848,11 @@ export default function Home() {
   const [contactTags, setContactTags] = useState("");
   const [contactNotes, setContactNotes] = useState("");
   const [tagDefinitions, setTagDefinitions] = useState<ContactTagDefinition[]>([]);
+  const [canManageTags, setCanManageTags] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [editingTagId, setEditingTagId] = useState("");
+  const [editingTagName, setEditingTagName] = useState("");
+  const [editingTagColor, setEditingTagColor] = useState("green");
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("green");
   const [tagSaving, setTagSaving] = useState(false);
@@ -2550,6 +2554,7 @@ export default function Home() {
       const data = (await readJson(response)) as {
         ok?: boolean;
         error?: string;
+        canManageTags?: boolean;
         tags?: ContactTagDefinition[];
       };
 
@@ -2560,8 +2565,99 @@ export default function Home() {
       setTagDefinitions(
         Array.isArray(data.tags) ? data.tags : [],
       );
+      setCanManageTags(Boolean(data.canManageTags));
     } catch {
       // Las etiquetas no deben bloquear la bandeja.
+    }
+  }
+
+  function startEditingTag(tag: ContactTagDefinition) {
+    setEditingTagId(tag.id);
+    setEditingTagName(tag.name);
+    setEditingTagColor(tag.color || "green");
+  }
+
+  function cancelEditingTag() {
+    setEditingTagId("");
+    setEditingTagName("");
+    setEditingTagColor("green");
+  }
+
+  async function updateContactTag() {
+    if (!canManageTags || !editingTagId || !editingTagName.trim() || tagSaving) {
+      return;
+    }
+
+    setTagSaving(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/contact-tags", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "update",
+          id: editingTagId,
+          name: editingTagName.trim(),
+          color: editingTagColor,
+          isActive: true,
+        }),
+      });
+
+      const data = (await readJson(response)) as {
+        ok?: boolean;
+        error?: string;
+        tag?: ContactTagDefinition;
+      };
+
+      if (!response.ok || !data.ok || !data.tag) {
+        throw new Error(
+          data.error || "No se pudo actualizar la etiqueta.",
+        );
+      }
+
+      const previousTag = tagDefinitions.find(
+        (tag) => tag.id === editingTagId,
+      );
+
+      const updatedTag = data.tag;
+
+      setTagDefinitions((current) =>
+        current
+          .map((tag) =>
+            tag.id === updatedTag.id ? updatedTag : tag,
+          )
+          .sort((left, right) =>
+            left.name.localeCompare(right.name, "es", {
+              sensitivity: "base",
+            }),
+          ),
+      );
+
+      if (previousTag && hasContactTag(previousTag.name)) {
+        setContactTags((current) =>
+          contactTagNames(current)
+            .map((tag) =>
+              tag.trim().toLocaleLowerCase("es") ===
+              previousTag.name.trim().toLocaleLowerCase("es")
+                ? updatedTag.name
+                : tag,
+            )
+            .join(", "),
+        );
+      }
+
+      cancelEditingTag();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo actualizar la etiqueta.",
+      );
+    } finally {
+      setTagSaving(false);
     }
   }
 
@@ -4249,27 +4345,108 @@ export default function Home() {
                                 const selectedTag =
                                   hasContactTag(tag.name);
 
+                                const editing =
+                                  editingTagId === tag.id;
+
+                                if (editing) {
+                                  return (
+                                    <div
+                                      key={tag.id}
+                                      className="contact-tag-edit-card"
+                                    >
+                                      <input
+                                        value={editingTagName}
+                                        onChange={(event) =>
+                                          setEditingTagName(event.target.value)
+                                        }
+                                        maxLength={60}
+                                      />
+
+                                      <div className="contact-tag-colors">
+                                        {CONTACT_TAG_COLORS.map((color) => (
+                                          <button
+                                            key={color}
+                                            type="button"
+                                            className={`contact-tag-color-button contact-tag-dot-${color} ${
+                                              editingTagColor === color
+                                                ? "is-selected"
+                                                : ""
+                                            }`}
+                                            onClick={() =>
+                                              setEditingTagColor(color)
+                                            }
+                                            aria-label={`Color ${color}`}
+                                          />
+                                        ))}
+                                      </div>
+
+                                      <div className="contact-tag-edit-actions">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            void updateContactTag()
+                                          }
+                                          disabled={
+                                            !editingTagName.trim() ||
+                                            tagSaving
+                                          }
+                                        >
+                                          {tagSaving
+                                            ? "Guardando…"
+                                            : "Guardar cambios"}
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={cancelEditingTag}
+                                          disabled={tagSaving}
+                                        >
+                                          Cancelar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
                                 return (
-                                  <button
+                                  <div
                                     key={tag.id}
-                                    type="button"
-                                    className={`contact-tag-option ${
-                                      selectedTag
-                                        ? "is-selected"
-                                        : ""
-                                    }`}
-                                    onClick={() =>
-                                      toggleContactTag(tag.name)
-                                    }
+                                    className="contact-tag-option-row"
                                   >
-                                    <span
-                                      className={`contact-tag-dot contact-tag-dot-${tag.color}`}
-                                    />
-                                    <span>{tag.name}</span>
-                                    <strong>
-                                      {selectedTag ? "✓" : "+"}
-                                    </strong>
-                                  </button>
+                                    <button
+                                      type="button"
+                                      className={`contact-tag-option ${
+                                        selectedTag
+                                          ? "is-selected"
+                                          : ""
+                                      }`}
+                                      onClick={() =>
+                                        toggleContactTag(tag.name)
+                                      }
+                                    >
+                                      <span
+                                        className={`contact-tag-dot contact-tag-dot-${tag.color}`}
+                                      />
+                                      <span>{tag.name}</span>
+                                      <strong>
+                                        {selectedTag ? "✓" : "+"}
+                                      </strong>
+                                    </button>
+
+                                    {canManageTags ? (
+                                      <button
+                                        type="button"
+                                        className="contact-tag-edit-button"
+                                        onClick={() =>
+                                          startEditingTag(tag)
+                                        }
+                                        title={`Editar ${tag.name}`}
+                                        aria-label={`Editar ${tag.name}`}
+                                      >
+                                        ✎
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 );
                               })}
 
@@ -4282,6 +4459,7 @@ export default function Home() {
                             ) : null}
                           </div>
 
+                          {canManageTags ? (
                           <div className="contact-tag-create">
                             <span>Nueva etiqueta</span>
 
@@ -4329,6 +4507,7 @@ export default function Home() {
                                 : "Crear etiqueta"}
                             </button>
                           </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>

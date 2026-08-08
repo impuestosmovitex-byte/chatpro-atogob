@@ -53,7 +53,7 @@ export class ContactTagsController {
         this.requiredCompany(company),
       );
 
-    await this.actor(
+    const actor = await this.actor(
       sessionType,
       userId,
       fullName,
@@ -77,6 +77,7 @@ export class ContactTagsController {
 
     return {
       ok: true,
+      canManageTags: actor.isFullAccess,
       tags: (data ?? []).map((row: any) => ({
         id: row.id,
         companyId: row.company_id,
@@ -119,11 +120,11 @@ export class ContactTagsController {
       profile.id,
     );
 
-    this.assertPermission(
-      actor,
-      'clients.manage',
-      'No tienes permiso para administrar etiquetas.',
-    );
+    if (!actor.isFullAccess) {
+      throw new ForbiddenException(
+        'Solo propietarios y administradores pueden administrar etiquetas.',
+      );
+    }
 
     const action = this.readText(body.action);
 

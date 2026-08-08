@@ -2852,3 +2852,70 @@ h2 {
 .contact-tag-dot-gray { background: #7c8798; }
 .contact-tag-dot-pink { background: #ce6d94; }
 .contact-tag-dot-teal { background: #4a9b92; }
+
+.contact-tag-option-row {
+  display: grid;
+  grid-template-columns: 1fr 36px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.contact-tag-edit-button {
+  border: 1px solid #e3e7ed;
+  border-radius: 9px;
+  background: #fff;
+  color: #566176;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.contact-tag-edit-button:hover {
+  background: #f2f4f7;
+}
+
+.contact-tag-edit-card {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #cfd6e1;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.contact-tag-edit-card input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 9px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.contact-tag-edit-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+}
+
+.contact-tag-edit-actions button {
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  background: #fff;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.contact-tag-edit-actions button:first-child {
+  border-color: #17181d;
+  background: #17181d;
+  color: #fff;
+}
+
+.contact-tag-edit-actions button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
