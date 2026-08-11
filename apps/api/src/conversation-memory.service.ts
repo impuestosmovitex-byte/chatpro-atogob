@@ -808,7 +808,7 @@ export class ConversationMemoryService {
     const handoffSummary = this.compactHandoffText(
       handoff.summary,
       'Revisa el último mensaje del cliente y continúa la atención.',
-      280,
+      180,
     );
     await this.conversationEventsService.record({
       companyId: session.companyId,

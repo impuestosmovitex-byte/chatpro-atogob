@@ -2894,7 +2894,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'lookup_order',
   description:
-    'Consulta un pedido real de la empresa por número de pedido, correo o celular. Úsala para estado del pedido, guía, transportadora, seguimiento, cambios, garantías o problemas posteriores a la compra.',
+    'Consulta un pedido real por un identificador. Devuelve como máximo el pedido más reciente. No combines resultados ni reveles otros pedidos del cliente. Si el cliente da un dato nuevo, usa ese dato y no reutilices identificadores anteriores salvo un número de pedido explícito.',
   strict: true,
   parameters: {
     type: 'object',
@@ -2932,7 +2932,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       },
       summary: {
         type: 'string',
-        description: 'Resumen interno: necesidad, datos revisados, acciones realizadas y pendiente.',
+        description: 'Resumen interno muy corto para el asesor, máximo una frase: qué necesita el cliente, dato clave revisado y qué queda pendiente.',
       },
       customer_message: {
         type: 'string',
@@ -3130,7 +3130,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
               : '',
           email: typeof args.email === 'string' ? args.email : '',
           phone: typeof args.phone === 'string' ? args.phone : '',
-          limit: 3,
+          limit: 1,
         });
       }
 

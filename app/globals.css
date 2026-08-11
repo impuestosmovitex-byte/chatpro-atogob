@@ -2919,3 +2919,30 @@ h2 {
   opacity: 0.55;
   cursor: wait;
 }
+
+/* Resumen corto y siempre visible cuando la IA transfiere */
+.handoff-compact-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 8px 14px 0;
+  padding: 9px 12px;
+  border: 1px solid #f0cf87;
+  border-radius: 10px;
+  background: #fff9ec;
+  color: #5f4a1c;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.handoff-compact-banner strong {
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.handoff-compact-banner > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

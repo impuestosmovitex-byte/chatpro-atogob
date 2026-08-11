@@ -3707,6 +3707,32 @@ export default function Home() {
                   </div>
                 </header>
 
+                {(() => {
+                  const handoff = readHandoff(selected.session.context);
+
+                  if (
+                    !handoff ||
+                    (selected.session.attentionStatus !== "human" &&
+                      selected.session.attentionStatus !== "waiting")
+                  ) {
+                    return null;
+                  }
+
+                  const handoffText = (
+                    handoff.summary ||
+                    handoff.reason ||
+                    "Revisa el último mensaje del cliente."
+                  ).slice(0, 180);
+
+                  return (
+                    <div className="handoff-compact-banner">
+                      <span aria-hidden="true">🤖</span>
+                      <strong>IA transfirió:</strong>
+                      <span>{handoffText}</span>
+                    </div>
+                  );
+                })()}
+
                 <div className="message-feed" ref={messageFeedRef}>
                   {loadingChat ? (
                     <p className="feed-loading">Abriendo historial…</p>
@@ -3720,45 +3746,6 @@ export default function Home() {
                           : "No hay mensajes todavía."}
                     </p>
                   ) : null}
-                  {(() => {
-                    const handoff = readHandoff(selected.session.context);
-
-                    if (!handoff) {
-                      return null;
-                    }
-
-                    return (
-                      <div className="handoff-note">
-                        <div className="handoff-note-title">
-                          <span aria-hidden="true">🤖</span>
-                          Transferencia de la IA
-                        </div>
-
-                        {handoff.reason ? (
-                          <p>
-                            <strong>Motivo:</strong> {handoff.reason}
-                          </p>
-                        ) : null}
-
-                        {handoff.summary ? (
-                          <p>
-                            <strong>Resumen:</strong> {handoff.summary}
-                          </p>
-                        ) : null}
-
-                        {handoff.areaName ? (
-                          <p>
-                            <strong>Área:</strong> {handoff.areaName}
-                          </p>
-                        ) : null}
-
-                        <span className="handoff-note-status">
-                          Pendiente de atención
-                        </span>
-                      </div>
-                    );
-                  })()}
-
                   {selected.messages.map((item) => (
                     <div
                       key={
