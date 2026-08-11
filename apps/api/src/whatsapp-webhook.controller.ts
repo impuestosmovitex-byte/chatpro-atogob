@@ -61,12 +61,21 @@ export class WhatsappWebhookController {
 
     for (const status of statuses) {
       try {
-        const updated =
+        const conversationUpdated =
+          await this.conversationMemoryService.applyProviderMessageStatus({
+            messageId: status.messageId,
+            status: status.status,
+            error: status.error,
+          });
+
+        const automationUpdated =
           await this.automationRuntimeService.applyProviderStatus(status);
 
-        if (updated) {
+        if (conversationUpdated || automationUpdated) {
           console.log(
-            `Meta confirmó ${status.status} para ${status.messageId}.`,
+            `Meta confirmó ${status.status} para ${status.messageId}${
+              status.error ? `: ${status.error}` : ''
+            }.`,
           );
         }
       } catch (error) {

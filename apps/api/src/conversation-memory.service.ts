@@ -2467,6 +2467,90 @@ export class ConversationMemoryService {
     };
   }
 
+  async applyProviderMessageStatus(input: {
+    messageId: string;
+    status: string;
+    error?: string | null;
+  }): Promise<boolean> {
+    const messageId = input.messageId?.trim();
+    const incomingStatus = input.status?.trim().toLowerCase();
+
+    if (!messageId || !incomingStatus) {
+      return false;
+    }
+
+    const allowed = new Set([
+      'sent',
+      'delivered',
+      'read',
+      'failed',
+    ]);
+
+    if (!allowed.has(incomingStatus)) {
+      return false;
+    }
+
+    const client = this.supabaseService.getClient();
+
+    const { data: current, error: readError } = await client
+      .from('conversations')
+      .select('id,status')
+      .eq('provider_message_id', messageId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(
+        `No se pudo consultar el mensaje enviado: ${readError.message}`,
+      );
+    }
+
+    if (!current?.id) {
+      return false;
+    }
+
+    const currentStatus =
+      typeof current.status === 'string'
+        ? current.status.trim().toLowerCase()
+        : '';
+
+    const rank: Record<string, number> = {
+      sent: 1,
+      delivered: 2,
+      read: 3,
+    };
+
+    // "failed" siempre debe conservarse porque revela un problema real.
+    // Para estados exitosos evitamos retroceder read -> delivered -> sent.
+    if (
+      incomingStatus !== 'failed' &&
+      currentStatus !== 'failed' &&
+      (rank[incomingStatus] ?? 0) < (rank[currentStatus] ?? 0)
+    ) {
+      return true;
+    }
+
+    const providerError =
+      incomingStatus === 'failed'
+        ? input.error?.trim().slice(0, 900) || 'Meta reportó que el mensaje no pudo entregarse.'
+        : null;
+
+    const { error: updateError } = await client
+      .from('conversations')
+      .update({
+        status: incomingStatus,
+        provider_error: providerError,
+      })
+      .eq('id', current.id);
+
+    if (updateError) {
+      throw new Error(
+        `No se pudo actualizar el estado del mensaje: ${updateError.message}`,
+      );
+    }
+
+    return true;
+  }
+
   async saveMessage(input: SaveMessageInput): Promise<'saved' | 'duplicate'> {
     const customerPhone = this.normalizePhone(input.customerPhone);
 

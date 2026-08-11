@@ -1338,7 +1338,7 @@ export class InboxController {
     const message = this.readText(body.message);
     if (!message)
       throw new BadRequestException('Escribe un mensaje antes de enviarlo.');
-    await this.whatsappMessagingService.sendText(
+    const sent = await this.whatsappMessagingService.sendText(
       conversation.company.id,
       conversation.session.customerPhone,
       message,
@@ -1351,6 +1351,7 @@ export class InboxController {
       sender: 'assistant',
       authorType: 'advisor',
       aiResponse: null,
+      providerMessageId: sent.messageId,
     });
     await this.conversationMemoryService.touchSession(conversation.session.id);
     return {
