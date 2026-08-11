@@ -3202,3 +3202,60 @@ h2 {
     right: 8px;
   }
 }
+
+/* Multimedia responsive según el tamaño real de la pantalla */
+.wa-image-link,
+.wa-video-link {
+  width: min(340px, 100%);
+  max-width: min(340px, 42vw);
+}
+
+.wa-image-message,
+.wa-video-link .wa-video-message {
+  width: 100%;
+  max-height: min(360px, 48vh);
+  object-fit: contain;
+  background: #111;
+}
+
+/* Portátiles y pantallas de escritorio pequeñas */
+@media (max-width: 1200px) {
+  .wa-image-link,
+  .wa-video-link {
+    width: min(290px, 100%);
+    max-width: min(290px, 38vw);
+  }
+
+  .wa-image-message,
+  .wa-video-link .wa-video-message {
+    max-height: min(300px, 42vh);
+  }
+}
+
+/* Pantallas de escritorio todavía más pequeñas */
+@media (max-width: 1000px) and (min-width: 761px) {
+  .wa-image-link,
+  .wa-video-link {
+    width: min(250px, 100%);
+    max-width: 36vw;
+  }
+
+  .wa-image-message,
+  .wa-video-link .wa-video-message {
+    max-height: min(260px, 38vh);
+  }
+}
+
+/* Celular */
+@media (max-width: 760px) {
+  .wa-image-link,
+  .wa-video-link {
+    width: min(78vw, 320px);
+    max-width: 100%;
+  }
+
+  .wa-image-message,
+  .wa-video-link .wa-video-message {
+    max-height: 46vh;
+  }
+}
