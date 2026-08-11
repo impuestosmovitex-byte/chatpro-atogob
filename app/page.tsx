@@ -42,7 +42,7 @@ type InboxMessage = {
   message: string;
   sender: string;
   authorType: "customer" | "ai" | "advisor";
-  messageType: "text" | "audio" | "image";
+  messageType: "text" | "audio" | "image" | "video" | "document";
   mediaMimeType: string | null;
   mediaStoragePath?: string | null;
   mediaVoice: boolean;
@@ -786,6 +786,152 @@ function AudioMessagePlayer({ item }: { item: InboxMessage }) {
   );
 }
 
+
+function FileMessageViewer({ item }: { item: InboxMessage }) {
+  const [source, setSource] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [mediaError, setMediaError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = "";
+
+    async function loadMedia() {
+      if (!item.id) {
+        setMediaError("El archivo no tiene identificador.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setMediaError("");
+
+        const response = await fetch(
+          `/api/inbox/media?sessionId=${encodeURIComponent(
+            item.sessionId,
+          )}&messageId=${encodeURIComponent(item.id)}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          const contentType =
+            response.headers.get("content-type") ?? "";
+
+          let detail = "No se pudo cargar el archivo.";
+
+          if (contentType.includes("application/json")) {
+            const data = (await response.json()) as {
+              error?: string;
+              message?: string;
+            };
+
+            detail = data.error || data.message || detail;
+          } else {
+            detail = (await response.text()) || detail;
+          }
+
+          throw new Error(detail);
+        }
+
+        const blob = await response.blob();
+
+        if (!blob.size) {
+          throw new Error("El archivo recibido está vacío.");
+        }
+
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+
+        setMediaError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo cargar el archivo.",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadMedia();
+
+    return () => {
+      controller.abort();
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [item.id, item.sessionId]);
+
+  if (loading) {
+    return (
+      <small className="wa-file-loading">
+        Cargando archivo…
+      </small>
+    );
+  }
+
+  if (mediaError || !source) {
+    return (
+      <small className="wa-file-error">
+        {mediaError || "Archivo no disponible."}
+      </small>
+    );
+  }
+
+  if (item.messageType === "video") {
+    return (
+      <div className="wa-video-message">
+        <video
+          controls
+          preload="metadata"
+          src={source}
+        >
+          Tu navegador no puede reproducir este video.
+        </video>
+      </div>
+    );
+  }
+
+  const cleanName =
+    item.message
+      ?.replace(/^📎\s*(Documento|Archivo)\s*(recibido|enviado)?:?\s*/i, "")
+      .replace(/\.$/, "")
+      .trim() || "Documento";
+
+  return (
+    <a
+      className="wa-document-message"
+      href={source}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <span className="wa-document-icon" aria-hidden="true">
+        📄
+      </span>
+
+      <span className="wa-document-info">
+        <strong>{cleanName}</strong>
+        <small>
+          {item.mediaMimeType || "Documento"}
+        </small>
+      </span>
+
+      <span className="wa-document-open">
+        Abrir
+      </span>
+    </a>
+  );
+}
+
 export default function Home() {
   const [canTestAgent, setCanTestAgent] = useState(false);
   const [canOpenStorefront, setCanOpenStorefront] = useState(false);
@@ -868,6 +1014,9 @@ export default function Home() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [imageSending, setImageSending] = useState(false);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentSending, setAttachmentSending] = useState(false);
+  const [draggingFile, setDraggingFile] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const conversationRequestRef = useRef(0);
@@ -2030,6 +2179,109 @@ export default function Home() {
     setError("");
   }
 
+  function clearAttachmentDraft() {
+    setAttachmentFile(null);
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  }
+
+  function selectMediaFile(file?: File | null) {
+    if (!file) return;
+
+    if (file.type.startsWith("image/")) {
+      clearAttachmentDraft();
+      selectImage(file);
+      return;
+    }
+
+    const allowed = new Set([
+      "video/mp4",
+      "video/3gpp",
+      "application/pdf",
+      "text/plain",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]);
+
+    if (!allowed.has(file.type)) {
+      setError(
+        "Formato no permitido. Usa JPG, PNG, WEBP, MP4, 3GP, PDF, TXT, DOC, DOCX, XLS o XLSX.",
+      );
+      return;
+    }
+
+    if (file.size > 25 * 1024 * 1024) {
+      setError("El archivo supera el límite de 25 MB.");
+      return;
+    }
+
+    clearImageDraft();
+    setAttachmentFile(file);
+    setQuickReplyOpen(false);
+    setError("");
+  }
+
+  async function sendSelectedAttachment() {
+    if (!selected?.session.id || !attachmentFile) return;
+
+    setAttachmentSending(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const form = new FormData();
+
+      form.set("sessionId", selected.session.id);
+      form.set(
+        "file",
+        attachmentFile,
+        attachmentFile.name || "archivo",
+      );
+
+      if (message.trim()) {
+        form.set(
+          "caption",
+          message.trim().slice(0, 1024),
+        );
+      }
+
+      const response = await fetch("/api/inbox/file", {
+        method: "POST",
+        body: form,
+      });
+
+      const data = (await readJson(response)) as ApiConversation & {
+        message?: string;
+      };
+
+      if (!response.ok || !data.ok || !data.conversation) {
+        throw new Error(
+          data.error ||
+            data.message ||
+            "No se pudo enviar el archivo.",
+        );
+      }
+
+      setSelected(data.conversation);
+      clearAttachmentDraft();
+      setMessage("");
+      setActionMessage("Archivo enviado.");
+      await loadList(false);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo enviar el archivo.",
+      );
+    } finally {
+      setAttachmentSending(false);
+    }
+  }
+
   async function sendSelectedImage() {
     if (!selected?.session.id || !imageFile) return;
 
@@ -2091,10 +2343,94 @@ export default function Home() {
       return;
     }
 
+    if (attachmentFile) {
+      await sendSelectedAttachment();
+      return;
+    }
+
     if (!message.trim()) return;
 
     await runAction("message");
   }
+
+  useEffect(() => {
+    let dragDepth = 0;
+
+    const hasFiles = (event: DragEvent) =>
+      Array.from(event.dataTransfer?.types ?? []).includes("Files");
+
+    const handleDragEnter = (event: DragEvent) => {
+      if (
+        !selected?.session.id ||
+        !canSendMedia ||
+        !hasFiles(event)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      dragDepth += 1;
+      setDraggingFile(true);
+    };
+
+    const handleDragOver = (event: DragEvent) => {
+      if (
+        !selected?.session.id ||
+        !canSendMedia ||
+        !hasFiles(event)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+    };
+
+    const handleDragLeave = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+
+      dragDepth = Math.max(0, dragDepth - 1);
+
+      if (dragDepth === 0) {
+        setDraggingFile(false);
+      }
+    };
+
+    const handleDrop = (event: DragEvent) => {
+      if (
+        !selected?.session.id ||
+        !canSendMedia ||
+        !hasFiles(event)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      dragDepth = 0;
+      setDraggingFile(false);
+
+      const file = event.dataTransfer?.files?.[0];
+
+      if (file) {
+        selectMediaFile(file);
+      }
+    };
+
+    window.addEventListener("dragenter", handleDragEnter);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("dragleave", handleDragLeave);
+    window.addEventListener("drop", handleDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleDragEnter);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("dragleave", handleDragLeave);
+      window.removeEventListener("drop", handleDrop);
+    };
+  }, [selected?.session.id, canSendMedia]);
 
   useEffect(() => {
     if (!audioBlob || recording || audioSending) {
@@ -3733,6 +4069,18 @@ export default function Home() {
                   );
                 })()}
 
+                {draggingFile ? (
+                  <div className="wa-file-drop-overlay">
+                    <div>
+                      <span aria-hidden="true">📎</span>
+                      <strong>Suelta aquí para adjuntar</strong>
+                      <small>
+                        Imagen, video o documento
+                      </small>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="message-feed" ref={messageFeedRef}>
                   {loadingChat ? (
                     <p className="feed-loading">Abriendo historial…</p>
@@ -3824,6 +4172,19 @@ export default function Home() {
                             <ImageMessageViewer item={item} />
                             {item.message &&
                             item.message !== "📷 Imagen recibida." ? (
+                              <p>{item.message}</p>
+                            ) : null}
+                          </>
+                        ) : (item.messageType === "video" ||
+                            item.messageType === "document") &&
+                          item.id ? (
+                          <>
+                            <FileMessageViewer item={item} />
+                            {item.message &&
+                            !/^🎥 Video (recibido|enviado)\.?$/i.test(
+                              item.message,
+                            ) &&
+                            item.messageType === "video" ? (
                               <p>{item.message}</p>
                             ) : null}
                           </>
@@ -4100,13 +4461,40 @@ export default function Home() {
                             ) : null}
                           </div>
 
+                          {attachmentFile ? (
+                            <div className="wa-attachment-draft">
+                              <span aria-hidden="true">
+                                {attachmentFile.type.startsWith("video/")
+                                  ? "🎥"
+                                  : "📄"}
+                              </span>
+
+                              <div>
+                                <strong>{attachmentFile.name}</strong>
+                                <small>
+                                  {(attachmentFile.size / 1024 / 1024).toFixed(2)} MB
+                                </small>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={clearAttachmentDraft}
+                                disabled={attachmentSending}
+                                aria-label="Quitar archivo"
+                                title="Quitar archivo"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ) : null}
+
                           <input
                             ref={imageInputRef}
                             type="file"
-                            accept="image/jpeg,image/png,image/webp"
+                            accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             hidden
                             onChange={(event) =>
-                              selectImage(event.target.files?.[0])
+                              selectMediaFile(event.target.files?.[0])
                             }
                           />
                           {canSendMedia ? (
@@ -4118,10 +4506,11 @@ export default function Home() {
                                 actionLoading ||
                                 audioSending ||
                                 imageSending ||
+                                attachmentSending ||
                                 recording
                               }
-                              aria-label="Adjuntar imagen"
-                              title="Adjuntar imagen"
+                              aria-label="Adjuntar archivo"
+                              title="Adjuntar archivo"
                             >
                               <svg
                                 aria-hidden="true"
@@ -4176,13 +4565,16 @@ export default function Home() {
                           disabled={
                             actionLoading ||
                             imageSending ||
-                            (!message.trim() && !imageFile)
+                            attachmentSending ||
+                            (!message.trim() &&
+                              !imageFile &&
+                              !attachmentFile)
                           }
                           aria-label="Enviar mensaje"
                           title="Enviar mensaje"
                         >
                           <span aria-hidden="true">
-                            {actionLoading || imageSending ? "…" : "➤"}
+                            {actionLoading || imageSending || attachmentSending ? "…" : "➤"}
                           </span>
                         </button>
                       </>

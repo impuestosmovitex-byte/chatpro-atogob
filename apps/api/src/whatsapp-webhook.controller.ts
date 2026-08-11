@@ -159,6 +159,61 @@ export class WhatsappWebhookController {
         return 'EVENT_RECEIVED';
       }
 
+      if (message.type === 'video' || message.type === 'document') {
+        const mediaBlock =
+          message.type === 'video'
+            ? message.video
+            : message.document;
+
+        const mediaId =
+          typeof mediaBlock?.id === 'string'
+            ? mediaBlock.id.trim()
+            : '';
+
+        const mimeType =
+          typeof mediaBlock?.mime_type === 'string'
+            ? mediaBlock.mime_type.trim()
+            : message.type === 'video'
+              ? 'video/mp4'
+              : 'application/octet-stream';
+
+        const caption =
+          typeof mediaBlock?.caption === 'string'
+            ? mediaBlock.caption
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 1500)
+            : '';
+
+        const filename =
+          message.type === 'document' &&
+          typeof message.document?.filename === 'string'
+            ? message.document.filename.trim().slice(0, 180)
+            : message.type === 'video'
+              ? 'video'
+              : 'archivo';
+
+        if (!mediaId) {
+          return 'EVENT_RECEIVED';
+        }
+
+        this.enqueueConversation(conversationKey, () =>
+          this.processIncomingAttachment({
+            incomingPhoneNumberId,
+            phone,
+            incomingMessageId,
+            replyToProviderMessageId,
+            mediaId,
+            mimeType,
+            caption,
+            filename,
+            messageType: message.type,
+          }),
+        );
+
+        return 'EVENT_RECEIVED';
+      }
+
       const buttonText = this.getIncomingButtonText(message);
       const text =
         message.type === 'text'
@@ -267,6 +322,103 @@ export class WhatsappWebhookController {
 
     this.recentProductUrlMessages.delete(conversationKey);
     return true;
+  }
+
+  private async processIncomingAttachment(input: {
+    incomingPhoneNumberId: string;
+    phone: string;
+    incomingMessageId: string | null;
+    replyToProviderMessageId: string | null;
+    mediaId: string;
+    mimeType: string;
+    caption: string;
+    filename: string;
+    messageType: 'video' | 'document';
+  }): Promise<void> {
+    const integration =
+      await this.companyIntegrationService.findActiveIntegrationByExternalId(
+        'meta',
+        'whatsapp',
+        input.incomingPhoneNumberId,
+      );
+
+    if (!integration) {
+      throw new Error(
+        'No existe una empresa activa para el archivo entrante.',
+      );
+    }
+
+    const profile =
+      await this.conversationMemoryService.getCompanyProfileById(
+        integration.companyId,
+      );
+
+    let session =
+      await this.conversationMemoryService.getOrCreateSessionByCompanyId(
+        integration.companyId,
+        input.phone,
+      );
+
+    session =
+      await this.chatAgentService.prepareSessionForIncomingActivity(
+        profile,
+        session,
+      );
+
+    const icon = input.messageType === 'video' ? '🎥' : '📎';
+
+    const customerMessage = input.caption
+      ? `${icon} ${
+          input.messageType === 'video' ? 'Video' : 'Documento'
+        } recibido: ${input.caption}`
+      : `${icon} ${
+          input.messageType === 'video' ? 'Video' : 'Documento'
+        } recibido${input.messageType === 'document' && input.filename
+          ? `: ${input.filename}`
+          : '.'}`;
+
+    const saved = await this.conversationMemoryService.saveMessage({
+      companyId: profile.id,
+      sessionId: session.id,
+      customerPhone: input.phone,
+      message: customerMessage,
+      sender: 'customer',
+      authorType: 'customer',
+      providerMessageId: input.incomingMessageId,
+      replyToProviderMessageId: input.replyToProviderMessageId,
+      messageType: input.messageType,
+      mediaId: input.mediaId,
+      mediaMimeType: input.mimeType,
+      mediaFilename: input.filename,
+      mediaVoice: false,
+    });
+
+    if (saved === 'duplicate') {
+      return;
+    }
+
+    await this.conversationMemoryService.touchSession(session.id);
+
+    const media =
+      await this.whatsappMessagingService.downloadRawMedia(
+        profile.id,
+        input.mediaId,
+        input.mimeType || 'application/octet-stream',
+      );
+
+    await this.conversationMemoryService.persistIncomingMedia({
+      companyId: profile.id,
+      sessionId: session.id,
+      mediaId: input.mediaId,
+      providerMessageId: input.incomingMessageId,
+      buffer: media.buffer,
+      mimeType: media.mimeType,
+      filename: input.filename || media.filename,
+    });
+
+    console.log(
+      `${input.messageType === 'video' ? 'Video' : 'Documento'} guardado de ${input.phone}`,
+    );
   }
 
   private async processIncomingImage(input: {

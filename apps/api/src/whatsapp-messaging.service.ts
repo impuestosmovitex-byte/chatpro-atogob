@@ -189,6 +189,68 @@ export class WhatsappMessagingService {
     };
   }
 
+  async sendFile(
+    companyId: string,
+    to: string,
+    input: {
+      buffer: Buffer;
+      mimeType: string;
+      filename: string;
+      caption?: string;
+    },
+  ): Promise<WhatsappImageSendResult> {
+    if (!input.buffer.length) {
+      throw new Error('El archivo está vacío.');
+    }
+
+    if (input.buffer.length > 25 * 1024 * 1024) {
+      throw new Error('El archivo supera el límite configurado de 25 MB.');
+    }
+
+    const mimeType =
+      input.mimeType.split(';')[0].trim().toLowerCase() ||
+      'application/octet-stream';
+
+    const isVideo = mimeType.startsWith('video/');
+    const channel = await this.resolveChannel(companyId);
+
+    const mediaId = await this.uploadMedia(channel, {
+      buffer: input.buffer,
+      mimeType,
+      filename: input.filename || (isVideo ? 'video.mp4' : 'archivo'),
+    });
+
+    const caption =
+      input.caption?.trim().slice(0, 1024) || undefined;
+
+    const sent = await this.send(channel, isVideo
+      ? {
+          messaging_product: 'whatsapp',
+          to,
+          type: 'video',
+          video: {
+            id: mediaId,
+            ...(caption ? { caption } : {}),
+          },
+        }
+      : {
+          messaging_product: 'whatsapp',
+          to,
+          type: 'document',
+          document: {
+            id: mediaId,
+            filename: input.filename || 'archivo',
+            ...(caption ? { caption } : {}),
+          },
+        });
+
+    return {
+      ...sent,
+      mediaId,
+      mimeType,
+    };
+  }
+
   async downloadRawMedia(
     companyId: string,
     mediaId: string,

@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(target, {
       headers: {
         ...trustedHeaders(inboxKey, session),
-        accept: 'image/*,audio/*',
+        accept: 'image/*,audio/*,video/*,application/pdf,application/octet-stream',
       },
       cache: 'no-store',
     });

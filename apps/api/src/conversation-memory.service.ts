@@ -136,7 +136,7 @@ type SaveMessageInput = {
   replyToMessage?: string | null;
   messageSource?: string | null;
   sourceName?: string | null;
-  messageType?: 'text' | 'audio' | 'image';
+  messageType?: 'text' | 'audio' | 'image' | 'video' | 'document';
   mediaId?: string | null;
   mediaMimeType?: string | null;
   mediaStoragePath?: string | null;
@@ -2299,6 +2299,14 @@ export class ConversationMemoryService {
       'audio/mpeg': 'mp3',
       'audio/mp4': 'm4a',
       'audio/aac': 'aac',
+      'video/mp4': 'mp4',
+      'video/3gpp': '3gp',
+      'application/pdf': 'pdf',
+      'text/plain': 'txt',
+      'application/msword': 'doc',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      'application/vnd.ms-excel': 'xls',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
     };
     const fallbackExtension = extensionByMime[cleanMime] || 'bin';
     const rawFilename = input.filename?.trim() || `media.${fallbackExtension}`;

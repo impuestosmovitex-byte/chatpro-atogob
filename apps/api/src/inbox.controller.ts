@@ -840,6 +840,160 @@ export class InboxController {
     };
   }
 
+  @Post(':sessionId/file')
+  @HttpCode(200)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
+  async sendAdvisorFile(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-session-type') sessionType = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-user-name') fullName = '',
+    @Headers('x-chatpro-company-id') headerCompanyId = '',
+    @Headers('x-chatpro-role-key') roleKey = '',
+    @Query('company') company = '',
+    @Param('sessionId') sessionId = '',
+    @Body('caption') caption = '',
+    @UploadedFile()
+    file?: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname: string;
+      size: number;
+    },
+  ) {
+    this.authorize(key);
+
+    const conversation =
+      await this.conversationMemoryService.getInboxConversation(
+        this.requiredCompany(company),
+        sessionId,
+      );
+
+    const actor = await this.actor(
+      sessionType,
+      userId,
+      fullName,
+      headerCompanyId,
+      roleKey,
+      conversation.company.id,
+    );
+
+    this.assertManageOwn(
+      actor,
+      conversation.session,
+      'inbox.reply',
+    );
+
+    if (
+      !actor.isFullAccess &&
+      !actor.permissions.has('inbox.media.send')
+    ) {
+      throw new ForbiddenException(
+        'No tienes permiso para enviar archivos.',
+      );
+    }
+
+    if (conversation.session.attentionStatus !== 'human') {
+      throw new BadRequestException(
+        'La conversación debe estar tomada por un asesor para enviar archivos.',
+      );
+    }
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'Selecciona un archivo antes de enviarlo.',
+      );
+    }
+
+    const mimeType =
+      file.mimetype?.split(';')[0].trim().toLowerCase() ||
+      'application/octet-stream';
+
+    const isVideo = mimeType.startsWith('video/');
+
+    let sent;
+
+    try {
+      sent = await this.whatsappMessagingService.sendFile(
+        conversation.company.id,
+        conversation.session.customerPhone,
+        {
+          buffer: file.buffer,
+          mimeType,
+          filename:
+            file.originalname ||
+            (isVideo ? 'video.mp4' : 'archivo'),
+          caption,
+        },
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo enviar el archivo.';
+
+      console.error(
+        'No se pudo enviar el archivo del asesor:',
+        error,
+      );
+
+      throw new BadRequestException(detail.slice(0, 900));
+    }
+
+    const cleanCaption = caption.trim().slice(0, 1024);
+
+    const messageText = cleanCaption
+      ? `${isVideo ? '🎥 Video' : '📎 Archivo'} enviado: ${cleanCaption}`
+      : `${isVideo ? '🎥 Video enviado.' : `📎 Archivo enviado: ${file.originalname || 'archivo'}`}`;
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: conversation.company.id,
+      sessionId: conversation.session.id,
+      customerPhone: conversation.session.customerPhone,
+      message: messageText,
+      sender: 'assistant',
+      authorType: 'advisor',
+      aiResponse: null,
+      providerMessageId: sent.messageId,
+      messageType: isVideo ? 'video' : 'document',
+      mediaId: sent.mediaId,
+      mediaMimeType: sent.mimeType,
+      mediaFilename:
+        file.originalname ||
+        (isVideo ? 'video.mp4' : 'archivo'),
+      mediaVoice: false,
+    });
+
+    await this.conversationMemoryService.persistIncomingMedia({
+      companyId: conversation.company.id,
+      sessionId: conversation.session.id,
+      mediaId: sent.mediaId,
+      providerMessageId: sent.messageId,
+      buffer: file.buffer,
+      mimeType: sent.mimeType,
+      filename:
+        file.originalname ||
+        (isVideo ? 'video.mp4' : 'archivo'),
+    });
+
+    await this.conversationMemoryService.touchSession(
+      conversation.session.id,
+    );
+
+    return {
+      ok: true,
+      conversation:
+        await this.conversationMemoryService.getInboxConversation(
+          conversation.company.slug,
+          conversation.session.id,
+        ),
+    };
+  }
+
   @Get(':sessionId/messages/:messageId/media')
   async getMessageMedia(
     @Headers('x-chatpro-inbox-key') key = '',
@@ -889,7 +1043,7 @@ export class InboxController {
 
     if (
       !row ||
-      !['audio', 'image'].includes(row.message_type) ||
+      !['audio', 'image', 'video', 'document'].includes(row.message_type) ||
       (typeof row.media_storage_path !== 'string' &&
         (typeof row.media_id !== 'string' || !row.media_id.trim()))
     ) {
@@ -925,17 +1079,35 @@ export class InboxController {
           mimeType:
             data.type ||
             row.media_mime_type ||
-            (row.message_type === 'image' ? 'image/jpeg' : 'audio/ogg'),
+            row.message_type === 'image'
+              ? 'image/jpeg'
+              : row.message_type === 'audio'
+                ? 'audio/ogg'
+                : row.message_type === 'video'
+                  ? 'video/mp4'
+                  : 'application/octet-stream',
           filename:
             row.media_storage_path.split('/').pop() ||
-            (row.message_type === 'image' ? 'imagen' : 'audio.ogg'),
+            row.message_type === 'image'
+              ? 'imagen'
+              : row.message_type === 'audio'
+                ? 'audio.ogg'
+                : row.message_type === 'video'
+                  ? 'video.mp4'
+                  : 'archivo',
         };
       } else {
         media = await this.whatsappMessagingService.downloadRawMedia(
           conversation.company.id,
           row.media_id,
           row.media_mime_type ||
-            (row.message_type === 'image' ? 'image/jpeg' : 'audio/ogg'),
+            row.message_type === 'image'
+              ? 'image/jpeg'
+              : row.message_type === 'audio'
+                ? 'audio/ogg'
+                : row.message_type === 'video'
+                  ? 'video/mp4'
+                  : 'application/octet-stream',
         );
       }
     } catch (error) {
