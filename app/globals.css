@@ -3103,3 +3103,57 @@ h2 {
   color: #667085;
   font-size: 11px;
 }
+
+/* Vista previa de video tipo WhatsApp */
+.wa-video-link {
+  position: relative;
+  display: block;
+  width: min(100%, 340px);
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #111;
+  cursor: pointer;
+}
+
+.wa-video-link .wa-video-message {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  margin: 0;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.wa-video-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  padding-left: 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 22px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.wa-video-lightbox-content {
+  width: min(94vw, 1050px);
+  height: min(90vh, 760px);
+  display: grid;
+  place-items: center;
+}
+
+.wa-video-lightbox-player {
+  display: block;
+  max-width: 100%;
+  max-height: 86vh;
+  border-radius: 10px;
+  background: #000;
+}

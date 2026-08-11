@@ -791,6 +791,7 @@ function FileMessageViewer({ item }: { item: InboxMessage }) {
   const [source, setSource] = useState("");
   const [loading, setLoading] = useState(true);
   const [mediaError, setMediaError] = useState("");
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -871,6 +872,28 @@ function FileMessageViewer({ item }: { item: InboxMessage }) {
     };
   }, [item.id, item.sessionId]);
 
+  useEffect(() => {
+    if (!viewerOpen || item.messageType !== "video") {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setViewerOpen(false);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [viewerOpen, item.messageType]);
+
   if (loading) {
     return (
       <small className="wa-file-loading">
@@ -889,15 +912,65 @@ function FileMessageViewer({ item }: { item: InboxMessage }) {
 
   if (item.messageType === "video") {
     return (
-      <div className="wa-video-message">
-        <video
-          controls
-          preload="metadata"
-          src={source}
+      <>
+        <button
+          type="button"
+          className="wa-video-link"
+          onClick={() => setViewerOpen(true)}
+          aria-label="Abrir video"
+          title="Abrir video"
         >
-          Tu navegador no puede reproducir este video.
-        </video>
-      </div>
+          <video
+            className="wa-video-message"
+            preload="metadata"
+            src={source}
+            muted
+            playsInline
+          >
+            Tu navegador no puede reproducir este video.
+          </video>
+
+          <span className="wa-video-play" aria-hidden="true">
+            ▶
+          </span>
+        </button>
+
+        {viewerOpen ? (
+          <div
+            className="wa-image-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Video ampliado"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setViewerOpen(false);
+              }
+            }}
+          >
+            <div className="wa-image-lightbox-content wa-video-lightbox-content">
+              <button
+                type="button"
+                className="wa-image-lightbox-close"
+                onClick={() => setViewerOpen(false)}
+                aria-label="Cerrar video"
+                title="Cerrar"
+              >
+                ×
+              </button>
+
+              <video
+                className="wa-video-lightbox-player"
+                controls
+                autoPlay
+                playsInline
+                src={source}
+              >
+                Tu navegador no puede reproducir este video.
+              </video>
+            </div>
+          </div>
+        ) : null}
+      </>
     );
   }
 

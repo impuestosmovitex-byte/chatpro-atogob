@@ -60,7 +60,7 @@ export type InboxMessage = {
   message: string;
   sender: string;
   authorType: 'customer' | 'ai' | 'advisor';
-  messageType: 'text' | 'audio' | 'image';
+  messageType: 'text' | 'audio' | 'image' | 'video' | 'document';
   mediaMimeType: string | null;
   mediaStoragePath: string | null;
   mediaVoice: boolean;
@@ -3145,7 +3145,11 @@ export class ConversationMemoryService {
           ? 'audio'
           : message.message_type === 'image'
             ? 'image'
-            : 'text',
+            : message.message_type === 'video'
+              ? 'video'
+              : message.message_type === 'document'
+                ? 'document'
+                : 'text',
       mediaMimeType:
         typeof message.media_mime_type === 'string' &&
         message.media_mime_type.trim()
