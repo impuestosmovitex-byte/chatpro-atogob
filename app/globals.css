@@ -3259,3 +3259,35 @@ h2 {
     max-height: 46vh;
   }
 }
+
+/* Administración de etiquetas */
+.contact-tag-admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.contact-tag-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #b42318;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.contact-tag-delete-button:hover {
+  background: rgba(180, 35, 24, 0.09);
+}
+
+.contact-tag-delete-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

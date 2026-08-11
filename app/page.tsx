@@ -3070,6 +3070,77 @@ export default function Home() {
     }
   }
 
+  async function deleteContactTag(tag: ContactTagDefinition) {
+    if (!canManageTags || tagSaving) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Eliminar la etiqueta "${tag.name}"? Se quitará también de los clientes que la tengan.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setTagSaving(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/contact-tags", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "delete",
+          id: tag.id,
+        }),
+      });
+
+      const data = (await readJson(response)) as {
+        ok?: boolean;
+        error?: string;
+        deletedId?: string;
+        deletedName?: string;
+      };
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || "No se pudo eliminar la etiqueta.",
+        );
+      }
+
+      setTagDefinitions((current) =>
+        current.filter((item) => item.id !== tag.id),
+      );
+
+      setContactTags((current) =>
+        contactTagNames(current)
+          .filter(
+            (item) =>
+              item.trim().toLocaleLowerCase("es") !==
+              tag.name.trim().toLocaleLowerCase("es"),
+          )
+          .join(", "),
+      );
+
+      if (editingTagId === tag.id) {
+        cancelEditingTag();
+      }
+
+      setActionMessage(`Etiqueta "${tag.name}" eliminada.`);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo eliminar la etiqueta.",
+      );
+    } finally {
+      setTagSaving(false);
+    }
+  }
+
   async function createContactTag() {
     const name = newTagName.trim();
 
@@ -3146,13 +3217,21 @@ export default function Home() {
       const response = await fetch("/api/clients", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          action: "update",
-          phone: selected.session.customerPhone,
-          displayName: contactName,
-          tags: contactTags,
-          notes: contactNotes,
-        }),
+        body: JSON.stringify(
+          canManageClients
+            ? {
+                action: "update",
+                phone: selected.session.customerPhone,
+                displayName: contactName,
+                tags: contactTags,
+                notes: contactNotes,
+              }
+            : {
+                action: "update-tags",
+                phone: selected.session.customerPhone,
+                tags: contactTags,
+              },
+        ),
       });
 
       const data = (await readJson(response)) as {
@@ -4886,17 +4965,32 @@ export default function Home() {
                                     </button>
 
                                     {canManageTags ? (
-                                      <button
-                                        type="button"
-                                        className="contact-tag-edit-button"
-                                        onClick={() =>
-                                          startEditingTag(tag)
-                                        }
-                                        title={`Editar ${tag.name}`}
-                                        aria-label={`Editar ${tag.name}`}
-                                      >
-                                        ✎
-                                      </button>
+                                      <div className="contact-tag-admin-actions">
+                                        <button
+                                          type="button"
+                                          className="contact-tag-edit-button"
+                                          onClick={() =>
+                                            startEditingTag(tag)
+                                          }
+                                          title={`Editar ${tag.name}`}
+                                          aria-label={`Editar ${tag.name}`}
+                                        >
+                                          ✎
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          className="contact-tag-delete-button"
+                                          onClick={() =>
+                                            void deleteContactTag(tag)
+                                          }
+                                          disabled={tagSaving}
+                                          title={`Eliminar ${tag.name}`}
+                                          aria-label={`Eliminar ${tag.name}`}
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
                                     ) : null}
                                   </div>
                                 );

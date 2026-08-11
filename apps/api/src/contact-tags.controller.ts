@@ -179,9 +179,28 @@ export class ContactTagsController {
       const name = this.requiredName(body.name);
       const color = this.readColor(body.color);
       const isActive = this.readBoolean(body.isActive, true);
+      const client = this.supabaseService.getClient();
 
-      const { data, error } = await this.supabaseService
-        .getClient()
+      const { data: previous, error: previousError } = await client
+        .from('contact_tag_definitions')
+        .select('id,name')
+        .eq('id', id)
+        .eq('company_id', profile.id)
+        .maybeSingle();
+
+      if (previousError) {
+        throw new BadRequestException(
+          `No se pudo consultar la etiqueta actual: ${previousError.message}`,
+        );
+      }
+
+      if (!previous) {
+        throw new BadRequestException(
+          'La etiqueta no existe en esta empresa.',
+        );
+      }
+
+      const { data, error } = await client
         .from('contact_tag_definitions')
         .update({
           name,
@@ -215,6 +234,17 @@ export class ContactTagsController {
         );
       }
 
+      if (
+        previous.name.trim().toLocaleLowerCase() !==
+        data.name.trim().toLocaleLowerCase()
+      ) {
+        await this.replaceTagOnContacts(
+          profile.id,
+          previous.name,
+          data.name,
+        );
+      }
+
       return {
         ok: true,
         tag: {
@@ -229,7 +259,151 @@ export class ContactTagsController {
       };
     }
 
+    if (action === 'delete') {
+      const id = this.requiredId(body.id);
+      const client = this.supabaseService.getClient();
+
+      const { data: current, error: currentError } = await client
+        .from('contact_tag_definitions')
+        .select('id,name')
+        .eq('id', id)
+        .eq('company_id', profile.id)
+        .maybeSingle();
+
+      if (currentError) {
+        throw new BadRequestException(
+          `No se pudo consultar la etiqueta: ${currentError.message}`,
+        );
+      }
+
+      if (!current) {
+        throw new BadRequestException(
+          'La etiqueta no existe en esta empresa.',
+        );
+      }
+
+      await this.removeTagFromContacts(profile.id, current.name);
+
+      const { error: deleteError } = await client
+        .from('contact_tag_definitions')
+        .delete()
+        .eq('id', id)
+        .eq('company_id', profile.id);
+
+      if (deleteError) {
+        throw new BadRequestException(
+          `No se pudo eliminar la etiqueta: ${deleteError.message}`,
+        );
+      }
+
+      return {
+        ok: true,
+        deletedId: id,
+        deletedName: current.name,
+      };
+    }
+
     throw new BadRequestException('Acción de etiqueta no válida.');
+  }
+
+  private async replaceTagOnContacts(
+    companyId: string,
+    oldName: string,
+    newName: string,
+  ): Promise<void> {
+    const client = this.supabaseService.getClient();
+
+    const { data: contacts, error } = await client
+      .from('contacts')
+      .select('id,tags')
+      .eq('company_id', companyId);
+
+    if (error) {
+      throw new BadRequestException(
+        `No se pudieron actualizar los contactos: ${error.message}`,
+      );
+    }
+
+    const oldKey = oldName.trim().toLocaleLowerCase();
+
+    for (const contact of contacts ?? []) {
+      const tags = Array.isArray(contact.tags)
+        ? contact.tags.filter((tag: unknown): tag is string =>
+            typeof tag === 'string',
+          )
+        : [];
+
+      let changed = false;
+
+      const nextTags = tags.map((tag: string) => {
+        if (tag.trim().toLocaleLowerCase() === oldKey) {
+          changed = true;
+          return newName;
+        }
+
+        return tag;
+      });
+
+      if (!changed) continue;
+
+      const { error: updateError } = await client
+        .from('contacts')
+        .update({ tags: nextTags })
+        .eq('id', contact.id)
+        .eq('company_id', companyId);
+
+      if (updateError) {
+        throw new BadRequestException(
+          `No se pudo propagar el cambio de etiqueta: ${updateError.message}`,
+        );
+      }
+    }
+  }
+
+  private async removeTagFromContacts(
+    companyId: string,
+    name: string,
+  ): Promise<void> {
+    const client = this.supabaseService.getClient();
+
+    const { data: contacts, error } = await client
+      .from('contacts')
+      .select('id,tags')
+      .eq('company_id', companyId);
+
+    if (error) {
+      throw new BadRequestException(
+        `No se pudieron consultar los contactos: ${error.message}`,
+      );
+    }
+
+    const key = name.trim().toLocaleLowerCase();
+
+    for (const contact of contacts ?? []) {
+      const tags = Array.isArray(contact.tags)
+        ? contact.tags.filter((tag: unknown): tag is string =>
+            typeof tag === 'string',
+          )
+        : [];
+
+      const nextTags = tags.filter(
+        (tag: string) => tag.trim().toLocaleLowerCase() !== key,
+      );
+
+      if (nextTags.length === tags.length) continue;
+
+      const { error: updateError } = await client
+        .from('contacts')
+        .update({ tags: nextTags })
+        .eq('id', contact.id)
+        .eq('company_id', companyId);
+
+      if (updateError) {
+        throw new BadRequestException(
+          `No se pudo retirar la etiqueta de los contactos: ${updateError.message}`,
+        );
+      }
+    }
   }
 
   private async actor(
@@ -334,16 +508,6 @@ export class ContactTagsController {
             typeof value === 'string',
         ),
     );
-
-    if (
-      role !== 'owner' &&
-      role !== 'admin' &&
-      !permissions.has('clients.view')
-    ) {
-      throw new ForbiddenException(
-        'No tienes permiso para ver clientes.',
-      );
-    }
 
     return {
       userId: id,

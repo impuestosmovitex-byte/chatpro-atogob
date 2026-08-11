@@ -214,6 +214,35 @@ export class ClientsController {
       };
     }
 
+    if (action === 'update-tags') {
+      const phone = this.requiredPhone(this.readText(body.phone));
+      const payload =
+        await this.conversationMemoryService.getClientProfile(
+          company,
+          phone,
+        );
+
+      if (
+        !actor.isFullAccess &&
+        !this.canViewHistory(actor, payload.session)
+      ) {
+        throw new ForbiddenException(
+          'Solo puedes modificar etiquetas de conversaciones a las que tienes acceso.',
+        );
+      }
+
+      return {
+        ok: true,
+        contact: await this.conversationMemoryService.updateContact(
+          company,
+          phone,
+          {
+            tags: this.readTags(body.tags),
+          },
+        ),
+      };
+    }
+
     if (action === 'update') {
       this.assertPermission(
         actor,
