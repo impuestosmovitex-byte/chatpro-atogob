@@ -2968,6 +2968,12 @@ export default function Home() {
       };
 
       if (!response.ok || !data.ok) {
+        setError(
+          data.error ||
+            `No se pudieron cargar las etiquetas (${response.status}).`,
+        );
+        setTagDefinitions([]);
+        setCanManageTags(false);
         return;
       }
 
@@ -2975,8 +2981,14 @@ export default function Home() {
         Array.isArray(data.tags) ? data.tags : [],
       );
       setCanManageTags(Boolean(data.canManageTags));
-    } catch {
-      // Las etiquetas no deben bloquear la bandeja.
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudieron cargar las etiquetas.",
+      );
+      setTagDefinitions([]);
+      setCanManageTags(false);
     }
   }
 
