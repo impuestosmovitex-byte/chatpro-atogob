@@ -27,6 +27,7 @@ const ADVISOR_ALLOWED_APIS = [
   '/api/auth/switch-company',
   '/api/inbox',
   '/api/clients',
+  '/api/contact-tags',
   '/api/advisor-presence',
   '/api/push-notifications',
   '/api/quick-replies',
