@@ -1142,6 +1142,12 @@ export class ChatAgentService {
     profile: CompanyProfile,
     session: ConversationSession,
   ): Promise<ConversationSession> {
+    session =
+      await this.conversationMemoryService.releaseInactiveHumanForIncoming(
+        session,
+        24,
+      );
+
     const status = this.getContextStatus(profile, session);
     const now = new Date().toISOString();
     const baseContext =

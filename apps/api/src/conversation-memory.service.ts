@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import { SupabaseService } from './supabase.service';
 import { PushNotificationService } from './push-notification.service';
 import { ConversationEventsService } from './conversation-events.service';
@@ -1487,11 +1488,17 @@ export class ConversationMemoryService {
 
     return this.updateAttention(sessionId, {
       attention_status: 'closed',
+      assigned_to_user_id: null,
+      assigned_to_name: null,
+      taken_at: null,
       closed_at: new Date().toISOString(),
     });
   }
 
-  async resumeAiConversation(sessionId: string): Promise<ConversationSession> {
+  async resumeAiConversation(
+    sessionId: string,
+    eventSource: 'advisor' | 'system' = 'advisor',
+  ): Promise<ConversationSession> {
     const session = await this.getSessionById(sessionId);
 
     await this.conversationEventsService.record({
@@ -1499,7 +1506,7 @@ export class ConversationMemoryService {
       sessionId: session.id,
       customerPhone: session.customerPhone,
       eventType: 'conversation_resumed_ai',
-      eventSource: 'advisor',
+      eventSource,
     });
 
     return this.updateAttention(sessionId, {
@@ -1509,6 +1516,148 @@ export class ConversationMemoryService {
       taken_at: null,
       closed_at: null,
     });
+  }
+
+  private async getLastAdvisorActivityAt(
+    sessionId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('conversations')
+      .select('created_at')
+      .eq('session_id', sessionId)
+      .eq('author_type', 'advisor')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo consultar la última actividad del asesor: ${error.message}`,
+      );
+    }
+
+    return typeof data?.created_at === 'string'
+      ? data.created_at
+      : null;
+  }
+
+  private async isHumanConversationInactive(
+    session: ConversationSession,
+    idleHours = 24,
+  ): Promise<boolean> {
+    if (session.attentionStatus !== 'human') {
+      return false;
+    }
+
+    const lastAdvisorActivity =
+      await this.getLastAdvisorActivityAt(session.id);
+
+    // La inactividad empieza desde la actividad humana más reciente:
+    // cuando el asesor tomó/re-tomó el chat o cuando respondió.
+    const candidateTimes = [
+      lastAdvisorActivity,
+      session.takenAt,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => new Date(value).getTime())
+      .filter((value) => Number.isFinite(value));
+
+    if (!candidateTimes.length) {
+      return false;
+    }
+
+    const referenceTime = Math.max(...candidateTimes);
+
+    const idleMs = Math.max(idleHours, 1) * 60 * 60 * 1000;
+
+    return Date.now() - referenceTime >= idleMs;
+  }
+
+  async releaseInactiveHumanForIncoming(
+    session: ConversationSession,
+    idleHours = 24,
+  ): Promise<ConversationSession> {
+    if (
+      !(await this.isHumanConversationInactive(
+        session,
+        idleHours,
+      ))
+    ) {
+      return session;
+    }
+
+    console.log(
+      `[ChatPro][human-timeout] liberando sesión=${session.id} ` +
+        `asesor=${session.assignedToUserId || 'sin-asignar'} ` +
+        `motivo=inactividad-${idleHours}h`,
+    );
+
+    await this.closeConversation(session.id);
+
+    return this.resumeAiConversation(
+      session.id,
+      'system',
+    );
+  }
+
+  @Interval(10 * 60 * 1000)
+  async closeInactiveHumanConversations(): Promise<void> {
+    const cutoff = new Date(
+      Date.now() - 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const client = this.supabaseService.getClient();
+
+    const { data, error } = await client
+      .from('conversation_sessions')
+      .select('id')
+      .eq('attention_status', 'human')
+      .lte('taken_at', cutoff)
+      .limit(500);
+
+    if (error) {
+      console.error(
+        '[ChatPro][human-timeout] No se pudieron consultar chats:',
+        error,
+      );
+      return;
+    }
+
+    let closed = 0;
+
+    for (const row of data ?? []) {
+      if (!row?.id) {
+        continue;
+      }
+
+      try {
+        const session = await this.getSessionById(row.id);
+
+        if (
+          !(await this.isHumanConversationInactive(
+            session,
+            24,
+          ))
+        ) {
+          continue;
+        }
+
+        await this.closeConversation(session.id);
+        closed += 1;
+      } catch (error) {
+        console.error(
+          `[ChatPro][human-timeout] Falló sesión=${row.id}:`,
+          error,
+        );
+      }
+    }
+
+    if (closed > 0) {
+      console.log(
+        `[ChatPro][human-timeout] conversaciones finalizadas=${closed}`,
+      );
+    }
   }
 
   async listInboxSessions(
