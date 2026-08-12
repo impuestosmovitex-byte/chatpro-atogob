@@ -3291,3 +3291,84 @@ h2 {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* CHATPRO-MEDIA-VIEWER-FIT-V2
+   Visor de imágenes y videos adaptado al dispositivo */
+.wa-image-lightbox {
+  box-sizing: border-box;
+  padding: clamp(16px, 3vw, 36px);
+  overflow: hidden;
+}
+
+.wa-image-lightbox-content,
+.wa-video-lightbox-content {
+  box-sizing: border-box;
+  width: min(92vw, 1100px);
+  height: min(82dvh, 820px);
+  max-width: 100%;
+  max-height: calc(100dvh - 32px);
+}
+
+.wa-image-lightbox-content img,
+.wa-video-lightbox-player {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(78dvh, 780px);
+  object-fit: contain;
+  object-position: center;
+}
+
+.wa-image-lightbox-close {
+  top: 6px;
+  right: 6px;
+  transform: none;
+}
+
+/* Portátiles y pantallas de poca altura */
+@media (max-height: 800px) and (min-width: 761px) {
+  .wa-image-lightbox {
+    padding: 18px 24px;
+  }
+
+  .wa-image-lightbox-content,
+  .wa-video-lightbox-content {
+    height: 78dvh;
+  }
+
+  .wa-image-lightbox-content img,
+  .wa-video-lightbox-player {
+    max-height: 74dvh;
+  }
+}
+
+/* Celular y tablet pequeña */
+@media (max-width: 760px) {
+  .wa-image-lightbox {
+    padding:
+      calc(10px + env(safe-area-inset-top))
+      10px
+      calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .wa-image-lightbox-content,
+  .wa-video-lightbox-content {
+    width: 100%;
+    height: 88dvh;
+    max-height: 88dvh;
+  }
+
+  .wa-image-lightbox-content img,
+  .wa-video-lightbox-player {
+    max-width: 100%;
+    max-height: 84dvh;
+  }
+
+  .wa-image-lightbox-close {
+    top: calc(6px + env(safe-area-inset-top));
+    right: 6px;
+  }
+}
+
+/* END CHATPRO-MEDIA-VIEWER-FIT-V2 */
