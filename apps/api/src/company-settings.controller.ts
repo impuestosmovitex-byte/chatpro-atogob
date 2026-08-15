@@ -65,9 +65,12 @@ function optionalText(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function cleanText(value: unknown): string {
+function cleanText(
+  value: unknown,
+  maxLength = 30_000,
+): string {
   return typeof value === 'string'
-    ? value.trim().slice(0, 30000)
+    ? value.trim().slice(0, maxLength)
     : '';
 }
 
@@ -79,10 +82,10 @@ function commercialFlowFrom(value: unknown): CommercialFlow {
 
   return {
     welcomeMessage: cleanText(source.welcome_message),
-    salesInstructions: cleanText(source.sales_instructions),
-    shippingInstructions: cleanText(source.shipping_instructions),
-    paymentInstructions: cleanText(source.payment_instructions),
-    checkoutInstructions: cleanText(source.checkout_instructions),
+    salesInstructions: cleanText(source.sales_instructions, 50_000),
+    shippingInstructions: cleanText(source.shipping_instructions, 50_000),
+    paymentInstructions: cleanText(source.payment_instructions, 50_000),
+    checkoutInstructions: cleanText(source.checkout_instructions, 60_000),
   };
 }
 
@@ -93,10 +96,10 @@ function knowledgeBaseFrom(value: unknown): KnowledgeBase {
       : {};
 
   return {
-    termsConditions: cleanText(source.terms_conditions),
-    exchangesReturns: cleanText(source.exchanges_returns),
-    warranties: cleanText(source.warranties),
-    policiesFaq: cleanText(source.policies_faq),
+    termsConditions: cleanText(source.terms_conditions, 60_000),
+    exchangesReturns: cleanText(source.exchanges_returns, 60_000),
+    warranties: cleanText(source.warranties, 40_000),
+    policiesFaq: cleanText(source.policies_faq, 80_000),
   };
 }
 
