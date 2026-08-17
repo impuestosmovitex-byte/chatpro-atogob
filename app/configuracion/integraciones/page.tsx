@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
 import { WhatsappEmbeddedSignupButton } from './WhatsappEmbeddedSignupButton';
+import { MessengerConnectButton } from './MessengerConnectButton';
 import styles from './page.module.css';
 
 type Integration = {
@@ -609,6 +610,10 @@ export default function IntegracionesPage() {
                     Verificar ahora
                   </button>
                 </div>
+              ) : null}
+
+              {selected.key === 'messenger' && selected.status !== 'active' ? (
+                <MessengerConnectButton />
               ) : null}
 
               {selected.key === 'shopify' && selected.status !== 'active' ? (

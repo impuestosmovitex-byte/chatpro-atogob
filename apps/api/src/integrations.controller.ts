@@ -79,7 +79,7 @@ const CATALOG = [
     key: 'messenger',
     name: 'Messenger',
     description: 'Mensajes de Facebook Messenger dentro de la Bandeja cuando el canal esté habilitado.',
-    connectionReady: false,
+    connectionReady: true,
   },
   {
     provider: 'meta',

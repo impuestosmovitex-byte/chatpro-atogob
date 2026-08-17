@@ -29,6 +29,8 @@ import { ConversationMemoryService } from './conversation-memory.service';
 import { ConversationEventsService } from './conversation-events.service';
 import { InboxController } from './inbox.controller';
 import { IntegrationsController } from './integrations.controller';
+import { MetaMessengerController } from './meta-messenger.controller';
+import { MetaMessengerService } from './meta-messenger.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
@@ -72,6 +74,7 @@ import { ContactTagsController } from './contact-tags.controller';
     WhatsappWebhookController,
     InboxController,
     IntegrationsController,
+    MetaMessengerController,
     ShopifyOauthController,
     ShopifyIntegrationTestController,
     ShopifyWebhookController,
@@ -102,6 +105,7 @@ import { ContactTagsController } from './contact-tags.controller';
     CompanyCommerceService,
     CustomerOrderService,
     IntegrationCredentialsService,
+    MetaMessengerService,
     WhatsappMessagingService,
     AppService,
     AutomationRuntimeService,
