@@ -1799,7 +1799,9 @@ export class ConversationMemoryService {
     }
 
     const applyCommonFilters = (query: any) => {
-      let filtered = query.eq('company_id', profile.id);
+      let filtered = query
+        .eq('company_id', profile.id)
+        .neq('attention_status', 'closed');
 
       if (normalizedStatus) {
         filtered = filtered.eq('attention_status', normalizedStatus);
