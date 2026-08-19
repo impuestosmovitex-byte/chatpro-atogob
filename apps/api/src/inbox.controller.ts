@@ -24,6 +24,7 @@ import {
 } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
+import { MetaSocialInboxService } from './meta-social-inbox.service';
 
 type InboxBody = {
   message?: unknown;
@@ -48,6 +49,7 @@ export class InboxController {
     private readonly supabaseService: SupabaseService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
     private readonly chatAgentService: ChatAgentService,
+    private readonly metaSocialInboxService: MetaSocialInboxService,
   ) {}
 
   @Get()
@@ -104,9 +106,26 @@ export class InboxController {
       },
     );
 
+    const socialSessions =
+      await this.metaSocialInboxService.listSessions(profile.id, {
+        status,
+        limit: Number(limit),
+        search,
+        advisorUserId: advisor,
+      });
+
+    const mergedSessions = [
+      ...payload.sessions,
+      ...socialSessions,
+    ].sort(
+      (left, right) =>
+        new Date(right.lastMessageAt).getTime() -
+        new Date(left.lastMessageAt).getTime(),
+    );
+
     const isSearch = Boolean(search.trim());
 
-    const sessions = payload.sessions
+    const sessions = mergedSessions
       .filter((session) => !this.isInternalTestSession(session))
       .map((session) => {
         const takeAvailability =
@@ -141,6 +160,13 @@ export class InboxController {
     return {
       ok: true,
       ...payload,
+      pendingTotal:
+        payload.pendingTotal +
+        socialSessions.reduce(
+          (total, session) =>
+            total + Math.max(0, session.pendingCount),
+          0,
+        ),
       sessions,
     };
   }
@@ -188,12 +214,31 @@ export class InboxController {
   ) {
     this.authorize(key);
 
-    const conversation =
-      await this.conversationMemoryService.getInboxConversation(
-        this.requiredCompany(company),
+    const companySlug = this.requiredCompany(company);
+
+    const profile =
+      await this.conversationMemoryService.getCompanyProfile(
+        companySlug,
+      );
+
+    const socialConversation =
+      await this.metaSocialInboxService.getConversation(
+        {
+          id: profile.id,
+          slug: profile.slug,
+          name: profile.name,
+        },
         sessionId,
         after,
       );
+
+    const conversation =
+      socialConversation ??
+      (await this.conversationMemoryService.getInboxConversation(
+        companySlug,
+        sessionId,
+        after,
+      ));
     const actor = await this.actor(
       sessionType,
       userId,
