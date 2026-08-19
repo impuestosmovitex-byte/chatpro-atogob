@@ -8,9 +8,14 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { MetaSocialMessageService } from './meta-social-message.service';
 
 @Controller('webhook/messenger')
 export class MetaMessengerWebhookController {
+  constructor(
+    private readonly socialMessageService: MetaSocialMessageService,
+  ) {}
+
   @Get()
   verify(
     @Query('hub.mode') mode: string | undefined,
@@ -35,11 +40,15 @@ export class MetaMessengerWebhookController {
 
   @Post()
   @HttpCode(200)
-  receive(@Body() body: unknown) {
-    // Etapa 1:
-    // Messenger ya puede entregar eventos a este endpoint.
-    // Todavía no procesamos ni guardamos mensajes.
-    void body;
+  async receive(@Body() body: unknown) {
+    try {
+      await this.socialMessageService.processMessengerWebhook(body);
+    } catch (error) {
+      console.error(
+        '[ChatPro][Messenger] Error procesando webhook:',
+        error,
+      );
+    }
 
     return 'EVENT_RECEIVED';
   }
