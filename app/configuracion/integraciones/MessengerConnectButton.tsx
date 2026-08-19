@@ -18,133 +18,11 @@ type MessengerConfig = {
   message?: string;
 };
 
-type FacebookLoginResponse = {
-  authResponse?: {
-    accessToken?: string;
-  };
-  status?: string;
-};
-
-type FacebookSdk = {
-  init(options: {
-    appId: string;
-    cookie: boolean;
-    xfbml: boolean;
-    version: string;
-  }): void;
-
-  login(
-    callback: (
-      response: FacebookLoginResponse,
-    ) => void,
-    options: Record<string, unknown>,
-  ): void;
-};
-
-type FacebookWindow = Window & {
-  FB?: FacebookSdk;
-  fbAsyncInit?: () => void;
-};
-
 type FacebookPage = {
   id: string;
   name: string;
   tasks?: string[];
 };
-
-function loadFacebookSdk(
-  appId: string,
-  apiVersion: string,
-): Promise<FacebookSdk> {
-  return new Promise(
-    (resolve, reject) => {
-      const target =
-        window as FacebookWindow;
-
-      const finish = () => {
-        if (!target.FB) {
-          reject(
-            new Error(
-              'Meta no cargó su componente de conexión.',
-            ),
-          );
-
-          return;
-        }
-
-        target.FB.init({
-          appId,
-          cookie: true,
-          xfbml: false,
-          version: apiVersion,
-        });
-
-        resolve(target.FB);
-      };
-
-      if (target.FB) {
-        finish();
-        return;
-      }
-
-      target.fbAsyncInit = finish;
-
-      const existing =
-        document.getElementById(
-          'facebook-jssdk',
-        );
-
-      if (existing) {
-        const startedAt = Date.now();
-
-        const wait = window.setInterval(
-          () => {
-            if (target.FB) {
-              window.clearInterval(wait);
-              finish();
-              return;
-            }
-
-            if (
-              Date.now() - startedAt >
-              15_000
-            ) {
-              window.clearInterval(wait);
-
-              reject(
-                new Error(
-                  'Meta no terminó de cargar su componente de conexión.',
-                ),
-              );
-            }
-          },
-          100,
-        );
-
-        return;
-      }
-
-      const script =
-        document.createElement('script');
-
-      script.id = 'facebook-jssdk';
-      script.async = true;
-      script.defer = true;
-      script.crossOrigin = 'anonymous';
-      script.src =
-        'https://connect.facebook.net/es_LA/sdk.js';
-
-      script.onerror = () =>
-        reject(
-          new Error(
-            'No se pudo cargar la conexión de Meta.',
-          ),
-        );
-
-      document.body.appendChild(script);
-    },
-  );
-}
 
 export function MessengerConnectButton() {
   const [config, setConfig] =
@@ -213,6 +91,139 @@ export function MessengerConnectButton() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      !config?.ready ||
+      typeof window === 'undefined'
+    ) {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+
+    const code =
+      url.searchParams.get('messenger_code')?.trim() || '';
+    const returnedState =
+      url.searchParams.get('messenger_state')?.trim() || '';
+    const oauthError =
+      url.searchParams.get('messenger_error')?.trim() || '';
+
+    if (!code && !oauthError) {
+      return;
+    }
+
+    url.searchParams.delete('messenger_code');
+    url.searchParams.delete('messenger_state');
+    url.searchParams.delete('messenger_error');
+
+    window.history.replaceState(
+      {},
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+
+    if (oauthError) {
+      setMessage(oauthError);
+      return;
+    }
+
+    const expectedState =
+      window.sessionStorage.getItem(
+        'chatpro_messenger_oauth_state',
+      ) || '';
+
+    window.sessionStorage.removeItem(
+      'chatpro_messenger_oauth_state',
+    );
+
+    if (
+      !returnedState ||
+      !expectedState ||
+      returnedState !== expectedState
+    ) {
+      setMessage(
+        'Meta regresó una autorización que no coincide con la solicitud iniciada en ChatPro.',
+      );
+      return;
+    }
+
+    const redirectUri =
+      `${window.location.origin}/api/integrations/messenger/callback`;
+
+    let cancelled = false;
+
+    async function finishOAuth() {
+      setConnecting(true);
+      setMessage(
+        'Validando autorización con Meta…',
+      );
+
+      try {
+        const response = await fetch(
+          '/api/integrations/messenger/exchange-code',
+          {
+            method: 'POST',
+            headers: {
+              'content-type':
+                'application/json',
+            },
+            body: JSON.stringify({
+              code,
+              redirectUri,
+            }),
+          },
+        );
+
+        const data = (await response.json()) as {
+          ok?: boolean;
+          accessToken?: string;
+          message?: string;
+          error?: string;
+        };
+
+        if (
+          !response.ok ||
+          !data.ok ||
+          !data.accessToken
+        ) {
+          throw new Error(
+            data.message ||
+              data.error ||
+              'No se pudo completar la autorización de Meta.',
+          );
+        }
+
+        if (cancelled) return;
+
+        setAccessToken(
+          data.accessToken,
+        );
+
+        await discoverPages(
+          data.accessToken,
+        );
+      } catch (error) {
+        if (!cancelled) {
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : 'No se pudo completar la conexión con Meta.',
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setConnecting(false);
+        }
+      }
+    }
+
+    void finishOAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [config?.ready]);
 
   async function discoverPages(
     token: string,
@@ -289,60 +300,46 @@ export function MessengerConnectButton() {
     setPages([]);
     setSelectedPageId('');
     setAccessToken('');
-    setConnecting(true);
 
-    try {
-      const sdk =
-        await loadFacebookSdk(
-          config.appId,
-          config.apiVersion,
-        );
+    const redirectUri =
+      `${window.location.origin}/api/integrations/messenger/callback`;
 
-      const token =
-        await new Promise<string>(
-          (resolve, reject) => {
-            sdk.login(
-              (response) => {
-                const nextToken =
-                  response.authResponse
-                    ?.accessToken?.trim() ||
-                  '';
+    const state =
+      crypto.randomUUID().replace(/-/g, '');
 
-                if (!nextToken) {
-                  reject(
-                    new Error(
-                      'La autorización de Meta fue cancelada o no se completó.',
-                    ),
-                  );
+    window.sessionStorage.setItem(
+      'chatpro_messenger_oauth_state',
+      state,
+    );
 
-                  return;
-                }
+    const oauthUrl = new URL(
+      `https://www.facebook.com/${config.apiVersion}/dialog/oauth`,
+    );
 
-                resolve(nextToken);
-              },
-              {
-                scope:
-                  config.scopes?.join(
-                    ',',
-                  ) || '',
-                return_scopes: true,
-              },
-            );
-          },
-        );
+    oauthUrl.searchParams.set(
+      'client_id',
+      config.appId,
+    );
+    oauthUrl.searchParams.set(
+      'redirect_uri',
+      redirectUri,
+    );
+    oauthUrl.searchParams.set(
+      'scope',
+      config.scopes?.join(',') || '',
+    );
+    oauthUrl.searchParams.set(
+      'response_type',
+      'code',
+    );
+    oauthUrl.searchParams.set(
+      'state',
+      state,
+    );
 
-      setAccessToken(token);
-
-      await discoverPages(token);
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'No se pudo abrir la conexión oficial de Meta.',
-      );
-    } finally {
-      setConnecting(false);
-    }
+    window.location.assign(
+      oauthUrl.toString(),
+    );
   }
 
   async function completeConnection() {

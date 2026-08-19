@@ -15,6 +15,11 @@ type DiscoverBody = {
   accessToken?: unknown;
 };
 
+type ExchangeCodeBody = {
+  code?: unknown;
+  redirectUri?: unknown;
+};
+
 type CompleteBody = {
   accessToken?: unknown;
   pageId?: unknown;
@@ -40,6 +45,29 @@ export class MetaMessengerController {
       ok: true,
       company,
       ...this.messengerService.publicConfig(),
+    };
+  }
+
+  @Post('exchange-code')
+  async exchangeCode(
+    @Headers('x-chatpro-inbox-key')
+    accessKey: string | undefined,
+    @Query('company') companySlug: string | undefined,
+    @Body() body: ExchangeCodeBody,
+  ) {
+    this.requireAccess(accessKey);
+    const company = await this.getCompany(companySlug);
+
+    const authorization =
+      await this.messengerService.exchangeAuthorizationCode(
+        body.code,
+        body.redirectUri,
+      );
+
+    return {
+      ok: true,
+      company,
+      ...authorization,
     };
   }
 

@@ -38,6 +38,57 @@ export class MetaMessengerService {
     };
   }
 
+  async exchangeAuthorizationCode(
+    codeInput: unknown,
+    redirectUriInput: unknown,
+  ) {
+    const code = this.text(codeInput);
+    const redirectUri = this.text(redirectUriInput);
+
+    if (!code) {
+      throw new BadRequestException(
+        'Meta no devolvió un código de autorización.',
+      );
+    }
+
+    if (!redirectUri || !redirectUri.startsWith('https://')) {
+      throw new BadRequestException(
+        'La URI de retorno de Messenger no es válida.',
+      );
+    }
+
+    const settings = this.requireSettings();
+
+    const url = new URL(
+      `https://graph.facebook.com/${settings.apiVersion}/oauth/access_token`,
+    );
+
+    url.searchParams.set('client_id', settings.appId);
+    url.searchParams.set('client_secret', settings.appSecret);
+    url.searchParams.set('redirect_uri', redirectUri);
+    url.searchParams.set('code', code);
+
+    const payload = await this.metaJson(
+      url,
+      { method: 'GET' },
+      'Meta no permitió completar la autorización de Messenger',
+    );
+
+    const accessToken = this.text(payload.access_token);
+
+    if (!accessToken || accessToken.length < 20) {
+      throw new BadRequestException(
+        'Meta no devolvió una autorización válida.',
+      );
+    }
+
+    await this.validateUserToken(accessToken);
+
+    return {
+      accessToken,
+    };
+  }
+
   async discoverPages(accessTokenInput: unknown) {
     const accessToken = this.text(accessTokenInput);
 
