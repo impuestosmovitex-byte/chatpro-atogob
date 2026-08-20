@@ -33,6 +33,7 @@ import { MetaMessengerController } from './meta-messenger.controller';
 import { MetaMessengerWebhookController } from './meta-messenger-webhook.controller';
 import { MetaMessengerService } from './meta-messenger.service';
 import { MetaSocialMessageService } from './meta-social-message.service';
+import { MetaSocialAiService } from './meta-social-ai.service';
 import { MetaSocialInboxService } from './meta-social-inbox.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { RolesController } from './roles.controller';
@@ -111,6 +112,7 @@ import { ContactTagsController } from './contact-tags.controller';
     IntegrationCredentialsService,
     MetaMessengerService,
     MetaSocialMessageService,
+    MetaSocialAiService,
     MetaSocialInboxService,
     WhatsappMessagingService,
     AppService,

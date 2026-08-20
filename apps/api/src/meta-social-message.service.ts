@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { CompanyIntegrationService } from './company-integration.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { SupabaseService } from './supabase.service';
+import { MetaSocialAiService } from './meta-social-ai.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -11,6 +12,7 @@ export class MetaSocialMessageService {
     private readonly supabaseService: SupabaseService,
     private readonly companyIntegrationService: CompanyIntegrationService,
     private readonly credentialsService: IntegrationCredentialsService,
+    private readonly socialAiService: MetaSocialAiService,
   ) {}
 
   async processMessengerWebhook(bodyInput: unknown): Promise<void> {
@@ -98,16 +100,39 @@ export class MetaSocialMessageService {
           continue;
         }
 
-        await this.saveIncomingMessengerMessage({
-          companyId: integration.companyId,
-          pageId,
-          senderId,
-          providerMessageId: providerMessageId || null,
-          message: text,
-          messageType,
-          mediaUrl,
-          credentialsEncrypted: integration.credentialsEncrypted,
-        });
+        const savedSessionId =
+          await this.saveIncomingMessengerMessage({
+            companyId: integration.companyId,
+            pageId,
+            senderId,
+            providerMessageId: providerMessageId || null,
+            message: text,
+            messageType,
+            mediaUrl,
+            credentialsEncrypted: integration.credentialsEncrypted,
+          });
+
+        if (
+          savedSessionId &&
+          (messageType === 'text' || messageType === 'postback')
+        ) {
+          try {
+            await this.socialAiService.replyToMessenger({
+              companyId: integration.companyId,
+              pageId,
+              sessionId: savedSessionId,
+              recipientId: senderId,
+              customerMessage: text,
+              credentialsEncrypted:
+                integration.credentialsEncrypted,
+            });
+          } catch (error) {
+            console.error(
+              '[ChatPro][Messenger] Sofia no pudo responder:',
+              error,
+            );
+          }
+        }
       }
     }
   }
@@ -141,7 +166,7 @@ export class MetaSocialMessageService {
       }
 
       if (duplicate) {
-        return;
+        return null;
       }
     }
 
@@ -261,7 +286,7 @@ export class MetaSocialMessageService {
 
     if (messageError) {
       if (messageError.code === '23505') {
-        return;
+        return null;
       }
 
       throw new Error(
@@ -326,6 +351,8 @@ export class MetaSocialMessageService {
     console.log(
       `[ChatPro][Messenger] mensaje guardado company=${input.companyId} sender=${input.senderId} count=${inboundMessageCount}`,
     );
+
+    return sessionId;
   }
 
   private async getMessengerProfile(
