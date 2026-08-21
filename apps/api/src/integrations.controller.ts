@@ -70,8 +70,8 @@ const CATALOG = [
     integrationType: 'instagram',
     key: 'instagram',
     name: 'Instagram',
-    description: 'Mensajes directos de Instagram dentro de la Bandeja cuando el canal esté habilitado.',
-    connectionReady: false,
+    description: 'Mensajes directos de Instagram dentro de la Bandeja.',
+    connectionReady: true,
   },
   {
     provider: 'meta',

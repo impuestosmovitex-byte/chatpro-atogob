@@ -30,6 +30,9 @@ import { ConversationEventsService } from './conversation-events.service';
 import { InboxController } from './inbox.controller';
 import { IntegrationsController } from './integrations.controller';
 import { MetaMessengerController } from './meta-messenger.controller';
+import { MetaInstagramController } from './meta-instagram.controller';
+import { MetaInstagramWebhookController } from './meta-instagram-webhook.controller';
+import { MetaInstagramService } from './meta-instagram.service';
 import { MetaMessengerWebhookController } from './meta-messenger-webhook.controller';
 import { MetaMessengerService } from './meta-messenger.service';
 import { MetaSocialMessageService } from './meta-social-message.service';
@@ -80,6 +83,8 @@ import { ContactTagsController } from './contact-tags.controller';
     InboxController,
     IntegrationsController,
     MetaMessengerController,
+    MetaInstagramController,
+    MetaInstagramWebhookController,
     MetaMessengerWebhookController,
     ShopifyOauthController,
     ShopifyIntegrationTestController,
@@ -112,6 +117,7 @@ import { ContactTagsController } from './contact-tags.controller';
     CustomerOrderService,
     IntegrationCredentialsService,
     MetaMessengerService,
+    MetaInstagramService,
     MetaSocialMessageService,
     MetaSocialAiService,
     MetaSocialMessagingService,
