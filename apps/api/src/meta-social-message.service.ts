@@ -181,7 +181,7 @@ export class MetaSocialMessageService {
       await client
         .from('social_conversation_sessions')
         .select(
-          'id, inbound_message_count, display_name, username, profile_picture_url',
+          'id, inbound_message_count, display_name, username, profile_picture_url, attention_status',
         )
         .eq('company_id', input.companyId)
         .eq('channel', 'messenger')
@@ -205,6 +205,16 @@ export class MetaSocialMessageService {
           Number(existingSession.inbound_message_count) || 0,
         ) + 1;
 
+      const currentAttentionStatus =
+        typeof existingSession.attention_status === 'string'
+          ? existingSession.attention_status
+          : 'ai';
+
+      const nextAttentionStatus =
+        currentAttentionStatus === 'closed'
+          ? 'ai'
+          : currentAttentionStatus;
+
       const { error: updateError } = await client
         .from('social_conversation_sessions')
         .update({
@@ -221,8 +231,11 @@ export class MetaSocialMessageService {
             profile.profilePictureUrl ||
             existingSession.profile_picture_url ||
             null,
-          attention_status: 'ai',
-          closed_at: null,
+          attention_status: nextAttentionStatus,
+          closed_at:
+            currentAttentionStatus === 'closed'
+              ? null
+              : undefined,
           last_message_at: now,
           updated_at: now,
         })
