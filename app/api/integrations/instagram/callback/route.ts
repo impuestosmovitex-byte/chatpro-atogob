@@ -1,0 +1,74 @@
+import {
+  NextRequest,
+  NextResponse,
+} from 'next/server';
+
+export const dynamic =
+  'force-dynamic';
+
+export async function GET(
+  request: NextRequest,
+) {
+  const url =
+    new URL(request.url);
+
+  const forwardedHost =
+    request.headers
+      .get('x-forwarded-host')
+      ?.trim() || '';
+
+  const forwardedProto =
+    request.headers
+      .get('x-forwarded-proto')
+      ?.trim() || 'https';
+
+  const publicOrigin =
+    forwardedHost
+      ? `${forwardedProto}://${forwardedHost}`
+      : 'https://chatpro-web-production.up.railway.app';
+
+  const code =
+    url.searchParams.get('code');
+
+  const state =
+    url.searchParams.get('state');
+
+  const error =
+    url.searchParams.get('error');
+
+  const errorDescription =
+    url.searchParams.get(
+      'error_description',
+    );
+
+  if (error) {
+    return NextResponse.redirect(
+      new URL(
+        `/configuracion/integraciones?instagram_error=${encodeURIComponent(
+          errorDescription || error,
+        )}`,
+        publicOrigin,
+      ),
+    );
+  }
+
+  if (!code) {
+    return NextResponse.redirect(
+      new URL(
+        '/configuracion/integraciones?instagram_error=Meta no devolvió el código de autorización.',
+        publicOrigin,
+      ),
+    );
+  }
+
+  return NextResponse.redirect(
+    new URL(
+      `/configuracion/integraciones?instagram_code=${encodeURIComponent(
+        code,
+      )}&instagram_state=${encodeURIComponent(
+        state || '',
+      )}`,
+      publicOrigin,
+    ),
+  );
+}

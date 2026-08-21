@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
 import { WhatsappEmbeddedSignupButton } from './WhatsappEmbeddedSignupButton';
 import { MessengerConnectButton } from './MessengerConnectButton';
+import { InstagramConnectButton } from './InstagramConnectButton';
 import styles from './page.module.css';
 
 type Integration = {
@@ -614,6 +615,10 @@ export default function IntegracionesPage() {
 
               {selected.key === 'messenger' && selected.status !== 'active' ? (
                 <MessengerConnectButton />
+              ) : null}
+
+              {selected.key === 'instagram' && selected.status !== 'active' ? (
+                <InstagramConnectButton />
               ) : null}
 
               {selected.key === 'shopify' && selected.status !== 'active' ? (
