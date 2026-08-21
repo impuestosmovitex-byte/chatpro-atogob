@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { spawn } from 'node:child_process';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { extname, join } from 'node:path';
 import { SupabaseService } from './supabase.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 
@@ -310,9 +314,26 @@ export class MetaSocialMessagingService {
       );
     }
 
-    const mimeType =
+    let mediaBuffer = input.buffer;
+    let mimeType =
       input.mimeType.split(';')[0].trim().toLowerCase() ||
       'application/octet-stream';
+    let mediaFilename =
+      input.filename || 'archivo';
+
+    if (input.mediaType === 'audio') {
+      const prepared =
+        await this.prepareMessengerAudio({
+          buffer: input.buffer,
+          mimeType,
+          filename:
+            input.filename || 'audio.webm',
+        });
+
+      mediaBuffer = prepared.buffer;
+      mimeType = prepared.mimeType;
+      mediaFilename = prepared.filename;
+    }
 
     const limit =
       input.mediaType === 'image'
@@ -321,7 +342,7 @@ export class MetaSocialMessagingService {
           ? 12 * 1024 * 1024
           : 25 * 1024 * 1024;
 
-    if (input.buffer.length > limit) {
+    if (mediaBuffer.length > limit) {
       throw new Error(
         input.mediaType === 'image'
           ? 'La imagen supera 8 MB.'
@@ -395,7 +416,7 @@ export class MetaSocialMessagingService {
           'v25.0';
 
     const safeFilename =
-      (input.filename || 'archivo')
+      mediaFilename
         .replace(/[^a-zA-Z0-9._-]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 120) || 'archivo';
@@ -409,7 +430,7 @@ export class MetaSocialMessagingService {
         .from('chatpro-media')
         .upload(
           storagePath,
-          input.buffer,
+          mediaBuffer,
           {
             contentType: mimeType,
             upsert: false,
@@ -639,6 +660,179 @@ export class MetaSocialMessagingService {
     return {
       messageId,
     };
+  }
+
+
+  private async prepareMessengerAudio(input: {
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+  }): Promise<{
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+  }> {
+    const ffmpegPath =
+      require('ffmpeg-static') as string | null;
+
+    if (!ffmpegPath) {
+      throw new Error(
+        'El conversor de audio no está instalado en el servidor.',
+      );
+    }
+
+    try {
+      await access(ffmpegPath);
+    } catch {
+      throw new Error(
+        'El conversor de audio no quedó instalado correctamente en Railway.',
+      );
+    }
+
+    const directory =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          'chatpro-messenger-audio-',
+        ),
+      );
+
+    const sourceExtension =
+      extname(input.filename) ||
+      (
+        input.mimeType.includes('mp4')
+          ? '.m4a'
+          : input.mimeType.includes('ogg')
+            ? '.ogg'
+            : input.mimeType.includes('mpeg')
+              ? '.mp3'
+              : '.webm'
+      );
+
+    const source =
+      join(
+        directory,
+        `source${sourceExtension}`,
+      );
+
+    const target =
+      join(
+        directory,
+        'audio.mp3',
+      );
+
+    try {
+      await writeFile(
+        source,
+        input.buffer,
+      );
+
+      await new Promise<void>(
+        (resolve, reject) => {
+          const process =
+            spawn(
+              ffmpegPath,
+              [
+                '-hide_banner',
+                '-loglevel',
+                'error',
+                '-y',
+                '-i',
+                source,
+
+                // Elimina video/metadatos y reconstruye
+                // timestamps/duración para que Messenger
+                // no reciba un audio de 0:00.
+                '-vn',
+                '-af',
+                'aresample=async=1:first_pts=0',
+                '-fflags',
+                '+genpts',
+                '-avoid_negative_ts',
+                'make_zero',
+                '-map_metadata',
+                '-1',
+
+                // MP3 mono ampliamente compatible.
+                '-ac',
+                '1',
+                '-ar',
+                '44100',
+                '-c:a',
+                'libmp3lame',
+                '-b:a',
+                '64k',
+
+                target,
+              ],
+            );
+
+          let errorOutput = '';
+
+          process.stderr.on(
+            'data',
+            (chunk: Buffer) => {
+              errorOutput +=
+                chunk.toString('utf8');
+            },
+          );
+
+          process.on(
+            'error',
+            (error) => {
+              reject(
+                new Error(
+                  `No se pudo iniciar el conversor de audio: ${error.message}`,
+                ),
+              );
+            },
+          );
+
+          process.on(
+            'close',
+            (code) => {
+              if (code === 0) {
+                resolve();
+                return;
+              }
+
+              reject(
+                new Error(
+                  `No se pudo convertir el audio${
+                    errorOutput.trim()
+                      ? `: ${errorOutput.trim().slice(0, 700)}`
+                      : '.'
+                  }`,
+                ),
+              );
+            },
+          );
+        },
+      );
+
+      const buffer =
+        await readFile(target);
+
+      if (!buffer.length) {
+        throw new Error(
+          'El conversor generó un audio vacío.',
+        );
+      }
+
+      return {
+        buffer,
+        mimeType: 'audio/mpeg',
+        filename: 'audio.mp3',
+      };
+    } finally {
+      await rm(
+        directory,
+        {
+          recursive: true,
+          force: true,
+        },
+      ).catch(() => undefined);
+    }
   }
 
 }
