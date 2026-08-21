@@ -433,6 +433,149 @@ export class MetaSocialInboxService {
     };
   }
 
+  async takeConversation(
+    company: {
+      id: string;
+      slug: string;
+      name: string;
+    },
+    sessionId: string,
+    advisor: {
+      userId: string;
+      fullName: string;
+    },
+  ) {
+    const userId = advisor.userId.trim();
+    const fullName = advisor.fullName.trim();
+
+    if (!userId || !fullName) {
+      throw new Error('Falta el asesor autenticado.');
+    }
+
+    const now = new Date().toISOString();
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('social_conversation_sessions')
+      .update({
+        attention_status: 'human',
+        assigned_to_user_id: userId,
+        assigned_to_name: fullName,
+        taken_at: now,
+        closed_at: null,
+        updated_at: now,
+      })
+      .eq('id', sessionId)
+      .eq('company_id', company.id);
+
+    if (error) {
+      throw new Error(
+        `No se pudo tomar la conversación social: ${error.message}`,
+      );
+    }
+
+    const conversation = await this.getConversation(
+      company,
+      sessionId,
+    );
+
+    if (!conversation) {
+      throw new Error(
+        'La conversación social no existe para esta empresa.',
+      );
+    }
+
+    return conversation.session;
+  }
+
+  async closeConversation(
+    company: {
+      id: string;
+      slug: string;
+      name: string;
+    },
+    sessionId: string,
+  ) {
+    const now = new Date().toISOString();
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('social_conversation_sessions')
+      .update({
+        attention_status: 'closed',
+        assigned_to_user_id: null,
+        assigned_to_name: null,
+        taken_at: null,
+        closed_at: now,
+        updated_at: now,
+      })
+      .eq('id', sessionId)
+      .eq('company_id', company.id);
+
+    if (error) {
+      throw new Error(
+        `No se pudo finalizar la conversación social: ${error.message}`,
+      );
+    }
+
+    const conversation = await this.getConversation(
+      company,
+      sessionId,
+    );
+
+    if (!conversation) {
+      throw new Error(
+        'La conversación social no existe para esta empresa.',
+      );
+    }
+
+    return conversation.session;
+  }
+
+  async resumeAiConversation(
+    company: {
+      id: string;
+      slug: string;
+      name: string;
+    },
+    sessionId: string,
+  ) {
+    const now = new Date().toISOString();
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('social_conversation_sessions')
+      .update({
+        attention_status: 'ai',
+        assigned_to_user_id: null,
+        assigned_to_name: null,
+        taken_at: null,
+        closed_at: null,
+        updated_at: now,
+      })
+      .eq('id', sessionId)
+      .eq('company_id', company.id);
+
+    if (error) {
+      throw new Error(
+        `No se pudo devolver la conversación social a la IA: ${error.message}`,
+      );
+    }
+
+    const conversation = await this.getConversation(
+      company,
+      sessionId,
+    );
+
+    if (!conversation) {
+      throw new Error(
+        'La conversación social no existe para esta empresa.',
+      );
+    }
+
+    return conversation.session;
+  }
+
   private toInboxMessage(row: any): InboxMessage {
     const rawType =
       typeof row.message_type === 'string'

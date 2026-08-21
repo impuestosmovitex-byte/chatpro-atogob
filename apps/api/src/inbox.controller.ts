@@ -468,11 +468,32 @@ export class InboxController {
   ) {
     this.authorize(key);
 
-    const conversation =
-      await this.conversationMemoryService.getInboxConversation(
-        this.requiredCompany(company),
+    const companySlug = this.requiredCompany(company);
+
+    const profile =
+      await this.conversationMemoryService.getCompanyProfile(
+        companySlug,
+      );
+
+    const companyInfo = {
+      id: profile.id,
+      slug: profile.slug,
+      name: profile.name,
+    };
+
+    const socialConversation =
+      await this.metaSocialInboxService.getConversation(
+        companyInfo,
         sessionId,
       );
+
+    const conversation =
+      socialConversation ??
+      (await this.conversationMemoryService.getInboxConversation(
+        companySlug,
+        sessionId,
+      ));
+
     const actor = await this.actor(
       sessionType,
       userId,
@@ -481,7 +502,12 @@ export class InboxController {
       roleKey,
       conversation.company.id,
     );
-    const settings = await this.getAiTakeSettings(conversation.company.id);
+
+    const settings =
+      await this.getAiTakeSettings(
+        conversation.company.id,
+      );
+
     const availability = this.takeAvailability(
       actor,
       conversation.session,
@@ -490,7 +516,8 @@ export class InboxController {
 
     if (!availability.takeAvailable) {
       throw new ForbiddenException(
-        availability.takeBlockedReason || 'No puedes tomar esta conversación.',
+        availability.takeBlockedReason ||
+          'No puedes tomar esta conversación.',
       );
     }
 
@@ -499,14 +526,29 @@ export class InboxController {
           userId: actor.userId,
           fullName: actor.fullName,
         }
-      : await this.resolveBootstrapOwner(conversation.company.id);
+      : await this.resolveBootstrapOwner(
+          conversation.company.id,
+        );
+
+    if (socialConversation) {
+      return {
+        ok: true,
+        session:
+          await this.metaSocialInboxService.takeConversation(
+            companyInfo,
+            sessionId,
+            advisor,
+          ),
+      };
+    }
 
     return {
       ok: true,
-      session: await this.conversationMemoryService.takeConversation(
-        sessionId,
-        advisor,
-      ),
+      session:
+        await this.conversationMemoryService.takeConversation(
+          sessionId,
+          advisor,
+        ),
     };
   }
 
@@ -602,11 +644,33 @@ export class InboxController {
     @Param('sessionId') sessionId = '',
   ) {
     this.authorize(key);
-    const conversation =
-      await this.conversationMemoryService.getInboxConversation(
-        this.requiredCompany(company),
+
+    const companySlug = this.requiredCompany(company);
+
+    const profile =
+      await this.conversationMemoryService.getCompanyProfile(
+        companySlug,
+      );
+
+    const companyInfo = {
+      id: profile.id,
+      slug: profile.slug,
+      name: profile.name,
+    };
+
+    const socialConversation =
+      await this.metaSocialInboxService.getConversation(
+        companyInfo,
         sessionId,
       );
+
+    const conversation =
+      socialConversation ??
+      (await this.conversationMemoryService.getInboxConversation(
+        companySlug,
+        sessionId,
+      ));
+
     const actor = await this.actor(
       sessionType,
       userId,
@@ -615,11 +679,30 @@ export class InboxController {
       roleKey,
       conversation.company.id,
     );
-    this.assertManageOwn(actor, conversation.session, 'inbox.close');
+
+    this.assertManageOwn(
+      actor,
+      conversation.session,
+      'inbox.close',
+    );
+
+    if (socialConversation) {
+      return {
+        ok: true,
+        session:
+          await this.metaSocialInboxService.closeConversation(
+            companyInfo,
+            sessionId,
+          ),
+      };
+    }
+
     return {
       ok: true,
       session:
-        await this.conversationMemoryService.closeConversation(sessionId),
+        await this.conversationMemoryService.closeConversation(
+          sessionId,
+        ),
     };
   }
 
@@ -636,11 +719,33 @@ export class InboxController {
     @Param('sessionId') sessionId = '',
   ) {
     this.authorize(key);
-    const conversation =
-      await this.conversationMemoryService.getInboxConversation(
-        this.requiredCompany(company),
+
+    const companySlug = this.requiredCompany(company);
+
+    const profile =
+      await this.conversationMemoryService.getCompanyProfile(
+        companySlug,
+      );
+
+    const companyInfo = {
+      id: profile.id,
+      slug: profile.slug,
+      name: profile.name,
+    };
+
+    const socialConversation =
+      await this.metaSocialInboxService.getConversation(
+        companyInfo,
         sessionId,
       );
+
+    const conversation =
+      socialConversation ??
+      (await this.conversationMemoryService.getInboxConversation(
+        companySlug,
+        sessionId,
+      ));
+
     const actor = await this.actor(
       sessionType,
       userId,
@@ -649,11 +754,30 @@ export class InboxController {
       roleKey,
       conversation.company.id,
     );
-    this.assertManageOwn(actor, conversation.session, 'inbox.return_to_ai');
+
+    this.assertManageOwn(
+      actor,
+      conversation.session,
+      'inbox.return_to_ai',
+    );
+
+    if (socialConversation) {
+      return {
+        ok: true,
+        session:
+          await this.metaSocialInboxService.resumeAiConversation(
+            companyInfo,
+            sessionId,
+          ),
+      };
+    }
+
     return {
       ok: true,
       session:
-        await this.conversationMemoryService.resumeAiConversation(sessionId),
+        await this.conversationMemoryService.resumeAiConversation(
+          sessionId,
+        ),
     };
   }
 
