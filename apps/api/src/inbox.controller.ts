@@ -568,6 +568,107 @@ export class InboxController {
     @Body() body: InboxBody = {},
   ) {
     this.authorize(key);
+
+    const socialTransferCompanySlug =
+      this.requiredCompany(company);
+
+    const socialTransferProfile =
+      await this.conversationMemoryService.getCompanyProfile(
+        socialTransferCompanySlug,
+      );
+
+    const socialTransferCompany = {
+      id: socialTransferProfile.id,
+      slug: socialTransferProfile.slug,
+      name: socialTransferProfile.name,
+    };
+
+    const socialTransferConversation =
+      await this.metaSocialInboxService.getConversation(
+        socialTransferCompany,
+        sessionId,
+      );
+
+    if (socialTransferConversation) {
+      const socialTransferActor =
+        await this.actor(
+          sessionType,
+          userId,
+          fullName,
+          headerCompanyId,
+          roleKey,
+          socialTransferProfile.id,
+        );
+
+      if (
+        socialTransferConversation.session.attentionStatus !==
+        'human'
+      ) {
+        throw new BadRequestException(
+          'Solo se puede transferir una conversación tomada por un asesor.',
+        );
+      }
+
+      if (!socialTransferActor.isFullAccess) {
+        if (
+          !socialTransferActor.permissions.has('inbox.reply')
+        ) {
+          throw new ForbiddenException(
+            'No tienes permiso para transferir conversaciones.',
+          );
+        }
+
+        if (
+          socialTransferConversation.session.assignedToUserId !==
+          socialTransferActor.userId
+        ) {
+          throw new ForbiddenException(
+            'Solo puedes transferir conversaciones asignadas a tu usuario.',
+          );
+        }
+      }
+
+      const socialTargetUserId =
+        this.readText(body.targetUserId);
+
+      if (!socialTargetUserId) {
+        throw new BadRequestException(
+          'Selecciona el nuevo asesor.',
+        );
+      }
+
+      if (
+        socialTargetUserId ===
+        socialTransferConversation.session.assignedToUserId
+      ) {
+        throw new BadRequestException(
+          'La conversación ya está asignada a este asesor.',
+        );
+      }
+
+      const socialTarget =
+        await this.resolveTransferTarget(
+          socialTransferProfile.id,
+          socialTargetUserId,
+        );
+
+      const socialSession =
+        await this.metaSocialInboxService.takeConversation(
+          socialTransferCompany,
+          sessionId,
+          {
+            userId: socialTarget.userId,
+            fullName: socialTarget.fullName,
+          },
+        );
+
+      return {
+        ok: true,
+        session: socialSession,
+        transferredTo: socialTarget,
+      };
+    }
+
     const conversation =
       await this.conversationMemoryService.getInboxConversation(
         this.requiredCompany(company),
@@ -808,6 +909,99 @@ export class InboxController {
     },
   ) {
     this.authorize(key);
+
+    const socialAudioCompanySlug =
+      this.requiredCompany(company);
+
+    const socialAudioProfile =
+      await this.conversationMemoryService.getCompanyProfile(
+        socialAudioCompanySlug,
+      );
+
+    const socialAudioCompany = {
+      id: socialAudioProfile.id,
+      slug: socialAudioProfile.slug,
+      name: socialAudioProfile.name,
+    };
+
+    const socialAudioConversation =
+      await this.metaSocialInboxService.getConversation(
+        socialAudioCompany,
+        sessionId,
+      );
+
+    if (socialAudioConversation) {
+      const socialAudioActor =
+        await this.actor(
+          sessionType,
+          userId,
+          fullName,
+          headerCompanyId,
+          roleKey,
+          socialAudioProfile.id,
+        );
+
+      this.assertManageOwn(
+        socialAudioActor,
+        socialAudioConversation.session,
+        'inbox.reply',
+      );
+
+      if (
+        !socialAudioActor.isFullAccess &&
+        !socialAudioActor.permissions.has('inbox.audio')
+      ) {
+        throw new ForbiddenException(
+          'No tienes permiso para enviar audios.',
+        );
+      }
+
+      if (
+        socialAudioConversation.session.attentionStatus !==
+        'human'
+      ) {
+        throw new BadRequestException(
+          'La conversación debe estar tomada por un asesor para enviar audios.',
+        );
+      }
+
+      if (!file?.buffer?.length) {
+        throw new BadRequestException(
+          'Graba o selecciona un audio antes de enviarlo.',
+        );
+      }
+
+      try {
+        await this.metaSocialMessagingService.sendAdvisorMedia({
+          companyId: socialAudioProfile.id,
+          sessionId,
+          buffer: file.buffer,
+          mimeType: file.mimetype || 'audio/webm',
+          filename: file.originalname || 'audio.webm',
+          mediaType: 'audio',
+          advisorName: socialAudioActor.fullName,
+        });
+      } catch (error) {
+        const detail =
+          error instanceof Error
+            ? error.message
+            : 'Meta rechazó el audio.';
+
+        throw new BadRequestException(
+          detail.slice(0, 900),
+        );
+      }
+
+      return {
+        ok: true,
+        conversation:
+          await this.metaSocialInboxService.getConversation(
+            socialAudioCompany,
+            sessionId,
+          ),
+      };
+    }
+
     const conversation =
       await this.conversationMemoryService.getInboxConversation(
         this.requiredCompany(company),
@@ -913,6 +1107,100 @@ export class InboxController {
     },
   ) {
     this.authorize(key);
+
+    const socialImageCompanySlug =
+      this.requiredCompany(company);
+
+    const socialImageProfile =
+      await this.conversationMemoryService.getCompanyProfile(
+        socialImageCompanySlug,
+      );
+
+    const socialImageCompany = {
+      id: socialImageProfile.id,
+      slug: socialImageProfile.slug,
+      name: socialImageProfile.name,
+    };
+
+    const socialImageConversation =
+      await this.metaSocialInboxService.getConversation(
+        socialImageCompany,
+        sessionId,
+      );
+
+    if (socialImageConversation) {
+      const socialImageActor =
+        await this.actor(
+          sessionType,
+          userId,
+          fullName,
+          headerCompanyId,
+          roleKey,
+          socialImageProfile.id,
+        );
+
+      this.assertManageOwn(
+        socialImageActor,
+        socialImageConversation.session,
+        'inbox.reply',
+      );
+
+      if (
+        !socialImageActor.isFullAccess &&
+        !socialImageActor.permissions.has('inbox.media.send')
+      ) {
+        throw new ForbiddenException(
+          'No tienes permiso para enviar imágenes o archivos.',
+        );
+      }
+
+      if (
+        socialImageConversation.session.attentionStatus !==
+        'human'
+      ) {
+        throw new BadRequestException(
+          'La conversación debe estar tomada por un asesor para enviar imágenes.',
+        );
+      }
+
+      if (!file?.buffer?.length) {
+        throw new BadRequestException(
+          'Selecciona una imagen antes de enviarla.',
+        );
+      }
+
+      try {
+        await this.metaSocialMessagingService.sendAdvisorMedia({
+          companyId: socialImageProfile.id,
+          sessionId,
+          buffer: file.buffer,
+          mimeType: file.mimetype || 'image/jpeg',
+          filename: file.originalname || 'imagen.jpg',
+          mediaType: 'image',
+          caption,
+          advisorName: socialImageActor.fullName,
+        });
+      } catch (error) {
+        const detail =
+          error instanceof Error
+            ? error.message
+            : 'Meta rechazó la imagen.';
+
+        throw new BadRequestException(
+          detail.slice(0, 900),
+        );
+      }
+
+      return {
+        ok: true,
+        conversation:
+          await this.metaSocialInboxService.getConversation(
+            socialImageCompany,
+            sessionId,
+          ),
+      };
+    }
+
     const conversation =
       await this.conversationMemoryService.getInboxConversation(
         this.requiredCompany(company),
@@ -1037,6 +1325,115 @@ export class InboxController {
     },
   ) {
     this.authorize(key);
+
+    const socialFileCompanySlug =
+      this.requiredCompany(company);
+
+    const socialFileProfile =
+      await this.conversationMemoryService.getCompanyProfile(
+        socialFileCompanySlug,
+      );
+
+    const socialFileCompany = {
+      id: socialFileProfile.id,
+      slug: socialFileProfile.slug,
+      name: socialFileProfile.name,
+    };
+
+    const socialFileConversation =
+      await this.metaSocialInboxService.getConversation(
+        socialFileCompany,
+        sessionId,
+      );
+
+    if (socialFileConversation) {
+      const socialFileActor =
+        await this.actor(
+          sessionType,
+          userId,
+          fullName,
+          headerCompanyId,
+          roleKey,
+          socialFileProfile.id,
+        );
+
+      this.assertManageOwn(
+        socialFileActor,
+        socialFileConversation.session,
+        'inbox.reply',
+      );
+
+      if (
+        !socialFileActor.isFullAccess &&
+        !socialFileActor.permissions.has('inbox.media.send')
+      ) {
+        throw new ForbiddenException(
+          'No tienes permiso para enviar archivos.',
+        );
+      }
+
+      if (
+        socialFileConversation.session.attentionStatus !==
+        'human'
+      ) {
+        throw new BadRequestException(
+          'La conversación debe estar tomada por un asesor para enviar archivos.',
+        );
+      }
+
+      if (!file?.buffer?.length) {
+        throw new BadRequestException(
+          'Selecciona un archivo antes de enviarlo.',
+        );
+      }
+
+      const socialMimeType =
+        file.mimetype
+          ?.split(';')[0]
+          .trim()
+          .toLowerCase() ||
+        'application/octet-stream';
+
+      const socialIsVideo =
+        socialMimeType.startsWith('video/');
+
+      try {
+        await this.metaSocialMessagingService.sendAdvisorMedia({
+          companyId: socialFileProfile.id,
+          sessionId,
+          buffer: file.buffer,
+          mimeType: socialMimeType,
+          filename:
+            file.originalname ||
+            (socialIsVideo ? 'video.mp4' : 'archivo'),
+          mediaType:
+            socialIsVideo
+              ? 'video'
+              : 'document',
+          caption,
+          advisorName: socialFileActor.fullName,
+        });
+      } catch (error) {
+        const detail =
+          error instanceof Error
+            ? error.message
+            : 'No se pudo enviar el archivo.';
+
+        throw new BadRequestException(
+          detail.slice(0, 900),
+        );
+      }
+
+      return {
+        ok: true,
+        conversation:
+          await this.metaSocialInboxService.getConversation(
+            socialFileCompany,
+            sessionId,
+          ),
+      };
+    }
+
 
     const conversation =
       await this.conversationMemoryService.getInboxConversation(
@@ -1179,6 +1576,114 @@ export class InboxController {
     @Res() response: Response,
   ) {
     this.authorize(key);
+
+    const socialMediaCompanySlug =
+      this.requiredCompany(company);
+
+    const socialMediaProfile =
+      await this.conversationMemoryService.getCompanyProfile(
+        socialMediaCompanySlug,
+      );
+
+    const socialMediaCompany = {
+      id: socialMediaProfile.id,
+      slug: socialMediaProfile.slug,
+      name: socialMediaProfile.name,
+    };
+
+    const socialMediaConversation =
+      await this.metaSocialInboxService.getConversation(
+        socialMediaCompany,
+        sessionId,
+      );
+
+    if (socialMediaConversation) {
+      const client =
+        this.supabaseService.getClient();
+
+      const { data: mediaRow, error: mediaError } =
+        await client
+          .from('social_conversations')
+          .select(
+            'id, session_id, media_url, message_type',
+          )
+          .eq('id', messageId)
+          .eq('session_id', sessionId)
+          .eq('company_id', socialMediaProfile.id)
+          .maybeSingle();
+
+      if (mediaError) {
+        throw new BadRequestException(
+          `No se pudo consultar la multimedia social: ${mediaError.message}`,
+        );
+      }
+
+      if (
+        !mediaRow ||
+        typeof mediaRow.media_url !== 'string' ||
+        !mediaRow.media_url.trim()
+      ) {
+        throw new BadRequestException(
+          'Este mensaje social no tiene multimedia disponible.',
+        );
+      }
+
+      const location =
+        mediaRow.media_url.trim();
+
+      if (
+        location.startsWith('https://') ||
+        location.startsWith('http://')
+      ) {
+        const remote =
+          await fetch(location);
+
+        if (!remote.ok) {
+          throw new BadRequestException(
+            'No se pudo descargar la multimedia social.',
+          );
+        }
+
+        const buffer =
+          Buffer.from(
+            await remote.arrayBuffer(),
+          );
+
+        response.setHeader(
+          'content-type',
+          remote.headers.get('content-type') ||
+            'application/octet-stream',
+        );
+
+        return response.send(buffer);
+      }
+
+      const { data: stored, error: storedError } =
+        await client.storage
+          .from('chatpro-media')
+          .download(location);
+
+      if (storedError || !stored) {
+        throw new BadRequestException(
+          `No se pudo abrir la multimedia social: ${
+            storedError?.message || 'archivo no disponible'
+          }`,
+        );
+      }
+
+      const buffer =
+        Buffer.from(
+          await stored.arrayBuffer(),
+        );
+
+      response.setHeader(
+        'content-type',
+        stored.type || 'application/octet-stream',
+      );
+
+      return response.send(buffer);
+    }
+
     const conversation =
       await this.conversationMemoryService.getInboxConversation(
         this.requiredCompany(company),
