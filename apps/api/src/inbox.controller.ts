@@ -25,6 +25,7 @@ import {
 import { SupabaseService } from './supabase.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { MetaSocialInboxService } from './meta-social-inbox.service';
+import { MetaSocialMessagingService } from './meta-social-messaging.service';
 
 type InboxBody = {
   message?: unknown;
@@ -50,6 +51,7 @@ export class InboxController {
     private readonly whatsappMessagingService: WhatsappMessagingService,
     private readonly chatAgentService: ChatAgentService,
     private readonly metaSocialInboxService: MetaSocialInboxService,
+    private readonly metaSocialMessagingService: MetaSocialMessagingService,
   ) {}
 
   @Get()
@@ -1486,11 +1488,34 @@ export class InboxController {
     @Body() body: InboxBody = {},
   ) {
     this.authorize(key);
-    const conversation =
-      await this.conversationMemoryService.getInboxConversation(
-        this.requiredCompany(company),
+
+    const companySlug =
+      this.requiredCompany(company);
+
+    const profile =
+      await this.conversationMemoryService.getCompanyProfile(
+        companySlug,
+      );
+
+    const companyInfo = {
+      id: profile.id,
+      slug: profile.slug,
+      name: profile.name,
+    };
+
+    const socialConversation =
+      await this.metaSocialInboxService.getConversation(
+        companyInfo,
         sessionId,
       );
+
+    const conversation =
+      socialConversation ??
+      (await this.conversationMemoryService.getInboxConversation(
+        companySlug,
+        sessionId,
+      ));
+
     const actor = await this.actor(
       sessionType,
       userId,
@@ -1499,36 +1524,89 @@ export class InboxController {
       roleKey,
       conversation.company.id,
     );
-    this.assertManageOwn(actor, conversation.session, 'inbox.reply');
-    if (conversation.session.attentionStatus !== 'human')
+
+    this.assertManageOwn(
+      actor,
+      conversation.session,
+      'inbox.reply',
+    );
+
+    if (
+      conversation.session.attentionStatus !== 'human'
+    ) {
       throw new BadRequestException(
         'La conversación debe estar tomada por un asesor para responder.',
       );
-    const message = this.readText(body.message);
-    if (!message)
-      throw new BadRequestException('Escribe un mensaje antes de enviarlo.');
-    const sent = await this.whatsappMessagingService.sendText(
-      conversation.company.id,
-      conversation.session.customerPhone,
-      message,
-    );
+    }
+
+    const message =
+      this.readText(body.message);
+
+    if (!message) {
+      throw new BadRequestException(
+        'Escribe un mensaje antes de enviarlo.',
+      );
+    }
+
+    if (socialConversation) {
+      try {
+        await this.metaSocialMessagingService.sendAdvisorText({
+          companyId: conversation.company.id,
+          sessionId: conversation.session.id,
+          message,
+          advisorName: actor.fullName,
+        });
+      } catch (error) {
+        const detail =
+          error instanceof Error
+            ? error.message
+            : 'Meta rechazó el mensaje.';
+
+        throw new BadRequestException(
+          detail.slice(0, 900),
+        );
+      }
+
+      return {
+        ok: true,
+        conversation:
+          await this.metaSocialInboxService.getConversation(
+            companyInfo,
+            sessionId,
+          ),
+      };
+    }
+
+    const sent =
+      await this.whatsappMessagingService.sendText(
+        conversation.company.id,
+        conversation.session.customerPhone,
+        message,
+      );
+
     await this.conversationMemoryService.saveMessage({
       companyId: conversation.company.id,
       sessionId: conversation.session.id,
-      customerPhone: conversation.session.customerPhone,
+      customerPhone:
+        conversation.session.customerPhone,
       message,
       sender: 'assistant',
       authorType: 'advisor',
       aiResponse: null,
       providerMessageId: sent.messageId,
     });
-    await this.conversationMemoryService.touchSession(conversation.session.id);
+
+    await this.conversationMemoryService.touchSession(
+      conversation.session.id,
+    );
+
     return {
       ok: true,
-      conversation: await this.conversationMemoryService.getInboxConversation(
-        conversation.company.slug,
-        conversation.session.id,
-      ),
+      conversation:
+        await this.conversationMemoryService.getInboxConversation(
+          conversation.company.slug,
+          conversation.session.id,
+        ),
     };
   }
 
