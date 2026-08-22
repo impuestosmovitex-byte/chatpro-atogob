@@ -137,6 +137,424 @@ export class MetaSocialMessageService {
     }
   }
 
+
+  async processInstagramWebhook(bodyInput: unknown): Promise<void> {
+    const body = this.record(bodyInput);
+
+    if (
+      body.object !== 'instagram' ||
+      !Array.isArray(body.entry)
+    ) {
+      return;
+    }
+
+    for (const rawEntry of body.entry) {
+      const entry = this.record(rawEntry);
+      const instagramId = this.text(entry.id);
+
+      if (
+        !instagramId ||
+        !Array.isArray(entry.messaging)
+      ) {
+        continue;
+      }
+
+      const integration =
+        await this.companyIntegrationService.findActiveIntegrationByExternalId(
+          'meta',
+          'instagram',
+          instagramId,
+        );
+
+      if (!integration) {
+        console.warn(
+          `[ChatPro][Instagram] Cuenta no conectada instagramId=${instagramId}`,
+        );
+        continue;
+      }
+
+      for (const rawEvent of entry.messaging) {
+        const event = this.record(rawEvent);
+        const sender = this.record(event.sender);
+        const senderId = this.text(sender.id);
+
+        if (
+          !senderId ||
+          senderId === instagramId
+        ) {
+          continue;
+        }
+
+        const message = this.record(event.message);
+
+        if (message.is_echo === true) {
+          continue;
+        }
+
+        const providerMessageId =
+          this.text(message.mid);
+
+        let text =
+          this.text(message.text);
+
+        let messageType = 'text';
+        let mediaUrl: string | null = null;
+
+        if (
+          !text &&
+          Array.isArray(message.attachments)
+        ) {
+          const attachment =
+            this.record(message.attachments[0]);
+
+          const payload =
+            this.record(attachment.payload);
+
+          messageType =
+            this.text(attachment.type) ||
+            'attachment';
+
+          mediaUrl =
+            this.text(payload.url) ||
+            null;
+
+          text =
+            messageType === 'image'
+              ? '📷 Imagen recibida.'
+              : messageType === 'audio'
+                ? '🎵 Audio recibido.'
+                : messageType === 'video'
+                  ? '🎥 Video recibido.'
+                  : '📎 Archivo recibido.';
+        }
+
+        const postback =
+          this.record(event.postback);
+
+        if (
+          !text &&
+          Object.keys(postback).length
+        ) {
+          text =
+            this.text(postback.title) ||
+            this.text(postback.payload) ||
+            'Interacción con botón.';
+
+          messageType = 'postback';
+        }
+
+        if (!text) {
+          continue;
+        }
+
+        const savedSessionId =
+          await this.saveIncomingInstagramMessage({
+            companyId: integration.companyId,
+            instagramId,
+            senderId,
+            providerMessageId:
+              providerMessageId || null,
+            message: text,
+            messageType,
+            mediaUrl,
+          });
+
+        if (
+          savedSessionId &&
+          (
+            messageType === 'text' ||
+            messageType === 'postback'
+          )
+        ) {
+          try {
+            await this.socialAiService.replyToInstagram({
+              companyId: integration.companyId,
+              instagramId,
+              sessionId: savedSessionId,
+              recipientId: senderId,
+              customerMessage: text,
+              credentialsEncrypted:
+                integration.credentialsEncrypted,
+            });
+          } catch (error) {
+            console.error(
+              '[ChatPro][Instagram] Sofia no pudo responder:',
+              error,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  private async saveIncomingInstagramMessage(input: {
+    companyId: string;
+    instagramId: string;
+    senderId: string;
+    providerMessageId: string | null;
+    message: string;
+    messageType: string;
+    mediaUrl: string | null;
+  }) {
+    const client =
+      this.supabaseService.getClient();
+
+    if (input.providerMessageId) {
+      const {
+        data: duplicate,
+        error: duplicateError,
+      } = await client
+        .from('social_conversations')
+        .select('id')
+        .eq('company_id', input.companyId)
+        .eq('channel', 'instagram')
+        .eq(
+          'provider_message_id',
+          input.providerMessageId,
+        )
+        .maybeSingle();
+
+      if (duplicateError) {
+        throw new Error(
+          `No se pudo validar duplicado de Instagram: ${duplicateError.message}`,
+        );
+      }
+
+      if (duplicate) {
+        return null;
+      }
+    }
+
+    const now =
+      new Date().toISOString();
+
+    const {
+      data: existingSession,
+      error: existingSessionError,
+    } = await client
+      .from('social_conversation_sessions')
+      .select(
+        'id, inbound_message_count, display_name, username, profile_picture_url, attention_status',
+      )
+      .eq('company_id', input.companyId)
+      .eq('channel', 'instagram')
+      .eq(
+        'external_customer_id',
+        input.senderId,
+      )
+      .maybeSingle();
+
+    if (existingSessionError) {
+      throw new Error(
+        `No se pudo consultar sesión Instagram: ${existingSessionError.message}`,
+      );
+    }
+
+    let sessionId: string;
+    let inboundMessageCount: number;
+
+    if (existingSession) {
+      sessionId =
+        String(existingSession.id);
+
+      inboundMessageCount =
+        Math.max(
+          0,
+          Number(
+            existingSession.inbound_message_count,
+          ) || 0,
+        ) + 1;
+
+      const currentAttentionStatus =
+        typeof existingSession.attention_status ===
+        'string'
+          ? existingSession.attention_status
+          : 'ai';
+
+      const nextAttentionStatus =
+        currentAttentionStatus === 'closed'
+          ? 'ai'
+          : currentAttentionStatus;
+
+      const { error: updateError } =
+        await client
+          .from(
+            'social_conversation_sessions',
+          )
+          .update({
+            inbound_message_count:
+              inboundMessageCount,
+            attention_status:
+              nextAttentionStatus,
+            closed_at:
+              currentAttentionStatus === 'closed'
+                ? null
+                : undefined,
+            last_message_at: now,
+            updated_at: now,
+          })
+          .eq('id', sessionId);
+
+      if (updateError) {
+        throw new Error(
+          `No se pudo actualizar sesión Instagram: ${updateError.message}`,
+        );
+      }
+    } else {
+      inboundMessageCount = 1;
+
+      const {
+        data: createdSession,
+        error: createError,
+      } = await client
+        .from(
+          'social_conversation_sessions',
+        )
+        .insert({
+          company_id: input.companyId,
+          channel: 'instagram',
+          external_customer_id:
+            input.senderId,
+          display_name: null,
+          username: null,
+          profile_picture_url: null,
+          inbound_message_count: 1,
+          attention_status: 'ai',
+          pending_count: 1,
+          pending_since: now,
+          last_message_at: now,
+          updated_at: now,
+        })
+        .select('id')
+        .single();
+
+      if (
+        createError ||
+        !createdSession
+      ) {
+        throw new Error(
+          `No se pudo crear sesión Instagram: ${
+            createError?.message ||
+            'sin respuesta'
+          }`,
+        );
+      }
+
+      sessionId =
+        String(createdSession.id);
+    }
+
+    const { error: messageError } =
+      await client
+        .from('social_conversations')
+        .insert({
+          company_id: input.companyId,
+          session_id: sessionId,
+          channel: 'instagram',
+          external_customer_id:
+            input.senderId,
+          provider_message_id:
+            input.providerMessageId,
+          sender: 'customer',
+          author_type: 'customer',
+          message_type:
+            input.messageType,
+          message: input.message,
+          media_url: input.mediaUrl,
+          created_at: now,
+        });
+
+    if (messageError) {
+      if (
+        messageError.code === '23505'
+      ) {
+        return null;
+      }
+
+      throw new Error(
+        `No se pudo guardar mensaje Instagram: ${messageError.message}`,
+      );
+    }
+
+    if (existingSession) {
+      const currentPending =
+        await client
+          .from(
+            'social_conversation_sessions',
+          )
+          .select('pending_count')
+          .eq('id', sessionId)
+          .single();
+
+      const pendingCount =
+        Math.max(
+          0,
+          Number(
+            currentPending.data?.pending_count,
+          ) || 0,
+        ) + 1;
+
+      await client
+        .from(
+          'social_conversation_sessions',
+        )
+        .update({
+          pending_count: pendingCount,
+          pending_since:
+            pendingCount === 1
+              ? now
+              : undefined,
+          updated_at: now,
+        })
+        .eq('id', sessionId);
+    }
+
+    if (inboundMessageCount >= 4) {
+      const { error: contactError } =
+        await client
+          .from('social_contacts')
+          .upsert(
+            {
+              company_id:
+                input.companyId,
+              channel: 'instagram',
+              external_customer_id:
+                input.senderId,
+              display_name:
+                existingSession?.display_name ||
+                null,
+              username:
+                existingSession?.username ||
+                null,
+              profile_picture_url:
+                existingSession
+                  ?.profile_picture_url ||
+                null,
+              inbound_message_count:
+                inboundMessageCount,
+              last_activity_at: now,
+              updated_at: now,
+            },
+            {
+              onConflict:
+                'company_id,channel,external_customer_id',
+            },
+          );
+
+      if (contactError) {
+        throw new Error(
+          `No se pudo guardar cliente Instagram: ${contactError.message}`,
+        );
+      }
+    }
+
+    console.log(
+      `[ChatPro][Instagram] mensaje guardado company=${input.companyId} sender=${input.senderId} count=${inboundMessageCount}`,
+    );
+
+    return sessionId;
+  }
+
   private async saveIncomingMessengerMessage(input: {
     companyId: string;
     pageId: string;

@@ -69,28 +69,8 @@ export class MetaInstagramWebhookController {
     body: unknown,
   ) {
     try {
-      const processor =
-        (
-          this.socialMessageService as unknown as {
-            processInstagramWebhook?: (
-              value: unknown,
-            ) => Promise<void>;
-          }
-        ).processInstagramWebhook;
-
-      if (
-        typeof processor ===
-        'function'
-      ) {
-        await processor.call(
-          this.socialMessageService,
-          body,
-        );
-      } else {
-        console.warn(
-          '[ChatPro][Instagram] webhook recibido; procesador todavía pendiente.',
-        );
-      }
+      await this.socialMessageService
+        .processInstagramWebhook(body);
     } catch (error) {
       console.error(
         '[ChatPro][Instagram] Error procesando webhook:',

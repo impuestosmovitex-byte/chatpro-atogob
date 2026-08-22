@@ -51,11 +51,17 @@ export class MetaSocialMessagingService {
       );
     }
 
-    if (session.channel !== 'messenger') {
+    if (
+      session.channel !== 'messenger' &&
+      session.channel !== 'instagram'
+    ) {
       throw new Error(
         'Este canal social todavía no admite envío desde ChatPro.',
       );
     }
+
+    const channel =
+      session.channel as 'messenger' | 'instagram';
 
     const recipientId =
       typeof session.external_customer_id === 'string'
@@ -64,7 +70,7 @@ export class MetaSocialMessagingService {
 
     if (!recipientId) {
       throw new Error(
-        'La conversación de Messenger no tiene destinatario.',
+        `La conversación de ${channel === 'instagram' ? 'Instagram' : 'Messenger'} no tiene destinatario.`,
       );
     }
 
@@ -76,19 +82,19 @@ export class MetaSocialMessagingService {
         )
         .eq('company_id', input.companyId)
         .eq('provider', 'meta')
-        .eq('integration_type', 'messenger')
+        .eq('integration_type', channel)
         .eq('status', 'active')
         .maybeSingle();
 
     if (integrationError) {
       throw new Error(
-        `No se pudo consultar la integración de Messenger: ${integrationError.message}`,
+        `No se pudo consultar la integración de ${channel === 'instagram' ? 'Instagram' : 'Messenger'}: ${integrationError.message}`,
       );
     }
 
     if (!integrationRow) {
       throw new Error(
-        'Messenger no está conectado para esta empresa.',
+        `${channel === 'instagram' ? 'Instagram' : 'Messenger'} no está conectado para esta empresa.`,
       );
     }
 
@@ -101,7 +107,7 @@ export class MetaSocialMessagingService {
 
     if (!credentialsEncrypted) {
       throw new Error(
-        'La integración de Messenger no tiene credenciales disponibles.',
+        `La integración de ${channel === 'instagram' ? 'Instagram' : 'Messenger'} no tiene credenciales disponibles.`,
       );
     }
 
@@ -117,7 +123,7 @@ export class MetaSocialMessagingService {
 
     if (!accessToken) {
       throw new Error(
-        'No se encontró el Page Access Token de Messenger.',
+        `No se encontró el token de Meta para ${channel === 'instagram' ? 'Instagram' : 'Messenger'}.`,
       );
     }
 
@@ -135,8 +141,26 @@ export class MetaSocialMessagingService {
         : process.env.META_MESSENGER_GRAPH_VERSION?.trim() ||
           'v25.0';
 
+    const senderExternalId =
+      typeof integration.external_id === 'string'
+        ? integration.external_id.trim()
+        : '';
+
+    const graphSenderId =
+      channel === 'instagram'
+        ? senderExternalId
+        : 'me';
+
+    if (!graphSenderId) {
+      throw new Error(
+        `La integración de ${channel === 'instagram' ? 'Instagram' : 'Messenger'} no tiene identificador de envío.`,
+      );
+    }
+
     const url = new URL(
-      `https://graph.facebook.com/${apiVersion}/me/messages`,
+      `https://graph.facebook.com/${apiVersion}/${encodeURIComponent(
+        graphSenderId,
+      )}/messages`,
     );
 
     url.searchParams.set(
@@ -150,7 +174,9 @@ export class MetaSocialMessagingService {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        messaging_type: 'RESPONSE',
+        ...(channel === 'messenger'
+          ? { messaging_type: 'RESPONSE' }
+          : {}),
         recipient: {
           id: recipientId,
         },
@@ -209,7 +235,7 @@ export class MetaSocialMessagingService {
         .insert({
           company_id: input.companyId,
           session_id: input.sessionId,
-          channel: 'messenger',
+          channel,
           external_customer_id: recipientId,
           provider_message_id: messageId,
           sender: 'assistant',
@@ -245,7 +271,7 @@ export class MetaSocialMessagingService {
     }
 
     console.log(
-      `[ChatPro][Messenger] asesor respondió session=${input.sessionId} advisor="${input.advisorName}"`,
+      `[ChatPro][${channel === 'instagram' ? 'Instagram' : 'Messenger'}] asesor respondió session=${input.sessionId} advisor="${input.advisorName}"`,
     );
 
     return {
@@ -297,11 +323,17 @@ export class MetaSocialMessagingService {
       );
     }
 
-    if (session.channel !== 'messenger') {
+    if (
+      session.channel !== 'messenger' &&
+      session.channel !== 'instagram'
+    ) {
       throw new Error(
-        'Este envío multimedia todavía está habilitado únicamente para Messenger.',
+        'Este canal social todavía no admite envío multimedia desde ChatPro.',
       );
     }
+
+    const channel =
+      session.channel as 'messenger' | 'instagram';
 
     const recipientId =
       typeof session.external_customer_id === 'string'
@@ -310,7 +342,7 @@ export class MetaSocialMessagingService {
 
     if (!recipientId) {
       throw new Error(
-        'La conversación de Messenger no tiene destinatario.',
+        `La conversación de ${channel === 'instagram' ? 'Instagram' : 'Messenger'} no tiene destinatario.`,
       );
     }
 
@@ -323,7 +355,7 @@ export class MetaSocialMessagingService {
 
     if (input.mediaType === 'audio') {
       const prepared =
-        await this.prepareMessengerAudio({
+        await this.prepareSocialAudio({
           buffer: input.buffer,
           mimeType,
           filename:
@@ -355,22 +387,22 @@ export class MetaSocialMessagingService {
     const { data: integrationRow, error: integrationError } =
       await client
         .from('company_integrations')
-        .select('credentials_encrypted, config')
+        .select('external_id, credentials_encrypted, config')
         .eq('company_id', input.companyId)
         .eq('provider', 'meta')
-        .eq('integration_type', 'messenger')
+        .eq('integration_type', channel)
         .eq('status', 'active')
         .maybeSingle();
 
     if (integrationError) {
       throw new Error(
-        `No se pudo consultar Messenger: ${integrationError.message}`,
+        `No se pudo consultar ${channel === 'instagram' ? 'Instagram' : 'Messenger'}: ${integrationError.message}`,
       );
     }
 
     if (!integrationRow) {
       throw new Error(
-        'Messenger no está conectado para esta empresa.',
+        `${channel === 'instagram' ? 'Instagram' : 'Messenger'} no está conectado para esta empresa.`,
       );
     }
 
@@ -381,7 +413,7 @@ export class MetaSocialMessagingService {
 
     if (!credentialsEncrypted) {
       throw new Error(
-        'Messenger no tiene credenciales disponibles.',
+        `${channel === 'instagram' ? 'Instagram' : 'Messenger'} no tiene credenciales disponibles.`,
       );
     }
 
@@ -397,7 +429,7 @@ export class MetaSocialMessagingService {
 
     if (!accessToken) {
       throw new Error(
-        'No se encontró el Page Access Token de Messenger.',
+        `No se encontró el token de Meta para ${channel === 'instagram' ? 'Instagram' : 'Messenger'}.`,
       );
     }
 
@@ -457,7 +489,7 @@ export class MetaSocialMessagingService {
         .remove([storagePath]);
 
       throw new Error(
-        `No se pudo preparar el archivo para Messenger: ${
+        `No se pudo preparar el archivo para ${channel === 'instagram' ? 'Instagram' : 'Messenger'}: ${
           signedError?.message || 'URL no disponible'
         }`,
       );
@@ -468,8 +500,26 @@ export class MetaSocialMessagingService {
         ? 'file'
         : input.mediaType;
 
+    const senderExternalId =
+      typeof integrationRow.external_id === 'string'
+        ? integrationRow.external_id.trim()
+        : '';
+
+    const graphSenderId =
+      channel === 'instagram'
+        ? senderExternalId
+        : 'me';
+
+    if (!graphSenderId) {
+      throw new Error(
+        `La integración de ${channel === 'instagram' ? 'Instagram' : 'Messenger'} no tiene identificador de envío.`,
+      );
+    }
+
     const graphUrl = new URL(
-      `https://graph.facebook.com/${apiVersion}/me/messages`,
+      `https://graph.facebook.com/${apiVersion}/${encodeURIComponent(
+        graphSenderId,
+      )}/messages`,
     );
 
     graphUrl.searchParams.set(
@@ -488,7 +538,9 @@ export class MetaSocialMessagingService {
             'content-type': 'application/json',
           },
           body: JSON.stringify({
-            messaging_type: 'RESPONSE',
+            ...(channel === 'messenger'
+              ? { messaging_type: 'RESPONSE' }
+              : {}),
             recipient: {
               id: recipientId,
             },
@@ -530,7 +582,7 @@ export class MetaSocialMessagingService {
             : `HTTP ${response.status}`;
 
         throw new Error(
-          `Meta Messenger rechazó el archivo: ${detail}`,
+          `Meta ${channel === 'instagram' ? 'Instagram' : 'Messenger'} rechazó el archivo: ${detail}`,
         );
       }
 
@@ -580,7 +632,7 @@ export class MetaSocialMessagingService {
         .insert({
           company_id: input.companyId,
           session_id: input.sessionId,
-          channel: 'messenger',
+          channel,
           external_customer_id: recipientId,
           provider_message_id: messageId,
           sender: 'assistant',
@@ -620,7 +672,7 @@ export class MetaSocialMessagingService {
           .insert({
             company_id: input.companyId,
             session_id: input.sessionId,
-            channel: 'messenger',
+            channel,
             external_customer_id: recipientId,
             provider_message_id: captionId,
             sender: 'assistant',
@@ -633,7 +685,7 @@ export class MetaSocialMessagingService {
 
       if (captionError) {
         console.error(
-          '[ChatPro][Messenger] archivo enviado; falló guardado del caption:',
+          `[ChatPro][${channel === 'instagram' ? 'Instagram' : 'Messenger'}] archivo enviado; falló guardado del caption:`,
           captionError,
         );
       }
@@ -654,7 +706,7 @@ export class MetaSocialMessagingService {
       .eq('company_id', input.companyId);
 
     console.log(
-      `[ChatPro][Messenger] asesor envió ${input.mediaType} session=${input.sessionId} advisor="${input.advisorName}"`,
+      `[ChatPro][${channel === 'instagram' ? 'Instagram' : 'Messenger'}] asesor envió ${input.mediaType} session=${input.sessionId} advisor="${input.advisorName}"`,
     );
 
     return {
@@ -663,7 +715,7 @@ export class MetaSocialMessagingService {
   }
 
 
-  private async prepareMessengerAudio(input: {
+  private async prepareSocialAudio(input: {
     buffer: Buffer;
     mimeType: string;
     filename: string;
@@ -693,7 +745,7 @@ export class MetaSocialMessagingService {
       await mkdtemp(
         join(
           tmpdir(),
-          'chatpro-messenger-audio-',
+          'chatpro-social-audio-',
         ),
       );
 
