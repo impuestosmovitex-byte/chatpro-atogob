@@ -576,6 +576,59 @@ export class MetaInstagramService {
         'La autorización de Meta no es válida para esta aplicación.',
       );
     }
+
+    const scopes =
+      Array.isArray(data.scopes)
+        ? data.scopes
+            .map((value) =>
+              typeof value === 'string'
+                ? value.trim()
+                : '',
+            )
+            .filter(Boolean)
+        : [];
+
+    const granularScopes =
+      Array.isArray(data.granular_scopes)
+        ? data.granular_scopes
+            .map((value) =>
+              this.toRecord(value),
+            )
+            .map((value) =>
+              this.text(value.scope),
+            )
+            .filter(Boolean)
+        : [];
+
+    const grantedScopes =
+      Array.from(
+        new Set([
+          ...scopes,
+          ...granularScopes,
+        ]),
+      );
+
+    console.log(
+      `[ChatPro][Instagram] permisos concedidos: ${grantedScopes.join(', ') || 'ninguno-visible'}`,
+    );
+
+    const requiredScopes = [
+      'instagram_basic',
+      'instagram_manage_messages',
+      'pages_manage_metadata',
+    ];
+
+    const missingScopes =
+      requiredScopes.filter(
+        (scope) =>
+          !grantedScopes.includes(scope),
+      );
+
+    if (missingScopes.length) {
+      throw new BadRequestException(
+        `Meta no concedió estos permisos necesarios para Instagram: ${missingScopes.join(', ')}`,
+      );
+    }
   }
 
   private async exchangeLongLivedUserToken(
