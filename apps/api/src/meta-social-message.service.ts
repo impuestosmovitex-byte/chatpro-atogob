@@ -141,10 +141,11 @@ export class MetaSocialMessageService {
   async processInstagramWebhook(bodyInput: unknown): Promise<void> {
     const body = this.record(bodyInput);
 
-    if (
-      body.object !== 'instagram' ||
-      !Array.isArray(body.entry)
-    ) {
+    console.log(
+      `[ChatPro][Instagram] webhook recibido object=${this.text(body.object) || 'sin-object'}`,
+    );
+
+    if (!Array.isArray(body.entry)) {
       return;
     }
 
@@ -152,10 +153,7 @@ export class MetaSocialMessageService {
       const entry = this.record(rawEntry);
       const instagramId = this.text(entry.id);
 
-      if (
-        !instagramId ||
-        !Array.isArray(entry.messaging)
-      ) {
+      if (!instagramId) {
         continue;
       }
 
@@ -173,15 +171,63 @@ export class MetaSocialMessageService {
         continue;
       }
 
-      for (const rawEvent of entry.messaging) {
-        const event = this.record(rawEvent);
+      const events: JsonObject[] = [];
+
+      // Formato de mensajería clásico:
+      // entry[].messaging[]
+      if (Array.isArray(entry.messaging)) {
+        for (const rawEvent of entry.messaging) {
+          events.push(this.record(rawEvent));
+        }
+      }
+
+      // Formato Webhooks del objeto Instagram:
+      // entry[].changes[].field === "messages"
+      // entry[].changes[].value
+      if (Array.isArray(entry.changes)) {
+        for (const rawChange of entry.changes) {
+          const change = this.record(rawChange);
+
+          if (this.text(change.field) !== 'messages') {
+            continue;
+          }
+
+          const value = this.record(change.value);
+
+          if (Object.keys(value).length) {
+            events.push(value);
+          }
+        }
+      }
+
+      if (!events.length) {
+        console.log(
+          `[ChatPro][Instagram] webhook sin eventos de messages instagramId=${instagramId}`,
+        );
+        continue;
+      }
+
+      for (const event of events) {
         const sender = this.record(event.sender);
+        const recipient = this.record(event.recipient);
+
         const senderId = this.text(sender.id);
+        const recipientId = this.text(recipient.id);
 
         if (
           !senderId ||
           senderId === instagramId
         ) {
+          continue;
+        }
+
+        if (
+          recipientId &&
+          recipientId !== instagramId
+        ) {
+          console.log(
+            `[ChatPro][Instagram] evento ignorado recipient=${recipientId} instagramId=${instagramId}`,
+          );
           continue;
         }
 
@@ -244,8 +290,15 @@ export class MetaSocialMessageService {
         }
 
         if (!text) {
+          console.log(
+            `[ChatPro][Instagram] evento sin contenido utilizable sender=${senderId}`,
+          );
           continue;
         }
+
+        console.log(
+          `[ChatPro][Instagram] mensaje entrante sender=${senderId} type=${messageType}`,
+        );
 
         const savedSessionId =
           await this.saveIncomingInstagramMessage({
@@ -286,6 +339,7 @@ export class MetaSocialMessageService {
       }
     }
   }
+
 
   private async saveIncomingInstagramMessage(input: {
     companyId: string;
