@@ -270,6 +270,12 @@ export class MetaInstagramService {
       );
     }
 
+
+    await this.subscribeInstagramMessages({
+      pageId,
+      pageAccessToken,
+    });
+
     const client =
       this.supabaseService.getClient();
 
@@ -429,6 +435,50 @@ export class MetaInstagramService {
       name: instagramName,
       pageId,
     };
+  }
+
+
+  private async subscribeInstagramMessages(input: {
+    pageId: string;
+    pageAccessToken: string;
+  }): Promise<void> {
+    const settings =
+      this.requireSettings();
+
+    const url = new URL(
+      `https://graph.facebook.com/${settings.apiVersion}/${encodeURIComponent(
+        input.pageId,
+      )}/subscribed_apps`,
+    );
+
+    url.searchParams.set(
+      'subscribed_fields',
+      'messages',
+    );
+
+    url.searchParams.set(
+      'access_token',
+      input.pageAccessToken,
+    );
+
+    const payload =
+      await this.metaJson(
+        url,
+        {
+          method: 'POST',
+        },
+        'Meta no permitió suscribir Instagram a los webhooks de mensajes',
+      );
+
+    if (payload.success !== true) {
+      throw new BadRequestException(
+        'Meta no confirmó la suscripción de Instagram a los mensajes.',
+      );
+    }
+
+    console.log(
+      `[ChatPro][Instagram] Página suscrita a messages pageId=${input.pageId}`,
+    );
   }
 
   private async getPagesWithInstagram(
