@@ -617,7 +617,7 @@ export default function IntegracionesPage() {
                 <MessengerConnectButton />
               ) : null}
 
-              {selected.key === 'instagram' && selected.status !== 'active' ? (
+              {selected.key === 'instagram' ? (
                 <InstagramConnectButton />
               ) : null}
 
