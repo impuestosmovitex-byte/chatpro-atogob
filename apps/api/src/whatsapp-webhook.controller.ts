@@ -26,6 +26,14 @@ import {
 export class WhatsappWebhookController {
   private readonly conversationQueues = new Map<string, Promise<void>>();
   private readonly recentProductUrlMessages = new Map<string, number>();
+  private readonly latestInboundMessages = new Map<
+    string,
+    {
+      messageId: string | null;
+      receivedAt: number;
+      burstId: string;
+    }
+  >();
 
   constructor(
     private readonly chatAgentService: ChatAgentService,
@@ -120,6 +128,8 @@ export class WhatsappWebhookController {
           return 'EVENT_RECEIVED';
         }
 
+        this.markInboundActivity(conversationKey, incomingMessageId);
+
         this.enqueueConversation(conversationKey, () =>
           this.processIncomingAudio({
             incomingPhoneNumberId,
@@ -153,6 +163,9 @@ export class WhatsappWebhookController {
           return 'EVENT_RECEIVED';
         }
 
+        const burstId =
+          this.markInboundActivity(conversationKey, incomingMessageId);
+
         this.enqueueConversation(conversationKey, () =>
           this.processIncomingImage({
             incomingPhoneNumberId,
@@ -162,6 +175,48 @@ export class WhatsappWebhookController {
             mediaId,
             mimeType,
             caption,
+            burstId,
+          }),
+        );
+
+        return 'EVENT_RECEIVED';
+      }
+
+      if (message.type === 'location') {
+        const latitude = Number(message.location?.latitude);
+        const longitude = Number(message.location?.longitude);
+        const name =
+          typeof message.location?.name === 'string'
+            ? message.location.name.replace(/\s+/g, ' ').trim().slice(0, 300)
+            : '';
+        const address =
+          typeof message.location?.address === 'string'
+            ? message.location.address.replace(/\s+/g, ' ').trim().slice(0, 600)
+            : '';
+
+        if (
+          !Number.isFinite(latitude) ||
+          !Number.isFinite(longitude) ||
+          latitude < -90 ||
+          latitude > 90 ||
+          longitude < -180 ||
+          longitude > 180
+        ) {
+          return 'EVENT_RECEIVED';
+        }
+
+        this.markInboundActivity(conversationKey, incomingMessageId);
+
+        this.enqueueConversation(conversationKey, () =>
+          this.processIncomingLocation({
+            incomingPhoneNumberId,
+            phone,
+            incomingMessageId,
+            replyToProviderMessageId,
+            latitude,
+            longitude,
+            name,
+            address,
           }),
         );
 
@@ -206,6 +261,8 @@ export class WhatsappWebhookController {
           return 'EVENT_RECEIVED';
         }
 
+        this.markInboundActivity(conversationKey, incomingMessageId);
+
         this.enqueueConversation(conversationKey, () =>
           this.processIncomingAttachment({
             incomingPhoneNumberId,
@@ -240,6 +297,10 @@ export class WhatsappWebhookController {
 
       if (this.isProductUrlMessage(text)) {
         this.recentProductUrlMessages.set(conversationKey, Date.now());
+      }
+
+      if (!suppressReply) {
+        this.markInboundActivity(conversationKey, incomingMessageId);
       }
 
       this.enqueueConversation(conversationKey, () =>
@@ -288,6 +349,7 @@ export class WhatsappWebhookController {
       .finally(() => {
         if (this.conversationQueues.get(conversationKey) === next) {
           this.conversationQueues.delete(conversationKey);
+          this.latestInboundMessages.delete(conversationKey);
         }
       });
   }
@@ -331,6 +393,157 @@ export class WhatsappWebhookController {
 
     this.recentProductUrlMessages.delete(conversationKey);
     return true;
+  }
+
+  private async processIncomingLocation(input: {
+    incomingPhoneNumberId: string;
+    phone: string;
+    incomingMessageId: string | null;
+    replyToProviderMessageId: string | null;
+    latitude: number;
+    longitude: number;
+    name: string;
+    address: string;
+  }): Promise<void> {
+    const integration =
+      await this.companyIntegrationService.findActiveIntegrationByExternalId(
+        'meta',
+        'whatsapp',
+        input.incomingPhoneNumberId,
+      );
+
+    if (!integration) {
+      throw new Error(
+        'No existe una empresa activa para la ubicación entrante.',
+      );
+    }
+
+    const profile =
+      await this.conversationMemoryService.getCompanyProfileById(
+        integration.companyId,
+      );
+
+    let session =
+      await this.conversationMemoryService.getOrCreateSessionByCompanyId(
+        integration.companyId,
+        input.phone,
+      );
+
+    session =
+      await this.chatAgentService.prepareSessionForIncomingActivity(
+        profile,
+        session,
+      );
+
+    const details = [
+      input.name ? `Nombre: ${input.name}` : '',
+      input.address ? `Dirección: ${input.address}` : '',
+      `Coordenadas: ${input.latitude}, ${input.longitude}`,
+    ]
+      .filter(Boolean)
+      .join('. ');
+
+    const customerMessage = `📍 Ubicación recibida. ${details}`;
+
+    const saved = await this.conversationMemoryService.saveMessage({
+      companyId: profile.id,
+      sessionId: session.id,
+      customerPhone: input.phone,
+      message: customerMessage,
+      sender: 'customer',
+      authorType: 'customer',
+      providerMessageId: input.incomingMessageId,
+      replyToProviderMessageId: input.replyToProviderMessageId,
+      messageType: 'location',
+      messageMetadata: {
+        latitude: input.latitude,
+        longitude: input.longitude,
+        name: input.name || null,
+        address: input.address || null,
+      },
+    });
+
+    if (saved === 'duplicate') {
+      return;
+    }
+
+    await this.conversationMemoryService.touchSession(session.id);
+
+    if (
+      session.attentionStatus === 'waiting' ||
+      session.attentionStatus === 'human'
+    ) {
+      console.log(
+        `Ubicación guardada para atención humana de ${input.phone}`,
+      );
+      return;
+    }
+
+    if (session.attentionStatus === 'closed') {
+      session =
+        await this.conversationMemoryService.resumeAiConversation(
+          session.id,
+        );
+    }
+
+    const conversationKey =
+      `${input.incomingPhoneNumberId}:${input.phone}`;
+
+    const isLatestInboundMessage =
+      await this.waitForInboundQuietWindow(
+        conversationKey,
+        input.incomingMessageId,
+      );
+
+    if (!isLatestInboundMessage) {
+      console.log(
+        `Respuesta de ubicación omitida porque llegó un mensaje más reciente de ${input.phone}`,
+      );
+      return;
+    }
+
+    session = await this.attachRecoveryContext(
+      session,
+      profile.id,
+      input.phone,
+    );
+
+    const reply = await this.resolveReply(
+      profile,
+      session,
+      customerMessage,
+    );
+
+    if (
+      !this.isCurrentInboundMessage(
+        conversationKey,
+        input.incomingMessageId,
+      )
+    ) {
+      console.log(
+        `Respuesta de ubicación cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+      );
+      return;
+    }
+
+    await this.whatsappMessagingService.sendText(
+      profile.id,
+      input.phone,
+      reply,
+    );
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: profile.id,
+      sessionId: session.id,
+      customerPhone: input.phone,
+      message: reply,
+      sender: 'assistant',
+      authorType: 'ai',
+      aiResponse: reply,
+    });
+
+    await this.conversationMemoryService.touchSession(session.id);
+    console.log(`Ubicación comprendida y respondida a ${input.phone}`);
   }
 
   private async processIncomingAttachment(input: {
@@ -428,6 +641,161 @@ export class WhatsappWebhookController {
     console.log(
       `${input.messageType === 'video' ? 'Video' : 'Documento'} guardado de ${input.phone}`,
     );
+
+    if (
+      session.attentionStatus === 'waiting' ||
+      session.attentionStatus === 'human'
+    ) {
+      console.log(
+        `${input.messageType === 'video' ? 'Video' : 'Documento'} guardado para atención humana de ${input.phone}`,
+      );
+      return;
+    }
+
+    if (session.attentionStatus === 'closed') {
+      session =
+        await this.conversationMemoryService.resumeAiConversation(
+          session.id,
+        );
+    }
+
+    const conversationKey =
+      `${input.incomingPhoneNumberId}:${input.phone}`;
+
+    const isLatestInboundMessage =
+      await this.waitForInboundQuietWindow(
+        conversationKey,
+        input.incomingMessageId,
+      );
+
+    if (!isLatestInboundMessage) {
+      console.log(
+        `Respuesta de ${input.messageType} omitida porque llegó un mensaje más reciente de ${input.phone}`,
+      );
+      return;
+    }
+
+    session = await this.attachRecoveryContext(
+      session,
+      profile.id,
+      input.phone,
+    );
+
+    const reply = await this.resolveReply(
+      profile,
+      session,
+      customerMessage,
+    );
+
+    if (
+      !this.isCurrentInboundMessage(
+        conversationKey,
+        input.incomingMessageId,
+      )
+    ) {
+      console.log(
+        `Respuesta de ${input.messageType} cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+      );
+      return;
+    }
+
+    await this.whatsappMessagingService.sendText(
+      profile.id,
+      input.phone,
+      reply,
+    );
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: profile.id,
+      sessionId: session.id,
+      customerPhone: input.phone,
+      message: reply,
+      sender: 'assistant',
+      authorType: 'ai',
+      aiResponse: reply,
+    });
+
+    await this.conversationMemoryService.touchSession(session.id);
+
+    console.log(
+      `${input.messageType === 'video' ? 'Video' : 'Documento'} comprendido en contexto y respondido a ${input.phone}`,
+    );
+  }
+
+  private markInboundActivity(
+    conversationKey: string,
+    messageId: string | null,
+  ): string {
+    const current = this.latestInboundMessages.get(conversationKey);
+
+    if (messageId && current?.messageId === messageId) {
+      return current.burstId;
+    }
+
+    const now = Date.now();
+    const continuesCurrentBurst =
+      Boolean(current) &&
+      now - current!.receivedAt <= 10_000;
+
+    const burstId =
+      continuesCurrentBurst && current
+        ? current.burstId
+        : messageId ||
+          `${now}-${Math.random().toString(36).slice(2, 10)}`;
+
+    this.latestInboundMessages.set(conversationKey, {
+      messageId,
+      receivedAt: now,
+      burstId,
+    });
+
+    return burstId;
+  }
+
+  private isCurrentInboundMessage(
+    conversationKey: string,
+    messageId: string | null,
+  ): boolean {
+    const latest = this.latestInboundMessages.get(conversationKey);
+
+    if (!latest) {
+      return true;
+    }
+
+    if (!messageId || !latest.messageId) {
+      return true;
+    }
+
+    return latest.messageId === messageId;
+  }
+
+  private async waitForInboundQuietWindow(
+    conversationKey: string,
+    messageId: string | null,
+    waitMs = 10_000,
+  ): Promise<boolean> {
+    const latest = this.latestInboundMessages.get(conversationKey);
+
+    if (
+      latest &&
+      messageId &&
+      latest.messageId &&
+      latest.messageId !== messageId
+    ) {
+      return false;
+    }
+
+    const remainingMs = latest
+      ? Math.max(0, waitMs - (Date.now() - latest.receivedAt))
+      : waitMs;
+
+    if (remainingMs > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, remainingMs);
+      });
+    }
+
+    return this.isCurrentInboundMessage(conversationKey, messageId);
   }
 
   private async processIncomingImage(input: {
@@ -438,6 +806,7 @@ export class WhatsappWebhookController {
     mediaId: string;
     mimeType: string;
     caption: string;
+    burstId: string;
   }): Promise<void> {
     let profile: CompanyProfile | null = null;
     let session: ConversationSession | null = null;
@@ -553,7 +922,14 @@ export class WhatsappWebhookController {
       const serviceFlow =
         sessionContext.customer_service_flow &&
         typeof sessionContext.customer_service_flow === 'object' &&
-        !Array.isArray(sessionContext.customer_service_flow);
+        !Array.isArray(sessionContext.customer_service_flow)
+          ? sessionContext.customer_service_flow as Record<string, unknown>
+          : null;
+
+      const serviceFlowType =
+        typeof serviceFlow?.type === 'string'
+          ? serviceFlow.type
+          : '';
 
       const serviceAreaValue =
         sessionContext.service_area &&
@@ -570,14 +946,27 @@ export class WhatsappWebhookController {
               .replace(/[\u0300-\u036f]/g, '')
           : '';
 
+      const serviceAreaType =
+        serviceAreaValue?.areaType === 'sales' ||
+        serviceAreaValue?.areaType === 'service'
+          ? serviceAreaValue.areaType
+          : null;
+
+      const legacyServiceAreaByName =
+        serviceAreaType === null &&
+        (
+          serviceAreaName.includes('servicio') ||
+          serviceAreaName.includes('soporte') ||
+          serviceAreaName.includes('postventa') ||
+          serviceAreaName.includes('pedido') ||
+          serviceAreaName.includes('garantia')
+        );
+
       const isServiceContext =
         storedCategory === 'service' ||
-        Boolean(serviceFlow) ||
-        serviceAreaName.includes('servicio') ||
-        serviceAreaName.includes('soporte') ||
-        serviceAreaName.includes('postventa') ||
-        serviceAreaName.includes('pedido') ||
-        serviceAreaName.includes('garantia');
+        serviceFlowType === 'order_lookup' ||
+        serviceAreaType === 'service' ||
+        legacyServiceAreaByName;
 
       if (isServiceContext) {
         const activeAreas =
@@ -585,28 +974,46 @@ export class WhatsappWebhookController {
             profile.id,
           );
 
-        const normalizeAreaName = (value: string) =>
-          value
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '');
+        const configuredServiceAreas = activeAreas.filter(
+          (area) => area.areaType === 'service',
+        );
 
-        const serviceAreas = activeAreas.filter((area) => {
-          const name = normalizeAreaName(area.name);
-
-          return (
-            name.includes('servicio') ||
-            name.includes('soporte') ||
-            name.includes('postventa') ||
-            name.includes('pedido') ||
-            name.includes('garantia')
-          );
-        });
-
-        const configuredServiceArea =
-          serviceAreas.length === 1
-            ? serviceAreas[0]
+        let configuredServiceArea =
+          configuredServiceAreas.length === 1
+            ? configuredServiceAreas[0]
             : null;
+
+        if (
+          !configuredServiceArea &&
+          configuredServiceAreas.length === 0
+        ) {
+          const normalizeAreaName = (value: string) =>
+            value
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '');
+
+          const legacyServiceAreas = activeAreas.filter((area) => {
+            if (area.areaType !== null) {
+              return false;
+            }
+
+            const name = normalizeAreaName(area.name);
+
+            return (
+              name.includes('servicio') ||
+              name.includes('soporte') ||
+              name.includes('postventa') ||
+              name.includes('pedido') ||
+              name.includes('garantia')
+            );
+          });
+
+          configuredServiceArea =
+            legacyServiceAreas.length === 1
+              ? legacyServiceAreas[0]
+              : null;
+        }
 
         const currentSession =
           await this.conversationMemoryService.getSessionById(
@@ -629,12 +1036,14 @@ export class WhatsappWebhookController {
                 service_area: {
                   id: configuredServiceArea.id,
                   name: configuredServiceArea.name,
+                  areaType: configuredServiceArea.areaType,
                 },
               }
             : {}),
         };
 
         delete nextContext.last_visual_reference;
+        delete nextContext.visual_reference_burst;
 
         session =
           await this.conversationMemoryService.updateSession(
@@ -660,11 +1069,36 @@ export class WhatsappWebhookController {
           'Si el caso requiere una decisión humana, transfiérelo sin prometer ninguna solución.',
         ].join('\n');
 
+        const canReplyToServiceImage =
+          await this.waitForInboundQuietWindow(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          );
+
+        if (!canReplyToServiceImage) {
+          console.log(
+            `Respuesta de imagen de servicio omitida porque llegó un mensaje más reciente de ${input.phone}`,
+          );
+          return;
+        }
+
         const serviceReply = await this.resolveReply(
           profile,
           session,
           serviceEvidenceMessage,
         );
+
+        if (
+          !this.isCurrentInboundMessage(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          )
+        ) {
+          console.log(
+            `Respuesta de imagen de servicio cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+          );
+          return;
+        }
 
         await this.whatsappMessagingService.sendText(
           profile.id,
@@ -749,11 +1183,36 @@ export class WhatsappWebhookController {
           .filter(Boolean)
           .join('\n');
 
+        const canReplyToContextualImage =
+          await this.waitForInboundQuietWindow(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          );
+
+        if (!canReplyToContextualImage) {
+          console.log(
+            `Respuesta de imagen contextual omitida porque llegó un mensaje más reciente de ${input.phone}`,
+          );
+          return;
+        }
+
         const contextualReply = await this.resolveReply(
           profile,
           session,
           contextualImageMessage,
         );
+
+        if (
+          !this.isCurrentInboundMessage(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          )
+        ) {
+          console.log(
+            `Respuesta de imagen contextual cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+          );
+          return;
+        }
 
         await this.whatsappMessagingService.sendText(
           profile.id,
@@ -823,7 +1282,7 @@ export class WhatsappWebhookController {
         delete nextVisualContext.purchaseIntentAt;
       }
 
-      nextVisualContext.last_visual_reference = {
+      const visualReference = {
         summary: analysis.summary,
         category: analysis.category,
         product_name: analysis.productName || null,
@@ -836,13 +1295,54 @@ export class WhatsappWebhookController {
         confidence: analysis.confidence,
         match_type: visualMatch.matchType,
         match_confidence: visualMatch.confidence,
-        matched_product: visualMatch.matchedProduct,
-        candidates: visualMatch.candidates,
-        match_queries: visualMatch.queries,
-        match_reason: visualMatch.reason,
+        matched_product: visualMatch.matchedProduct
+          ? {
+              title: visualMatch.matchedProduct.title,
+              url: visualMatch.matchedProduct.url,
+              price_from_cop:
+                visualMatch.matchedProduct.priceFromCop || null,
+            }
+          : null,
+        candidates: visualMatch.candidates.slice(0, 3).map((candidate) => ({
+          title: candidate.title,
+          url: candidate.url,
+          price_from_cop: candidate.priceFromCop || null,
+        })),
         caption: input.caption || null,
         received_at: receivedAt,
       };
+
+      nextVisualContext.last_visual_reference = visualReference;
+
+      const currentVisualBurst =
+        currentSession.context.visual_reference_burst &&
+        typeof currentSession.context.visual_reference_burst === 'object' &&
+        !Array.isArray(currentSession.context.visual_reference_burst)
+          ? currentSession.context.visual_reference_burst as Record<string, unknown>
+          : null;
+
+      const currentBurstReferences =
+        currentVisualBurst?.burst_id === input.burstId &&
+        Array.isArray(currentVisualBurst.references)
+          ? currentVisualBurst.references.filter(
+              (item) =>
+                Boolean(item) &&
+                typeof item === 'object' &&
+                !Array.isArray(item),
+            )
+          : [];
+
+      const visualBurstReferences = [
+        ...currentBurstReferences,
+        visualReference,
+      ].slice(-10);
+
+      nextVisualContext.visual_reference_burst = {
+        burst_id: input.burstId,
+        references: visualBurstReferences,
+        updated_at: receivedAt,
+      };
+
       nextVisualContext.commercial_last_customer_message_at =
         receivedAt;
 
@@ -858,6 +1358,75 @@ export class WhatsappWebhookController {
         },
       );
 
+      const canReplyToVisualImage =
+        await this.waitForInboundQuietWindow(
+          `${input.incomingPhoneNumberId}:${input.phone}`,
+          input.incomingMessageId,
+        );
+
+      if (!canReplyToVisualImage) {
+        console.log(
+          `Respuesta de producto visual omitida porque llegó un mensaje más reciente de ${input.phone}`,
+        );
+        return;
+      }
+
+      if (visualBurstReferences.length > 1) {
+        const burstCustomerMessage = [
+          '[RAFAGA_VISUAL_MULTIPRODUCTO]',
+          `El cliente envió ${visualBurstReferences.length} imágenes dentro de una misma ráfaga.`,
+          'Cada imagen puede representar un producto distinto. No reemplaces conceptualmente las referencias anteriores por la última imagen.',
+          'No interpretes varias imágenes como varias unidades del último producto.',
+          'Si el cliente se refiere a “las dos”, “ambas”, “todas” o equivalente, conserva cada referencia como producto independiente.',
+          `Referencias analizadas de esta ráfaga: ${JSON.stringify(visualBurstReferences)}`,
+          'Los matched_product de tipo exact son productos ya validados contra el catálogo real.',
+          'Las referencias similar o none no deben presentarse como coincidencias exactas.',
+          'Responde una sola vez teniendo en cuenta el conjunto completo de imágenes.',
+          'No agregues productos al carrito salvo que la intención de compra del cliente sea explícita y estén resueltas las variantes necesarias.',
+        ].join('\n');
+
+        const burstReply = await this.resolveReply(
+          profile,
+          session,
+          burstCustomerMessage,
+        );
+
+        if (
+          !this.isCurrentInboundMessage(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          )
+        ) {
+          console.log(
+            `Respuesta de ráfaga visual cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+          );
+          return;
+        }
+
+        await this.whatsappMessagingService.sendText(
+          profile.id,
+          input.phone,
+          burstReply,
+        );
+        replySent = true;
+
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: burstReply,
+          sender: 'assistant',
+          authorType: 'ai',
+          aiResponse: burstReply,
+        });
+
+        await this.conversationMemoryService.touchSession(session.id);
+        console.log(
+          `Ráfaga de ${visualBurstReferences.length} imágenes comprendida y respondida a ${input.phone}`,
+        );
+        return;
+      }
+
       if (visualMatch.matchType === 'exact') {
         const exactReply =
           await this.chatAgentService.buildExactVisualProductReply(
@@ -865,6 +1434,18 @@ export class WhatsappWebhookController {
           );
 
         if (exactReply) {
+          if (
+            !this.isCurrentInboundMessage(
+              `${input.incomingPhoneNumberId}:${input.phone}`,
+              input.incomingMessageId,
+            )
+          ) {
+            console.log(
+              `Respuesta visual exacta cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+            );
+            return;
+          }
+
           await this.whatsappMessagingService.sendText(
             profile.id,
             input.phone,
@@ -977,6 +1558,18 @@ export class WhatsappWebhookController {
         visualCustomerMessage,
       );
 
+      if (
+        !this.isCurrentInboundMessage(
+          `${input.incomingPhoneNumberId}:${input.phone}`,
+          input.incomingMessageId,
+        )
+      ) {
+        console.log(
+          `Respuesta visual cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+        );
+        return;
+      }
+
       await this.whatsappMessagingService.sendText(
         profile.id,
         input.phone,
@@ -1000,6 +1593,19 @@ export class WhatsappWebhookController {
       console.error('No se pudo procesar la imagen entrante:', error);
 
       if (!replySent && profile && session) {
+        const canSendImageFallback =
+          await this.waitForInboundQuietWindow(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          );
+
+        if (!canSendImageFallback) {
+          console.log(
+            `Fallback de imagen omitido porque llegó un mensaje más reciente de ${input.phone}`,
+          );
+          return;
+        }
+
         const fallback =
           'Recibí la imagen, pero no logré analizarla correctamente. ' +
           'Puedes enviarla otra vez, escribir qué producto buscas o compartir el enlace para ayudarte.';
@@ -1538,6 +2144,19 @@ export class WhatsappWebhookController {
           );
       }
 
+      const isLatestInboundMessage =
+        await this.waitForInboundQuietWindow(
+          `${input.incomingPhoneNumberId}:${input.phone}`,
+          input.incomingMessageId,
+        );
+
+      if (!isLatestInboundMessage) {
+        console.log(
+          `Respuesta de audio omitida porque llegó un mensaje más reciente de ${input.phone}`,
+        );
+        return;
+      }
+
       if (!transcription) {
         await this.handleAudioTranscriptionFailure({
           profile,
@@ -1560,6 +2179,18 @@ export class WhatsappWebhookController {
         session,
         transcription,
       );
+
+      if (
+        !this.isCurrentInboundMessage(
+          `${input.incomingPhoneNumberId}:${input.phone}`,
+          input.incomingMessageId,
+        )
+      ) {
+        console.log(
+          `Respuesta de audio cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+        );
+        return;
+      }
 
       await this.whatsappMessagingService.sendText(
         profile.id,
@@ -1860,6 +2491,19 @@ export class WhatsappWebhookController {
         );
       }
 
+      const isLatestInboundMessage =
+        await this.waitForInboundQuietWindow(
+          `${input.incomingPhoneNumberId}:${input.phone}`,
+          input.incomingMessageId,
+        );
+
+      if (!isLatestInboundMessage) {
+        console.log(
+          `Respuesta omitida porque llegó un mensaje más reciente de ${input.phone}`,
+        );
+        return;
+      }
+
       session = await this.attachRecoveryContext(
         session,
         profile.id,
@@ -1867,6 +2511,18 @@ export class WhatsappWebhookController {
       );
 
       const reply = await this.resolveReply(profile, session, input.text);
+
+      if (
+        !this.isCurrentInboundMessage(
+          `${input.incomingPhoneNumberId}:${input.phone}`,
+          input.incomingMessageId,
+        )
+      ) {
+        console.log(
+          `Respuesta de texto cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+        );
+        return;
+      }
 
       await this.whatsappMessagingService.sendText(
         profile.id,
@@ -1897,7 +2553,13 @@ export class WhatsappWebhookController {
             input.incomingPhoneNumberId,
           );
 
-        if (fallbackIntegration) {
+        const canSendFallback =
+          this.isCurrentInboundMessage(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          );
+
+        if (fallbackIntegration && canSendFallback) {
           await this.whatsappMessagingService.sendText(
             fallbackIntegration.companyId,
             input.phone,
@@ -2179,39 +2841,24 @@ export class WhatsappWebhookController {
             stage: 'active',
             context: {
               ...session.context,
+              ...(selectedArea.areaType
+                ? {
+                    conversation_category: selectedArea.areaType,
+                    conversation_category_updated_at:
+                      new Date().toISOString(),
+                  }
+                : {}),
               service_area: {
                 id: selectedArea.id,
                 name: selectedArea.name,
                 description: selectedArea.description,
+                areaType: selectedArea.areaType,
                 selected_at: new Date().toISOString(),
                 selected_automatically: Boolean(directArea),
               },
             },
           },
         );
-
-      if (this.isCustomerServiceSession(selectedSession)) {
-        if (directArea) {
-          const directCustomerServiceReply =
-            await this.resolveCustomerServiceReply(
-              selectedSession,
-              cleanText,
-              text,
-            );
-
-          if (directCustomerServiceReply) {
-            return directCustomerServiceReply;
-          }
-
-          return this.chatAgentService.reply(
-            profile,
-            selectedSession,
-            text,
-          );
-        }
-
-        return this.startCustomerServiceMenu(selectedSession);
-      }
 
       if (directArea) {
         return this.chatAgentService.reply(
@@ -2226,30 +2873,6 @@ export class WhatsappWebhookController {
         selectedArea.name,
         selectedSession,
       );
-    }
-
-    if (session.stage === 'main' || session.stage === 'area_menu') {
-      const defaultArea =
-        await this.conversationMemoryService.getDefaultServiceArea(profile.id);
-
-      const nextSession =
-        defaultArea
-          ? await this.conversationMemoryService.updateSession(session.id, {
-              stage: 'active',
-              context: {
-                ...session.context,
-                service_area: {
-                  id: defaultArea.id,
-                  name: defaultArea.name,
-                  description: defaultArea.description,
-                  selected_at: new Date().toISOString(),
-                  selected_automatically: true,
-                },
-              },
-            })
-          : session;
-
-      return this.chatAgentService.reply(profile, nextSession, text);
     }
 
     const customerServiceReply = await this.resolveCustomerServiceReply(
@@ -2302,7 +2925,10 @@ export class WhatsappWebhookController {
     for (const key of [
       'service_area',
       'customer_service_flow',
+      'conversation_category',
+      'conversation_category_updated_at',
       'last_visual_reference',
+      'visual_reference_burst',
       'cart',
       'cart_recovery',
       'selectedProduct',
@@ -2331,12 +2957,14 @@ export class WhatsappWebhookController {
       id: string;
       name: string;
       description: string;
+      areaType: 'sales' | 'service' | null;
     }>,
     originalText: string,
   ): Promise<{
     id: string;
     name: string;
     description: string;
+    areaType: 'sales' | 'service' | null;
   } | null> {
     const text = originalText.replace(/\s+/g, ' ').trim();
 
@@ -2486,9 +3114,19 @@ export class WhatsappWebhookController {
   }
 
   private resolveServiceAreaChoice(
-    areas: Array<{ id: string; name: string; description: string }>,
+    areas: Array<{
+      id: string;
+      name: string;
+      description: string;
+      areaType: 'sales' | 'service' | null;
+    }>,
     cleanText: string,
-  ): { id: string; name: string; description: string } | null {
+  ): {
+    id: string;
+    name: string;
+    description: string;
+    areaType: 'sales' | 'service' | null;
+  } | null {
     const numericChoice = Number(cleanText);
 
     if (
@@ -2508,119 +3146,12 @@ export class WhatsappWebhookController {
   }
 
 
-  private async startCustomerServiceMenu(session: ConversationSession) {
-    await this.conversationMemoryService.updateSession(session.id, {
-      stage: 'active',
-      context: {
-        ...session.context,
-        customer_service_flow: {
-          type: 'menu',
-          updated_at: new Date().toISOString(),
-        },
-      },
-    });
-
-    return this.buildCustomerServiceMenu();
-  }
-
   private async resolveCustomerServiceReply(
     session: ConversationSession,
-    cleanText: string,
+    _cleanText: string,
     originalText: string,
   ): Promise<string | null> {
-    if (!this.isCustomerServiceSession(session)) {
-      return null;
-    }
-
     const flow = this.readCustomerServiceFlow(session.context);
-
-    if (['menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
-      return this.startCustomerServiceMenu(session);
-    }
-
-    if (
-      cleanText === '1' ||
-      this.includesAny(cleanText, [
-        'consultar estado',
-        'estado de mi pedido',
-        'estado pedido',
-        'seguimiento pedido',
-        'rastrear pedido',
-        'guia',
-        'guía',
-      ])
-    ) {
-      await this.conversationMemoryService.updateSession(session.id, {
-        stage: 'active',
-        context: {
-          ...session.context,
-          customer_service_flow: {
-            type: 'order_lookup',
-            identifiers: {},
-            attempts: 0,
-            updated_at: new Date().toISOString(),
-          },
-        },
-      });
-
-      return 'Claro 😊 Envíame el número del pedido o el correo utilizado en la compra.';
-    }
-
-    if (cleanText === '2') {
-      await this.conversationMemoryService.updateSession(session.id, {
-        stage: 'active',
-        context: {
-          ...session.context,
-          customer_service_flow: {
-            type: 'order_problem',
-            updated_at: new Date().toISOString(),
-          },
-        },
-      });
-
-      return 'Claro 😊 Cuéntame qué problema tienes con tu pedido y envíame el número de pedido o celular registrado en la compra. Si aplica, también puedes enviar foto o video.';
-    }
-
-    if (cleanText === '3') {
-      await this.conversationMemoryService.updateSession(session.id, {
-        stage: 'active',
-        context: {
-          ...session.context,
-          customer_service_flow: {
-            type: 'exchange_warranty',
-            updated_at: new Date().toISOString(),
-          },
-        },
-      });
-
-      return 'Claro 😊 Para revisar cambios, garantías o devoluciones, envíame el número de pedido o celular usado en la compra y cuéntame brevemente qué necesitas.';
-    }
-
-    if (cleanText === '4') {
-      await this.conversationMemoryService.updateSession(session.id, {
-        stage: 'active',
-        context: {
-          ...session.context,
-          customer_service_flow: {
-            type: 'payment_problem',
-            updated_at: new Date().toISOString(),
-          },
-        },
-      });
-
-      return 'Claro 😊 ¿Qué medio de pago estás usando y cuál es el inconveniente? No envíes claves, códigos de seguridad ni datos bancarios sensibles.';
-    }
-
-    if (
-      cleanText === '5' ||
-      this.includesAny(cleanText, ['asesor', 'persona', 'humano'])
-    ) {
-      return this.requestCustomerServiceHuman(
-        session,
-        'Cliente solicitó asesor desde el menú de servicio al cliente.',
-        'El cliente pidió hablar con un asesor humano.',
-      );
-    }
 
     if (flow.type === 'order_lookup') {
       return this.resolveOrderLookup(session, originalText, flow);
@@ -2637,32 +3168,19 @@ export class WhatsappWebhookController {
     const identifier = this.parseOrderIdentifier(originalText);
 
     if (!identifier.orderReference && !identifier.email && !identifier.phone) {
-      return 'Envíame el número del pedido o el correo utilizado en la compra 😊';
+      return 'Envíame el número del pedido, correo o celular utilizado en la compra 😊';
     }
 
-    const sessionPhone = String(session.customerPhone || '')
-      .replace(/\D/g, '');
-
-    const providedPhone = String(identifier.phone || '')
-      .replace(/\D/g, '');
-
-    if (
-      providedPhone &&
-      sessionPhone &&
-      providedPhone.slice(-10) !== sessionPhone.slice(-10)
-    ) {
-      return 'Envíame el número del pedido o el correo utilizado en la compra 😊';
-    }
-
-    if (!identifier.orderReference && !identifier.email) {
-      return 'Envíame el número del pedido o el correo utilizado en la compra 😊';
-    }
-
+    // Consulta únicamente el dato que el cliente realmente proporcionó.
+    // No sustituimos silenciosamente el celular escrito por el número
+    // de WhatsApp de la sesión.
     const lookupIdentifiers = {
       orderReference: identifier.orderReference,
       email: identifier.email,
-      phone: sessionPhone,
+      phone: identifier.phone,
     };
+
+    const attemptNumber = Number(flow.attempts ?? 0) + 1;
 
     let result: Record<string, any>;
 
@@ -2684,7 +3202,7 @@ export class WhatsappWebhookController {
       customer_service_flow: {
         type: 'order_lookup',
         identifiers: lookupIdentifiers,
-        attempts: Number(flow.attempts ?? 0) + 1,
+        attempts: attemptNumber,
         updated_at: new Date().toISOString(),
       },
     };
@@ -2700,36 +3218,47 @@ export class WhatsappWebhookController {
       Array.isArray(result.orders) &&
       result.orders.length
     ) {
+      const completedContext: Record<string, unknown> = {
+        ...nextContext,
+        conversation_category: 'service',
+        conversation_category_updated_at:
+          new Date().toISOString(),
+        last_order_lookup: {
+          order_name: result.orders[0].name,
+          found_at: new Date().toISOString(),
+        },
+      };
+
+      delete completedContext.customer_service_flow;
+
       await this.conversationMemoryService.updateSession(session.id, {
         stage: 'active',
-        context: {
-          ...nextContext,
-          customer_service_flow: {
-            type: 'menu',
-            updated_at: new Date().toISOString(),
-          },
-          last_order_lookup: {
-            order_name: result.orders[0].name,
-            found_at: new Date().toISOString(),
-          },
-        },
+        context: completedContext,
       });
 
       return this.formatOrderLookupReply(result.orders[0], session);
     }
 
-    if (result.next_action === 'ask_alternate_identifier') {
+    if (result.ok && !result.found && attemptNumber === 1) {
       if (identifier.orderReference) {
-        return 'No encontré el pedido con ese número 😕 ¿Me confirmas el celular o correo usado en la compra para revisarlo mejor?';
+        return 'No encontré el pedido con ese número 😕 Prueba con el correo o celular utilizado en la compra.';
       }
 
-      return 'No encontré el pedido con ese dato 😕 ¿Me confirmas el número de pedido o algún otro dato de la compra?';
+      if (identifier.email) {
+        return 'No encontré el pedido con ese correo 😕 Prueba con el número de pedido o celular utilizado en la compra.';
+      }
+
+      return 'No encontré el pedido con ese celular 😕 Prueba con el número de pedido o correo utilizado en la compra.';
+    }
+
+    if (result.ok && !result.found && attemptNumber === 2) {
+      return 'Aún no encuentro el pedido 😕 Si recibiste una confirmación de compra por correo, revisa también spam o correo no deseado y busca el número de pedido. Envíame ese número y lo intento una vez más.';
     }
 
     return this.requestCustomerServiceHuman(
       session,
-      'No se pudo encontrar el pedido con los datos enviados.',
-      `Consulta de pedido sin resultado. Datos usados: pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}.`,
+      'No se pudo encontrar el pedido después de varios intentos.',
+      `Consulta de pedido sin resultado después de ${attemptNumber} intentos. Último dato usado: pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}.`,
     );
   }
 
@@ -3088,41 +3617,6 @@ export class WhatsappWebhookController {
     });
 
     return 'Claro, voy a dejar tu solicitud para que un asesor continúe contigo. Ya queda con el contexto de lo que revisamos 😊';
-  }
-
-  private buildCustomerServiceMenu() {
-    return [
-      'Hola, cuéntame cómo puedo ayudarte 😊',
-      '',
-      '1️⃣ Consultar estado de mi pedido',
-      '2️⃣ Tengo un problema con mi pedido',
-      '3️⃣ Cambios, garantías o devoluciones',
-      '4️⃣ Problemas con pago',
-      '5️⃣ Hablar con un asesor',
-    ].join('\n');
-  }
-
-  private isCustomerServiceSession(session: ConversationSession) {
-    const context = session.context && typeof session.context === 'object'
-      ? session.context as Record<string, unknown>
-      : {};
-    const area =
-      context.service_area &&
-      typeof context.service_area === 'object' &&
-      !Array.isArray(context.service_area)
-        ? context.service_area as Record<string, unknown>
-        : {};
-    const value = this.normalizeText(
-      `${area.name ?? ''} ${area.description ?? ''}`,
-    );
-
-    return (
-      value.includes('servicio') ||
-      value.includes('soporte') ||
-      value.includes('pedido') ||
-      value.includes('seguimiento') ||
-      value.includes('post compra')
-    );
   }
 
   private readCustomerServiceFlow(context: Record<string, unknown>) {

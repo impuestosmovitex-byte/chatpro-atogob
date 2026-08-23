@@ -89,7 +89,14 @@ export class ChatAgentService {
     const customerServiceFlow =
       session.context.customer_service_flow &&
       typeof session.context.customer_service_flow === 'object' &&
-      !Array.isArray(session.context.customer_service_flow);
+      !Array.isArray(session.context.customer_service_flow)
+        ? session.context.customer_service_flow as JsonObject
+        : null;
+
+    const customerServiceFlowType =
+      typeof customerServiceFlow?.type === 'string'
+        ? customerServiceFlow.type
+        : '';
 
     const serviceArea =
       session.context.service_area &&
@@ -98,8 +105,14 @@ export class ChatAgentService {
         ? session.context.service_area as JsonObject
         : null;
 
+    const serviceAreaType =
+      serviceArea?.areaType === 'sales' ||
+      serviceArea?.areaType === 'service'
+        ? serviceArea.areaType
+        : null;
+
     const areaName =
-      typeof serviceArea?.name === 'string'
+      serviceAreaType === null && typeof serviceArea?.name === 'string'
         ? serviceArea.name
             .toLowerCase()
             .normalize('NFD')
@@ -118,10 +131,8 @@ export class ChatAgentService {
       /\btransportadora\b/,
       /\bdespach/,
       /\benviado\b/,
-      /\bentrega\b/,
       /\bdemora\b/,
       /\bretras/,
-      /\bcambio\b/,
       /\bdevoluci/,
       /\bgarantia\b/,
       /\bcancel/,
@@ -131,9 +142,6 @@ export class ChatAgentService {
       /\bme llego\b/,
       /\bno me llego\b/,
       /\bpedido existente\b/,
-      /\bcomprobante\b/,
-      /\bpago pendiente\b/,
-      /\bpago rechazado\b/,
     ];
 
     const salesPatterns = [
@@ -199,25 +207,12 @@ export class ChatAgentService {
       looksLikePendingIdentifier &&
       (
         current === 'service' ||
-        customerServiceFlow ||
+        customerServiceFlowType === 'order_lookup' ||
+        serviceAreaType === 'service' ||
         areaName.includes('servicio') ||
         areaName.includes('soporte') ||
         areaName.includes('postventa')
       )
-    ) {
-      return 'service';
-    }
-
-    if (
-      normalized === '1' &&
-      current === 'unclassified'
-    ) {
-      return 'sales';
-    }
-
-    if (
-      normalized === '2' &&
-      current === 'unclassified'
     ) {
       return 'service';
     }
@@ -228,11 +223,36 @@ export class ChatAgentService {
   private async findConfiguredAreaForCategory(
     companyId: string,
     category: 'sales' | 'service',
-  ): Promise<{ id: string; name: string } | null> {
+  ): Promise<{
+    id: string;
+    name: string;
+    areaType: 'sales' | 'service' | null;
+  } | null> {
     const areas =
       await this.conversationMemoryService.listActiveServiceAreas(
         companyId,
       );
+
+    const configuredMatches = areas.filter(
+      (area) => area.areaType === category,
+    );
+
+    if (configuredMatches.length === 1) {
+      return {
+        id: configuredMatches[0].id,
+        name: configuredMatches[0].name,
+        areaType: configuredMatches[0].areaType,
+      };
+    }
+
+    if (configuredMatches.length > 1) {
+      return null;
+    }
+
+    // Compatibilidad temporal únicamente para áreas antiguas sin clasificar.
+    const unclassifiedAreas = areas.filter(
+      (area) => area.areaType === null,
+    );
 
     const normalize = (value: string) =>
       value
@@ -240,7 +260,7 @@ export class ChatAgentService {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '');
 
-    const matches = areas.filter((area) => {
+    const legacyMatches = unclassifiedAreas.filter((area) => {
       const name = normalize(area.name);
 
       if (category === 'service') {
@@ -259,10 +279,11 @@ export class ChatAgentService {
       );
     });
 
-    return matches.length === 1
+    return legacyMatches.length === 1
       ? {
-          id: matches[0].id,
-          name: matches[0].name,
+          id: legacyMatches[0].id,
+          name: legacyMatches[0].name,
+          areaType: null,
         }
       : null;
   }
@@ -320,93 +341,13 @@ export class ChatAgentService {
                 service_area: {
                   id: configuredArea.id,
                   name: configuredArea.name,
+                  areaType: configuredArea.areaType,
                 },
               }
             : {}),
         },
       },
     );
-  }
-
-  private configuredCompanyText(
-    profile: CompanyProfile,
-  ): string {
-    const values: string[] = [];
-
-    const collect = (value: unknown) => {
-      if (typeof value === 'string') {
-        values.push(value);
-        return;
-      }
-
-      if (Array.isArray(value)) {
-        value.forEach(collect);
-        return;
-      }
-
-      if (value && typeof value === 'object') {
-        Object.values(
-          value as Record<string, unknown>,
-        ).forEach(collect);
-      }
-    };
-
-    collect(profile.aiInstructions);
-    collect(profile.settings);
-
-    return values
-      .join('\n')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
-  }
-
-  private companyForbidsRefundOrCancellation(
-    profile: CompanyProfile,
-  ): boolean {
-    const configured =
-      this.configuredCompanyText(profile);
-
-    const prohibitionPatterns = [
-      /no realizamos devolucion de dinero/,
-      /no se realizan devoluciones de dinero/,
-      /nunca.*devolucion de dinero/,
-      /no.*reembolso/,
-      /nunca.*reembolso/,
-      /no.*cancelacion/,
-      /nunca.*cancelacion/,
-      /no puede.*cancelar/,
-      /no ofrecer.*devolucion/,
-      /no mencionar.*devolucion/,
-      /no mencionar.*cancelacion/,
-    ];
-
-    return prohibitionPatterns.some((pattern) =>
-      pattern.test(configured),
-    );
-  }
-
-  private isRefundOrCancellationRequest(
-    message: string,
-  ): boolean {
-    const normalized = message
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    return [
-      /devolver.*dinero/,
-      /retornar.*dinero/,
-      /regresar.*dinero/,
-      /reembolso/,
-      /cancelar.*pedido/,
-      /cancelacion/,
-      /anular.*pedido/,
-      /que me devuelvan/,
-      /devolucion de dinero/,
-    ].some((pattern) => pattern.test(normalized));
   }
 
   async reply(
@@ -426,27 +367,6 @@ export class ChatAgentService {
         session,
       );
 
-    if (
-      this.companyForbidsRefundOrCancellation(profile) &&
-      this.isRefundOrCancellationRequest(customerMessage)
-    ) {
-      activeSession =
-        await this.rememberConversationCategory(
-          activeSession,
-          'service',
-        );
-
-      await this.conversationMemoryService.requestHumanAttention(
-        activeSession.id,
-        {
-          reason: 'Solicitud especial sobre un pedido.',
-          summary:
-            'El cliente solicita revisión especial de su pedido. Pendiente validación y respuesta del asesor.',
-        },
-      );
-
-      return 'Entiendo tu solicitud. Voy a transferirte con un asesor para que revise el caso y te indique cómo continuar.';
-    }
 
     const routingStartedAt = Date.now();
     const routing = await this.resolveMessageRouting(
@@ -526,7 +446,12 @@ export class ChatAgentService {
         content: JSON.stringify({
           company: {
             name: profile.name,
-            settings: profile.settings,
+            settings: {
+              business_identity:
+                profile.settings.business_identity ?? {},
+              timezone:
+                profile.settings.timezone ?? null,
+            },
           },
           session: {
             stage: activeSession.stage,
@@ -552,6 +477,7 @@ export class ChatAgentService {
       model: this.getModel(),
       instructions: this.buildInstructions(
         profile,
+        activeSession,
         Boolean(recoveryContext),
       ),
       input,
@@ -624,6 +550,7 @@ export class ChatAgentService {
         model: this.getModel(),
         instructions: this.buildInstructions(
           profile,
+          activeSession,
           Boolean(recoveryContext),
         ),
         input,
@@ -1761,6 +1688,7 @@ export class ChatAgentService {
 
   private buildInstructions(
     profile: CompanyProfile,
+    session: ConversationSession,
     hasRecoveryContext = false,
   ): string {
     const assistantName = profile.assistantName?.trim() || 'Asistente virtual';
@@ -1769,9 +1697,38 @@ export class ChatAgentService {
       profile.settings.ai_tone.trim()
         ? profile.settings.ai_tone.trim()
         : 'cercana, clara, breve y natural';
-    const commercialRules = this.getCommercialFlowRules(profile.settings);
-    const knowledgeRules = this.getKnowledgeBaseRules(profile.settings);
-    const shippingTrackingRules = this.getShippingTrackingRules(profile.settings);
+
+    const conversationCategory =
+      this.readConversationCategory(session.context);
+    const serviceArea =
+      session.context.service_area &&
+      typeof session.context.service_area === 'object' &&
+      !Array.isArray(session.context.service_area)
+        ? session.context.service_area as JsonObject
+        : null;
+    const serviceAreaType =
+      serviceArea?.areaType === 'sales' ||
+      serviceArea?.areaType === 'service'
+        ? serviceArea.areaType
+        : null;
+    const instructionScope:
+      'sales' | 'service' | 'unclassified' =
+      conversationCategory !== 'unclassified'
+        ? conversationCategory
+        : serviceAreaType ?? 'unclassified';
+
+    const commercialRules = this.getCommercialFlowRules(
+      profile.settings,
+      instructionScope,
+    );
+    const knowledgeRules =
+      instructionScope === 'service'
+        ? this.getKnowledgeBaseRules(profile.settings)
+        : '';
+    const shippingTrackingRules =
+      instructionScope === 'service'
+        ? this.getShippingTrackingRules(profile.settings)
+        : '';
 
     return [
       `Eres ${assistantName}, asesora comercial de ${profile.name}.`,
@@ -1806,7 +1763,7 @@ export class ChatAgentService {
       '- Cuando la persona pida ver una categoría, comparte de inmediato únicamente la colección real correspondiente. Después del enlace solo indica que envíe el enlace o una foto del producto que le guste.',
       '- No preguntes estilos, colores o preferencias antes de mostrar una colección solicitada. No ofrezcas opciones populares, recomendaciones ni productos complementarios mientras el módulo de recomendación no esté habilitado.',
       '- No uses frases como “confirmo el producto” o “encontré el producto”. Menciona directamente nombre, precio real y la primera opción que falte.',
-      '- Si varias publicaciones, combos o bundles se parecen a una imagen y no existe certeza exacta, pide el enlace del producto. No muestres alternativas que la persona no solicitó.',
+      '- Si una referencia visual no es exacta, usa únicamente candidates reales cuando estén disponibles y preséntalos como posibles coincidencias, nunca como identificación confirmada. Si no hay candidatos suficientes para identificar el producto, pide enlace, nombre o categoría sin inventar alternativas.',
       '- Las recomendaciones de talla deben ser breves: máximo dos frases y una sola talla sugerida cuando la información permita recomendarla.',
       '- No menciones restricciones, opciones no disponibles o condiciones negativas que la persona no haya preguntado ni seleccionado.',
       '- Explica las instrucciones de un medio de pago cuando la persona pregunte por ese medio o lo seleccione. No adelantes instrucciones de otros medios.',
@@ -1821,8 +1778,8 @@ export class ChatAgentService {
         '- Para cambios, garantías o devoluciones, pregunta lo necesario según la política configurada. No incluyas “cancelarlo” como opción salvo que la empresa lo permita explícitamente en su configuración.',
       '- Si preguntan por estado de pedido, número de guía, transportadora, seguimiento, pago de un pedido, cambio, garantía o devolución de una compra existente, usa lookup_order cuando tengas número de pedido, correo o celular. Si falta ese dato, pide solo un dato concreto.',
       '- No asumas que cualquier número enviado por el cliente es un pedido. Si el cliente envía solo un número sin contexto, pregunta brevemente si corresponde al número de pedido, guía o celular registrado en la compra antes de usar lookup_order.',
-      '- Interpreta respuestas numéricas según el último menú que tú acabas de enviar. Si el último menú fue 1 Ventas / 2 Servicio al cliente, entonces 2 significa Servicio al cliente y debes mostrar el menú de servicio. Solo interpreta 2 como problema con pedido cuando el último menú enviado haya sido el menú de servicio al cliente con opciones 1 a 5.',
-      '- La regla anterior solo aplica cuando NO hay contexto. Si tú acabas de pedir número de pedido, correo o celular para consultar una compra, usa ese dato con lookup_order. Si no aparece el pedido, pide otro dato concreto como correo o celular, o ofrece pasar a asesor; no vuelvas a preguntar lo mismo.',
+      '- Interpreta una respuesta numérica como opción únicamente cuando corresponda claramente al último menú u opciones que realmente fueron mostradas al cliente en esta conversación. Nunca inventes opciones, submenús ni significados numéricos que no hayan sido mostrados.',
+      '- Si acabas de pedir número de pedido, correo o celular para consultar una compra, interpreta la respuesta como el dato solicitado y úsalo con lookup_order; no la interpretes como opción de menú. Si no aparece el pedido, pide un dato alternativo concreto o, cuando corresponda, ofrece pasar a un asesor; no vuelvas a pedir el mismo dato.',
       '- Después de lookup_order, responde únicamente con datos reales encontrados.',
       '- Nunca muestres estados internos como FULFILLED, UNFULFILLED, PAID, PENDING, OPEN o CLOSED. Comunica su significado en lenguaje natural.',
       '- Si hay guía, comparte transportadora, número, enlace e instrucciones para consultarla. No preguntes “¿quieres que lo rastree?” ni afirmes que puedes rastrear en tiempo real si la integración no entregó ese estado.',
@@ -1832,7 +1789,10 @@ export class ChatAgentService {
       '- Si lookup_order devuelve next_action offer_human_attention o requires_human true, ofrece dejar el caso con un asesor. No pidas de nuevo el mismo dato y no inventes estado del pedido.',
       '- Cuando session.context.conversation_category sea service, cualquier imagen, captura, comprobante, fotografía del pedido, etiqueta, empaque o producto recibido es evidencia del caso. No uses herramientas de catálogo, selección de producto, variantes, carrito ni checkout.',
       '- session.context.last_service_evidence identifica evidencia enviada dentro de Servicio. Úsala únicamente para comprender la reclamación o preparar la transferencia al asesor.',
-      '- session.context.last_visual_reference contiene una referencia comercial únicamente cuando la conversación está realmente en Ventas. No la uses cuando conversation_category sea service.',
+      '- session.context.last_visual_reference contiene la referencia visual comercial más reciente únicamente cuando la conversación está realmente en Ventas. No la uses cuando conversation_category sea service.',
+      '- session.context.visual_reference_burst contiene las referencias visuales independientes que el cliente envió dentro de una misma ráfaga reciente. Si contiene varias referencias, no las reemplaces conceptualmente por la última ni las conviertas en varias unidades del mismo producto.',
+      '- Cuando visual_reference_burst.references tenga varias referencias y la persona diga “las dos”, “ambas”, “todas”, “la primera”, “la segunda” o equivalente, resuelve el referente usando esa lista y conserva cada producto como referencia independiente.',
+      '- Una ráfaga visual no agrega productos automáticamente al carrito. Solo ejecuta acciones de compra cuando la intención del cliente sea explícita y las variantes necesarias estén realmente resueltas.',
       '- Si last_visual_reference.match_type es exact y matched_product existe, esa referencia ya fue validada contra el catálogo real y quedó seleccionada. Usa get_selected_product para consultar precio y variantes reales.',
       '- Si match_type es similar, no afirmes que encontraste la referencia exacta. Presenta como máximo las opciones reales incluidas en candidates y pregunta cuál corresponde.',
       '- Si match_type es none, explica brevemente que no pudiste confirmar la referencia exacta y ofrece buscar por nombre, enlace o categoría.',
@@ -1844,7 +1804,7 @@ export class ChatAgentService {
       '- No preguntes “¿lo agrego?” después de que la persona ya confirmó color, talla o variante.',
         '- Antes de crear checkout, usa get_cart y verifica que el carrito contenga únicamente productos que la persona pidió para esta compra actual. Si hay productos de un pedido anterior, carrito recuperado viejo o artículos no solicitados, elimínalos antes de crear el checkout.',
       '- Cuando la persona diga “solo ese”, “solo el buzo”, “no quiero lo otro” o equivalente, usa get_cart y después keep_only_cart_line para conservar el producto solicitado y eliminar todos los demás en una sola operación. No vacíes primero el carrito y no vuelvas a pedir confirmación.',
-      '- Una respuesta afirmativa como “sí”, “sii”, “quiero ese”, “agrégalo”, “me lo llevo” o “solo ese” confirma la acción pendiente más reciente. Ejecuta la acción inmediatamente y no preguntes otra vez lo mismo.',
+      '- Una respuesta corta o afirmativa solo confirma una acción cuando el mensaje inmediatamente anterior planteó de forma inequívoca una única confirmación pendiente y el referente está claro. Si existen varias preguntas, productos, variantes o acciones posibles, usa el contexto explícito disponible y, si no basta para identificar una sola acción, pide una aclaración breve en lugar de ejecutar por suposición.',
       '- Los productos, cantidades y valores que menciones deben salir siempre del resultado real de get_cart o de una herramienta de carrito. Nunca reconstruyas el carrito usando mensajes anteriores.',
       '- Cambiar el medio de pago no puede agregar, eliminar ni reemplazar productos. Conserva exactamente el carrito real y modifica únicamente pago, envío, promociones aplicables y total.',
         '- Si la persona corrige “solo quiero X” o “por qué me vas a cobrar todo”, acepta la corrección, deja solo los productos confirmados para la compra actual y vuelve a resumir el carrito.',
@@ -1857,7 +1817,7 @@ export class ChatAgentService {
       '- Cuando el carrito cambie, vuelve a calcular envío y total. No reutilices una tarifa anterior.',
       '- Presenta únicamente los medios habilitados para la ubicación y el pedido. “Pago antes del despacho” no es un medio de pago.',
       '- Cuando seleccione un medio, habla únicamente de ese medio y usa get_cart antes de responder.',
-      '- Antes del checkout pregunta una sola vez si desea agregar otro producto, salvo que ya haya dicho “solo eso”, “finalizar”, “pagar” o algo equivalente.',
+      '- No impongas una pregunta adicional antes del checkout. Sigue las instrucciones de checkout configuradas por la empresa y el estado real de la compra. Si la persona ya indicó claramente que desea finalizar y están completos los datos requeridos por el flujo configurado, continúa sin agregar pasos conversacionales no configurados.',
       '- Cuando hagas esa pregunta, usa remember_sale_context con cart_confirmation_requested=true y cart_confirmed=false.',
       '- Cuando confirme que no agregará más o que desea finalizar, usa remember_sale_context con cart_confirmed=true.',
       '- Si agrega, elimina o cambia un producto, la confirmación anterior deja de ser válida. Recalcula el envío y presenta nuevamente el resumen.',
@@ -1866,7 +1826,6 @@ export class ChatAgentService {
       '- Usa create_checkout_link solo cuando ciudad, medio de pago, envío y carrito estén confirmados.',
       '- Si create_checkout_link devuelve next_action confirm_cart, pregunta si desea agregar algo más y no envíes un enlace todavía.',
       '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para completar datos y finalizar. Nunca lo sustituyas por un cart_url.',
-      '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para completar datos y finalizar. Nunca sustituyas ese enlace por un cart_url.',
       '- Si sale_context.payment_instructions_sent es true, no vuelvas a enviar los mismos datos; pide únicamente el comprobante o el paso pendiente.',
       '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
       '- Al usar request_human_attention, customer_message debe ser el mensaje exacto que verá la persona: natural, breve, útil y alineado al tono/configuración de la empresa. No uses una frase fija si la empresa configuró otra forma de atención.',
@@ -1876,14 +1835,22 @@ export class ChatAgentService {
       '- Al transferir usa request_human_attention con un resumen interno MUY CORTO: máximo 2 líneas y 280 caracteres. Escribe únicamente qué necesita el cliente y cuál es el dato o acción pendiente. No copies historial, productos, precios, carrito ni pedidos completos.',
       '- El campo reason debe ser una frase breve, máximo 120 caracteres. El campo summary debe entenderse por sí solo y no debe repetir el motivo.',
       '',
-      'CONFIGURACIÓN COMERCIAL ESTRUCTURADA:',
+      'CONFIGURACIÓN DE RESPUESTA Y FLUJO ACTIVO:',
       commercialRules,
-      '',
-      'BASE DE CONOCIMIENTO APROBADA POR LA EMPRESA:',
-      knowledgeRules,
-      '',
-      'TRANSPORTADORAS Y SEGUIMIENTO CONFIGURADOS:',
-      shippingTrackingRules,
+      ...(knowledgeRules
+        ? [
+            '',
+            'BASE DE CONOCIMIENTO APROBADA POR LA EMPRESA:',
+            knowledgeRules,
+          ]
+        : []),
+      ...(shippingTrackingRules
+        ? [
+            '',
+            'TRANSPORTADORAS Y SEGUIMIENTO CONFIGURADOS:',
+            shippingTrackingRules,
+          ]
+        : []),
       '',
       'INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA:',
       profile.aiInstructions || 'No hay instrucciones adicionales.',
@@ -1908,7 +1875,10 @@ export class ChatAgentService {
     ].join('\n');
   }
 
-  private getCommercialFlowRules(settings: JsonObject): string {
+  private getCommercialFlowRules(
+    settings: JsonObject,
+    scope: 'sales' | 'service' | 'unclassified',
+  ): string {
     const source =
       settings.commercial_flow &&
       typeof settings.commercial_flow === 'object' &&
@@ -1916,14 +1886,20 @@ export class ChatAgentService {
         ? settings.commercial_flow as JsonObject
         : {};
 
-    const labels: Array<[string, string]> = [
-      ['welcome_message', 'Saludo y menú inicial'],
-      ['area_welcome_message', 'Mensaje al entrar a un área'],
-      ['sales_instructions', 'Proceso de ventas'],
-      ['shipping_instructions', 'Ciudades y envíos'],
-      ['payment_instructions', 'Medios de pago'],
-      ['checkout_instructions', 'Regla para entregar checkout'],
-    ];
+    const labels: Array<[string, string]> =
+      scope === 'sales'
+        ? [
+            ['sales_instructions', 'Proceso de ventas'],
+            ['shipping_instructions', 'Ciudades y envíos'],
+            ['payment_instructions', 'Medios de pago'],
+            ['checkout_instructions', 'Regla para entregar checkout'],
+          ]
+        : scope === 'service'
+          ? [
+              ['shipping_instructions', 'Ciudades y envíos'],
+              ['payment_instructions', 'Medios de pago'],
+            ]
+          : [];
 
     const lines = labels
       .map(([key, label]) => {
@@ -1958,7 +1934,7 @@ export class ChatAgentService {
     const askBeforeShowingCatalog =
       source.ask_before_showing_catalog !== false;
 
-    lines.unshift(
+    const commonRules = [
       `- Longitud preferida: ${responseLengthLabel}.`,
       `- Máximo de preguntas principales por mensaje: ${maxQuestions}.`,
       avoidRepetition
@@ -1967,10 +1943,17 @@ export class ChatAgentService {
       restrictionsOnlyWhenRelevant
         ? '- Menciona restricciones o indisponibilidades solo cuando la persona pregunte por esa opción o intente seleccionarla.'
         : '- Puedes anticipar restricciones relevantes durante la orientación.',
-      askBeforeShowingCatalog
-        ? '- Al entrar a Ventas pregunta primero qué busca. No envíes todas las colecciones; muestra solo la categoría o productos relacionados después de conocer su interés.'
-        : '- La empresa permite presentar el catálogo general al iniciar la atención de Ventas.',
-    );
+    ];
+
+    if (scope === 'sales') {
+      commonRules.push(
+        askBeforeShowingCatalog
+          ? '- Al entrar a Ventas pregunta primero qué busca. No envíes todas las colecciones; muestra solo la categoría o productos relacionados después de conocer su interés.'
+          : '- La empresa permite presentar el catálogo general al iniciar la atención de Ventas.',
+      );
+    }
+
+    lines.unshift(...commonRules);
 
     return lines.join('\n');
   }
@@ -2199,7 +2182,6 @@ export class ChatAgentService {
         'intent=other para saludos, pagos, servicio, políticas u otros mensajes que no requieren limpiar el producto anterior.',
         '',
         `Empresa: ${profile.name}.`,
-        `Instrucciones de la empresa: ${profile.aiInstructions || 'No hay instrucciones adicionales.'}`,
       ].join('\n'),
       input: JSON.stringify({
         historial_reciente: history,
@@ -2268,6 +2250,13 @@ export class ChatAgentService {
       };
     }
 
+    if (raw.startsWith('[RAFAGA_VISUAL_MULTIPRODUCTO]')) {
+      return {
+        understanding: 'clear',
+        intent: 'continuation',
+      };
+    }
+
     if (/^https?:\/\/\S+$/i.test(raw)) {
       return {
         understanding: 'clear',
@@ -2329,6 +2318,7 @@ export class ChatAgentService {
       context.selectedVariants ||
       context.purchaseIntent ||
       context.last_visual_reference ||
+      context.visual_reference_burst ||
       context.customer_service_flow ||
       context.cart_recovery ||
       cartHasLines,
@@ -2584,6 +2574,8 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   delete nextContext.selectedVariantAt;
   delete nextContext.purchaseIntent;
   delete nextContext.purchaseIntentAt;
+  delete nextContext.last_visual_reference;
+  delete nextContext.visual_reference_burst;
 
   return nextContext;
 }
@@ -4195,7 +4187,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       const finalResponse = await this.getClient().responses.create({
         model: this.getModel(),
         instructions: [
-          this.buildInstructions(profile, hasRecoveryContext),
+          this.buildInstructions(profile, session, hasRecoveryContext),
           '',
           'RECUPERACIÓN INTERNA DE RESPUESTA:',
           '- Ya se ejecutaron las herramientas necesarias o se alcanzó el límite seguro.',

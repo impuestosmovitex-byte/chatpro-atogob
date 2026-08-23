@@ -42,7 +42,8 @@ type InboxMessage = {
   message: string;
   sender: string;
   authorType: "customer" | "ai" | "advisor";
-  messageType: "text" | "audio" | "image" | "video" | "document";
+  messageType: "text" | "audio" | "image" | "video" | "document" | "location";
+  messageMetadata?: Record<string, unknown> | null;
   mediaMimeType: string | null;
   mediaStoragePath?: string | null;
   mediaVoice: boolean;
@@ -1002,6 +1003,91 @@ function FileMessageViewer({ item }: { item: InboxMessage }) {
         Abrir
       </span>
     </a>
+  );
+}
+
+function LocationMessageViewer({ item }: { item: InboxMessage }) {
+  const metadata =
+    item.messageMetadata &&
+    typeof item.messageMetadata === "object" &&
+    !Array.isArray(item.messageMetadata)
+      ? item.messageMetadata
+      : {};
+
+  const latitude =
+    typeof metadata.latitude === "number"
+      ? metadata.latitude
+      : typeof metadata.latitude === "string"
+        ? Number(metadata.latitude)
+        : NaN;
+
+  const longitude =
+    typeof metadata.longitude === "number"
+      ? metadata.longitude
+      : typeof metadata.longitude === "string"
+        ? Number(metadata.longitude)
+        : NaN;
+
+  const name =
+    typeof metadata.name === "string" && metadata.name.trim()
+      ? metadata.name.trim()
+      : "Ubicación compartida";
+
+  const address =
+    typeof metadata.address === "string" && metadata.address.trim()
+      ? metadata.address.trim()
+      : "";
+
+  const hasCoordinates =
+    Number.isFinite(latitude) && Number.isFinite(longitude);
+
+  const mapUrl = hasCoordinates
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        `${latitude},${longitude}`,
+      )}`
+    : "";
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 8,
+        padding: 12,
+        borderRadius: 12,
+        background: "rgba(0, 0, 0, 0.04)",
+        minWidth: 220,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "flex-start",
+        }}
+      >
+        <span aria-hidden="true" style={{ fontSize: 24 }}>
+          📍
+        </span>
+
+        <div style={{ display: "grid", gap: 2 }}>
+          <strong>{name}</strong>
+          {address ? <small>{address}</small> : null}
+        </div>
+      </div>
+
+      {mapUrl ? (
+        <a
+          href={mapUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{ fontWeight: 600 }}
+        >
+          Abrir mapa
+        </a>
+      ) : (
+        <small>Coordenadas no disponibles.</small>
+      )}
+    </div>
   );
 }
 
@@ -4352,6 +4438,8 @@ export default function Home() {
                               <p>{item.message}</p>
                             ) : null}
                           </>
+                        ) : item.messageType === "location" ? (
+                          <LocationMessageViewer item={item} />
                         ) : (
                           <p>{item.message}</p>
                         )}

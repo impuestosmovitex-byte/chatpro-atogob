@@ -163,6 +163,14 @@ export class CustomerOrderService {
         .map((value) => this.normalizePhone(value))
         .filter(Boolean);
 
+      // El proveedor ya buscó exclusivamente por este teléfono.
+      // Si Shopify permite devolver un teléfono visible, exigimos coincidencia.
+      // Si el dato protegido no está disponible, no descartamos un pedido
+      // que Shopify ya encontró mediante el filtro de teléfono.
+      if (!phones.length) {
+        return true;
+      }
+
       return phones.some((phone) =>
         this.samePhone(phone, requestedPhone),
       );
@@ -175,7 +183,14 @@ export class CustomerOrderService {
         order.customer?.email,
       ).toLowerCase();
 
-      return Boolean(actualEmail) && actualEmail === requestedEmail;
+      // El proveedor ya buscó exclusivamente por este correo.
+      // Si Shopify devuelve el correo visible, debe coincidir exactamente.
+      // Si el dato protegido está oculto, conservamos el pedido encontrado.
+      if (!actualEmail) {
+        return true;
+      }
+
+      return actualEmail === requestedEmail;
     }
 
     return false;

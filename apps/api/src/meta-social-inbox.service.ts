@@ -633,6 +633,7 @@ export class MetaSocialInboxService {
           : 'customer',
       authorType,
       messageType,
+      messageMetadata: null,
       mediaMimeType: null,
       mediaStoragePath:
         typeof row.media_url === 'string'

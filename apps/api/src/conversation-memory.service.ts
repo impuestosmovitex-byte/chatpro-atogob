@@ -12,6 +12,7 @@ export type ActiveServiceArea = {
   id: string;
   name: string;
   description: string;
+  areaType: 'sales' | 'service' | null;
 };
 
 const SESSION_FIELDS = [
@@ -61,7 +62,8 @@ export type InboxMessage = {
   message: string;
   sender: string;
   authorType: 'customer' | 'ai' | 'advisor';
-  messageType: 'text' | 'audio' | 'image' | 'video' | 'document';
+  messageType: 'text' | 'audio' | 'image' | 'video' | 'document' | 'location';
+  messageMetadata: JsonObject | null;
   mediaMimeType: string | null;
   mediaStoragePath: string | null;
   mediaVoice: boolean;
@@ -137,7 +139,8 @@ type SaveMessageInput = {
   replyToMessage?: string | null;
   messageSource?: string | null;
   sourceName?: string | null;
-  messageType?: 'text' | 'audio' | 'image' | 'video' | 'document';
+  messageType?: 'text' | 'audio' | 'image' | 'video' | 'document' | 'location';
+  messageMetadata?: JsonObject | null;
   mediaId?: string | null;
   mediaMimeType?: string | null;
   mediaStoragePath?: string | null;
@@ -737,7 +740,7 @@ export class ConversationMemoryService {
     const { data, error } = await this.supabaseService
       .getClient()
       .from('service_areas')
-      .select('id, name, description')
+      .select('id, name, description, area_type')
       .eq('company_id', id)
       .eq('is_active', true)
       .eq('is_default', true)
@@ -760,6 +763,10 @@ export class ConversationMemoryService {
       name: data.name.trim(),
       description:
         typeof data.description === 'string' ? data.description.trim() : '',
+      areaType:
+        data.area_type === 'sales' || data.area_type === 'service'
+          ? data.area_type
+          : null,
     };
   }
 
@@ -775,7 +782,7 @@ export class ConversationMemoryService {
     const { data, error } = await this.supabaseService
       .getClient()
       .from('service_areas')
-      .select('id, name, description')
+      .select('id, name, description, area_type')
       .eq('company_id', id)
       .eq('is_active', true)
       .order('created_at');
@@ -789,6 +796,10 @@ export class ConversationMemoryService {
       name: typeof area.name === 'string' ? area.name.trim() : '',
       description:
         typeof area.description === 'string' ? area.description.trim() : '',
+      areaType:
+        area.area_type === 'sales' || area.area_type === 'service'
+          ? area.area_type
+          : null,
     })).filter((area) => area.id && area.name);
   }
 
@@ -832,6 +843,7 @@ export class ConversationMemoryService {
             service_area: {
               id: area.id,
               name: area.name,
+              areaType: area.areaType,
               selected_at: new Date().toISOString(),
               selected_automatically: true,
             },
@@ -999,6 +1011,7 @@ export class ConversationMemoryService {
               service_area: {
                 id: area.id,
                 name: area.name,
+                areaType: area.areaType,
               },
             }),
         handoff: {
@@ -1080,7 +1093,11 @@ export class ConversationMemoryService {
 
   private readSelectedServiceArea(
     context: JsonObject,
-  ): { id: string; name: string } | null {
+  ): {
+    id: string;
+    name: string;
+    areaType: 'sales' | 'service' | null;
+  } | null {
     const raw = context.service_area;
 
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -1090,8 +1107,12 @@ export class ConversationMemoryService {
     const area = raw as JsonObject;
     const id = typeof area.id === 'string' ? area.id.trim() : '';
     const name = typeof area.name === 'string' ? area.name.trim() : '';
+    const areaType =
+      area.areaType === 'sales' || area.areaType === 'service'
+        ? area.areaType
+        : null;
 
-    return id && name ? { id, name } : null;
+    return id && name ? { id, name, areaType } : null;
   }
 
   private async isHumanAttentionOpen(companyId: string): Promise<boolean> {
@@ -1246,7 +1267,11 @@ export class ConversationMemoryService {
     companyId: string,
     context: JsonObject,
     userId: string,
-  ): Promise<{ id: string; name: string } | null> {
+  ): Promise<{
+    id: string;
+    name: string;
+    areaType: 'sales' | 'service' | null;
+  } | null> {
     const selectedArea = this.readSelectedServiceArea(context);
 
     if (selectedArea) {
@@ -1257,7 +1282,7 @@ export class ConversationMemoryService {
 
     const { data: rows, error } = await client
       .from('advisor_service_areas')
-      .select('area_id, service_areas!inner(id, name, is_active)')
+      .select('area_id, service_areas!inner(id, name, area_type, is_active)')
       .eq('company_id', companyId)
       .eq('user_id', userId);
 
@@ -1285,9 +1310,14 @@ export class ConversationMemoryService {
             ? rawArea.name.trim()
             : '';
 
+        const areaType =
+          rawArea?.area_type === 'sales' ||
+          rawArea?.area_type === 'service'
+            ? rawArea.area_type
+            : null;
         const isActive = rawArea?.is_active !== false;
 
-        return { id, name, isActive };
+        return { id, name, areaType, isActive };
       })
       .filter(
         (area) =>
@@ -1303,6 +1333,7 @@ export class ConversationMemoryService {
     return {
       id: availableAreas[0].id,
       name: availableAreas[0].name,
+      areaType: availableAreas[0].areaType,
     };
   }
 
@@ -2011,7 +2042,7 @@ export class ConversationMemoryService {
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
       .select(
-        'id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at',
+        'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at',
       )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false });
@@ -2144,7 +2175,7 @@ export class ConversationMemoryService {
     const sessionIds = sessions.map((session) => session.id);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
       .in('session_id', sessionIds)
       .order('created_at', { ascending: true });
 
@@ -2212,7 +2243,7 @@ export class ConversationMemoryService {
     const session = this.toSession(sessionRow);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
       .eq('session_id', session.id)
       .order('created_at', { ascending: true });
 
@@ -2336,7 +2367,7 @@ export class ConversationMemoryService {
         : '';
 
     const messageFields =
-      'id, session_id, message, sender, author_type, message_type, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at';
+      'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at';
 
     let messagesQuery = client
       .from('conversations')
@@ -2739,6 +2770,7 @@ export class ConversationMemoryService {
         sender: input.sender,
         author_type: authorType,
         message_type: input.messageType ?? 'text',
+        message_metadata: input.messageMetadata ?? null,
         status: input.sender === 'customer' ? 'received' : 'sent',
         ai_response: input.aiResponse ?? null,
         provider_message_id: providerMessageId,
@@ -3266,6 +3298,7 @@ export class ConversationMemoryService {
     sender: string;
     author_type?: string | null;
     message_type?: string | null;
+    message_metadata?: unknown;
     media_mime_type?: string | null;
     media_storage_path?: string | null;
     media_voice?: boolean | null;
@@ -3300,7 +3333,15 @@ export class ConversationMemoryService {
               ? 'video'
               : message.message_type === 'document'
                 ? 'document'
-                : 'text',
+                : message.message_type === 'location'
+                  ? 'location'
+                  : 'text',
+      messageMetadata:
+        message.message_metadata &&
+        typeof message.message_metadata === 'object' &&
+        !Array.isArray(message.message_metadata)
+          ? message.message_metadata as JsonObject
+          : null,
       mediaMimeType:
         typeof message.media_mime_type === 'string' &&
         message.media_mime_type.trim()
