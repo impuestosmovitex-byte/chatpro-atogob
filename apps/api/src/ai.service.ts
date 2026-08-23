@@ -361,7 +361,7 @@ export class AiService {
 
   private normalizeText(value: string): string {
     return value
-      .toLocaleLowerCase('es-CO')
+      .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, ' ')

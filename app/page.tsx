@@ -1170,8 +1170,8 @@ export default function Home() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState("");
   const [audioSending, setAudioSending] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [imageSending, setImageSending] = useState(false);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentSending, setAttachmentSending] = useState(false);
@@ -2299,20 +2299,39 @@ export default function Home() {
   }
 
   function clearImageDraft() {
-    if (imagePreviewUrl) {
-      URL.revokeObjectURL(imagePreviewUrl);
+    for (const previewUrl of imagePreviewUrls) {
+      URL.revokeObjectURL(previewUrl);
     }
 
-    setImageFile(null);
-    setImagePreviewUrl("");
+    setImageFiles([]);
+    setImagePreviewUrls([]);
 
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
     }
   }
 
-  function selectImage(file?: File | null) {
-    if (!file) return;
+  function removeImageDraft(index: number) {
+    const previewUrl = imagePreviewUrls[index];
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    setImageFiles((current) =>
+      current.filter((_, currentIndex) => currentIndex !== index),
+    );
+    setImagePreviewUrls((current) =>
+      current.filter((_, currentIndex) => currentIndex !== index),
+    );
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  }
+
+  function selectImages(files: File[]) {
+    if (!files.length) return;
 
     const allowed = new Set([
       "image/jpeg",
@@ -2321,19 +2340,41 @@ export default function Home() {
       "image/webp",
     ]);
 
-    if (!allowed.has(file.type)) {
+    const invalidFile = files.find((file) => !allowed.has(file.type));
+
+    if (invalidFile) {
       setError("Formato no permitido. Usa JPG, PNG o WEBP.");
       return;
     }
 
-    if (file.size > 8 * 1024 * 1024) {
-      setError("La imagen supera el límite de 8 MB.");
+    const oversizedFile = files.find(
+      (file) => file.size > 8 * 1024 * 1024,
+    );
+
+    if (oversizedFile) {
+      setError(
+        `La imagen ${oversizedFile.name || "seleccionada"} supera el límite de 8 MB.`,
+      );
       return;
     }
 
-    clearImageDraft();
-    setImageFile(file);
-    setImagePreviewUrl(URL.createObjectURL(file));
+    if (imageFiles.length + files.length > 10) {
+      setError("Puedes enviar hasta 10 imágenes por vez.");
+      return;
+    }
+
+    clearAttachmentDraft();
+
+    setImageFiles((current) => [...current, ...files]);
+    setImagePreviewUrls((current) => [
+      ...current,
+      ...files.map((file) => URL.createObjectURL(file)),
+    ]);
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+
     setQuickReplyOpen(false);
     setError("");
   }
@@ -2346,14 +2387,30 @@ export default function Home() {
     }
   }
 
-  function selectMediaFile(file?: File | null) {
-    if (!file) return;
+  function selectMediaFiles(
+    inputFiles?: FileList | File[] | null,
+  ) {
+    const files = Array.from(inputFiles ?? []);
 
-    if (file.type.startsWith("image/")) {
-      clearAttachmentDraft();
-      selectImage(file);
+    if (!files.length) return;
+
+    const allImages = files.every((file) =>
+      file.type.startsWith("image/"),
+    );
+
+    if (allImages) {
+      selectImages(files);
       return;
     }
+
+    if (files.length > 1) {
+      setError(
+        "Puedes seleccionar varias imágenes a la vez. Videos y documentos se envían uno por uno.",
+      );
+      return;
+    }
+
+    const file = files[0];
 
     const allowed = new Set([
       "video/mp4",
@@ -2380,6 +2437,11 @@ export default function Home() {
 
     clearImageDraft();
     setAttachmentFile(file);
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+
     setQuickReplyOpen(false);
     setError("");
   }
@@ -2441,46 +2503,82 @@ export default function Home() {
     }
   }
 
-  async function sendSelectedImage() {
-    if (!selected?.session.id || !imageFile) return;
+  async function sendSelectedImages() {
+    if (!selected?.session.id || !imageFiles.length) return;
 
     setImageSending(true);
     setError("");
     setActionMessage("");
 
+    let sentCount = 0;
+
     try {
-      const form = new FormData();
-      form.set("sessionId", selected.session.id);
-      form.set("image", imageFile, imageFile.name || "imagen.jpg");
+      for (let index = 0; index < imageFiles.length; index += 1) {
+        const imageFile = imageFiles[index];
+        const form = new FormData();
 
-      if (message.trim()) {
-        form.set("caption", message.trim().slice(0, 1024));
-      }
-
-      const response = await fetch("/api/inbox/image", {
-        method: "POST",
-        body: form,
-      });
-      const data = (await readJson(response)) as ApiConversation & {
-        message?: string;
-      };
-
-      if (!response.ok || !data.ok || !data.conversation) {
-        throw new Error(
-          data.error || data.message || "No se pudo enviar la imagen.",
+        form.set("sessionId", selected.session.id);
+        form.set(
+          "image",
+          imageFile,
+          imageFile.name || `imagen-${index + 1}.jpg`,
         );
+
+        if (index === 0 && message.trim()) {
+          form.set("caption", message.trim().slice(0, 1024));
+        }
+
+        const response = await fetch("/api/inbox/image", {
+          method: "POST",
+          body: form,
+        });
+
+        const data = (await readJson(response)) as ApiConversation & {
+          message?: string;
+        };
+
+        if (!response.ok || !data.ok || !data.conversation) {
+          throw new Error(
+            data.error ||
+              data.message ||
+              `No se pudo enviar la imagen ${index + 1}.`,
+          );
+        }
+
+        sentCount += 1;
+        setSelected(data.conversation);
       }
 
-      setSelected(data.conversation);
+      const totalSent = imageFiles.length;
+
       clearImageDraft();
       setMessage("");
-      setActionMessage("Imagen enviada.");
+      setActionMessage(
+        totalSent === 1
+          ? "Imagen enviada."
+          : `${totalSent} imágenes enviadas.`,
+      );
+
       await loadList(false);
     } catch (caught) {
+      if (sentCount > 0) {
+        for (const previewUrl of imagePreviewUrls.slice(0, sentCount)) {
+          URL.revokeObjectURL(previewUrl);
+        }
+
+        setImageFiles((current) => current.slice(sentCount));
+        setImagePreviewUrls((current) => current.slice(sentCount));
+
+        // El texto ya salió como caption de la primera imagen.
+        setMessage("");
+
+        await loadList(false);
+      }
+
       setError(
         caught instanceof Error
           ? caught.message
-          : "No se pudo enviar la imagen.",
+          : "No se pudieron enviar todas las imágenes.",
       );
     } finally {
       setImageSending(false);
@@ -2497,8 +2595,8 @@ export default function Home() {
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (imageFile) {
-      await sendSelectedImage();
+    if (imageFiles.length) {
+      await sendSelectedImages();
       return;
     }
 
@@ -2571,10 +2669,10 @@ export default function Home() {
       dragDepth = 0;
       setDraggingFile(false);
 
-      const file = event.dataTransfer?.files?.[0];
+      const files = event.dataTransfer?.files;
 
-      if (file) {
-        selectMediaFile(file);
+      if (files?.length) {
+        selectMediaFiles(files);
       }
     };
 
@@ -4628,30 +4726,41 @@ export default function Home() {
                       </div>
                     ) : (
                       <>
-                        {imageFile && imagePreviewUrl ? (
-                          <div className="wa-image-composer">
-                            <button
-                              type="button"
-                              className="wa-image-remove"
-                              onClick={clearImageDraft}
-                              disabled={imageSending}
-                              aria-label="Quitar imagen"
-                              title="Quitar imagen"
+                        {imageFiles.map((imageFile, index) => {
+                          const imagePreviewUrl = imagePreviewUrls[index];
+
+                          if (!imagePreviewUrl) return null;
+
+                          return (
+                            <div
+                              className="wa-image-composer"
+                              key={`${imageFile.name}-${imageFile.lastModified}-${index}`}
                             >
-                              ×
-                            </button>
-                            <img
-                              src={imagePreviewUrl}
-                              alt="Vista previa de la imagen"
-                            />
-                            <div>
-                              <strong>{imageFile.name || "Imagen"}</strong>
-                              <small>
-                                {(imageFile.size / 1024 / 1024).toFixed(2)} MB
-                              </small>
+                              <button
+                                type="button"
+                                className="wa-image-remove"
+                                onClick={() => removeImageDraft(index)}
+                                disabled={imageSending}
+                                aria-label={`Quitar imagen ${index + 1}`}
+                                title="Quitar imagen"
+                              >
+                                ×
+                              </button>
+                              <img
+                                src={imagePreviewUrl}
+                                alt={`Vista previa de la imagen ${index + 1}`}
+                              />
+                              <div>
+                                <strong>
+                                  {imageFile.name || `Imagen ${index + 1}`}
+                                </strong>
+                                <small>
+                                  {(imageFile.size / 1024 / 1024).toFixed(2)} MB
+                                </small>
+                              </div>
                             </div>
-                          </div>
-                        ) : null}
+                          );
+                        })}
 
                         <div className="reply-compose">
                           <div className="quick-reply-wrap">
@@ -4679,8 +4788,18 @@ export default function Home() {
                                 ) {
                                   event.preventDefault();
 
-                                  if (!actionLoading && message.trim()) {
-                                    void runAction("message");
+                                  if (
+                                    !actionLoading &&
+                                    !imageSending &&
+                                    !attachmentSending
+                                  ) {
+                                    if (imageFiles.length) {
+                                      void sendSelectedImages();
+                                    } else if (attachmentFile) {
+                                      void sendSelectedAttachment();
+                                    } else if (message.trim()) {
+                                      void runAction("message");
+                                    }
                                   }
                                 }
                               }}
@@ -4743,10 +4862,11 @@ export default function Home() {
                           <input
                             ref={imageInputRef}
                             type="file"
+                            multiple
                             accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             hidden
                             onChange={(event) =>
-                              selectMediaFile(event.target.files?.[0])
+                              selectMediaFiles(event.target.files)
                             }
                           />
                           {canSendMedia ? (
@@ -4819,7 +4939,7 @@ export default function Home() {
                             imageSending ||
                             attachmentSending ||
                             (!message.trim() &&
-                              !imageFile &&
+                              imageFiles.length === 0 &&
                               !attachmentFile)
                           }
                           aria-label="Enviar mensaje"

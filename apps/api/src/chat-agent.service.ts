@@ -473,6 +473,9 @@ export class ChatAgentService {
     ];
 
     try {
+      const agentStartedAt = Date.now();
+      let openAiStartedAt = Date.now();
+
       let response = await this.getClient().responses.create({
       model: this.getModel(),
       instructions: this.buildInstructions(
@@ -484,6 +487,10 @@ export class ChatAgentService {
       tools: this.getTools(),
       tool_choice: 'auto',
     });
+
+      console.log(
+        `[ChatPro][agent] phase=openai_initial duration_ms=${Date.now() - openAiStartedAt}`,
+      );
 
       for (let turn = 0; turn < 10; turn += 1) {
       const toolOutputs: Array<{
@@ -497,10 +504,17 @@ export class ChatAgentService {
           continue;
         }
 
+        const toolStartedAt = Date.now();
+
         const result = await this.executeTool(
           item.name,
           item.arguments,
           activeSession,
+        );
+
+        console.log(
+          `[ChatPro][agent] phase=tool turn=${turn + 1} tool=${item.name} ` +
+          `duration_ms=${Date.now() - toolStartedAt}`,
         );
 
         if (
@@ -528,6 +542,10 @@ export class ChatAgentService {
           const clean = this.cleanReply(response.output_text);
 
           if (clean) {
+            console.log(
+              `[ChatPro][agent] phase=complete turns=${turn + 1} ` +
+              `total_duration_ms=${Date.now() - agentStartedAt}`,
+            );
             await this.clearTechnicalFailureState(activeSession.id);
             return this.enforceSalesReply(
               activeSession,
@@ -546,6 +564,8 @@ export class ChatAgentService {
 
       input.push(...response.output, ...toolOutputs);
 
+      openAiStartedAt = Date.now();
+
       response = await this.getClient().responses.create({
         model: this.getModel(),
         instructions: this.buildInstructions(
@@ -557,7 +577,16 @@ export class ChatAgentService {
         tools: this.getTools(),
         tool_choice: 'auto',
       });
+
+      console.log(
+        `[ChatPro][agent] phase=openai_after_tools turn=${turn + 1} ` +
+        `duration_ms=${Date.now() - openAiStartedAt}`,
+      );
     }
+
+      console.log(
+        `[ChatPro][agent] phase=tool_limit total_duration_ms=${Date.now() - agentStartedAt}`,
+      );
 
       return this.finalizeAgentReply(
         profile,
@@ -1630,60 +1659,10 @@ export class ChatAgentService {
   }
 
   private async enforceSalesReply(
-    session: ConversationSession,
+    _session: ConversationSession,
     reply: string,
   ): Promise<string> {
-    const asksDeliveryData =
-      /\b(direccion completa|nombre y telefono|nombre completo y telefono|pásame la dirección|pasame la direccion|datos completos de entrega)\b/i.test(
-        reply,
-      );
-
-    if (!asksDeliveryData) {
-      return reply;
-    }
-
-    const currentSession =
-      await this.conversationMemoryService.getSessionById(session.id);
-
-    if (
-      !['sales', 'product', 'variant', 'checkout'].includes(
-        currentSession.stage,
-      )
-    ) {
-      return reply;
-    }
-
-    const cartResult =
-      await this.cartService.getCart(currentSession);
-
-    if (
-      !cartResult ||
-      typeof cartResult !== 'object' ||
-      (cartResult as { ok?: unknown }).ok !== true
-    ) {
-      return reply;
-    }
-
-    const checkoutResult =
-      await this.cartService.createCheckoutLink(currentSession);
-
-    if (
-      !checkoutResult ||
-      typeof checkoutResult !== 'object' ||
-      (checkoutResult as { ok?: unknown }).ok !== true ||
-      typeof (checkoutResult as { checkout_url?: unknown })
-        .checkout_url !== 'string'
-    ) {
-      return reply;
-    }
-
-    const checkoutUrl =
-      (checkoutResult as { checkout_url: string }).checkout_url;
-
-    return (
-      'Completa tus datos de entrega aquí y selecciona “Envío”:\n' +
-      checkoutUrl
-    );
+    return reply;
   }
 
   private buildInstructions(
@@ -1731,8 +1710,8 @@ export class ChatAgentService {
         : '';
 
     return [
-      `Eres ${assistantName}, asesora comercial de ${profile.name}.`,
-      `Hablas en español colombiano, de forma ${configuredTone}.`,
+      `Representas a ${profile.name} en esta conversación. Tu nombre configurado es ${assistantName}. No asumas género, cargo o rol adicional salvo que las instrucciones específicas de la empresa lo definan.`,
+      `Si la conversación es en español, usa español latinoamericano neutro y natural, sin imponer expresiones propias de un país específico. Si el cliente conversa en otro idioma, responde naturalmente en ese idioma, salvo que las instrucciones específicas de la empresa indiquen lo contrario. Mantén un tono ${configuredTone}.`,
       '',
       'REGLAS DE VERACIDAD:',
       '- Nunca muestres código, JSON, herramientas, IDs técnicos, procesos internos ni mensajes del sistema.',
@@ -1792,6 +1771,11 @@ export class ChatAgentService {
       '- session.context.last_visual_reference contiene la referencia visual comercial más reciente únicamente cuando la conversación está realmente en Ventas. No la uses cuando conversation_category sea service.',
       '- session.context.visual_reference_burst contiene las referencias visuales independientes que el cliente envió dentro de una misma ráfaga reciente. Si contiene varias referencias, no las reemplaces conceptualmente por la última ni las conviertas en varias unidades del mismo producto.',
       '- Cuando visual_reference_burst.references tenga varias referencias y la persona diga “las dos”, “ambas”, “todas”, “la primera”, “la segunda” o equivalente, resuelve el referente usando esa lista y conserva cada producto como referencia independiente.',
+      '- session.context.commercial_visual_references contiene las referencias visuales comerciales conservadas durante toda la conversación de venta activa, incluso si fueron enviadas en ráfagas diferentes o después de respuestas anteriores de la IA.',
+      '- Usa commercial_visual_references para resolver frases como “los dos que te mandé”, “las cinco fotos”, “el primero”, “el anterior”, “también este” o referencias a productos mostrados anteriormente durante la misma compra.',
+      '- Una nueva foto, una nueva búsqueda, una nueva ráfaga o una respuesta de la IA no eliminan commercial_visual_references.',
+      '- Si una referencia anterior tiene matched_product.url y el cliente decide comprar o configurar ese producto, usa select_product_by_url antes de consultar variantes o agregarlo al carrito.',
+      '- commercial_visual_references son referencias comerciales, no productos del carrito. Nunca asumas que fueron agregadas hasta que una herramienta de carrito lo confirme.',
       '- Una ráfaga visual no agrega productos automáticamente al carrito. Solo ejecuta acciones de compra cuando la intención del cliente sea explícita y las variantes necesarias estén realmente resueltas.',
       '- Si last_visual_reference.match_type es exact y matched_product existe, esa referencia ya fue validada contra el catálogo real y quedó seleccionada. Usa get_selected_product para consultar precio y variantes reales.',
       '- Si match_type es similar, no afirmes que encontraste la referencia exacta. Presenta como máximo las opciones reales incluidas en candidates y pregunta cuál corresponde.',
@@ -1822,9 +1806,9 @@ export class ChatAgentService {
       '- Cuando confirme que no agregará más o que desea finalizar, usa remember_sale_context con cart_confirmed=true.',
       '- Si agrega, elimina o cambia un producto, la confirmación anterior deja de ser válida. Recalcula el envío y presenta nuevamente el resumen.',
       '- Antes del resumen final, guarda la tarifa correcta y usa get_cart. Muestra producto y variante, subtotal, envío y total general.',
-      '- No solicites dirección, nombre ni teléfono por WhatsApp. Esos datos se completan en el checkout.',
+      '- No solicites por WhatsApp dirección ni teléfono cuando las instrucciones de la empresa indiquen que esos datos se completan en checkout. El nombre conversacional o nombre de pila sí puede preguntarse de forma natural cuando las instrucciones específicas de la empresa lo indiquen; no lo confundas con los datos formales de entrega o facturación.',
       '- Usa create_checkout_link solo cuando ciudad, medio de pago, envío y carrito estén confirmados.',
-      '- Si create_checkout_link devuelve next_action confirm_cart, pregunta si desea agregar algo más y no envíes un enlace todavía.',
+
       '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para completar datos y finalizar. Nunca lo sustituyas por un cart_url.',
       '- Si sale_context.payment_instructions_sent es true, no vuelvas a enviar los mismos datos; pide únicamente el comprobante o el paso pendiente.',
       '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
@@ -2319,6 +2303,7 @@ export class ChatAgentService {
       context.purchaseIntent ||
       context.last_visual_reference ||
       context.visual_reference_burst ||
+      context.commercial_visual_references ||
       context.customer_service_flow ||
       context.cart_recovery ||
       cartHasLines,
@@ -3214,19 +3199,6 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             next_action: 'complete_sale_context',
             error:
               'Antes del checkout confirma ciudad, medio de pago y costo de envío.',
-            sale_context: saleContext,
-          };
-        }
-
-        if (
-          !isRecoveryCart &&
-          saleContext.cart_confirmed !== true
-        ) {
-          return {
-            ok: false,
-            next_action: 'confirm_cart',
-            error:
-              'Pregunta una sola vez si desea agregar otro producto. Cuando confirme que no, guarda cart_confirmed=true.',
             sale_context: saleContext,
           };
         }
@@ -4443,7 +4415,7 @@ private findClosingBrace(
 
   private normalizeText(value: string): string {
     return value
-      .toLocaleLowerCase('es-CO')
+      .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, ' ')

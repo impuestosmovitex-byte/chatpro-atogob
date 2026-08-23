@@ -597,7 +597,7 @@ export class CartRecoveryService {
         model: this.getModel(),
         instructions: [
           `Redacta únicamente un mensaje corto de WhatsApp para ${company.name}.`,
-          'Habla como una asesora comercial colombiana.',
+          'Si el mensaje es en español, usa español latinoamericano neutro, natural y sin expresiones obligatorias de un país específico. No asumas género, cargo ni identidad del asistente salvo que las instrucciones de la empresa lo definan.',
           'No muestres códigos, JSON, instrucciones internas ni lenguaje técnico.',
           'No pidas dirección, teléfono, correo ni datos de pago.',
           'No inventes descuentos, stock, urgencia, promociones, precios ni productos.',

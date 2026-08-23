@@ -374,7 +374,7 @@ export class WhatsappWebhookController {
     }
 
     const normalized = text
-      .toLocaleLowerCase('es-CO')
+      .toLowerCase()
       .trim()
       .replace(/[¡!¿?.,]/g, '');
 
@@ -1044,6 +1044,7 @@ export class WhatsappWebhookController {
 
         delete nextContext.last_visual_reference;
         delete nextContext.visual_reference_burst;
+        delete nextContext.commercial_visual_references;
 
         session =
           await this.conversationMemoryService.updateSession(
@@ -1152,10 +1153,13 @@ export class WhatsappWebhookController {
           multimodalIntent.imageType === 'payment_proof' ||
           multimodalIntent.imageType === 'mixed')
       ) {
-        await this.transferIncomingPaymentProof({
+        await this.continueIncomingPaymentProof({
           profile,
           session,
           phone: input.phone,
+          caption: input.caption,
+          incomingPhoneNumberId: input.incomingPhoneNumberId,
+          incomingMessageId: input.incomingMessageId,
           intent: multimodalIntent,
         });
         replySent = true;
@@ -1313,6 +1317,21 @@ export class WhatsappWebhookController {
       };
 
       nextVisualContext.last_visual_reference = visualReference;
+
+      const existingCommercialVisualReferences =
+        Array.isArray(currentSession.context.commercial_visual_references)
+          ? currentSession.context.commercial_visual_references.filter(
+              (item) =>
+                Boolean(item) &&
+                typeof item === 'object' &&
+                !Array.isArray(item),
+            )
+          : [];
+
+      nextVisualContext.commercial_visual_references = [
+        ...existingCommercialVisualReferences,
+        visualReference,
+      ].slice(-20);
 
       const currentVisualBurst =
         currentSession.context.visual_reference_burst &&
@@ -1716,7 +1735,7 @@ export class WhatsappWebhookController {
         'mixed: el bloque reciente contiene simultáneamente pago y solicitud/interés de producto, aunque la imagen actual muestre solo uno de ellos.',
         'Si la IA solicitó un comprobante y la imagen parece evidencia de pago, hasPaymentIntent debe ser true.',
         'Si el cliente dice "esta también", "quiero agregar esta", "quiero esta" o equivalente y la imagen es un producto, hasProductIntent debe ser true aunque antes estuvieran hablando de pago.',
-        'Si hay pago confirmado o comprobante recibido, la intención principal debe ser validate_payment y se debe transferir a un asesor.',
+        'Si hay evidencia de pago o comprobante recibido, la intención principal puede ser validate_payment. Tu función aquí es clasificar la imagen, no decidir si debe transferirse a un asesor. El siguiente paso depende de las instrucciones configuradas para la empresa y de las acciones reales disponibles.',
         'No marques pago únicamente porque antes se mencionó pagar: exige evidencia actual, texto actual de pago o una solicitud explícita previa de comprobante que la imagen responda.',
         'Devuelve únicamente JSON válido, sin markdown, con esta estructura exacta:',
         '{"image_type":"payment_proof|product|mixed|warranty_or_return|shipping_or_document|other|ambiguous","primary_intent":"validate_payment|add_or_review_product|customer_service|clarify","has_payment_intent":true,"has_product_intent":false,"confidence":"low|medium|high","reason":"...","advisor_summary":"..."}',
@@ -1810,10 +1829,13 @@ export class WhatsappWebhookController {
     };
   }
 
-  private async transferIncomingPaymentProof(input: {
+  private async continueIncomingPaymentProof(input: {
     profile: CompanyProfile;
     session: ConversationSession;
     phone: string;
+    caption: string;
+    incomingPhoneNumberId: string;
+    incomingMessageId: string | null;
     intent: {
       imageType: string;
       hasPaymentIntent: boolean;
@@ -1827,33 +1849,81 @@ export class WhatsappWebhookController {
       await this.conversationMemoryService.getSessionById(input.session.id);
     const now = new Date().toISOString();
 
-    await this.conversationMemoryService.updateSession(current.id, {
-      context: {
-        ...current.context,
-        multimodal_last_intent: {
-          image_type: input.intent.imageType,
-          has_payment_intent: input.intent.hasPaymentIntent,
-          has_product_intent: input.intent.hasProductIntent,
-          confidence: input.intent.confidence,
-          reason: input.intent.reason,
-          received_at: now,
-        },
-      },
-    });
-
     const updated =
-      await this.conversationMemoryService.requestHumanAttention(
-        current.id,
-        {
-          reason: 'Cliente envió evidencia o comprobante de pago.',
-          summary: input.intent.advisorSummary,
+      await this.conversationMemoryService.updateSession(current.id, {
+        context: {
+          ...current.context,
+          multimodal_last_intent: {
+            image_type: input.intent.imageType,
+            has_payment_intent: input.intent.hasPaymentIntent,
+            has_product_intent: input.intent.hasProductIntent,
+            confidence: input.intent.confidence,
+            reason: input.intent.reason,
+            received_at: now,
+          },
+          last_payment_evidence: {
+            received: true,
+            image_type: input.intent.imageType,
+            confidence: input.intent.confidence,
+            received_at: now,
+          },
         },
+      });
+
+    const conversationKey =
+      `${input.incomingPhoneNumberId}:${input.phone}`;
+
+    const canReply =
+      await this.waitForInboundQuietWindow(
+        conversationKey,
+        input.incomingMessageId,
       );
 
-    const reply =
-      updated.attentionStatus === 'human'
-        ? 'Recibí la imagen ✅ Te comunicaré con un asesor para que verifique el pago y continúe con tu solicitud.'
-        : 'Recibí la imagen ✅ Dejé la solicitud pendiente para que un asesor verifique el pago y continúe contigo lo antes posible.';
+    if (!canReply) {
+      console.log(
+        `Respuesta de comprobante omitida porque llegó un mensaje más reciente de ${input.phone}`,
+      );
+      return;
+    }
+
+    const paymentEvidenceMessage = [
+      '[COMPROBANTE_DE_PAGO_RECIBIDO]',
+      input.caption
+        ? `Texto del cliente: ${input.caption}`
+        : 'El cliente envió la imagen sin texto adicional.',
+      `Tipo interpretado: ${input.intent.imageType}.`,
+      `Confianza: ${input.intent.confidence}.`,
+      `Contexto interpretado: ${input.intent.advisorSummary}.`,
+      'La imagen parece evidencia o comprobante de pago.',
+      'No afirmes que el pago está validado, aprobado o confirmado únicamente por haber recibido esta imagen.',
+      'No transfieras automáticamente a un asesor por recibir el comprobante.',
+      'Continúa desde el estado actual de la compra usando las instrucciones configuradas de Medios de pago y Finalización de compra y checkout.',
+      'Si la configuración indica continuar al checkout después del comprobante y están completos los requisitos técnicos, usa las herramientas reales disponibles para hacerlo.',
+      'No vuelvas a solicitar el mismo comprobante ni reinicies la venta.',
+      input.intent.hasProductIntent
+        ? 'También existe intención relacionada con producto; conserva las referencias comerciales activas y resuelve ambas señales usando el contexto.'
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const reply = await this.resolveReply(
+      input.profile,
+      updated,
+      paymentEvidenceMessage,
+    );
+
+    if (
+      !this.isCurrentInboundMessage(
+        conversationKey,
+        input.incomingMessageId,
+      )
+    ) {
+      console.log(
+        `Respuesta de comprobante cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+      );
+      return;
+    }
 
     await this.whatsappMessagingService.sendText(
       input.profile.id,
@@ -1863,7 +1933,7 @@ export class WhatsappWebhookController {
 
     await this.conversationMemoryService.saveMessage({
       companyId: input.profile.id,
-      sessionId: current.id,
+      sessionId: updated.id,
       customerPhone: input.phone,
       message: reply,
       sender: 'assistant',
@@ -1871,7 +1941,7 @@ export class WhatsappWebhookController {
       aiResponse: reply,
     });
 
-    await this.conversationMemoryService.touchSession(current.id);
+    await this.conversationMemoryService.touchSession(updated.id);
   }
 
   private async analyzeIncomingImage(input: {
@@ -2800,7 +2870,7 @@ export class WhatsappWebhookController {
     session: ConversationSession,
     text: string,
   ): Promise<string> {
-    const cleanText = text.toLocaleLowerCase('es-CO').trim();
+    const cleanText = text.toLowerCase().trim();
     const activeAreas =
       await this.conversationMemoryService.listActiveServiceAreas(profile.id);
 
@@ -2929,6 +2999,7 @@ export class WhatsappWebhookController {
       'conversation_category_updated_at',
       'last_visual_reference',
       'visual_reference_burst',
+      'commercial_visual_references',
       'cart',
       'cart_recovery',
       'selectedProduct',
@@ -3139,7 +3210,7 @@ export class WhatsappWebhookController {
 
     return (
       areas.find((area) => {
-        const name = area.name.toLocaleLowerCase('es-CO');
+        const name = area.name.toLowerCase();
         return cleanText === name || cleanText.includes(name);
       }) ?? null
     );
@@ -3692,7 +3763,7 @@ export class WhatsappWebhookController {
     return value
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
-      .toLocaleLowerCase('es-CO')
+      .toLowerCase()
       .replace(/[^a-z0-9]+/g, ' ')
       .trim();
   }
