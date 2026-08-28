@@ -2946,6 +2946,8 @@ export class WhatsappWebhookController {
     }
 
     const customerServiceReply = await this.resolveCustomerServiceReply(
+      profile,
+      activeAreas,
       session,
       cleanText,
       text,
@@ -3218,17 +3220,183 @@ export class WhatsappWebhookController {
 
 
   private async resolveCustomerServiceReply(
+    profile: CompanyProfile,
+    activeAreas: Array<{
+      id: string;
+      name: string;
+      description: string;
+      areaType: 'sales' | 'service' | null;
+    }>,
     session: ConversationSession,
     _cleanText: string,
     originalText: string,
   ): Promise<string | null> {
     const flow = this.readCustomerServiceFlow(session.context);
 
-    if (flow.type === 'order_lookup') {
+    if (flow.type !== 'order_lookup') {
+      return null;
+    }
+
+    const identifier = this.parseOrderIdentifier(originalText);
+
+    if (
+      identifier.orderReference ||
+      identifier.email ||
+      identifier.phone
+    ) {
       return this.resolveOrderLookup(session, originalText, flow);
     }
 
-    return null;
+    const directArea =
+      await this.resolveDirectServiceAreaChoice(
+        profile,
+        activeAreas,
+        originalText,
+      );
+
+    if (directArea) {
+      const nextContext: Record<string, unknown> = {
+        ...session.context,
+        service_area: {
+          id: directArea.id,
+          name: directArea.name,
+          description: directArea.description,
+          areaType: directArea.areaType,
+          selected_at: new Date().toISOString(),
+          selected_automatically: true,
+        },
+      };
+
+      delete nextContext.customer_service_flow;
+      delete nextContext.clarification_state;
+
+      if (directArea.areaType) {
+        nextContext.conversation_category = directArea.areaType;
+        nextContext.conversation_category_updated_at =
+          new Date().toISOString();
+      } else {
+        delete nextContext.conversation_category;
+        delete nextContext.conversation_category_updated_at;
+      }
+
+      const updatedSession =
+        await this.conversationMemoryService.updateSession(
+          session.id,
+          {
+            stage: 'active',
+            context: nextContext,
+          },
+        );
+
+      return this.chatAgentService.reply(
+        profile,
+        updatedSession,
+        originalText,
+      );
+    }
+
+    const pendingIntent =
+      await this.classifyPendingOrderLookupIntent(
+        originalText,
+      );
+
+    if (pendingIntent === 'leave') {
+      const nextContext: Record<string, unknown> = {
+        ...session.context,
+      };
+
+      delete nextContext.customer_service_flow;
+      delete nextContext.service_area;
+      delete nextContext.conversation_category;
+      delete nextContext.conversation_category_updated_at;
+      delete nextContext.clarification_state;
+
+      const updatedSession =
+        await this.conversationMemoryService.updateSession(
+          session.id,
+          {
+            stage: 'active',
+            context: nextContext,
+          },
+        );
+
+      return this.chatAgentService.reply(
+        profile,
+        updatedSession,
+        originalText,
+      );
+    }
+
+    return this.resolveOrderLookup(
+      session,
+      originalText,
+      flow,
+    );
+  }
+
+  private async classifyPendingOrderLookupIntent(
+    originalText: string,
+  ): Promise<'continue' | 'leave' | 'unclear'> {
+    const text = originalText.replace(/\s+/g, ' ').trim();
+
+    if (!text) {
+      return 'unclear';
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+
+    if (!apiKey) {
+      return 'unclear';
+    }
+
+    try {
+      const client = new OpenAI({ apiKey });
+      const model =
+        process.env.OPENAI_MODEL?.trim() ||
+        'gpt-5-mini';
+
+      const response = await client.responses.create({
+        model,
+        instructions: [
+          'Clasifica únicamente la relación del mensaje actual con una consulta de pedido que había quedado pendiente.',
+          'Devuelve únicamente JSON válido y sin markdown:',
+          '{"intent":"continue|leave|unclear"}',
+          'continue: la persona todavía quiere consultar, localizar, rastrear o revisar una compra o pedido existente.',
+          'leave: la persona rechaza claramente esa consulta, indica que no tiene o no realizó una compra, cambia a otra necesidad, inicia una compra nueva, pide productos, catálogo, información comercial o plantea otro asunto diferente.',
+          'unclear: el mensaje es demasiado ambiguo para confirmar si continúa o abandona la consulta pendiente.',
+          'No inventes reglas comerciales ni información de la empresa.',
+          'No respondas al cliente.',
+        ].join('\n'),
+        input: JSON.stringify({
+          mensaje_actual: text,
+        }),
+      });
+
+      const raw = response.output_text
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '');
+
+      const parsed = JSON.parse(raw) as {
+        intent?: unknown;
+      };
+
+      if (parsed.intent === 'continue') {
+        return 'continue';
+      }
+
+      if (parsed.intent === 'leave') {
+        return 'leave';
+      }
+
+      return 'unclear';
+    } catch (error) {
+      console.error(
+        '[ChatPro][order-lookup] no se pudo clasificar continuidad:',
+        error,
+      );
+      return 'unclear';
+    }
   }
 
   private async resolveOrderLookup(
