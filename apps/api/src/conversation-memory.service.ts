@@ -1706,7 +1706,10 @@ export class ConversationMemoryService {
         canViewAi: boolean;
         canViewWaiting: boolean;
         canViewTeam: boolean;
-        canTake: boolean;
+        canTakeAi: boolean;
+        canTakeWaiting: boolean;
+        canTakeAll: boolean;
+        canTakeLegacy: boolean;
         advisorsCanTakeAi: boolean;
         aiTakeAfterMinutes: number;
       };
@@ -1874,19 +1877,35 @@ export class ConversationMemoryService {
           conditions.push('attention_status.eq.human');
         }
 
-        if (visibility.canTake) {
+        if (
+          visibility.canTakeWaiting ||
+          visibility.canTakeAll ||
+          visibility.canTakeLegacy
+        ) {
           conditions.push('attention_status.eq.waiting');
+        }
 
-          if (visibility.advisorsCanTakeAi) {
-            const cutoff = new Date(
-              Date.now() -
-                Math.max(0, visibility.aiTakeAfterMinutes) * 60_000,
-            ).toISOString();
+        if (
+          visibility.canTakeAi ||
+          visibility.canTakeAll
+        ) {
+          conditions.push('attention_status.eq.ai');
+        } else if (
+          visibility.canTakeLegacy &&
+          visibility.advisorsCanTakeAi
+        ) {
+          const cutoff = new Date(
+            Date.now() -
+              Math.max(0, visibility.aiTakeAfterMinutes) * 60_000,
+          ).toISOString();
 
-            conditions.push(
-              `and(attention_status.eq.ai,last_message_at.lte.${cutoff})`,
-            );
-          }
+          conditions.push(
+            `and(attention_status.eq.ai,last_message_at.lte.${cutoff})`,
+          );
+        }
+
+        if (visibility.canTakeAll) {
+          conditions.push('attention_status.eq.human');
         }
 
         if (!conditions.length) {

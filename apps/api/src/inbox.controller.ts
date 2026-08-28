@@ -101,7 +101,10 @@ export class InboxController {
           canViewAi: actor.permissions.has('inbox.view_ai'),
           canViewWaiting: actor.permissions.has('inbox.view_waiting'),
           canViewTeam: actor.permissions.has('inbox.view_team'),
-          canTake: actor.permissions.has('inbox.take'),
+          canTakeAi: actor.permissions.has('inbox.take_ai'),
+          canTakeWaiting: actor.permissions.has('inbox.take_waiting'),
+          canTakeAll: actor.permissions.has('inbox.take_all'),
+          canTakeLegacy: actor.permissions.has('inbox.take'),
           advisorsCanTakeAi: settings.advisorsCanTakeAi,
           aiTakeAfterMinutes: settings.aiTakeAfterMinutes,
         },
@@ -2694,26 +2697,60 @@ export class InboxController {
       };
     }
 
+    const canTakeAll =
+      actor.isFullAccess ||
+      actor.permissions.has('inbox.take_all');
+
+    const canTakeAi =
+      canTakeAll ||
+      actor.permissions.has('inbox.take_ai');
+
+    const canTakeWaiting =
+      canTakeAll ||
+      actor.permissions.has('inbox.take_waiting');
+
+    const hasLegacyTake =
+      actor.permissions.has('inbox.take');
+
     if (session.attentionStatus === 'human') {
+      if (
+        session.assignedToUserId &&
+        session.assignedToUserId === actor.userId
+      ) {
+        return {
+          takeAvailable: false,
+          takeBlockedReason:
+            'Esta conversación ya está asignada a tu usuario.',
+        };
+      }
+
+      if (canTakeAll) {
+        return {
+          takeAvailable: true,
+          takeBlockedReason: null,
+        };
+      }
+
       return {
         takeAvailable: false,
         takeBlockedReason: session.assignedToUserId
-          ? 'La conversación ya está asignada a un asesor. Debe transferirse.'
+          ? 'La conversación está asignada a otro asesor.'
           : 'La conversación ya está siendo atendida por una persona.',
       };
     }
 
-    if (!actor.isFullAccess && !actor.permissions.has('inbox.take')) {
+    if (session.attentionStatus === 'waiting') {
+      if (canTakeWaiting || hasLegacyTake) {
+        return {
+          takeAvailable: true,
+          takeBlockedReason: null,
+        };
+      }
+
       return {
         takeAvailable: false,
-        takeBlockedReason: 'No tienes permiso para tomar conversaciones.',
-      };
-    }
-
-    if (session.attentionStatus === 'waiting') {
-      return {
-        takeAvailable: true,
-        takeBlockedReason: null,
+        takeBlockedReason:
+          'No tienes permiso para tomar conversaciones pendientes.',
       };
     }
 
@@ -2724,13 +2761,23 @@ export class InboxController {
       };
     }
 
-    if (actor.isFullAccess) {
+    if (canTakeAi) {
       return {
         takeAvailable: true,
         takeBlockedReason: null,
       };
     }
 
+    if (!hasLegacyTake) {
+      return {
+        takeAvailable: false,
+        takeBlockedReason:
+          'No tienes permiso para tomar conversaciones de IA.',
+      };
+    }
+
+    // Compatibilidad con inbox.take:
+    // conserva exactamente la restricción histórica de empresa y tiempo.
     if (!settings.advisorsCanTakeAi) {
       return {
         takeAvailable: false,
@@ -2748,7 +2795,10 @@ export class InboxController {
       };
     }
 
-    const elapsedMinutes = Math.floor((Date.now() - lastActivity) / 60000);
+    const elapsedMinutes = Math.floor(
+      (Date.now() - lastActivity) / 60000,
+    );
+
     const remainingMinutes = Math.max(
       0,
       settings.aiTakeAfterMinutes - elapsedMinutes,
@@ -2757,7 +2807,8 @@ export class InboxController {
     if (remainingMinutes > 0) {
       return {
         takeAvailable: false,
-        takeBlockedReason: `La IA sigue activa. Podrás tomar esta conversación en ${remainingMinutes} minuto${remainingMinutes === 1 ? '' : 's'}.`,
+        takeBlockedReason:
+          `La IA sigue activa. Podrás tomar esta conversación en ${remainingMinutes} minuto${remainingMinutes === 1 ? '' : 's'}.`,
       };
     }
 
