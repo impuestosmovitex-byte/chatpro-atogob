@@ -1141,6 +1141,7 @@ export default function Home() {
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
+  const [openingSessionId, setOpeningSessionId] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferLoading, setTransferLoading] = useState(false);
@@ -1179,6 +1180,12 @@ export default function Home() {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const conversationRequestRef = useRef(0);
+  const silentConversationRequestRef = useRef(0);
+  const silentConversationBusyRef = useRef(false);
+  const openingSessionIdRef = useRef("");
+  const manualConversationAbortRef = useRef<AbortController | null>(null);
+  const listRequestRef = useRef(0);
+  const listAbortRef = useRef<AbortController | null>(null);
   const nextSessionsOffsetRef = useRef(0);
   const pendingSessionsTotalRef = useRef(0);
 
@@ -1391,6 +1398,14 @@ export default function Home() {
     const append = options.append === true;
     const reset = options.reset === true;
 
+    const listRequestId = append ? 0 : ++listRequestRef.current;
+    const listController = append ? null : new AbortController();
+
+    if (!append && listController) {
+      listAbortRef.current?.abort();
+      listAbortRef.current = listController;
+    }
+
     if (append) {
       setLoadingMoreSessions(true);
     } else if (showSpinner) {
@@ -1423,8 +1438,13 @@ export default function Home() {
 
       const response = await fetch(`/api/inbox?${params.toString()}`, {
         cache: "no-store",
+        signal: listController?.signal,
       });
       const data = (await readJson(response)) as ApiList;
+
+      if (!append && listRequestId !== listRequestRef.current) {
+        return;
+      }
 
       if (!response.ok || !data.ok) {
         throw new Error(data.error || "No se pudo cargar la bandeja.");
@@ -1466,6 +1486,14 @@ export default function Home() {
       setNextSessionsOffset(resolvedNextOffset);
       setError("");
     } catch (caught) {
+      if (caught instanceof Error && caught.name === "AbortError") {
+        return;
+      }
+
+      if (!append && listRequestId !== listRequestRef.current) {
+        return;
+      }
+
       setError(
         caught instanceof Error
           ? caught.message
@@ -1698,14 +1726,53 @@ export default function Home() {
     silent = false,
     afterCreatedAt = "",
   ) {
-    const requestId = ++conversationRequestRef.current;
+    /*
+     * El polling automático y la navegación manual usan solicitudes
+     * independientes. Así una actualización silenciosa nunca invalida
+     * el clic del usuario.
+     */
+    if (silent) {
+      if (silentConversationBusyRef.current) {
+        return;
+      }
 
-    if (!silent) {
+      if (
+        openingSessionIdRef.current &&
+        openingSessionIdRef.current !== sessionId
+      ) {
+        return;
+      }
+
+      silentConversationBusyRef.current = true;
+    } else {
+      /*
+       * Segundo clic sobre el mismo chat mientras ya está abriendo:
+       * no genera otra solicitud.
+       */
+      if (openingSessionIdRef.current === sessionId) {
+        return;
+      }
+
+      openingSessionIdRef.current = sessionId;
+      setOpeningSessionId(sessionId);
+
+      /*
+       * Si el usuario pulsa otro chat antes de terminar el anterior,
+       * cancelamos físicamente la solicitud vieja.
+       */
+      manualConversationAbortRef.current?.abort();
+      manualConversationAbortRef.current = new AbortController();
+
       setLoadingChat(true);
-      setSelected(null);
       setActionMessage("");
       setError("");
     }
+
+    const requestRef = silent
+      ? silentConversationRequestRef
+      : conversationRequestRef;
+
+    const requestId = ++requestRef.current;
 
     try {
       const params = new URLSearchParams({ sessionId });
@@ -1716,10 +1783,13 @@ export default function Home() {
 
       const response = await fetch(`/api/inbox?${params.toString()}`, {
         cache: "no-store",
+        signal: silent
+          ? undefined
+          : manualConversationAbortRef.current?.signal,
       });
       const data = (await readJson(response)) as ApiConversation;
 
-      if (requestId !== conversationRequestRef.current) {
+      if (requestId !== requestRef.current) {
         return;
       }
 
@@ -1806,7 +1876,11 @@ export default function Home() {
 
       setError("");
     } catch (caught) {
-      if (requestId !== conversationRequestRef.current) {
+      if (caught instanceof Error && caught.name === "AbortError") {
+        return;
+      }
+
+      if (requestId !== requestRef.current) {
         return;
       }
 
@@ -1818,8 +1892,17 @@ export default function Home() {
         );
       }
     } finally {
-      if (!silent && requestId === conversationRequestRef.current) {
+      if (silent) {
+        if (requestId === silentConversationRequestRef.current) {
+          silentConversationBusyRef.current = false;
+        }
+      } else if (requestId === conversationRequestRef.current) {
         setLoadingChat(false);
+
+        if (openingSessionIdRef.current === sessionId) {
+          openingSessionIdRef.current = "";
+          setOpeningSessionId("");
+        }
       }
     }
   }
@@ -1866,6 +1949,24 @@ export default function Home() {
         };
       });
 
+      /*
+       * La lista lateral también cambia inmediatamente.
+       * No esperamos otra consulta al servidor para mostrar el mensaje.
+       */
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === sessionId
+            ? {
+                ...session,
+                lastMessageAt: optimisticCreatedAt,
+                pendingCount: 0,
+                pendingSince: null,
+                lastMessage: optimisticMessage,
+              }
+            : session,
+        ),
+      );
+
       setMessage("");
       setQuickReplyOpen(false);
     }
@@ -1900,11 +2001,11 @@ export default function Home() {
 
       if (action === "message") {
         /*
-         * El mensaje ya apareció en pantalla. Ahora reemplazamos
-         * silenciosamente la copia temporal por el mensaje confirmado.
+         * El mensaje y la lista ya fueron actualizados localmente.
+         * No bloqueamos la interfaz haciendo dos consultas adicionales.
+         * La actualización normal de la bandeja reconciliará después
+         * el estado confirmado del servidor.
          */
-        await openConversation(sessionId, true);
-        void loadList(false);
       } else {
         await loadList(false);
         await openConversation(sessionId);
@@ -3665,11 +3766,10 @@ export default function Home() {
             }}
           >
             <section
-              className="transfer-dialog"
+              className="transfer-dialog template-dialog"
               role="dialog"
               aria-modal="true"
               aria-labelledby="template-dialog-title"
-              style={{ maxWidth: 680 }}
             >
               <div className="transfer-dialog-heading">
                 <div>
@@ -4039,7 +4139,13 @@ export default function Home() {
                     key={session.id}
                     type="button"
                     className={`conversation-row status-${session.attentionStatus} ${
-                      selected?.session.id === session.id ? "selected" : ""
+                      openingSessionId
+                        ? openingSessionId === session.id
+                          ? "selected"
+                          : ""
+                        : selected?.session.id === session.id
+                          ? "selected"
+                          : ""
                     } ${session.pendingCount > 0 ? "has-pending" : ""} ${
                       session.restricted ? "restricted-search-result" : ""
                     }`}
@@ -4052,6 +4158,14 @@ export default function Home() {
                               ? "Este chat está siendo atendido por la IA."
                               : "No tienes permiso para abrir este chat.",
                         );
+                        return;
+                      }
+
+                      if (
+                        openingSessionIdRef.current === session.id ||
+                        (!openingSessionIdRef.current &&
+                          selected?.session.id === session.id)
+                      ) {
                         return;
                       }
 
