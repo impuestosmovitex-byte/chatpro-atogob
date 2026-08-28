@@ -355,6 +355,59 @@ function customerLabel(phone: string, contact?: Contact | null) {
   );
 }
 
+function customerProfilePictureUrl(
+  session?: ConversationSession | null,
+) {
+  if (!session?.context || typeof session.context !== "object") {
+    return "";
+  }
+
+  const value = session.context.profilePictureUrl;
+
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function customerChannel(
+  session?: ConversationSession | null,
+  contact?: Contact | null,
+): "whatsapp" | "messenger" | "instagram" | "manual" {
+  const contextChannel =
+    session?.context && typeof session.context === "object"
+      ? session.context.channel
+      : null;
+
+  if (
+    contextChannel === "messenger" ||
+    contextChannel === "instagram" ||
+    contextChannel === "whatsapp"
+  ) {
+    return contextChannel;
+  }
+
+  if (
+    contact?.primaryChannel === "messenger" ||
+    contact?.primaryChannel === "instagram" ||
+    contact?.primaryChannel === "whatsapp" ||
+    contact?.primaryChannel === "manual"
+  ) {
+    return contact.primaryChannel;
+  }
+
+  return "whatsapp";
+}
+
+function customerChannelLabel(
+  session?: ConversationSession | null,
+  contact?: Contact | null,
+) {
+  const channel = customerChannel(session, contact);
+
+  if (channel === "instagram") return "Instagram";
+  if (channel === "messenger") return "Messenger";
+  if (channel === "manual") return "Contacto";
+  return "WhatsApp";
+}
+
 function customerInitials(phone: string, contact?: Contact | null) {
   const name = contact?.displayName?.trim();
 
@@ -4173,9 +4226,18 @@ export default function Home() {
                     }}
                   >
                     <span className="avatar" aria-hidden="true">
-                      {customerInitials(
-                        session.customerPhone,
-                        session.contact,
+                      {customerProfilePictureUrl(session) ? (
+                        <img
+                          src={customerProfilePictureUrl(session)}
+                          alt=""
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        customerInitials(
+                          session.customerPhone,
+                          session.contact,
+                        )
                       )}
                     </span>
 
@@ -4271,14 +4333,31 @@ export default function Home() {
                     >
                       ‹
                     </button>
-                    <span className="mobile-chat-avatar" aria-hidden="true">
-                      {selected.session.customerPhone.slice(-2) || "CP"}
+                    <span
+                      className="mobile-chat-avatar chat-profile-avatar"
+                      aria-hidden="true"
+                    >
+                      {customerProfilePictureUrl(selected.session) ? (
+                        <img
+                          src={customerProfilePictureUrl(selected.session)}
+                          alt=""
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        customerInitials(
+                          selected.session.customerPhone,
+                          selected.contact,
+                        )
+                      )}
                     </span>
                     <div className="chat-heading-copy">
                       <p className="eyebrow">
                         {isInternalTest
-                          ? "Prueba interna · no envía WhatsApp"
-                          : "WhatsApp"}
+                          ? "Prueba interna · no envía mensajes externos"
+                          : customerChannelLabel(
+                              selected.session,
+                              selected.contact,
+                            )}
                       </p>
                       <h2>
                         {isInternalTest

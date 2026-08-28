@@ -3538,3 +3538,47 @@ h2 {
 }
 
 /* END CHATPRO-TEMPLATE-RESPONSIVE-V1 */
+
+
+/* CHATPRO-CUSTOMER-IDENTITY-V1
+   Identidad visual unificada para WhatsApp, Messenger e Instagram. */
+
+.avatar,
+.chat-profile-avatar {
+  overflow: hidden;
+}
+
+.avatar img,
+.chat-profile-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  object-position: center;
+}
+
+.chat-profile-avatar {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #e2f5e9;
+  color: #176b3f;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 760px) {
+  .chat-profile-avatar {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+}
+
+/* END CHATPRO-CUSTOMER-IDENTITY-V1 */
