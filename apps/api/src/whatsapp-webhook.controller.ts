@@ -3406,18 +3406,34 @@ export class WhatsappWebhookController {
   ) {
     const identifier = this.parseOrderIdentifier(originalText);
 
-    if (!identifier.orderReference && !identifier.email && !identifier.phone) {
+    const previousIdentifiers =
+      flow.identifiers &&
+      typeof flow.identifiers === 'object' &&
+      !Array.isArray(flow.identifiers)
+        ? flow.identifiers as Record<string, unknown>
+        : {};
+
+    // Conservamos identificadores entregados en mensajes anteriores.
+    // Un nuevo valor del mismo tipo reemplaza únicamente ese valor.
+    const lookupIdentifiers = {
+      orderReference:
+        identifier.orderReference ||
+        this.cleanFlowString(previousIdentifiers.orderReference),
+      email:
+        identifier.email ||
+        this.cleanFlowString(previousIdentifiers.email),
+      phone:
+        identifier.phone ||
+        this.cleanFlowString(previousIdentifiers.phone),
+    };
+
+    if (
+      !lookupIdentifiers.orderReference &&
+      !lookupIdentifiers.email &&
+      !lookupIdentifiers.phone
+    ) {
       return 'Envíame el número del pedido, correo o celular utilizado en la compra 😊';
     }
-
-    // Consulta únicamente el dato que el cliente realmente proporcionó.
-    // No sustituimos silenciosamente el celular escrito por el número
-    // de WhatsApp de la sesión.
-    const lookupIdentifiers = {
-      orderReference: identifier.orderReference,
-      email: identifier.email,
-      phone: identifier.phone,
-    };
 
     const attemptNumber = Number(flow.attempts ?? 0) + 1;
 
@@ -3432,7 +3448,7 @@ export class WhatsappWebhookController {
       return this.requestCustomerServiceHuman(
         session,
         'Error técnico al consultar pedido.',
-        `Falló la consulta de pedido. Datos usados: pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}.`,
+        `Falló la consulta segura de pedido. Datos disponibles: pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}.`,
       );
     }
 
@@ -3455,16 +3471,25 @@ export class WhatsappWebhookController {
       result.ok &&
       result.found &&
       Array.isArray(result.orders) &&
-      result.orders.length
+      result.orders.length === 1
     ) {
+      const order = result.orders[0];
+
       const completedContext: Record<string, unknown> = {
         ...nextContext,
         conversation_category: 'service',
         conversation_category_updated_at:
           new Date().toISOString(),
         last_order_lookup: {
-          order_name: result.orders[0].name,
+          order_id: order.id,
+          order_name: order.name,
           found_at: new Date().toISOString(),
+        },
+        validated_order_lookup: {
+          order_id: order.id,
+          order_name: order.name,
+          identifiers: lookupIdentifiers,
+          verified_at: new Date().toISOString(),
         },
       };
 
@@ -3475,29 +3500,43 @@ export class WhatsappWebhookController {
         context: completedContext,
       });
 
-      return this.formatOrderLookupReply(result.orders[0], session);
+      return this.formatOrderLookupReply(order, session);
     }
 
-    if (result.ok && !result.found && attemptNumber === 1) {
-      if (identifier.orderReference) {
-        return 'No encontré el pedido con ese número 😕 Prueba con el correo o celular utilizado en la compra.';
+    if (result.next_action === 'ask_verification_identifier') {
+      if (lookupIdentifiers.orderReference) {
+        return 'Por seguridad, confirma también el correo o celular utilizado en esa compra 😊';
       }
 
-      if (identifier.email) {
-        return 'No encontré el pedido con ese correo 😕 Prueba con el número de pedido o celular utilizado en la compra.';
+      if (lookupIdentifiers.email) {
+        return 'Por seguridad, confirma también el número del pedido o celular utilizado en esa compra 😊';
       }
 
-      return 'No encontré el pedido con ese celular 😕 Prueba con el número de pedido o correo utilizado en la compra.';
+      return 'Por seguridad, confirma también el número del pedido o correo utilizado en esa compra 😊';
     }
 
-    if (result.ok && !result.found && attemptNumber === 2) {
-      return 'Aún no encuentro el pedido 😕 Si recibiste una confirmación de compra por correo, revisa también spam o correo no deseado y busca el número de pedido. Envíame ese número y lo intento una vez más.';
+    if (result.next_action === 'ask_order_reference') {
+      return 'Encontré más de un pedido asociado a esos datos. Envíame el número exacto del pedido que deseas consultar 😊';
+    }
+
+    if (result.next_action === 'ask_alternate_identifier') {
+      if (!lookupIdentifiers.orderReference) {
+        return 'Los datos que me enviaste no coinciden en un mismo pedido. Envíame también el número del pedido para validarlo 😊';
+      }
+
+      if (!lookupIdentifiers.email) {
+        return 'Los datos que me enviaste no coinciden en un mismo pedido. Envíame también el correo utilizado en la compra para validarlo 😊';
+      }
+
+      if (!lookupIdentifiers.phone) {
+        return 'Los datos que me enviaste no coinciden en un mismo pedido. Envíame también el celular utilizado en la compra para validarlo 😊';
+      }
     }
 
     return this.requestCustomerServiceHuman(
       session,
-      'No se pudo encontrar el pedido después de varios intentos.',
-      `Consulta de pedido sin resultado después de ${attemptNumber} intentos. Último dato usado: pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}.`,
+      'No fue posible validar de forma segura el pedido.',
+      `Los identificadores entregados no coincidieron con un mismo pedido. Pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}. No se mostró información de ningún pedido.`,
     );
   }
 
@@ -3868,41 +3907,98 @@ export class WhatsappWebhookController {
 
   private parseOrderIdentifier(value: string) {
     const text = value.trim();
-    const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-    const digits = text.replace(/\D/g, '');
-    const normalized = this.normalizeText(text);
+    const emailMatch =
+      text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
 
-    if (emailMatch) {
-      return {
-        orderReference: '',
-        email: emailMatch[0].toLowerCase(),
-        phone: '',
-      };
+    let orderReference = '';
+    let phone = '';
+
+    // 1. Un número precedido por # se interpreta primero como pedido.
+    const hashOrderMatch = text.match(/#\s*(\d{3,12})\b/);
+
+    if (hashOrderMatch) {
+      orderReference = hashOrderMatch[1];
     }
 
-    if (
-      digits.length >= 10 ||
-      this.includesAny(normalized, ['celular', 'telefono', 'teléfono', 'whatsapp'])
-    ) {
-      return {
-        orderReference: '',
-        email: '',
-        phone: digits,
-      };
+    // 2. También reconocemos expresiones explícitas:
+    // "pedido 45312", "número de pedido 45312", "orden 45312".
+    // No confundimos frases como "número de pedido no sé".
+    if (!orderReference) {
+      const orderLabelMatch = text.match(
+        /\b(?:pedido|orden|order)\b(?:\s+(?:n[uú]mero|nro\.?))?\s*[:#-]?\s*#?\s*(\d{3,12})\b/i,
+      );
+
+      if (orderLabelMatch) {
+        orderReference = orderLabelMatch[1];
+      }
     }
 
-    if (digits.length >= 3) {
-      return {
-        orderReference: digits,
-        email: '',
-        phone: '',
-      };
+    // 3. Teléfono expresamente identificado por el cliente.
+    const phoneLabelMatch = text.match(
+      /(?:celular|tel[eé]fono|whatsapp|m[oó]vil)\s*(?:es|:|-)?\s*(\+?\d(?:[\s().-]*\d){8,14})/i,
+    );
+
+    if (phoneLabelMatch) {
+      const candidate = phoneLabelMatch[1].replace(/\D/g, '');
+
+      if (candidate.length >= 10 && candidate.length <= 15) {
+        phone = candidate;
+      }
+    }
+
+    // 4. Detectamos un teléfono de 10 dígitos o un número con prefijo
+    // internacional aunque el mensaje también contenga correo u otro texto.
+    if (!phone) {
+      const numericCandidates =
+        text.match(/\+?\d(?:[\s().-]*\d){8,16}/g) ?? [];
+
+      for (const rawCandidate of numericCandidates) {
+        const candidate = rawCandidate.replace(/\D/g, '');
+        const hasExplicitPlus = rawCandidate.trim().startsWith('+');
+
+        if (
+          candidate.length === 10 ||
+          (hasExplicitPlus &&
+            candidate.length >= 10 &&
+            candidate.length <= 15) ||
+          (candidate.length === 12 && candidate.startsWith('57'))
+        ) {
+          // No reutilizamos como teléfono el mismo valor que ya fue
+          // identificado explícitamente como número de pedido.
+          if (candidate !== orderReference) {
+            phone = candidate;
+            break;
+          }
+        }
+      }
+    }
+
+    // 5. Cuando el mensaje contiene solamente un número corto,
+    // lo tratamos como referencia de pedido.
+    if (!orderReference) {
+      const bareNumeric = text.match(/^\s*#?\s*(\d+)\s*$/);
+
+      if (bareNumeric) {
+        const digits = bareNumeric[1];
+
+        if (digits.length >= 3 && digits.length <= 9) {
+          orderReference = digits;
+        } else if (
+          !phone &&
+          (
+            digits.length === 10 ||
+            (digits.length === 12 && digits.startsWith('57'))
+          )
+        ) {
+          phone = digits;
+        }
+      }
     }
 
     return {
-      orderReference: '',
-      email: '',
-      phone: '',
+      orderReference,
+      email: emailMatch ? emailMatch[0].toLowerCase() : '',
+      phone,
     };
   }
 

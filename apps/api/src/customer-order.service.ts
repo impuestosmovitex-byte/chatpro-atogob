@@ -36,89 +36,170 @@ export class CustomerOrderService {
         ok: false,
         found: false,
         error:
-          'Para consultar el pedido necesito el número de pedido, correo o celular usado en la compra.',
+          'Para consultar el pedido necesito datos de identificación del pedido.',
       };
     }
 
-    let orders: OrderLookupResult[];
+    const identifierInputs: Array<{
+      kind: 'orderReference' | 'email' | 'phone';
+      input: OrderLookupInput;
+    }> = [];
 
-    // Consulta un solo identificador por intento.
-    // Prioridad: número de pedido > celular > correo.
-    // Esto evita mezclar resultados de datos anteriores de la conversación.
-    const lookupInput: OrderLookupInput = orderReference
-      ? {
+    if (orderReference) {
+      identifierInputs.push({
+        kind: 'orderReference',
+        input: {
           orderReference,
-          limit: 1,
-        }
-      : phone
-        ? {
-            phone,
-            limit: 1,
-          }
-        : {
-            email,
-            limit: 1,
-          };
+          limit: 5,
+        },
+      });
+    }
+
+    if (email) {
+      identifierInputs.push({
+        kind: 'email',
+        input: {
+          email,
+          limit: 5,
+        },
+      });
+    }
+
+    if (phone) {
+      identifierInputs.push({
+        kind: 'phone',
+        input: {
+          phone,
+          limit: 5,
+        },
+      });
+    }
+
+    const identifierCount = identifierInputs.length;
+
+    const lookupIdentifiers = {
+      order_reference: Boolean(orderReference),
+      email: Boolean(email),
+      phone: Boolean(phone),
+      count: identifierCount,
+    };
+
+    // Barrera de privacidad:
+    // un solo dato puede iniciar la consulta, pero nunca es suficiente
+    // para mostrar productos, valores, estado, dirección o guía.
+    if (identifierCount < 2) {
+      return {
+        ok: true,
+        found: false,
+        requires_verification: true,
+        requires_human: false,
+        next_action: 'ask_verification_identifier',
+        lookup_identifiers: lookupIdentifiers,
+        orders: [],
+        message:
+          'Hace falta un segundo dato para confirmar que el pedido pertenece al mismo cliente.',
+      };
+    }
+
+    let matchesByIdentifier: OrderLookupResult[][] = [];
 
     try {
-      orders = await this.lookupFromProvider(
-        companyId,
-        lookupInput,
-      );
+      for (const identifier of identifierInputs) {
+        const providerOrders = await this.lookupFromProvider(
+          companyId,
+          identifier.input,
+        );
 
-      // Segunda barrera de seguridad:
-      // no confiamos solamente en el buscador de Shopify.
-      // El pedido debe coincidir realmente con el identificador consultado.
-      orders = orders
-        .filter((order) =>
-          this.matchesLookupIdentifier(order, lookupInput),
-        )
-        .slice(0, 1);
+        const verifiedForIdentifier = providerOrders.filter((order) =>
+          this.matchesLookupIdentifier(order, identifier.input),
+        );
+
+        matchesByIdentifier.push(verifiedForIdentifier);
+      }
     } catch {
       return {
         ok: false,
         found: false,
         requires_human: true,
         error:
-          'No pude consultar el pedido en este momento. No inventes el estado del pedido; ofrece dejar el caso con un asesor y pide confirmar número de pedido, correo o celular.',
+          'No pude consultar el pedido en este momento. No muestres información de ningún pedido.',
       };
     }
 
-    const found = orders.length > 0;
+    // Cada identificador se consulta de manera independiente.
+    // Solamente aceptamos pedidos cuyo ID aparezca en TODOS los resultados.
+    const firstSet = matchesByIdentifier[0] ?? [];
+    const commonIds = new Set(firstSet.map((order) => String(order.id)));
 
-    // La búsqueda usa solo un identificador, pero conservamos cuántos
-    // datos distintos ya aportó el cliente para evitar pedir datos
-    // indefinidamente. Después de un segundo intento fallido se escala.
-    const identifierCount = [
-      orderReference,
-      email,
-      phone,
-    ].filter(Boolean).length;
+    for (const group of matchesByIdentifier.slice(1)) {
+      const groupIds = new Set(group.map((order) => String(order.id)));
 
-    const shouldAskAlternateIdentifier =
-      !found && identifierCount < 2;
+      for (const id of Array.from(commonIds)) {
+        if (!groupIds.has(id)) {
+          commonIds.delete(id);
+        }
+      }
+    }
+
+    const commonOrders = firstSet.filter((order) =>
+      commonIds.has(String(order.id)),
+    );
+
+    const uniqueOrders = Array.from(
+      new Map(
+        commonOrders.map((order) => [String(order.id), order]),
+      ).values(),
+    );
+
+    // Número de pedido + segundo dato debe terminar en un único pedido.
+    if (uniqueOrders.length === 1) {
+      return {
+        ok: true,
+        found: true,
+        requires_verification: false,
+        requires_human: false,
+        next_action: 'answer_order',
+        lookup_identifiers: lookupIdentifiers,
+        orders: uniqueOrders.map((order) => this.toPayload(order)),
+        message:
+          'Pedido validado con dos identificadores coincidentes.',
+      };
+    }
+
+    // Correo + teléfono pueden pertenecer a un cliente con varios pedidos.
+    // En ese caso nunca seleccionamos automáticamente "el más reciente".
+    if (uniqueOrders.length > 1) {
+      return {
+        ok: true,
+        found: false,
+        ambiguous: true,
+        requires_verification: true,
+        requires_human: false,
+        next_action: 'ask_order_reference',
+        lookup_identifiers: lookupIdentifiers,
+        orders: [],
+        message:
+          'Los datos corresponden a más de un pedido. Solicita el número exacto del pedido.',
+      };
+    }
+
+    // Dos datos que no apuntan al mismo pedido nunca deben producir
+    // información de otro pedido como sustitución.
+    const hasAllThreeIdentifiers = identifierCount >= 3;
 
     return {
       ok: true,
-      found,
-      requires_human: !found && !shouldAskAlternateIdentifier,
-      next_action: found
-        ? 'answer_order'
-        : shouldAskAlternateIdentifier
-          ? 'ask_alternate_identifier'
-          : 'offer_human_attention',
-      lookup_identifiers: {
-        order_reference: Boolean(lookupInput.orderReference),
-        email: Boolean(lookupInput.email),
-        phone: Boolean(lookupInput.phone),
-        count: identifierCount,
-      },
-      orders: orders.map((order) => this.toPayload(order)),
-      message: found
-        ? 'Pedido encontrado con información real de la tienda.'
-        : shouldAskAlternateIdentifier
-          ? 'No encontré el pedido con ese dato. Pide un dato diferente, como correo o celular usado en la compra. No transfieras todavía.'
-          : 'No encontré el pedido con los datos enviados. No inventes información; ofrece dejar el caso con un asesor.',
+      found: false,
+      requires_verification: true,
+      requires_human: hasAllThreeIdentifiers,
+      next_action: hasAllThreeIdentifiers
+        ? 'human_attention'
+        : 'ask_alternate_identifier',
+      lookup_identifiers: lookupIdentifiers,
+      orders: [],
+      message: hasAllThreeIdentifiers
+        ? 'Los datos entregados no coinciden con un mismo pedido.'
+        : 'Los dos datos entregados no coinciden con un mismo pedido. Solicita el identificador restante.',
     };
   }
 
