@@ -405,7 +405,8 @@ export class ChatAgentService {
       );
 
     activeSession =
-      currentIntent === 'new_catalog_search'
+      currentIntent === 'new_catalog_search' &&
+      conversationCategory === 'sales'
         ? await this.conversationMemoryService.updateSession(
             activeSession.id,
             {
@@ -420,11 +421,13 @@ export class ChatAgentService {
     const collections =
       await this.getCollectionsForSession(activeSession);
     const directCollectionReply =
-      await this.tryBuildDirectCollectionReply(
-        activeSession,
-        customerMessage,
-        collections,
-      );
+      conversationCategory === 'sales'
+        ? await this.tryBuildDirectCollectionReply(
+            activeSession,
+            customerMessage,
+            collections,
+          )
+        : null;
 
     if (directCollectionReply) {
       return directCollectionReply;
@@ -1781,7 +1784,7 @@ export class ChatAgentService {
       '- Si match_type es similar, no afirmes que encontraste la referencia exacta. Presenta como máximo las opciones reales incluidas en candidates y pregunta cuál corresponde.',
       '- Si match_type es none, explica brevemente que no pudiste confirmar la referencia exacta y ofrece buscar por nombre, enlace o categoría.',
       '- Nunca inventes un enlace ni presentes como disponible un producto externo que no exista en el catálogo de la empresa activa.',
-      '- Cuando la persona comparta un enlace de producto, selecciónalo con select_product_by_url y responde usando sus datos reales.',
+      '- Cuando conversation_category sea sales y la persona comparta un enlace de producto con intención comercial, selecciónalo con select_product_by_url y responde usando sus datos reales. Cuando conversation_category sea service, trata el enlace como referencia del caso actual y no actives catálogo, selección de producto, variantes, carrito ni checkout.',
       '- Cuando pida una categoría amplia, usa open_collection o search_products según corresponda.',
       '- Cuando la persona confirme claramente una variante, valida con select_variant y agrega de inmediato con add_selected_variant_to_cart.',
       '- En venta al detal, si no indica cantidad, usa 1.',
@@ -2951,6 +2954,41 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     const args = this.parseArguments(rawArguments);
 
     try {
+      const commercialTools = new Set([
+        'open_collection',
+        'search_products',
+        'select_product_by_url',
+        'select_product_by_name',
+        'get_selected_product',
+        'select_variant',
+        'add_selected_variant_to_cart',
+        'replace_cart_line_variant',
+        'set_cart_line_quantity',
+        'remove_cart_line',
+        'keep_only_cart_line',
+        'get_cart',
+        'remember_sale_context',
+        'get_sale_context',
+        'create_checkout_link',
+      ]);
+
+      if (commercialTools.has(name)) {
+        const currentSession =
+          await this.conversationMemoryService.getSessionById(session.id);
+
+        const currentCategory =
+          this.readConversationCategory(currentSession.context);
+
+        if (currentCategory === 'service') {
+          return {
+            ok: false,
+            blocked: true,
+            next_action: 'stay_in_service',
+            error:
+              'Herramienta comercial bloqueada porque la conversación sigue en Servicio. Atiende el caso actual y no conviertas una imagen, enlace, nombre o referencia de producto en una venta. Solo vuelve a usar herramientas comerciales cuando el cliente indique claramente una compra nueva y la categoría cambie a Ventas.',
+          };
+        }
+      }
       if (name === 'open_collection') {
         return this.openCollection(
           session,

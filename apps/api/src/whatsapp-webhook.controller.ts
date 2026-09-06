@@ -2812,6 +2812,41 @@ export class WhatsappWebhookController {
     companyId: string,
     customerPhone: string,
   ): Promise<ConversationSession> {
+    const category =
+      typeof session.context.conversation_category === 'string'
+        ? session.context.conversation_category
+        : '';
+
+    const serviceArea =
+      session.context.service_area &&
+      typeof session.context.service_area === 'object' &&
+      !Array.isArray(session.context.service_area)
+        ? session.context.service_area as Record<string, unknown>
+        : null;
+
+    const serviceFlow =
+      session.context.customer_service_flow &&
+      typeof session.context.customer_service_flow === 'object' &&
+      !Array.isArray(session.context.customer_service_flow)
+        ? session.context.customer_service_flow as Record<string, unknown>
+        : null;
+
+    const isServiceContext =
+      category === 'service' ||
+      (
+        category !== 'sales' &&
+        (
+          serviceArea?.areaType === 'service' ||
+          Boolean(serviceFlow)
+        )
+      );
+
+    // Un carrito abandonado es información comercial histórica.
+    // Nunca puede sacar por sí solo al cliente de un caso activo de Servicio.
+    if (isServiceContext) {
+      return session;
+    }
+
     try {
       const recovery =
         await this.cartRecoveryContextService.findForCustomer(
@@ -2874,7 +2909,7 @@ export class WhatsappWebhookController {
     const activeAreas =
       await this.conversationMemoryService.listActiveServiceAreas(profile.id);
 
-    if (['hola', 'menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
+    if (['menu', 'menú', 'inicio', 'volver'].includes(cleanText)) {
       const nextContext = this.startFreshAreaMenuContext(session.context);
 
       const resetSession = await this.conversationMemoryService.updateSession(
