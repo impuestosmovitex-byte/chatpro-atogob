@@ -3141,20 +3141,75 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             session.id,
           );
 
-        await this.rememberConversationCategory(
-          currentSession,
-          'service',
-        );
+        const serviceSession =
+          await this.rememberConversationCategory(
+            currentSession,
+            'service',
+          );
 
-        return this.customerOrderService.lookup(session.companyId, {
+        const lookupIdentifiers = {
           orderReference:
             typeof args.order_reference === 'string'
-              ? args.order_reference
+              ? args.order_reference.trim()
               : '',
-          email: typeof args.email === 'string' ? args.email : '',
-          phone: typeof args.phone === 'string' ? args.phone : '',
-          limit: 1,
-        });
+          email:
+            typeof args.email === 'string'
+              ? args.email.trim().toLowerCase()
+              : '',
+          phone:
+            typeof args.phone === 'string'
+              ? args.phone.replace(/\D/g, '')
+              : '',
+        };
+
+        const result =
+          await this.customerOrderService.lookup(
+            session.companyId,
+            {
+              ...lookupIdentifiers,
+              limit: 1,
+            },
+          ) as Record<string, any>;
+
+        if (
+          result.ok === true &&
+          result.found === true &&
+          Array.isArray(result.orders) &&
+          result.orders.length === 1
+        ) {
+          const order = result.orders[0] as Record<string, any>;
+          const orderId =
+            typeof order.id === 'string' ? order.id : '';
+          const orderName =
+            typeof order.name === 'string' ? order.name : '';
+          const now = new Date().toISOString();
+
+          // Solo una validación exitosa puede crear o reemplazar
+          // el pedido anclado de la conversación.
+          await this.conversationMemoryService.updateSession(
+            serviceSession.id,
+            {
+              context: {
+                ...serviceSession.context,
+                conversation_category: 'service',
+                conversation_category_updated_at: now,
+                last_order_lookup: {
+                  order_id: orderId,
+                  order_name: orderName,
+                  found_at: now,
+                },
+                validated_order_lookup: {
+                  order_id: orderId,
+                  order_name: orderName,
+                  identifiers: lookupIdentifiers,
+                  verified_at: now,
+                },
+              },
+            },
+          );
+        }
+
+        return result;
       }
 
       if (name === 'request_human_attention') {

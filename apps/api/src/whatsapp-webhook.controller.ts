@@ -2651,13 +2651,58 @@ export class WhatsappWebhookController {
     const now = new Date().toISOString();
 
     switch (input.action) {
-      case 'tracking_information':
+      case 'tracking_information': {
+        const validatedOrder =
+          input.session.context.validated_order_lookup &&
+          typeof input.session.context.validated_order_lookup === 'object' &&
+          !Array.isArray(input.session.context.validated_order_lookup)
+            ? input.session.context.validated_order_lookup as Record<string, unknown>
+            : null;
+
+        const validatedOrderName =
+          this.cleanFlowString(validatedOrder?.order_name);
+
+        const validatedOrderId =
+          this.cleanFlowString(validatedOrder?.order_id);
+
+        const validatedIdentifiers =
+          validatedOrder?.identifiers &&
+          typeof validatedOrder.identifiers === 'object' &&
+          !Array.isArray(validatedOrder.identifiers)
+            ? validatedOrder.identifiers as Record<string, unknown>
+            : {};
+
+        if (validatedOrderName) {
+          await this.conversationMemoryService.updateSession(
+            input.session.id,
+            {
+              stage: 'active',
+              context: {
+                ...input.session.context,
+                conversation_category: 'service',
+                conversation_category_updated_at: now,
+                customer_service_flow: {
+                  type: 'order_lookup_confirm_previous',
+                  order_id: validatedOrderId,
+                  order_name: validatedOrderName,
+                  identifiers: validatedIdentifiers,
+                  updated_at: now,
+                },
+              },
+            },
+          );
+
+          return `Claro 😊 ¿Te refieres al pedido ${validatedOrderName}?`;
+        }
+
         await this.conversationMemoryService.updateSession(
           input.session.id,
           {
             stage: 'active',
             context: {
               ...input.session.context,
+              conversation_category: 'service',
+              conversation_category_updated_at: now,
               customer_service_flow: {
                 type: 'order_lookup',
                 identifiers: {},
@@ -2669,6 +2714,7 @@ export class WhatsappWebhookController {
         );
 
         return 'Claro 😊 Envíame el número del pedido o el correo utilizado en la compra.';
+      }
 
       case 'accept_order_updates':
         await this.conversationMemoryService.updateSession(
@@ -3268,11 +3314,78 @@ export class WhatsappWebhookController {
   ): Promise<string | null> {
     const flow = this.readCustomerServiceFlow(session.context);
 
-    if (flow.type !== 'order_lookup') {
-      return null;
+    if (flow.type === 'order_lookup_confirm_previous') {
+      return this.resolveValidatedOrderConfirmation(
+        session,
+        originalText,
+        flow,
+      );
     }
 
     const identifier = this.parseOrderIdentifier(originalText);
+
+    if (flow.type !== 'order_lookup') {
+      const validatedOrder =
+        session.context.validated_order_lookup &&
+        typeof session.context.validated_order_lookup === 'object' &&
+        !Array.isArray(session.context.validated_order_lookup)
+          ? session.context.validated_order_lookup as Record<string, unknown>
+          : null;
+
+      const validatedOrderName =
+        this.cleanFlowString(validatedOrder?.order_name);
+
+      const validatedOrderId =
+        this.cleanFlowString(validatedOrder?.order_id);
+
+      const validatedIdentifiers =
+        validatedOrder?.identifiers &&
+        typeof validatedOrder.identifiers === 'object' &&
+        !Array.isArray(validatedOrder.identifiers)
+          ? validatedOrder.identifiers as Record<string, unknown>
+          : {};
+
+      const normalizedText = this.normalizeText(originalText);
+
+      const asksAboutExistingOrder =
+        /\bmi (pedido|compra)\b/.test(normalizedText) ||
+        /\b(rastrear|rastreo|seguimiento|guia)\b/.test(normalizedText) ||
+        /\bdonde esta mi pedido\b/.test(normalizedText) ||
+        /\bestado (de|del) pedido\b/.test(normalizedText);
+
+      if (
+        validatedOrderName &&
+        asksAboutExistingOrder &&
+        !identifier.orderReference &&
+        !identifier.email &&
+        !identifier.phone
+      ) {
+        const now = new Date().toISOString();
+
+        await this.conversationMemoryService.updateSession(
+          session.id,
+          {
+            stage: 'active',
+            context: {
+              ...session.context,
+              conversation_category: 'service',
+              conversation_category_updated_at: now,
+              customer_service_flow: {
+                type: 'order_lookup_confirm_previous',
+                order_id: validatedOrderId,
+                order_name: validatedOrderName,
+                identifiers: validatedIdentifiers,
+                updated_at: now,
+              },
+            },
+          },
+        );
+
+        return `Claro 😊 ¿Te refieres al pedido ${validatedOrderName}?`;
+      }
+
+      return null;
+    }
 
     if (
       identifier.orderReference ||
@@ -3367,6 +3480,234 @@ export class WhatsappWebhookController {
       originalText,
       flow,
     );
+  }
+
+  private async resolveValidatedOrderConfirmation(
+    session: ConversationSession,
+    originalText: string,
+    flow: Record<string, unknown>,
+  ): Promise<string> {
+    const identifier = this.parseOrderIdentifier(originalText);
+
+    // Si el cliente entrega un nuevo número/correo/teléfono mientras
+    // confirmábamos el pedido anterior, se considera una consulta nueva.
+    // No se heredan los identificadores del pedido viejo.
+    if (
+      identifier.orderReference ||
+      identifier.email ||
+      identifier.phone
+    ) {
+      return this.resolveOrderLookup(
+        session,
+        originalText,
+        {
+          type: 'order_lookup',
+          identifiers: {},
+          attempts: 0,
+          updated_at: new Date().toISOString(),
+        },
+      );
+    }
+
+    const normalized = this.normalizeText(originalText);
+
+    const affirmativeResponses = new Set([
+      'si',
+      'correcto',
+      'exacto',
+      'ese',
+      'ese mismo',
+      'esa',
+      'esa misma',
+      'el mismo',
+      'la misma',
+      'claro',
+      'si ese',
+      'si ese mismo',
+    ]);
+
+    const negativeResponses = new Set([
+      'no',
+      'no es ese',
+      'no es ese pedido',
+      'ese no',
+      'otro',
+      'otro pedido',
+      'es otro',
+      'no otro',
+    ]);
+
+    const orderId = this.cleanFlowString(flow.order_id);
+    const orderName = this.cleanFlowString(flow.order_name);
+
+    if (negativeResponses.has(normalized)) {
+      const now = new Date().toISOString();
+
+      await this.conversationMemoryService.updateSession(
+        session.id,
+        {
+          stage: 'active',
+          context: {
+            ...session.context,
+            conversation_category: 'service',
+            conversation_category_updated_at: now,
+            customer_service_flow: {
+              type: 'order_lookup',
+              identifiers: {},
+              attempts: 0,
+              updated_at: now,
+            },
+          },
+        },
+      );
+
+      return 'Entendido 😊 Envíame el número del pedido que deseas consultar o el correo/celular utilizado en esa compra.';
+    }
+
+    if (!affirmativeResponses.has(normalized)) {
+      return orderName
+        ? `Para confirmar, ¿te refieres al pedido ${orderName}? Puedes responder sí, no o enviarme el número de otro pedido.`
+        : 'Confírmame si deseas continuar con el pedido que revisamos anteriormente o envíame el número de otro pedido.';
+    }
+
+    const storedIdentifiers =
+      flow.identifiers &&
+      typeof flow.identifiers === 'object' &&
+      !Array.isArray(flow.identifiers)
+        ? flow.identifiers as Record<string, unknown>
+        : {};
+
+    const lookupIdentifiers = {
+      orderReference:
+        this.cleanFlowString(storedIdentifiers.orderReference),
+      email:
+        this.cleanFlowString(storedIdentifiers.email).toLowerCase(),
+      phone:
+        this.cleanFlowString(storedIdentifiers.phone).replace(/\D/g, ''),
+    };
+
+    const identifierCount = [
+      lookupIdentifiers.orderReference,
+      lookupIdentifiers.email,
+      lookupIdentifiers.phone,
+    ].filter(Boolean).length;
+
+    // Si por alguna razón el contexto histórico no conserva dos datos,
+    // no confiamos ciegamente en el ancla: hacemos validación nueva.
+    if (identifierCount < 2) {
+      const now = new Date().toISOString();
+
+      await this.conversationMemoryService.updateSession(
+        session.id,
+        {
+          stage: 'active',
+          context: {
+            ...session.context,
+            customer_service_flow: {
+              type: 'order_lookup',
+              identifiers: {},
+              attempts: 0,
+              updated_at: now,
+            },
+          },
+        },
+      );
+
+      return 'Para proteger tus datos necesito validar nuevamente el pedido. Envíame el número del pedido y el correo o celular utilizado en la compra 😊';
+    }
+
+    let result: Record<string, any>;
+
+    try {
+      result = await this.customerOrderService.lookup(
+        session.companyId,
+        lookupIdentifiers,
+      ) as Record<string, any>;
+    } catch {
+      return this.requestCustomerServiceHuman(
+        session,
+        'Error técnico al revalidar pedido confirmado.',
+        `No fue posible revalidar de forma segura el pedido ${orderName || 'anterior'}.`,
+      );
+    }
+
+    const order =
+      result.ok === true &&
+      result.found === true &&
+      Array.isArray(result.orders) &&
+      result.orders.length === 1
+        ? result.orders[0] as Record<string, any>
+        : null;
+
+    const resultOrderId =
+      order && typeof order.id === 'string'
+        ? order.id
+        : '';
+
+    const resultOrderName =
+      order && typeof order.name === 'string'
+        ? order.name
+        : '';
+
+    const sameAnchoredOrder =
+      Boolean(order) &&
+      (
+        orderId
+          ? resultOrderId === orderId
+          : Boolean(orderName) && resultOrderName === orderName
+      );
+
+    if (!sameAnchoredOrder || !order) {
+      const now = new Date().toISOString();
+
+      await this.conversationMemoryService.updateSession(
+        session.id,
+        {
+          stage: 'active',
+          context: {
+            ...session.context,
+            customer_service_flow: {
+              type: 'order_lookup',
+              identifiers: {},
+              attempts: 0,
+              updated_at: now,
+            },
+          },
+        },
+      );
+
+      return 'No pude volver a validar ese pedido de forma segura. Envíame el número del pedido que deseas consultar y un segundo dato de validación 😊';
+    }
+
+    const now = new Date().toISOString();
+    const completedContext: Record<string, unknown> = {
+      ...session.context,
+      conversation_category: 'service',
+      conversation_category_updated_at: now,
+      last_order_lookup: {
+        order_id: resultOrderId,
+        order_name: resultOrderName,
+        found_at: now,
+      },
+      validated_order_lookup: {
+        order_id: resultOrderId,
+        order_name: resultOrderName,
+        identifiers: lookupIdentifiers,
+        verified_at: now,
+      },
+    };
+
+    delete completedContext.customer_service_flow;
+
+    await this.conversationMemoryService.updateSession(
+      session.id,
+      {
+        stage: 'active',
+        context: completedContext,
+      },
+    );
+
+    return this.formatOrderLookupReply(order, session);
   }
 
   private async classifyPendingOrderLookupIntent(
