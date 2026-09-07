@@ -1828,6 +1828,7 @@ export class ChatAgentService {
       '- Atiende primero el caso con la información disponible. Usa request_human_attention solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa, o las instrucciones específicas indiquen escalar.',
       '- REGLA DE COMPRENSIÓN: no transfieras por un solo mensaje ambiguo. Pide una aclaración breve y concreta. Si después de esa aclaración la persona sigue sin permitir entender o resolver el caso, usa request_human_attention. No supongas que un número, documento, teléfono, talla, referencia, enlace o dato corto es incorrecto: interprétalo usando el contexto o pide aclaración.',
       '- Al transferir usa request_human_attention con un resumen interno MUY CORTO: máximo 2 líneas y 280 caracteres. Escribe únicamente qué necesita el cliente y cuál es el dato o acción pendiente. No copies historial, productos, precios, carrito ni pedidos completos.',
+      '- El resumen para el asesor debe contener únicamente hechos confirmados por el cliente, resultados reales de herramientas o datos presentes en el contexto vigente. No agregues suposiciones, interpretaciones, causas posibles, intenciones no expresadas ni conclusiones no verificadas.',
       '- El campo reason debe ser una frase breve, máximo 120 caracteres. El campo summary debe entenderse por sí solo y no debe repetir el motivo.',
       '',
       'CONFIGURACIÓN DE RESPUESTA Y FLUJO ACTIVO:',
@@ -2945,7 +2946,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       },
       summary: {
         type: 'string',
-        description: 'Resumen interno muy corto para el asesor, máximo una frase: qué necesita el cliente, dato clave revisado y qué queda pendiente.',
+        description: 'Resumen interno muy corto para el asesor, máximo una frase: solo hechos confirmados, qué necesita el cliente, dato real revisado y qué queda pendiente. No incluyas suposiciones ni conclusiones no verificadas.',
       },
       customer_message: {
         type: 'string',
