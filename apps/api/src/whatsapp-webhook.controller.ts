@@ -2629,26 +2629,17 @@ export class WhatsappWebhookController {
             : {};
 
         if (validatedOrderName) {
-          await this.conversationMemoryService.updateSession(
-            input.session.id,
+          return this.resolveValidatedOrderConfirmation(
+            input.session,
+            'guía y seguimiento de mi pedido',
             {
-              stage: 'active',
-              context: {
-                ...input.session.context,
-                conversation_category: 'service',
-                conversation_category_updated_at: now,
-                customer_service_flow: {
-                  type: 'order_lookup_confirm_previous',
-                  order_id: validatedOrderId,
-                  order_name: validatedOrderName,
-                  identifiers: validatedIdentifiers,
-                  updated_at: now,
-                },
-              },
+              type: 'order_lookup_confirm_previous',
+              order_id: validatedOrderId,
+              order_name: validatedOrderName,
+              identifiers: validatedIdentifiers,
             },
+            false,
           );
-
-          return `Claro 😊 ¿Te refieres al pedido ${validatedOrderName}?`;
         }
 
         await this.conversationMemoryService.updateSession(
@@ -3316,28 +3307,17 @@ export class WhatsappWebhookController {
         !identifier.email &&
         !identifier.phone
       ) {
-        const now = new Date().toISOString();
-
-        await this.conversationMemoryService.updateSession(
-          session.id,
+        return this.resolveValidatedOrderConfirmation(
+          session,
+          originalText,
           {
-            stage: 'active',
-            context: {
-              ...session.context,
-              conversation_category: 'service',
-              conversation_category_updated_at: now,
-              customer_service_flow: {
-                type: 'order_lookup_confirm_previous',
-                order_id: validatedOrderId,
-                order_name: validatedOrderName,
-                identifiers: validatedIdentifiers,
-                updated_at: now,
-              },
-            },
+            type: 'order_lookup_confirm_previous',
+            order_id: validatedOrderId,
+            order_name: validatedOrderName,
+            identifiers: validatedIdentifiers,
           },
+          false,
         );
-
-        return `Claro 😊 ¿Te refieres al pedido ${validatedOrderName}?`;
       }
 
       return null;
@@ -3442,6 +3422,7 @@ export class WhatsappWebhookController {
     session: ConversationSession,
     originalText: string,
     flow: Record<string, unknown>,
+    requireAffirmative = true,
   ): Promise<string> {
     const identifier = this.parseOrderIdentifier(originalText);
 
@@ -3529,7 +3510,7 @@ export class WhatsappWebhookController {
       return 'Entendido 😊 Envíame el número del pedido que deseas consultar o el correo/celular utilizado en esa compra.';
     }
 
-    if (!affirmativeResponses.has(normalized)) {
+    if (requireAffirmative && !affirmativeResponses.has(normalized)) {
       return orderName
         ? `Para confirmar, ¿te refieres al pedido ${orderName}? Puedes responder sí, no o enviarme el número de otro pedido.`
         : 'Confírmame si deseas continuar con el pedido que revisamos anteriormente o envíame el número de otro pedido.';
@@ -3672,7 +3653,11 @@ export class WhatsappWebhookController {
       },
     );
 
-    return this.formatOrderLookupReply(order, session);
+    return this.formatOrderLookupReply(
+      order,
+      session,
+      requireAffirmative ? '' : originalText,
+    );
   }
 
   private async classifyPendingOrderLookupIntent(
@@ -3881,7 +3866,11 @@ export class WhatsappWebhookController {
     );
   }
 
-  private async formatOrderLookupReply(order: Record<string, any>, session?: ConversationSession) {
+  private async formatOrderLookupReply(
+    order: Record<string, any>,
+    session?: ConversationSession,
+    customerQuestion = '',
+  ) {
     const items = Array.isArray(order.items) ? order.items : [];
     const firstTracking = this.getFirstOrderTracking(order);
     const hasTracking = Boolean(firstTracking);
@@ -3889,6 +3878,48 @@ export class WhatsappWebhookController {
     const customerName = this.getOrderCustomerName(order);
     const lines: string[] = [];
     const profile = await this.getSessionCompanyProfile(session);
+    const normalizedQuestion = this.normalizeText(customerQuestion);
+    const fulfillmentMessage =
+      this.customerOrderFulfillmentStatusMessage(order, hasTracking);
+
+    const asksTracking =
+      /\b(guia|seguimiento|transportadora)\b/.test(normalizedQuestion) ||
+      /\brastre\w*/.test(normalizedQuestion);
+
+    const asksDeliveryStatus =
+      /\bentreg\w*/.test(normalizedQuestion) ||
+      /\b(en transito|en reparto|llego|llegado|estado del pedido|donde esta)\b/.test(
+        normalizedQuestion,
+      );
+
+    if (normalizedQuestion && asksTracking) {
+      const trackingLines: string[] = [];
+
+      if (fulfillmentMessage) {
+        trackingLines.push(fulfillmentMessage);
+      }
+
+      if (firstTracking) {
+        trackingLines.push(
+          this.formatConfiguredTrackingReply(firstTracking, profile),
+        );
+      } else {
+        trackingLines.push(
+          orderName
+            ? `El pedido${orderName} no tiene una guía disponible en la información recibida.`
+            : 'El pedido no tiene una guía disponible en la información recibida.',
+        );
+      }
+
+      return trackingLines.join('\n\n').trim();
+    }
+
+    if (normalizedQuestion && asksDeliveryStatus) {
+      return (
+        fulfillmentMessage ||
+        'En este momento no tengo un estado de entrega más específico para este pedido.'
+      );
+    }
 
     if (customerName) {
       lines.push(
@@ -3905,11 +3936,6 @@ export class WhatsappWebhookController {
     if (paymentMessage) {
       lines.push(paymentMessage);
     }
-
-    const fulfillmentMessage = this.customerFulfillmentStatusMessage(
-      order.fulfillment_status,
-      hasTracking,
-    );
 
     if (fulfillmentMessage) {
       lines.push(fulfillmentMessage);
@@ -4170,6 +4196,57 @@ export class WhatsappWebhookController {
       default:
         return '';
     }
+  }
+
+  private customerOrderFulfillmentStatusMessage(
+    order: Record<string, any>,
+    hasTracking: boolean,
+  ) {
+    const fulfillments =
+      Array.isArray(order.fulfillments) ? order.fulfillments : [];
+
+    const displayStatuses = fulfillments
+      .map((fulfillment) =>
+        this.normalizeOrderStatus(fulfillment?.displayStatus),
+      )
+      .filter(Boolean);
+
+    const delivered =
+      fulfillments.some((fulfillment) =>
+        Boolean(this.cleanCustomerText(fulfillment?.deliveredAt || '')),
+      ) ||
+      displayStatuses.some(
+        (status) => status === 'delivered' || status === 'entregado',
+      );
+
+    if (delivered) {
+      return 'Tu pedido ya aparece como entregado.';
+    }
+
+    if (displayStatuses.includes('out_for_delivery')) {
+      return 'Tu pedido aparece en reparto para entrega.';
+    }
+
+    if (displayStatuses.includes('in_transit')) {
+      return 'Tu pedido aparece en tránsito.';
+    }
+
+    if (displayStatuses.includes('ready_for_pickup')) {
+      return 'Tu pedido aparece listo para recoger.';
+    }
+
+    if (displayStatuses.includes('attempted_delivery')) {
+      return 'El pedido registra un intento de entrega.';
+    }
+
+    if (displayStatuses.includes('failure')) {
+      return 'El envío presenta una novedad que requiere revisión.';
+    }
+
+    return this.customerFulfillmentStatusMessage(
+      order.fulfillment_status,
+      hasTracking,
+    );
   }
 
   private customerFulfillmentStatusMessage(status: unknown, hasTracking: boolean) {

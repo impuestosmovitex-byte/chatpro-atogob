@@ -678,7 +678,66 @@ export class ShopifyService {
           : order.tracking,
       };
     } catch {
-      return order;
+      try {
+        const data = await this.graphql<{
+          node: {
+            fulfillments?: Array<{
+              status?: string | null;
+              displayStatus?: string | null;
+              createdAt?: string | null;
+              deliveredAt?: string | null;
+              trackingInfo?: ShopifyOrderTracking[] | null;
+            }> | null;
+          } | null;
+        }>(
+          `
+            query ChatProOrderFulfillmentFallback($id: ID!) {
+              node(id: $id) {
+                ... on Order {
+                  fulfillments(first: 10) {
+                    status
+                    displayStatus
+                    createdAt
+                    deliveredAt
+                    trackingInfo(first: 10) {
+                      company
+                      number
+                      url
+                    }
+                  }
+                }
+              }
+            }
+          `,
+          { id: order.id },
+        );
+
+        const fulfillments = (data.node?.fulfillments ?? []).map(
+          (fulfillment) => ({
+            status: fulfillment.status ?? null,
+            displayStatus: fulfillment.displayStatus ?? null,
+            createdAt: fulfillment.createdAt ?? null,
+            deliveredAt: fulfillment.deliveredAt ?? null,
+            tracking: (fulfillment.trackingInfo ?? []).map((tracking) => ({
+              company: tracking.company ?? null,
+              number: tracking.number ?? null,
+              url: tracking.url ?? null,
+            })),
+          }),
+        );
+
+        return fulfillments.length
+          ? {
+              ...order,
+              fulfillments,
+              tracking: fulfillments.flatMap(
+                (fulfillment) => fulfillment.tracking,
+              ),
+            }
+          : order;
+      } catch {
+        return order;
+      }
     }
   }
 
