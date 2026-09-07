@@ -1762,6 +1762,7 @@ export class ChatAgentService {
       '- No asumas que cualquier número enviado por el cliente es un pedido. Si el cliente envía solo un número sin contexto, pregunta brevemente si corresponde al número de pedido, guía o celular registrado en la compra antes de usar lookup_order.',
       '- Interpreta una respuesta numérica como opción únicamente cuando corresponda claramente al último menú u opciones que realmente fueron mostradas al cliente en esta conversación. Nunca inventes opciones, submenús ni significados numéricos que no hayan sido mostrados.',
       '- Si acabas de pedir número de pedido, correo o celular para consultar una compra, interpreta la respuesta como el dato solicitado y úsalo con lookup_order; no la interpretes como opción de menú. Si no aparece el pedido, pide un dato alternativo concreto o, cuando corresponda, ofrece pasar a un asesor; no vuelvas a pedir el mismo dato.',
+      '- Durante una misma validación activa de pedido, conserva los identificadores que el cliente ya entregó y combina el segundo dato con el primero. No vuelvas a pedir un dato que ya esté presente en esa validación. Si el cliente entrega un número de pedido diferente al número de pedido pendiente, considéralo una consulta nueva y no arrastres correo ni celular del pedido anterior.',
       '- Después de lookup_order, responde únicamente con datos reales encontrados.',
       '- Nunca muestres estados internos como FULFILLED, UNFULFILLED, PAID, PENDING, OPEN o CLOSED. Comunica su significado en lenguaje natural.',
       '- Si hay guía, comparte transportadora, número, enlace e instrucciones para consultarla. No preguntes “¿quieres que lo rastree?” ni afirmes que puedes rastrear en tiempo real si la integración no entregó ese estado.',
@@ -2882,7 +2883,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'lookup_order',
   description:
-    'Consulta un pedido real por un identificador. Devuelve como máximo el pedido más reciente. No combines resultados ni reveles otros pedidos del cliente. Si el cliente da un dato nuevo, usa ese dato y no reutilices identificadores anteriores salvo un número de pedido explícito.',
+    'Consulta un pedido real usando los identificadores disponibles de la validación activa. Conserva los datos ya entregados dentro de esa misma consulta para completar la verificación. Si llega un dato nuevo del mismo tipo, reemplaza ese valor. Si llega un número de pedido diferente al número pendiente, inicia una validación nueva y no hereda correo ni celular del pedido anterior. No combines pedidos diferentes ni reveles otros pedidos del cliente.',
   strict: true,
   parameters: {
     type: 'object',
@@ -3147,7 +3148,22 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             'service',
           );
 
-        const lookupIdentifiers = {
+        const currentFlow =
+          serviceSession.context.customer_service_flow &&
+          typeof serviceSession.context.customer_service_flow === 'object' &&
+          !Array.isArray(serviceSession.context.customer_service_flow)
+            ? serviceSession.context.customer_service_flow as Record<string, unknown>
+            : {};
+
+        const previousIdentifiers =
+          currentFlow.type === 'order_lookup' &&
+          currentFlow.identifiers &&
+          typeof currentFlow.identifiers === 'object' &&
+          !Array.isArray(currentFlow.identifiers)
+            ? currentFlow.identifiers as Record<string, unknown>
+            : {};
+
+        const incomingIdentifiers = {
           orderReference:
             typeof args.order_reference === 'string'
               ? args.order_reference.trim()
@@ -3162,6 +3178,38 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
               : '',
         };
 
+        const previousOrderReference =
+          typeof previousIdentifiers.orderReference === 'string'
+            ? previousIdentifiers.orderReference.trim()
+            : '';
+
+        const startsDifferentOrder =
+          Boolean(incomingIdentifiers.orderReference) &&
+          Boolean(previousOrderReference) &&
+          incomingIdentifiers.orderReference !== previousOrderReference;
+
+        // Conservamos solamente identificadores pertenecientes a la misma
+        // validación activa. Un número de pedido diferente inicia un caso nuevo.
+        const lookupIdentifiers = startsDifferentOrder
+          ? incomingIdentifiers
+          : {
+              orderReference:
+                incomingIdentifiers.orderReference ||
+                (typeof previousIdentifiers.orderReference === 'string'
+                  ? previousIdentifiers.orderReference.trim()
+                  : ''),
+              email:
+                incomingIdentifiers.email ||
+                (typeof previousIdentifiers.email === 'string'
+                  ? previousIdentifiers.email.trim().toLowerCase()
+                  : ''),
+              phone:
+                incomingIdentifiers.phone ||
+                (typeof previousIdentifiers.phone === 'string'
+                  ? previousIdentifiers.phone.replace(/\D/g, '')
+                  : ''),
+            };
+
         const result =
           await this.customerOrderService.lookup(
             session.companyId,
@@ -3170,6 +3218,8 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
               limit: 1,
             },
           ) as Record<string, any>;
+
+        const now = new Date().toISOString();
 
         if (
           result.ok === true &&
@@ -3182,10 +3232,37 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             typeof order.id === 'string' ? order.id : '';
           const orderName =
             typeof order.name === 'string' ? order.name : '';
-          const now = new Date().toISOString();
 
           // Solo una validación exitosa puede crear o reemplazar
           // el pedido anclado de la conversación.
+          const completedContext: Record<string, unknown> = {
+            ...serviceSession.context,
+            conversation_category: 'service',
+            conversation_category_updated_at: now,
+            last_order_lookup: {
+              order_id: orderId,
+              order_name: orderName,
+              found_at: now,
+            },
+            validated_order_lookup: {
+              order_id: orderId,
+              order_name: orderName,
+              identifiers: lookupIdentifiers,
+              verified_at: now,
+            },
+          };
+
+          delete completedContext.customer_service_flow;
+
+          await this.conversationMemoryService.updateSession(
+            serviceSession.id,
+            {
+              context: completedContext,
+            },
+          );
+        } else {
+          // La validación todavía está pendiente: guardamos únicamente
+          // los datos entregados para esta consulta concreta.
           await this.conversationMemoryService.updateSession(
             serviceSession.id,
             {
@@ -3193,16 +3270,11 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
                 ...serviceSession.context,
                 conversation_category: 'service',
                 conversation_category_updated_at: now,
-                last_order_lookup: {
-                  order_id: orderId,
-                  order_name: orderName,
-                  found_at: now,
-                },
-                validated_order_lookup: {
-                  order_id: orderId,
-                  order_name: orderName,
+                customer_service_flow: {
+                  type: 'order_lookup',
                   identifiers: lookupIdentifiers,
-                  verified_at: now,
+                  attempts: Number(currentFlow.attempts ?? 0) + 1,
+                  updated_at: now,
                 },
               },
             },
