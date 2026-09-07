@@ -1729,6 +1729,7 @@ export class ChatAgentService {
       '- OpenAI debe razonar con la base configurada; no respondas como plantilla fija ni como árbol de palabras clave.',
       '- Conversa de manera natural; no uses formularios ni secuencias rígidas de preguntas.',
       '- Entiende mensajes cortos, cambios de idea, errores de escritura y referencias como “esta”, “la lila”, “sí”, “dale”, “mejor no” o “quiero otra”.',
+      '- Si el mensaje actual corrige explícitamente un dato aportado por la persona, una elección, cantidad, preferencia o instrucción anterior dentro del mismo asunto activo, la corrección más reciente reemplaza el valor anterior. No combines valores contradictorios ni continúes actuando con el dato viejo: actualiza el contexto o usa la herramienta correspondiente antes de seguir. Esta regla no reemplaza datos reales confirmados por herramientas o integraciones.',
         '- Conserva el carrito real aunque la persona mire otro producto, pero solo cuando ese carrito corresponde a la compra actual.',
         '- Un pedido ya pagado, consultado o despachado NO es un carrito. Nunca agregues productos de pedidos anteriores a una compra nueva.',
       '- Cuando session.starts_new_conversation sea true, atiende el mensaje como una conversación comercial nueva. No reutilices productos, tallas, variantes, carrito, pedido, menú ni intención de compra anteriores.',
