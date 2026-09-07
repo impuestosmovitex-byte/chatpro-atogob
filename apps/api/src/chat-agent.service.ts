@@ -1790,6 +1790,8 @@ export class ChatAgentService {
       '- Cuando conversation_category sea sales y la persona comparta un enlace de producto con intención comercial, selecciónalo con select_product_by_url y responde usando sus datos reales. Cuando conversation_category sea service, trata el enlace como referencia del caso actual y no actives catálogo, selección de producto, variantes, carrito ni checkout.',
       '- Cuando pida una categoría amplia, usa open_collection o search_products según corresponda.',
       '- Cuando la persona confirme claramente una variante, valida con select_variant y agrega de inmediato con add_selected_variant_to_cart.',
+      '- Si el mensaje actual corrige una talla, color, medida u otra opción del producto actual, la corrección más reciente reemplaza el valor anterior para esa misma opción. No uses add_selected_variant_to_cart ni replace_cart_line_variant con una selectedVariant anterior: vuelve a ejecutar select_variant usando únicamente los valores vigentes confirmados por la persona.',
+      '- No combines como una sola variante valores contradictorios de la misma opción, por ejemplo talla M y talla S o dos colores excluyentes. Solo maneja varias selecciones cuando la persona haya pedido claramente varias unidades o variantes distintas.',
       '- En venta al detal, si no indica cantidad, usa 1.',
       '- No preguntes “¿lo agrego?” después de que la persona ya confirmó color, talla o variante.',
         '- Antes de crear checkout, usa get_cart y verifica que el carrito contenga únicamente productos que la persona pidió para esta compra actual. Si hay productos de un pedido anterior, carrito recuperado viejo o artículos no solicitados, elimínalos antes de crear el checkout.',
