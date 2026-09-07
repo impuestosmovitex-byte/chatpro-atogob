@@ -3298,7 +3298,15 @@ export class WhatsappWebhookController {
         /\bmi (pedido|compra)\b/.test(normalizedText) ||
         /\b(rastrear|rastreo|seguimiento|guia)\b/.test(normalizedText) ||
         /\bdonde esta mi pedido\b/.test(normalizedText) ||
-        /\bestado (de|del) pedido\b/.test(normalizedText);
+        /\bestado (de|del) pedido\b/.test(normalizedText) ||
+        /\bcuanto pague\b/.test(normalizedText) ||
+        /\bque pague\b/.test(normalizedText) ||
+        /\bque compre\b/.test(normalizedText) ||
+        /\bque productos? compre\b/.test(normalizedText) ||
+        /\blo que compre\b/.test(normalizedText) ||
+        /\bcomo pague\b/.test(normalizedText) ||
+        /\bcon que pague\b/.test(normalizedText) ||
+        /\bmedio de pago (use|utilice)\b/.test(normalizedText);
 
       if (
         validatedOrderName &&
@@ -3882,15 +3890,106 @@ export class WhatsappWebhookController {
     const fulfillmentMessage =
       this.customerOrderFulfillmentStatusMessage(order, hasTracking);
 
+    const asksCarrier =
+      /\btransportadora\b/.test(normalizedQuestion);
+
     const asksTracking =
-      /\b(guia|seguimiento|transportadora)\b/.test(normalizedQuestion) ||
+      /\b(guia|seguimiento)\b/.test(normalizedQuestion) ||
       /\brastre\w*/.test(normalizedQuestion);
+
+    const asksOrderTotal =
+      /\bcuanto pague\b/.test(normalizedQuestion) ||
+      /\bque pague\b/.test(normalizedQuestion) ||
+      /\b(total|valor) (de|del) (mi )?(pedido|compra)\b/.test(
+        normalizedQuestion,
+      );
+
+    const asksOrderProducts =
+      /\bque productos? compre\b/.test(normalizedQuestion) ||
+      /\bque compre\b/.test(normalizedQuestion) ||
+      /\blo que compre\b/.test(normalizedQuestion) ||
+      (
+        /\bproductos?\b/.test(normalizedQuestion) &&
+        /\b(mi )?(pedido|compra)\b/.test(normalizedQuestion)
+      );
+
+    const asksPaymentMethod =
+      /\bcomo pague\b/.test(normalizedQuestion) ||
+      /\bcon que pague\b/.test(normalizedQuestion) ||
+      /\bmedio de pago (use|utilice)\b/.test(normalizedQuestion);
+
+    const asksPaymentStatus =
+      /\b(ya )?(pague|pagado)\b/.test(normalizedQuestion) ||
+      /\bpago (confirmado|aprobado)\b/.test(normalizedQuestion);
 
     const asksDeliveryStatus =
       /\bentreg\w*/.test(normalizedQuestion) ||
       /\b(en transito|en reparto|llego|llegado|estado del pedido|donde esta)\b/.test(
         normalizedQuestion,
       );
+
+    if (normalizedQuestion && asksOrderTotal) {
+      const total = this.formatOrderMoney(order.total);
+
+      if (!total) {
+        return 'No tengo disponible el total de ese pedido en la información recibida.';
+      }
+
+      const financialStatus =
+        this.normalizeOrderStatus(order.financial_status);
+
+      return financialStatus === 'paid'
+        ? `Pagaste ${total}.`
+        : `El total del pedido es ${total}.`;
+    }
+
+    if (normalizedQuestion && asksOrderProducts) {
+      if (!items.length) {
+        return 'No tengo disponible el detalle de productos de ese pedido.';
+      }
+
+      const productSummary = items
+        .slice(0, 20)
+        .map((item) => {
+          const title =
+            this.cleanCustomerText(item.title || 'Producto');
+          const quantity = Number(item.quantity ?? 1);
+          const variant = item.variant_title
+            ? ` - ${this.cleanCustomerText(item.variant_title)}`
+            : '';
+
+          return `• ${title}${variant} x${quantity}`;
+        })
+        .join('\n');
+
+      return `Productos de tu pedido:\n${productSummary}`;
+    }
+
+    if (normalizedQuestion && asksCarrier) {
+      const company = firstTracking
+        ? this.cleanCustomerText(firstTracking.company || '')
+        : '';
+
+      return company
+        ? `La transportadora de tu pedido es ${company}.`
+        : 'No tengo disponible la transportadora de ese pedido en la información recibida.';
+    }
+
+    if (normalizedQuestion && asksPaymentMethod) {
+      const paymentMessage =
+        this.customerPaymentStatusMessage(order.financial_status);
+
+      return paymentMessage
+        ? `${paymentMessage} No tengo disponible el medio de pago utilizado en la información recibida.`
+        : 'No tengo disponible el medio de pago utilizado en la información recibida.';
+    }
+
+    if (normalizedQuestion && asksPaymentStatus) {
+      return (
+        this.customerPaymentStatusMessage(order.financial_status) ||
+        'No tengo disponible un estado de pago más específico para ese pedido.'
+      );
+    }
 
     if (normalizedQuestion && asksTracking) {
       const trackingLines: string[] = [];

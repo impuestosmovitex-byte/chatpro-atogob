@@ -196,6 +196,37 @@ export class ChatAgentService {
       areaName.includes('soporte') ||
       areaName.includes('postventa');
 
+    const validatedOrder =
+      session.context.validated_order_lookup &&
+      typeof session.context.validated_order_lookup === 'object' &&
+      !Array.isArray(session.context.validated_order_lookup)
+        ? session.context.validated_order_lookup as JsonObject
+        : null;
+
+    const hasValidatedOrder =
+      Boolean(validatedOrder?.order_id) ||
+      Boolean(validatedOrder?.order_name);
+
+    const validatedOrderQuestionPatterns = [
+      /\bcuanto pague\b/,
+      /\bque pague\b/,
+      /\bque compre\b/,
+      /\bque productos? compre\b/,
+      /\blo que compre\b/,
+      /\bcomo pague\b/,
+      /\bcon que pague\b/,
+      /\bmedio de pago (use|utilice)\b/,
+    ];
+
+    if (
+      hasValidatedOrder &&
+      validatedOrderQuestionPatterns.some((pattern) =>
+        pattern.test(normalized),
+      )
+    ) {
+      return 'service';
+    }
+
     if (
       routingIntent === 'new_catalog_search' ||
       explicitNewPurchase
