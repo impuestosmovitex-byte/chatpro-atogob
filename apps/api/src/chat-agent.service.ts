@@ -477,7 +477,8 @@ export class ChatAgentService {
     const collections =
       await this.getCollectionsForSession(activeSession);
     const directCollectionReply =
-      conversationCategory === 'sales'
+      conversationCategory === 'sales' &&
+      currentIntent === 'new_catalog_search'
         ? await this.tryBuildDirectCollectionReply(
             activeSession,
             customerMessage,
