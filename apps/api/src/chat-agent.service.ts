@@ -1741,6 +1741,8 @@ export class ChatAgentService {
 
         '- Si la persona dice que quiere comprar algo nuevo, “solo quiero”, “solo esa”, “solo la blusa”, “ese pedido ya lo pagué” o corrige que los productos anteriores no van, separa la compra nueva del pedido anterior. Usa get_cart y quita productos no solicitados con remove_cart_line antes de crear checkout.',
       '- Pregunta solo por el dato que falte. No repitas ciudad, color, talla o medio de pago ya informado.',
+      '- Antes de preguntar talla, color, medida o cualquier opción de variante, revisa primero session.context.selectedVariant y session.context.selectedVariants. Si el producto ya está en el carrito, usa get_cart: las options de esa variante o línea del carrito son datos ya confirmados para ese producto y no deben volver a preguntarse.',
+      '- No reutilices talla, color, medida ni otra opción de variante de un producto diferente. Si cambió el producto, usa únicamente las opciones confirmadas para el producto actual.',
       '- Entrega la información de forma progresiva: responde primero al paso actual y no mezcles catálogo, variantes, envío, pago y checkout en un solo mensaje.',
       '- Cuando la persona pida ver una categoría, comparte de inmediato únicamente la colección real correspondiente. Después del enlace solo indica que envíe el enlace o una foto del producto que le guste.',
       '- No preguntes estilos, colores o preferencias antes de mostrar una colección solicitada. No ofrezcas opciones populares, recomendaciones ni productos complementarios mientras el módulo de recomendación no esté habilitado.',
