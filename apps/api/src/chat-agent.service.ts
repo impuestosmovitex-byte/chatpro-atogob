@@ -119,12 +119,26 @@ export class ChatAgentService {
             .replace(/[\u0300-\u036f]/g, '')
         : '';
 
-    const servicePatterns = [
+    const explicitServicePatterns = [
       /\bmi pedido\b/,
       /\bpedido\s*#?\s*\d+/,
       /\bnumero de pedido\b/,
       /\bestado (de|del) pedido\b/,
       /\bdonde esta mi pedido\b/,
+      /\brastre(ar)? mi pedido\b/,
+      /\bmi seguimiento\b/,
+      /\bmi guia\b/,
+      /\bguia (de|del) (mi )?pedido\b/,
+      /\btransportadora (de|del) (mi )?pedido\b/,
+      /\bproducto recibido\b/,
+      /\bme llego\b/,
+      /\bno me llego\b/,
+      /\bpedido existente\b/,
+      /\bmi compra\b/,
+      /\blo que compre\b/,
+    ];
+
+    const serviceTopicPatterns = [
       /\brastre/,
       /\bseguimiento\b/,
       /\bguia\b/,
@@ -138,10 +152,6 @@ export class ChatAgentService {
       /\bcancel/,
       /\banular\b/,
       /\breembolso\b/,
-      /\bproducto recibido\b/,
-      /\bme llego\b/,
-      /\bno me llego\b/,
-      /\bpedido existente\b/,
     ];
 
     const salesPatterns = [
@@ -170,12 +180,6 @@ export class ChatAgentService {
       /\bcontraentrega\b/,
     ];
 
-    if (
-      servicePatterns.some((pattern) => pattern.test(normalized))
-    ) {
-      return 'service';
-    }
-
     const explicitNewPurchase =
       /\bquiero (comprar|hacer una compra|pedir algo nuevo)\b/.test(
         normalized,
@@ -184,18 +188,39 @@ export class ChatAgentService {
       /\bquiero ver el catalogo\b/.test(normalized) ||
       /\bquiero comprar otro producto\b/.test(normalized);
 
+    const hasActiveServiceContext =
+      current === 'service' ||
+      customerServiceFlowType === 'order_lookup' ||
+      serviceAreaType === 'service' ||
+      areaName.includes('servicio') ||
+      areaName.includes('soporte') ||
+      areaName.includes('postventa');
+
     if (
-      current === 'service' &&
-      !explicitNewPurchase &&
-      routingIntent !== 'new_catalog_search'
+      routingIntent === 'new_catalog_search' ||
+      explicitNewPurchase
+    ) {
+      return 'sales';
+    }
+
+    if (
+      explicitServicePatterns.some((pattern) => pattern.test(normalized))
     ) {
       return 'service';
     }
 
     if (
-      routingIntent === 'new_catalog_search' ||
-      salesPatterns.some((pattern) => pattern.test(normalized))
+      hasActiveServiceContext &&
+      serviceTopicPatterns.some((pattern) => pattern.test(normalized))
     ) {
+      return 'service';
+    }
+
+    if (current === 'service') {
+      return 'service';
+    }
+
+    if (salesPatterns.some((pattern) => pattern.test(normalized))) {
       return 'sales';
     }
 
@@ -207,7 +232,6 @@ export class ChatAgentService {
     if (
       looksLikePendingIdentifier &&
       (
-        current === 'service' ||
         customerServiceFlowType === 'order_lookup' ||
         serviceAreaType === 'service' ||
         areaName.includes('servicio') ||
@@ -1705,7 +1729,7 @@ export class ChatAgentService {
       instructionScope,
     );
     const knowledgeRules =
-      instructionScope === 'service'
+      instructionScope === 'service' || instructionScope === 'sales'
         ? this.getKnowledgeBaseRules(profile.settings)
         : '';
     const shippingTrackingRules =
@@ -1719,6 +1743,7 @@ export class ChatAgentService {
       '',
       'REGLAS DE VERACIDAD:',
       '- Nunca muestres código, JSON, herramientas, IDs técnicos, procesos internos ni mensajes del sistema.',
+      '- Nunca menciones al cliente categorías internas, “modo ventas”, “modo compras”, “modo servicio”, enrutamiento, bloqueos de herramientas ni cambios de estado. No pidas permiso para cambiar un estado interno: interpreta la intención y responde o ejecuta la acción permitida de forma natural.',
       '- Nunca digas que eres una IA ni menciones OpenAI, Shopify, Supabase o APIs.',
       '- Nunca inventes productos, precios, variantes, descuentos, stock, promociones, envíos, políticas, pedidos o enlaces.',
       '- Usa únicamente resultados reales de las herramientas y la configuración de la empresa.',
@@ -1738,7 +1763,8 @@ export class ChatAgentService {
       '- session.context.previous_purchase_context es solo un respaldo histórico. No lo uses ni lo agregues al carrito salvo que el mensaje ACTUAL pida explícitamente retomar esa compra; antes de retomarla valida nuevamente productos, variantes, disponibilidad y condiciones reales.',
       '- Después de 72 horas sin actividad, solo consulta una compra anterior si el mensaje ACTUAL del cliente pregunta explícitamente por un pedido, guía, pago, cambio, garantía, devolución o algo que compró antes.',
       '- No llames lookup_order solo porque exista un pedido o dato antiguo en el historial o contexto. Debe existir una solicitud actual y clara del cliente sobre esa compra.',
-      '- Cuando el mensaje actual trate sobre un pedido existente, guía, entrega, demora, producto faltante, producto incorrecto, cambio, garantía, devolución, inconformidad o reclamación, el contexto prioritario es Servicio. No continúes vendiendo ni uses productos, imágenes, variantes o carrito como respuesta al caso.',
+      '- Una pregunta general o preventiva sobre cambios, devoluciones, garantías, tiempos de entrega, envíos, pagos o políticas NO convierte por sí sola la conversación en Servicio. Si la persona está comprando o evaluando comprar, conserva Ventas y responde usando la configuración vigente de la empresa.',
+      '- Cuando el mensaje actual se refiera a una compra o pedido existente, producto ya recibido, guía o seguimiento de ese pedido, demora de esa entrega, producto faltante o incorrecto, cambio, garantía o devolución de una compra realizada, inconformidad o reclamación, el contexto prioritario es Servicio. No continúes vendiendo ni uses productos, imágenes, variantes o carrito como respuesta al caso.',
       '- Si después de consultar el pedido la persona retoma el producto que ya estaba revisando, usa get_selected_product y get_cart. No vuelvas a abrir la colección ni a pedir el enlace si el producto ya está identificado.',
 
         '- Si la persona dice que quiere comprar algo nuevo, “solo quiero”, “solo esa”, “solo la blusa”, “ese pedido ya lo pagué” o corrige que los productos anteriores no van, separa la compra nueva del pedido anterior. Usa get_cart y quita productos no solicitados con remove_cart_line antes de crear checkout.',
@@ -1761,7 +1787,7 @@ export class ChatAgentService {
         '- No ofrezcas cancelación, devolución, garantía, cambio especial, descuento, envío gratis ni excepción operativa si no está permitido explícitamente en la configuración de la empresa. Si no está configurado, no lo prometas: pide el dato necesario o escala a asesor.',
       '- Cuando la configuración de la empresa prohíba devolver dinero, cancelar pedidos o presentar esas posibilidades, no las menciones como alternativa, solución posible ni resultado pendiente. Transfiere de forma neutral indicando únicamente que un asesor revisará el caso.',
       '- Nunca inventes ni sugieras que el cliente puede elegir entre reenvío, devolución, compensación, cancelación u otra solución. Solo comunica resultados que estén confirmados por una política configurada o por una herramienta real.',
-        '- Para cambios, garantías o devoluciones, pregunta lo necesario según la política configurada. No incluyas “cancelarlo” como opción salvo que la empresa lo permita explícitamente en su configuración.',
+        '- En preguntas generales o preventa sobre cambios, garantías o devoluciones, responde directamente con la política configurada y únicamente con lo relevante a lo preguntado. Pide datos adicionales solo cuando la persona quiera tramitar un caso sobre una compra existente. No incluyas “cancelarlo” como opción salvo que la empresa lo permita explícitamente en su configuración.',
       '- Si preguntan por estado de pedido, número de guía, transportadora, seguimiento, pago de un pedido, cambio, garantía o devolución de una compra existente, usa lookup_order cuando tengas número de pedido, correo o celular. Si falta ese dato, pide solo un dato concreto.',
       '- No asumas que cualquier número enviado por el cliente es un pedido. Si el cliente envía solo un número sin contexto, pregunta brevemente si corresponde al número de pedido, guía o celular registrado en la compra antes de usar lookup_order.',
       '- Interpreta una respuesta numérica como opción únicamente cuando corresponda claramente al último menú u opciones que realmente fueron mostradas al cliente en esta conversación. Nunca inventes opciones, submenús ni significados numéricos que no hayan sido mostrados.',
@@ -2286,11 +2312,8 @@ export class ChatAgentService {
 
     if (
       hasActiveReference &&
-      (
-        raw.length <= 120 ||
-        /^(si|sí|no|dale|listo|ok|okay|esta|este|esa|ese|esto|esa misma|ese mismo|la primera|la segunda|el primero|el segundo|quiero esta|quiero este|quiero esa|quiero ese)$/i.test(
-          raw,
-        )
+      /^(si|sí|no|dale|listo|ok|okay|esta|este|esa|ese|esto|esa misma|ese mismo|la primera|la segunda|el primero|el segundo|quiero esta|quiero este|quiero esa|quiero ese)$/i.test(
+        raw,
       )
     ) {
       return {
