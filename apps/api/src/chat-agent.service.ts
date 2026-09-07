@@ -186,7 +186,8 @@ export class ChatAgentService {
 
     if (
       current === 'service' &&
-      !explicitNewPurchase
+      !explicitNewPurchase &&
+      routingIntent !== 'new_catalog_search'
     ) {
       return 'service';
     }
