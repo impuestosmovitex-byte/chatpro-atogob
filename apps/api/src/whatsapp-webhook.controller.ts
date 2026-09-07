@@ -3487,6 +3487,11 @@ export class WhatsappWebhookController {
       'no es ese',
       'no es ese pedido',
       'ese no',
+      'ese no es mi pedido',
+      'este no es mi pedido',
+      'no es mi pedido',
+      'ese pedido no es mio',
+      'este pedido no es mio',
       'otro',
       'otro pedido',
       'es otro',
@@ -3498,22 +3503,26 @@ export class WhatsappWebhookController {
 
     if (negativeResponses.has(normalized)) {
       const now = new Date().toISOString();
+      const nextContext: Record<string, unknown> = {
+        ...session.context,
+        conversation_category: 'service',
+        conversation_category_updated_at: now,
+        customer_service_flow: {
+          type: 'order_lookup',
+          identifiers: {},
+          attempts: 0,
+          updated_at: now,
+        },
+      };
+
+      delete nextContext.validated_order_lookup;
+      delete nextContext.last_order_lookup;
 
       await this.conversationMemoryService.updateSession(
         session.id,
         {
           stage: 'active',
-          context: {
-            ...session.context,
-            conversation_category: 'service',
-            conversation_category_updated_at: now,
-            customer_service_flow: {
-              type: 'order_lookup',
-              identifiers: {},
-              attempts: 0,
-              updated_at: now,
-            },
-          },
+          context: nextContext,
         },
       );
 
