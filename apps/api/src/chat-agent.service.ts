@@ -2159,23 +2159,42 @@ export class ChatAgentService {
     }
 
     const history = await this.getRecentMessages(session.id);
+    const commercialFlow =
+      profile.settings.commercial_flow &&
+      typeof profile.settings.commercial_flow === 'object' &&
+      !Array.isArray(profile.settings.commercial_flow)
+        ? profile.settings.commercial_flow as JsonObject
+        : {};
+    const configuredSalesInstructions =
+      typeof commercialFlow.sales_instructions === 'string'
+        ? commercialFlow.sales_instructions.trim()
+        : '';
+    const routingCompanyInstructions = [
+      profile.aiInstructions?.trim() || '',
+      configuredSalesInstructions,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
     const response = await this.getClient().responses.create({
       model: this.getModel(),
       instructions: [
-        'Clasifica el mensaje actual de una conversación comercial.',
+        'Clasifica el mensaje actual de una conversación de negocio.',
         'No respondas al cliente.',
+        'Usa las instrucciones configuradas de la empresa para comprender su lenguaje, sus referencias y la continuidad de la conversación. No ejecutes aquí el proceso comercial ni sus acciones.',
         'Devuelve únicamente JSON válido con esta estructura:',
         '{"understanding":"clear"|"unclear","intent":"new_catalog_search"|"continuation"|"other"}',
         '',
-        'understanding=clear cuando el mensaje puede procesarse usando el historial, contexto, productos, pedidos, pagos, servicios o integraciones.',
-        'understanding=unclear únicamente cuando no es posible saber qué solicita ni a qué se refiere, incluso usando el contexto.',
-        'No marques como unclear solo por ser corto, contener un número, ciudad, color, talla, sí/no, correo, celular, referencia, enlace o dato solicitado anteriormente.',
+        'understanding=clear cuando el mensaje puede procesarse usando el historial, contexto, instrucciones de la empresa, productos, servicios, pedidos, pagos o integraciones.',
+        'understanding=unclear únicamente cuando no es posible saber qué solicita ni a qué se refiere, incluso usando el contexto y las instrucciones configuradas.',
+        'No marques como unclear solo por ser corto o contener un dato, atributo, opción, identificador, sí/no, correo, celular, referencia, enlace o una respuesta a algo solicitado anteriormente.',
         '',
-        'intent=new_catalog_search cuando pide explorar una categoría, producto genérico o una búsqueda nueva, aunque exista un producto anterior.',
-        'intent=continuation cuando se refiere al producto, imagen, carrito, pedido, pregunta o dato que ya se venía tratando.',
-        'intent=other para saludos, pagos, servicio, políticas u otros mensajes que no requieren limpiar el producto anterior.',
+        'intent=new_catalog_search cuando la persona inicia claramente una búsqueda comercial nueva o pide explorar una categoría u opciones nuevas, aunque exista una selección anterior.',
+        'intent=continuation cuando se refiere claramente al asunto, selección, producto, servicio, referencia, carrito, pedido, pregunta o dato que ya se venía tratando.',
+        'intent=other para saludos, pagos, servicio, políticas u otros mensajes que no requieren limpiar una selección anterior.',
         '',
         `Empresa: ${profile.name}.`,
+        `Instrucciones configuradas de la empresa: ${routingCompanyInstructions || 'No hay instrucciones adicionales.'}`,
       ].join('\n'),
       input: JSON.stringify({
         historial_reciente: history,
