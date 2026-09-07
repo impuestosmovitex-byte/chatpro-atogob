@@ -1446,50 +1446,6 @@ export class WhatsappWebhookController {
         return;
       }
 
-      if (visualMatch.matchType === 'exact') {
-        const exactReply =
-          await this.chatAgentService.buildExactVisualProductReply(
-            session,
-          );
-
-        if (exactReply) {
-          if (
-            !this.isCurrentInboundMessage(
-              `${input.incomingPhoneNumberId}:${input.phone}`,
-              input.incomingMessageId,
-            )
-          ) {
-            console.log(
-              `Respuesta visual exacta cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
-            );
-            return;
-          }
-
-          await this.whatsappMessagingService.sendText(
-            profile.id,
-            input.phone,
-            exactReply,
-          );
-          replySent = true;
-
-          await this.conversationMemoryService.saveMessage({
-            companyId: profile.id,
-            sessionId: session.id,
-            customerPhone: input.phone,
-            message: exactReply,
-            sender: 'assistant',
-            authorType: 'ai',
-            aiResponse: exactReply,
-          });
-
-          await this.conversationMemoryService.touchSession(session.id);
-          console.log(
-            `Producto visual exacto respondido a ${input.phone}`,
-          );
-          return;
-        }
-      }
-
       if (visualMatch.matchType !== 'exact') {
         const candidateUrl =
           visualMatch.candidates.find((item) => item.url?.trim())?.url || '';
