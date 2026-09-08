@@ -749,6 +749,7 @@ export class ChatAgentService {
       compact(input.productName, 180),
       compact(input.visibleText, 220),
       ...input.searchTerms.map((item) => compact(item, 120)),
+      compact(input.category, 100),
       [
         compact(input.category, 100),
         ...input.colors.slice(0, 2).map((item) => compact(item, 40)),
@@ -1108,37 +1109,33 @@ export class ChatAgentService {
       }
     }
 
-    const candidateOrder = [
-      ...(visualChoice ? [visualChoice] : []),
-      ...ranked.filter(
-        (candidate) => candidate.id !== visualChoice?.id,
-      ),
-    ];
-    const candidates = candidateOrder
-      .slice(0, 3)
-      .map((candidate) => ({
-        title: candidate.title,
-        url: candidate.url,
-        imageUrl: candidate.imageUrl,
-        priceFromCop: candidate.priceFromCop,
-      }));
+    if (
+      visualChoice &&
+      (
+        visualMatchType === 'similar' ||
+        visualMatchType === 'exact'
+      )
+    ) {
+      const candidate = {
+        title: visualChoice.title,
+        url: visualChoice.url,
+        imageUrl: visualChoice.imageUrl,
+        priceFromCop: visualChoice.priceFromCop,
+      };
 
-    if (candidates.length) {
       console.log(
-        `[ChatPro][visual-match] match=similar candidates=${candidates.length}`,
+        '[ChatPro][visual-match] match=similar candidates=1',
       );
+
       return {
         matchType: 'similar',
-        confidence:
-          visualMatchType === 'similar'
-            ? visualConfidence
-            : top?.textScore ?? 0,
+        confidence: visualConfidence,
         matchedProduct: null,
-        candidates,
+        candidates: [candidate],
         queries,
         reason:
           visualReason ||
-          'No existe certeza suficiente para confirmar una referencia exacta.',
+          'La comparación visual encontró una posible coincidencia, pero no existe certeza suficiente para confirmar la referencia exacta.',
       };
     }
 
@@ -2321,7 +2318,7 @@ export class ChatAgentService {
     if (raw.startsWith('[REFERENCIA_VISUAL]')) {
       return {
         understanding: 'clear',
-        intent: 'new_catalog_search',
+        intent: 'continuation',
       };
     }
 

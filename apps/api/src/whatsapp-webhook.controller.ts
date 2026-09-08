@@ -1446,49 +1446,6 @@ export class WhatsappWebhookController {
         return;
       }
 
-      if (visualMatch.matchType !== 'exact') {
-        const candidateUrl =
-          visualMatch.candidates.find((item) => item.url?.trim())?.url || '';
-        let storeUrl = '';
-
-        try {
-          storeUrl = candidateUrl ? new URL(candidateUrl).origin : '';
-        } catch {
-          storeUrl = '';
-        }
-
-        const storeInstruction = storeUrl
-          ? `Ingresa a nuestra tienda virtual:\n${storeUrl}\nBusca el producto y envíame su enlace exacto para revisar precio, opciones y disponibilidad.`
-          : 'Busca el producto en nuestra tienda virtual y envíame su enlace exacto para revisar precio, opciones y disponibilidad.';
-        const uncertainReply =
-          visualMatch.matchType === 'similar'
-            ? `Veo el producto, pero hay varias publicaciones muy parecidas en el catálogo. ${storeInstruction}`
-            : `No pude confirmar la referencia exacta con esa imagen. ${storeInstruction}`;
-
-        await this.whatsappMessagingService.sendText(
-          profile.id,
-          input.phone,
-          uncertainReply,
-        );
-        replySent = true;
-
-        await this.conversationMemoryService.saveMessage({
-          companyId: profile.id,
-          sessionId: session.id,
-          customerPhone: input.phone,
-          message: uncertainReply,
-          sender: 'assistant',
-          authorType: 'ai',
-          aiResponse: uncertainReply,
-        });
-
-        await this.conversationMemoryService.touchSession(session.id);
-        console.log(
-          `Imagen incierta respondida sin reutilizar producto anterior a ${input.phone}`,
-        );
-        return;
-      }
-
       const visualCustomerMessage = [
         '[REFERENCIA_VISUAL]',
         input.caption
@@ -1523,8 +1480,8 @@ export class WhatsappWebhookController {
           : '',
         'Responde de forma breve y natural.',
         'Si existe producto exacto confirmado, consulta el producto seleccionado y continúa con sus variantes reales.',
-        'Si existen publicaciones parecidas pero no hay certeza exacta, pide el enlace del producto y no muestres alternativas no solicitadas.',
-        'Si no hay coincidencias, pide nombre, enlace o un detalle útil sin inventar productos.',
+        'Si existen posibles coincidencias pero no hay certeza exacta, no las presentes como identificación confirmada. Sigue las instrucciones de la empresa y pide solo la aclaración mínima necesaria para continuar.',
+        'Si no hay coincidencias, sigue las instrucciones de la empresa y pide únicamente un dato útil para continuar la búsqueda, sin inventar productos ni exigir un tipo específico de dato si no es necesario.',
       ].filter(Boolean).join('\n');
 
       const reply = await this.resolveReply(
