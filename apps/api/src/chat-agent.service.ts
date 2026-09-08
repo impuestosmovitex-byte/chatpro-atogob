@@ -748,8 +748,8 @@ export class ChatAgentService {
       compact(input.reference, 120),
       compact(input.productName, 180),
       compact(input.visibleText, 220),
-      ...input.searchTerms.map((item) => compact(item, 120)),
       compact(input.category, 100),
+      ...input.searchTerms.map((item) => compact(item, 120)),
       [
         compact(input.category, 100),
         ...input.colors.slice(0, 2).map((item) => compact(item, 40)),
@@ -769,12 +769,17 @@ export class ChatAgentService {
       queryMap.set(key, seed);
     }
 
-    const queries = [...queryMap.values()].slice(0, 6);
+    const queries = [...queryMap.values()].slice(0, 8);
     const candidateMap = new Map<string, VisualCandidate>();
     const specificTargets = [
       compact(input.reference, 120),
       compact(input.productName, 180),
       compact(input.visibleText, 220),
+    ].filter(Boolean);
+    const descriptiveTargets = [
+      compact(input.category, 100),
+      ...input.searchTerms.map((item) => compact(item, 120)),
+      compact(input.summary, 260),
     ].filter(Boolean);
     const visiblePriceDigits = digits(input.visiblePrice);
 
@@ -818,6 +823,40 @@ export class ChatAgentService {
             ));
 
           score = Math.max(score, coverage * 0.82);
+        }
+      }
+
+      // Cuando una foto no contiene nombre, referencia ni texto legible,
+      // la categoría, los términos visuales y la descripción deben ayudar
+      // a priorizar candidatos reales. Estas señales solo ordenan el pool:
+      // nunca convierten por sí solas un producto en coincidencia exacta.
+      for (const target of descriptiveTargets) {
+        const targetNormalized = normalized(target);
+
+        if (!targetNormalized) {
+          continue;
+        }
+
+        if (
+          targetNormalized.includes(titleNormalized) ||
+          titleNormalized.includes(targetNormalized)
+        ) {
+          score = Math.max(score, 0.78);
+        }
+
+        const targetTokens = usefulTokens(target);
+
+        if (targetTokens.length && titleTokens.length) {
+          const common = titleTokens.filter((token) =>
+            targetTokens.includes(token),
+          ).length;
+          const coverage =
+            common / Math.max(
+              1,
+              Math.min(titleTokens.length, targetTokens.length),
+            );
+
+          score = Math.max(score, coverage * 0.68);
         }
       }
 

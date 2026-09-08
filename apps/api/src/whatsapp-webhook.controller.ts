@@ -1930,7 +1930,7 @@ export class WhatsappWebhookController {
         'visible_price: copia únicamente el precio claramente visible; no lo deduzcas.',
         'colors: únicamente colores claramente visibles.',
         'visible_text: copia el texto comercial legible que pueda ayudar a identificar el producto.',
-        'search_terms: entre 1 y 6 términos cortos y específicos para buscar el producto o similares.',
+        'search_terms: genera entre 3 y 8 búsquedas cortas e independientes que ayuden a recuperar el producto dentro de un catálogo real. Incluye la categoría observada, rasgos visuales distintivos y, cuando sea razonable, sinónimos o nombres comerciales alternativos que una tienda podría usar para ese mismo tipo de producto. No inventes marca, referencia ni atributos que no sean visibles.',
         'catalog_screenshot: parece captura de una tienda, catálogo o publicación comercial.',
         'external_reference: parece una foto o referencia externa sin prueba de pertenecer a la empresa.',
         'unknown: no es posible determinar el origen.',
@@ -2004,7 +2004,7 @@ export class WhatsappWebhookController {
       `Se observa un producto de la categoría ${category}.`;
     const rawSourceHint = readText(parsed.source_hint, 40);
     const rawConfidence = readText(parsed.confidence, 20);
-    const searchTerms = readList(parsed.search_terms, 6, 100);
+    const searchTerms = readList(parsed.search_terms, 8, 100);
 
     return {
       summary,
