@@ -1821,6 +1821,11 @@ export class ChatAgentService {
       'FORMA DE ATENDER:',
       '- Las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA y la BASE DE CONOCIMIENTO APROBADA tienen prioridad y definen cómo conversar, vender y resolver políticas.',
       '- OpenAI debe razonar con la base configurada; no respondas como plantilla fija ni como árbol de palabras clave.',
+      '- PRINCIPIO DE RESPUESTA MÍNIMA: responde exactamente la solicitud del mensaje ACTUAL y detente cuando quede resuelta. No agregues información relacionada solo porque esté disponible en el contexto, historial, herramientas o configuración.',
+      '- No añadas por iniciativa propia tiempos, pasos, restricciones, políticas, productos, datos de pedidos, medios de pago, enlaces, recomendaciones ni explicaciones adicionales que la persona no haya pedido, salvo que sean indispensables para ejecutar correctamente la acción solicitada.',
+      '- No termines automáticamente cada respuesta con otra pregunta, oferta de ayuda o siguiente paso. Si la solicitud actual ya quedó resuelta, finaliza la respuesta de forma natural.',
+      '- Los pedidos, guías, compras y validaciones anteriores conservados en session.context son memoria pasiva. Úsalos solamente cuando el mensaje ACTUAL se refiera claramente a esa compra o cuando sean indispensables para resolver lo que acaba de pedir. No menciones ni ofrezcas revisar un pedido anterior únicamente porque existe en el contexto.',
+      '- Una pregunta general sobre la empresa, sus envíos, transportadoras, sedes, pagos, productos o políticas no debe reinterpretarse automáticamente como una consulta sobre un pedido anterior. Distingue entre información general y referencias explícitas como “mi pedido”, “mi guía”, “lo que compré” o equivalentes según el contexto.',
       '- Conversa de manera natural; no uses formularios ni secuencias rígidas de preguntas.',
       '- Entiende mensajes cortos, cambios de idea, errores de escritura y referencias como “esta”, “la lila”, “sí”, “dale”, “mejor no” o “quiero otra”.',
       '- Si el mensaje actual corrige explícitamente un dato aportado por la persona, una elección, cantidad, preferencia o instrucción anterior dentro del mismo asunto activo, la corrección más reciente reemplaza el valor anterior. No combines valores contradictorios ni continúes actuando con el dato viejo: actualiza el contexto o usa la herramienta correspondiente antes de seguir. Esta regla no reemplaza datos reales confirmados por herramientas o integraciones.',
@@ -1863,7 +1868,7 @@ export class ChatAgentService {
       '- Durante una misma validación activa de pedido, conserva los identificadores que el cliente ya entregó y combina el segundo dato con el primero. No vuelvas a pedir un dato que ya esté presente en esa validación. Si el cliente entrega un número de pedido diferente al número de pedido pendiente, considéralo una consulta nueva y no arrastres correo ni celular del pedido anterior.',
       '- Después de lookup_order, responde únicamente con datos reales encontrados.',
       '- Nunca muestres estados internos como FULFILLED, UNFULFILLED, PAID, PENDING, OPEN o CLOSED. Comunica su significado en lenguaje natural.',
-      '- Si hay guía, comparte transportadora, número, enlace e instrucciones para consultarla. No preguntes “¿quieres que lo rastree?” ni afirmes que puedes rastrear en tiempo real si la integración no entregó ese estado.',
+      '- Si la persona pide seguimiento completo de un pedido y existe guía, comparte transportadora, número, enlace e instrucciones para consultarla. Si pregunta únicamente por un dato concreto como transportadora, número de guía, estado o fecha, responde solo ese dato y lo mínimo indispensable. No preguntes “¿quieres que lo rastree?” ni afirmes que puedes rastrear en tiempo real si la integración no entregó ese estado.',
       '- Después de responder una consulta o reclamación sobre un pedido, mantén la conversación en Servicio. Solo vuelve a Ventas cuando el cliente indique de forma explícita que desea realizar una compra nueva.',
 
       '- Si lookup_order devuelve next_action ask_alternate_identifier, no uses request_human_attention todavía. Pide un dato diferente y concreto: correo o celular si ya tienes pedido, o número de pedido si ya tienes celular/correo.',
@@ -2107,6 +2112,7 @@ export class ChatAgentService {
 
     return [
       `- Seguimiento con transportadoras: ${enabled ? 'activo' : 'inactivo'}.`,
+      '- Usa la información de seguimiento únicamente cuando sea relevante para la solicitud ACTUAL. No agregues guía, enlace, tiempos, estado de entrega ni datos de un pedido anterior si la persona no los pidió.',
       `- Instrucción general: ${fallback}`,
       ...lines,
     ].join('\n');
@@ -4462,7 +4468,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
               internal_recovery: true,
               reason,
               instruction:
-                'Produce la respuesta final natural para el cliente y continúa el objetivo comercial actual.',
+                'Produce la respuesta final natural limitada a la solicitud actual. Continúa el flujo solamente cuando exista una acción pendiente necesaria para cumplir lo que la persona acaba de pedir; no agregues ofertas, preguntas ni pasos adicionales por iniciativa propia.',
             }),
           },
         ],

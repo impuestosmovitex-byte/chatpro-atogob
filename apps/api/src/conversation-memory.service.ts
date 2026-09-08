@@ -2632,7 +2632,7 @@ export class ConversationMemoryService {
     }
 
     const { data: automation } = await client
-      .from('automation_runtime')
+      .from('automation_executions')
       .select('event_key, automation_key, payload')
       .eq('company_id', input.companyId)
       .eq('provider_message_id', providerId)

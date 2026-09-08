@@ -102,6 +102,47 @@ const DEFAULT_AUTOMATIONS: Array<{
 export class AutomationRuntimeService {
   constructor(private readonly supabaseService: SupabaseService) {}
 
+  async findByProviderMessageId(
+    companyId: string,
+    providerMessageId: string,
+  ): Promise<{
+    eventKey: string;
+    automationKey: string;
+    payload: JsonObject;
+  } | null> {
+    const messageId = this.text(providerMessageId);
+
+    if (!companyId.trim() || !messageId) {
+      return null;
+    }
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('automation_executions')
+      .select('event_key, automation_key, payload')
+      .eq('company_id', companyId)
+      .eq('provider_message_id', messageId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo identificar la automatización respondida: ${error.message}`,
+      );
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return {
+      eventKey: this.text(data.event_key),
+      automationKey: this.text(data.automation_key),
+      payload: this.object(data.payload),
+    };
+  }
+
   async listDashboard(companyId: string) {
     await this.ensureDefaults(companyId);
     const client = this.supabaseService.getClient();

@@ -2418,13 +2418,62 @@ export class WhatsappWebhookController {
       await this.conversationMemoryService.touchSession(session.id);
 
       if (input.templateButton) {
+        let repliedAutomation: {
+          eventKey: string;
+          automationKey: string;
+          payload: Record<string, unknown>;
+        } | null = null;
+
+        if (input.replyToProviderMessageId) {
+          try {
+            repliedAutomation =
+              await this.automationRuntimeService.findByProviderMessageId(
+                profile.id,
+                input.replyToProviderMessageId,
+              );
+          } catch (error) {
+            console.error(
+              'No se pudo identificar la automatización respondida:',
+              error,
+            );
+          }
+        }
+
         const buttonAction =
           await this.whatsappTemplateExecutionService.resolveButtonAction(
             profile.id,
             input.text,
+            repliedAutomation?.eventKey ?? '',
           );
 
         if (buttonAction) {
+          const now = new Date().toISOString();
+
+          session = await this.conversationMemoryService.updateSession(
+            session.id,
+            {
+              stage:
+                session.stage === 'sales'
+                  ? 'sales'
+                  : 'active',
+              context: {
+                ...session.context,
+                last_template_interaction: {
+                  action: buttonAction.action,
+                  event_key:
+                    buttonAction.eventKey ||
+                    repliedAutomation?.eventKey ||
+                    '',
+                  automation_key:
+                    repliedAutomation?.automationKey || '',
+                  button_text: buttonAction.buttonText,
+                  source: 'whatsapp_template_button',
+                  updated_at: now,
+                },
+              },
+            },
+          );
+
           const reply = await this.executeTemplateButtonAction({
             profile,
             session,
@@ -2432,27 +2481,38 @@ export class WhatsappWebhookController {
             action: buttonAction.action,
           });
 
-          if (reply) {
-            await this.whatsappMessagingService.sendText(
-              profile.id,
-              input.phone,
-              reply,
-            );
+          if (buttonAction.action === 'continue_payment') {
+            const refreshedSession =
+              await this.conversationMemoryService.getSessionById(
+                session.id,
+              );
 
-            await this.conversationMemoryService.saveMessage({
-              companyId: profile.id,
-              sessionId: session.id,
-              customerPhone: input.phone,
-              message: reply,
-              sender: 'assistant',
-              authorType: 'ai',
-              aiResponse: reply,
-            });
+            if (refreshedSession) {
+              session = refreshedSession;
+            }
+          } else {
+            if (reply) {
+              await this.whatsappMessagingService.sendText(
+                profile.id,
+                input.phone,
+                reply,
+              );
 
-            await this.conversationMemoryService.touchSession(session.id);
+              await this.conversationMemoryService.saveMessage({
+                companyId: profile.id,
+                sessionId: session.id,
+                customerPhone: input.phone,
+                message: reply,
+                sender: 'assistant',
+                authorType: 'ai',
+                aiResponse: reply,
+              });
+
+              await this.conversationMemoryService.touchSession(session.id);
+            }
+
+            return;
           }
-
-          return;
         }
       }
 
@@ -2624,8 +2684,11 @@ export class WhatsappWebhookController {
         await this.conversationMemoryService.updateSession(
           input.session.id,
           {
+            stage: 'active',
             context: {
               ...input.session.context,
+              conversation_category: 'service',
+              conversation_category_updated_at: now,
               order_updates_consent: {
                 accepted: true,
                 source: 'whatsapp_template_button',
@@ -2641,8 +2704,11 @@ export class WhatsappWebhookController {
         await this.conversationMemoryService.updateSession(
           input.session.id,
           {
+            stage: 'active',
             context: {
               ...input.session.context,
+              conversation_category: 'service',
+              conversation_category_updated_at: now,
               cod_confirmation: {
                 confirmed: true,
                 updated_at: now,
@@ -2657,8 +2723,11 @@ export class WhatsappWebhookController {
         await this.conversationMemoryService.updateSession(
           input.session.id,
           {
+            stage: 'active',
             context: {
               ...input.session.context,
+              conversation_category: 'service',
+              conversation_category_updated_at: now,
               customer_service_flow: {
                 type: 'payment_problem',
                 updated_at: now,
@@ -2668,6 +2737,36 @@ export class WhatsappWebhookController {
         );
 
         return 'Claro 😊 Cuéntame qué inconveniente tienes con el pago. No envíes claves, códigos de seguridad ni datos bancarios sensibles.';
+
+      case 'continue_payment': {
+        const nextContext: Record<string, unknown> = {
+          ...input.session.context,
+          conversation_category: 'sales',
+          conversation_category_updated_at: now,
+          commercial_conversation: {
+            open: true,
+            source: 'whatsapp_template_button',
+            updated_at: now,
+          },
+          payment_continuation: {
+            requested: true,
+            source: 'whatsapp_template_button',
+            updated_at: now,
+          },
+        };
+
+        delete nextContext.customer_service_flow;
+
+        await this.conversationMemoryService.updateSession(
+          input.session.id,
+          {
+            stage: 'sales',
+            context: nextContext,
+          },
+        );
+
+        return null;
+      }
 
       case 'request_human_agent':
         return this.requestCustomerServiceHuman(

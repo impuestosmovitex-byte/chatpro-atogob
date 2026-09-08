@@ -61,19 +61,27 @@ export class WhatsappTemplateExecutionService {
   async resolveButtonAction(
     companyId: string,
     buttonText: string,
+    eventKey = '',
   ): Promise<WhatsappTemplateButtonAction | null> {
     const normalizedButton = this.normalizeButtonText(buttonText);
+    const normalizedEventKey = eventKey.trim();
 
     if (!normalizedButton) {
       return null;
     }
 
-    const { data, error } = await this.supabaseService
+    let query = this.supabaseService
       .getClient()
       .from('company_template_bindings')
       .select('event_key,button_actions,config')
       .eq('company_id', companyId)
       .eq('enabled', true);
+
+    if (normalizedEventKey) {
+      query = query.eq('event_key', normalizedEventKey);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(

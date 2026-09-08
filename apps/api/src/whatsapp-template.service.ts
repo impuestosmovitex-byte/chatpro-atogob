@@ -153,6 +153,10 @@ export const TEMPLATE_BUTTON_ACTIONS = [
     label: 'Ayudar a completar el pago',
   },
   {
+    key: 'continue_payment',
+    label: 'Continuar pago',
+  },
+  {
     key: 'request_human_agent',
     label: 'Solicitar un asesor',
   },
