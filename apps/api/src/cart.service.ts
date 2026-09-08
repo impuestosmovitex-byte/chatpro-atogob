@@ -578,7 +578,6 @@ export class CartService {
       ok: true,
       cart: this.cartSummary(cart),
       checkout_url: links.checkoutUrl,
-      checkout_purpose: 'payment',
     };
   }
 
