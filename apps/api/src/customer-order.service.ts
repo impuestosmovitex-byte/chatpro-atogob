@@ -104,18 +104,20 @@ export class CustomerOrderService {
     let matchesByIdentifier: OrderLookupResult[][] = [];
 
     try {
-      for (const identifier of identifierInputs) {
-        const providerOrders = await this.lookupFromProvider(
-          companyId,
-          identifier.input,
-        );
+      // Los identificadores se consultan en paralelo para reducir
+      // el tiempo de respuesta sin disminuir la seguridad.
+      matchesByIdentifier = await Promise.all(
+        identifierInputs.map(async (identifier) => {
+          const providerOrders = await this.lookupFromProvider(
+            companyId,
+            identifier.input,
+          );
 
-        const verifiedForIdentifier = providerOrders.filter((order) =>
-          this.matchesLookupIdentifier(order, identifier.input),
-        );
-
-        matchesByIdentifier.push(verifiedForIdentifier);
-      }
+          return providerOrders.filter((order) =>
+            this.matchesLookupIdentifier(order, identifier.input),
+          );
+        }),
+      );
     } catch {
       return {
         ok: false,
@@ -126,23 +128,121 @@ export class CustomerOrderService {
       };
     }
 
-    // Cada identificador se consulta de manera independiente.
-    // Solamente aceptamos pedidos cuyo ID aparezca en TODOS los resultados.
-    const firstSet = matchesByIdentifier[0] ?? [];
-    const commonIds = new Set(firstSet.map((order) => String(order.id)));
+    const matchesFor = (
+      kind: 'orderReference' | 'email' | 'phone',
+    ): OrderLookupResult[] => {
+      const index = identifierInputs.findIndex(
+        (identifier) => identifier.kind === kind,
+      );
 
-    for (const group of matchesByIdentifier.slice(1)) {
-      const groupIds = new Set(group.map((order) => String(order.id)));
+      return index >= 0
+        ? (matchesByIdentifier[index] ?? [])
+        : [];
+    };
 
-      for (const id of Array.from(commonIds)) {
-        if (!groupIds.has(id)) {
-          commonIds.delete(id);
+    // Si tenemos número de pedido, este es el ancla principal.
+    // El pedido queda validado cuando ese número coincide con
+    // AL MENOS UNO de los datos secundarios entregados:
+    // correo O teléfono.
+    //
+    // Así, un teléfono diferente no invalida un correo correcto
+    // y un correo diferente no invalida un teléfono correcto.
+    if (orderReference) {
+      const referenceOrders = matchesFor('orderReference');
+      const referenceIds = new Set(
+        referenceOrders.map((order) => String(order.id)),
+      );
+
+      const verifiedIds = new Set<string>();
+
+      if (email) {
+        for (const order of matchesFor('email')) {
+          const id = String(order.id);
+
+          if (referenceIds.has(id)) {
+            verifiedIds.add(id);
+          }
         }
       }
+
+      if (phone) {
+        for (const order of matchesFor('phone')) {
+          const id = String(order.id);
+
+          if (referenceIds.has(id)) {
+            verifiedIds.add(id);
+          }
+        }
+      }
+
+      const verifiedOrders = referenceOrders.filter((order) =>
+        verifiedIds.has(String(order.id)),
+      );
+
+      if (verifiedOrders.length === 1) {
+        return {
+          ok: true,
+          found: true,
+          requires_verification: false,
+          requires_human: false,
+          next_action: 'answer_order',
+          lookup_identifiers: lookupIdentifiers,
+          orders: [this.toPayload(verifiedOrders[0])],
+          message:
+            'Pedido validado con número de pedido y un segundo identificador coincidente.',
+        };
+      }
+
+      if (verifiedOrders.length > 1) {
+        return {
+          ok: true,
+          found: false,
+          ambiguous: true,
+          requires_verification: true,
+          requires_human: true,
+          next_action: 'human_attention',
+          lookup_identifiers: lookupIdentifiers,
+          orders: [],
+          message:
+            'La validación produjo más de un resultado y requiere revisión humana.',
+        };
+      }
+
+      const secondaryCount =
+        Number(Boolean(email)) +
+        Number(Boolean(phone));
+
+      const triedBothSecondaryIdentifiers =
+        secondaryCount >= 2;
+
+      return {
+        ok: true,
+        found: false,
+        requires_verification: true,
+        requires_human: triedBothSecondaryIdentifiers,
+        next_action: triedBothSecondaryIdentifiers
+          ? 'human_attention'
+          : 'ask_alternate_identifier',
+        lookup_identifiers: lookupIdentifiers,
+        orders: [],
+        message: triedBothSecondaryIdentifiers
+          ? 'No fue posible completar la validación automática con los datos disponibles.'
+          : 'Hace falta probar otro dato de validación para confirmar la compra.',
+      };
     }
 
-    const commonOrders = firstSet.filter((order) =>
-      commonIds.has(String(order.id)),
+    // Si el cliente no conoce el número del pedido,
+    // correo + teléfono pueden validar únicamente cuando ambos
+    // conducen a un solo pedido real.
+    const emailOrders = matchesFor('email');
+    const phoneOrders = matchesFor('phone');
+
+    const phoneIds = new Set(
+      phoneOrders.map((order) => String(order.id)),
+    );
+
+    const commonOrders = emailOrders.filter((order) =>
+      phoneIds.has(String(order.id)),
     );
 
     const uniqueOrders = Array.from(
@@ -151,7 +251,6 @@ export class CustomerOrderService {
       ).values(),
     );
 
-    // Número de pedido + segundo dato debe terminar en un único pedido.
     if (uniqueOrders.length === 1) {
       return {
         ok: true,
@@ -160,46 +259,23 @@ export class CustomerOrderService {
         requires_human: false,
         next_action: 'answer_order',
         lookup_identifiers: lookupIdentifiers,
-        orders: uniqueOrders.map((order) => this.toPayload(order)),
+        orders: [this.toPayload(uniqueOrders[0])],
         message:
-          'Pedido validado con dos identificadores coincidentes.',
+          'Pedido validado con correo y teléfono coincidentes.',
       };
     }
-
-    // Correo + teléfono pueden pertenecer a un cliente con varios pedidos.
-    // En ese caso nunca seleccionamos automáticamente "el más reciente".
-    if (uniqueOrders.length > 1) {
-      return {
-        ok: true,
-        found: false,
-        ambiguous: true,
-        requires_verification: true,
-        requires_human: false,
-        next_action: 'ask_order_reference',
-        lookup_identifiers: lookupIdentifiers,
-        orders: [],
-        message:
-          'Los datos corresponden a más de un pedido. Solicita el número exacto del pedido.',
-      };
-    }
-
-    // Dos datos que no apuntan al mismo pedido nunca deben producir
-    // información de otro pedido como sustitución.
-    const hasAllThreeIdentifiers = identifierCount >= 3;
 
     return {
       ok: true,
       found: false,
+      ambiguous: uniqueOrders.length > 1,
       requires_verification: true,
-      requires_human: hasAllThreeIdentifiers,
-      next_action: hasAllThreeIdentifiers
-        ? 'human_attention'
-        : 'ask_alternate_identifier',
+      requires_human: false,
+      next_action: 'ask_order_reference',
       lookup_identifiers: lookupIdentifiers,
       orders: [],
-      message: hasAllThreeIdentifiers
-        ? 'Los datos entregados no coinciden con un mismo pedido.'
-        : 'Los dos datos entregados no coinciden con un mismo pedido. Solicita el identificador restante.',
+      message:
+        'Para ubicar de forma segura la compra exacta, solicita el número de pedido.',
     };
   }
 

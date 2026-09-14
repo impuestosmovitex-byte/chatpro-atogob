@@ -2534,11 +2534,31 @@ export class WhatsappWebhookController {
         );
       }
 
-      const isLatestInboundMessage =
-        await this.waitForInboundQuietWindow(
-          `${input.incomingPhoneNumberId}:${input.phone}`,
-          input.incomingMessageId,
-        );
+      const inboundServiceFlow =
+        session.context.customer_service_flow &&
+        typeof session.context.customer_service_flow === 'object' &&
+        !Array.isArray(session.context.customer_service_flow)
+          ? session.context.customer_service_flow as Record<string, unknown>
+          : null;
+
+      const inboundServiceFlowType =
+        typeof inboundServiceFlow?.type === 'string'
+          ? inboundServiceFlow.type
+          : '';
+
+      // En una validación de pedido no esperamos la ventana larga de mensajes.
+      // La conversación ya está encolada, así que cada identificador se procesa
+      // en orden y no se pierde aunque el cliente mande varios seguidos.
+      const isOrderLookupInProgress =
+        inboundServiceFlowType === 'order_lookup' ||
+        inboundServiceFlowType === 'order_lookup_confirm_previous';
+
+      const isLatestInboundMessage = isOrderLookupInProgress
+        ? true
+        : await this.waitForInboundQuietWindow(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          );
 
       if (!isLatestInboundMessage) {
         console.log(
@@ -2677,7 +2697,7 @@ export class WhatsappWebhookController {
           },
         );
 
-        return 'Claro 😊 Envíame el número del pedido o el correo utilizado en la compra.';
+        return 'Claro 😊 Envíame el número de pedido que aparece en tu confirmación y lo reviso. Si no lo encuentras, dime y lo validamos con el celular o correo registrado en la compra.';
       }
 
       case 'accept_order_updates':
@@ -2829,7 +2849,7 @@ export class WhatsappWebhookController {
       const order = orders[0] as Record<string, any> | undefined;
 
       if (!order) {
-        return 'No encontré un pedido asociado a este número. Envíame el número del pedido para revisarlo.';
+        return 'Para revisar tu pedido de forma segura, envíame el número de pedido que aparece en tu confirmación 😊';
       }
 
       const tracking = this.getFirstOrderTracking(order);
@@ -3822,8 +3842,25 @@ export class WhatsappWebhookController {
       !lookupIdentifiers.email &&
       !lookupIdentifiers.phone
     ) {
-      return 'Envíame el número del pedido, correo o celular utilizado en la compra 😊';
+      return 'Envíame el número de pedido que aparece en tu confirmación 😊. Si no lo encuentras, dime y lo validamos con el celular o correo registrado en la compra.';
     }
+
+    // Primer intento rápido:
+    // si ya tenemos número de pedido pero el cliente todavía no entregó
+    // otro dato, probamos automáticamente el WhatsApp desde el que escribe.
+    // Si no coincide, NO rechazamos el pedido y NO guardamos este número
+    // como teléfono declarado por el cliente.
+    const automaticWhatsAppPhone =
+      lookupIdentifiers.orderReference &&
+      !lookupIdentifiers.email &&
+      !lookupIdentifiers.phone
+        ? this.cleanFlowString(session.customerPhone)
+        : '';
+
+    const lookupInput = {
+      ...lookupIdentifiers,
+      phone: lookupIdentifiers.phone || automaticWhatsAppPhone,
+    };
 
     const attemptNumber = Number(flow.attempts ?? 0) + 1;
 
@@ -3832,7 +3869,7 @@ export class WhatsappWebhookController {
     try {
       result = await this.customerOrderService.lookup(
         session.companyId,
-        lookupIdentifiers,
+        lookupInput,
       ) as Record<string, any>;
     } catch {
       return this.requestCustomerServiceHuman(
@@ -3911,15 +3948,19 @@ export class WhatsappWebhookController {
 
     if (result.next_action === 'ask_alternate_identifier') {
       if (!lookupIdentifiers.orderReference) {
-        return 'Los datos que me enviaste no coinciden en un mismo pedido. Envíame también el número del pedido para validarlo 😊';
+        return 'Para ubicar la compra exacta, envíame el número de pedido que aparece en tu confirmación 😊';
+      }
+
+      if (!lookupIdentifiers.email && !lookupIdentifiers.phone) {
+        return 'Ya tengo tu número de pedido 😊. Puede que la compra se haya realizado con otro número. Confírmame el celular registrado en la compra o el correo utilizado.';
       }
 
       if (!lookupIdentifiers.email) {
-        return 'Los datos que me enviaste no coinciden en un mismo pedido. Envíame también el correo utilizado en la compra para validarlo 😊';
+        return 'Ya tengo el pedido y el celular que me enviaste 😊. Para terminar de validarlo, confírmame el correo utilizado en la compra.';
       }
 
       if (!lookupIdentifiers.phone) {
-        return 'Los datos que me enviaste no coinciden en un mismo pedido. Envíame también el celular utilizado en la compra para validarlo 😊';
+        return 'Ya tengo el pedido y el correo que me enviaste ��. Para terminar de validarlo, confírmame el celular registrado en la compra.';
       }
     }
 
