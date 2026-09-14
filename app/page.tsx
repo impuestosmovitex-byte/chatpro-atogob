@@ -1457,10 +1457,12 @@ export default function Home() {
     options: {
       append?: boolean;
       reset?: boolean;
+      lightRefresh?: boolean;
     } = {},
   ) {
     const append = options.append === true;
     const reset = options.reset === true;
+    const lightRefresh = options.lightRefresh === true;
 
     const listRequestId = append ? 0 : ++listRequestRef.current;
     const listController = append ? null : new AbortController();
@@ -1478,13 +1480,12 @@ export default function Home() {
 
     try {
       const loadedOffset = nextSessionsOffsetRef.current;
-      const loadedPending = pendingSessionsTotalRef.current;
       const requestedOffset = append ? loadedOffset : 0;
       const requestedLimit = append
         ? 20
-        : reset
+        : reset || lightRefresh
           ? 20
-          : Math.max(loadedOffset + loadedPending, 20);
+          : Math.max(loadedOffset, 20);
 
       const params = new URLSearchParams({
         status: filter,
@@ -1532,22 +1533,53 @@ export default function Home() {
               new Date(a.lastMessageAt).getTime(),
           );
         });
+      } else if (lightRefresh) {
+        setSessions((current) => {
+          const incomingIds = new Set(
+            incoming.map((session) => session.id),
+          );
+
+          const merged = new Map(
+            current
+              .filter(
+                (session) =>
+                  session.pendingCount <= 0 ||
+                  incomingIds.has(session.id),
+              )
+              .map((session) => [session.id, session]),
+          );
+
+          for (const session of incoming) {
+            merged.set(session.id, session);
+          }
+
+          return Array.from(merged.values()).sort(
+            (a, b) =>
+              new Date(b.lastMessageAt).getTime() -
+              new Date(a.lastMessageAt).getTime(),
+          );
+        });
       } else {
         setSessions(incoming);
       }
 
-      setHasMoreSessions(data.hasMore === true);
-      const resolvedNextOffset = Math.max(
-        0,
-        Number(data.nextOffset) || 0,
-      );
-
-      nextSessionsOffsetRef.current = resolvedNextOffset;
       pendingSessionsTotalRef.current = Math.max(
         0,
         Number(data.pendingTotal) || 0,
       );
-      setNextSessionsOffset(resolvedNextOffset);
+
+      if (!lightRefresh) {
+        setHasMoreSessions(data.hasMore === true);
+
+        const resolvedNextOffset = Math.max(
+          0,
+          Number(data.nextOffset) || 0,
+        );
+
+        nextSessionsOffsetRef.current = resolvedNextOffset;
+        setNextSessionsOffset(resolvedNextOffset);
+      }
+
       setError("");
     } catch (caught) {
       if (caught instanceof Error && caught.name === "AbortError") {
@@ -3187,35 +3219,61 @@ export default function Home() {
   useEffect(() => {
     void loadList(true, { reset: true });
 
-    const refreshVisibleList = () => {
-      if (document.visibilityState === "visible") {
+    const lightRefreshVisibleList = () => {
+      if (
+        document.visibilityState === "visible" &&
+        !debouncedSearch.trim()
+      ) {
+        void loadList(false, {
+          lightRefresh: true,
+        });
+      }
+    };
+
+    const fullRefreshVisibleList = () => {
+      if (
+        document.visibilityState === "visible" &&
+        !debouncedSearch.trim()
+      ) {
         void loadList(false);
       }
     };
 
-    const timer = window.setInterval(
-      refreshVisibleList,
+    const lightTimer = window.setInterval(
+      lightRefreshVisibleList,
       5000,
+    );
+
+    const fullTimer = window.setInterval(
+      fullRefreshVisibleList,
+      60000,
     );
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void loadList(false);
+        fullRefreshVisibleList();
       }
     };
 
-    window.addEventListener("focus", refreshVisibleList);
+    window.addEventListener(
+      "focus",
+      fullRefreshVisibleList,
+    );
+
     document.addEventListener(
       "visibilitychange",
       onVisibilityChange,
     );
 
     return () => {
-      window.clearInterval(timer);
+      window.clearInterval(lightTimer);
+      window.clearInterval(fullTimer);
+
       window.removeEventListener(
         "focus",
-        refreshVisibleList,
+        fullRefreshVisibleList,
       );
+
       document.removeEventListener(
         "visibilitychange",
         onVisibilityChange,
