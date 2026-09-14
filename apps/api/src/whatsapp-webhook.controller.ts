@@ -2573,38 +2573,125 @@ export class WhatsappWebhookController {
         input.phone,
       );
 
-      const reply = await this.resolveReply(profile, session, input.text);
+      let replySentToCustomer = false;
 
-      if (
-        !this.isCurrentInboundMessage(
-          `${input.incomingPhoneNumberId}:${input.phone}`,
-          input.incomingMessageId,
-        )
-      ) {
-        console.log(
-          `Respuesta de texto cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+      try {
+        const reply = (
+          await this.resolveReply(profile, session, input.text)
+        ).trim();
+
+        if (!reply) {
+          throw new Error(
+            'La IA devolvió una respuesta vacía.',
+          );
+        }
+
+        if (
+          !this.isCurrentInboundMessage(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          )
+        ) {
+          console.log(
+            `Respuesta de texto cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+          );
+          return;
+        }
+
+        await this.whatsappMessagingService.sendText(
+          profile.id,
+          input.phone,
+          reply,
         );
-        return;
+
+        replySentToCustomer = true;
+
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: reply,
+          sender: 'assistant',
+          authorType: 'ai',
+          aiResponse: reply,
+        });
+
+        await this.conversationMemoryService.touchSession(
+          session.id,
+        );
+      } catch (processingError) {
+        console.error(
+          `[ChatPro][reply-failover] Falló la respuesta automática de ${input.phone}:`,
+          processingError,
+        );
+
+        if (
+          !this.isCurrentInboundMessage(
+            `${input.incomingPhoneNumberId}:${input.phone}`,
+            input.incomingMessageId,
+          )
+        ) {
+          console.log(
+            `[ChatPro][reply-failover] No se transfiere ${input.phone} porque ya llegó un mensaje más reciente.`,
+          );
+          return;
+        }
+
+        let handoffReply = '';
+
+        try {
+          handoffReply =
+            await this.requestCustomerServiceHuman(
+              session,
+              'Fallo técnico durante la respuesta automática.',
+              'La respuesta automática no pudo completarse. El cliente necesita que un asesor continúe desde su último mensaje.',
+            );
+        } catch (handoffError) {
+          console.error(
+            `[ChatPro][reply-failover] No se pudo transferir la sesión ${session.id}:`,
+            handoffError,
+          );
+          return;
+        }
+
+        /*
+         * Si WhatsApp ya recibió la respuesta original pero falló
+         * únicamente el guardado posterior, no enviamos un segundo
+         * mensaje al cliente. La conversación sí queda en waiting para
+         * que un asesor revise la inconsistencia.
+         */
+        if (replySentToCustomer) {
+          return;
+        }
+
+        try {
+          await this.whatsappMessagingService.sendText(
+            profile.id,
+            input.phone,
+            handoffReply,
+          );
+
+          await this.conversationMemoryService.saveMessage({
+            companyId: profile.id,
+            sessionId: session.id,
+            customerPhone: input.phone,
+            message: handoffReply,
+            sender: 'assistant',
+            authorType: 'ai',
+            aiResponse: handoffReply,
+          });
+
+          await this.conversationMemoryService.touchSession(
+            session.id,
+          );
+        } catch (notifyError) {
+          console.error(
+            `[ChatPro][reply-failover] La sesión ${session.id} quedó transferida, pero no se pudo enviar o guardar el aviso al cliente:`,
+            notifyError,
+          );
+        }
       }
-
-      await this.whatsappMessagingService.sendText(
-        profile.id,
-        input.phone,
-        reply,
-      );
-
-      await this.conversationMemoryService.saveMessage({
-        companyId: profile.id,
-        sessionId: session.id,
-        customerPhone: input.phone,
-        message: reply,
-        sender: 'assistant',
-        authorType: 'ai',
-        aiResponse: reply,
-      });
-
-      await this.conversationMemoryService.touchSession(session.id);
-      console.log(`Respuesta enviada a ${input.phone}`);
+      console.log(`Procesamiento de texto completado para ${input.phone}`);
     } catch (error) {
       console.error('No se pudo procesar la conversación:', error);
 
