@@ -78,6 +78,9 @@ export async function GET(request: NextRequest) {
     const company = session.companySlug;
     const sessionId = request.nextUrl.searchParams.get('sessionId')?.trim() ?? '';
     const after = request.nextUrl.searchParams.get('after')?.trim() ?? '';
+    const before = request.nextUrl.searchParams.get('before')?.trim() ?? '';
+    const messageLimit =
+      request.nextUrl.searchParams.get('messageLimit')?.trim() ?? '';
     const mode = request.nextUrl.searchParams.get('mode')?.trim() ?? '';
     const status = request.nextUrl.searchParams.get('status')?.trim() ?? 'all';
     const limit = request.nextUrl.searchParams.get('limit')?.trim() ?? '20';
@@ -96,6 +99,14 @@ export async function GET(request: NextRequest) {
 
     if (sessionId && after) {
       target.searchParams.set('after', after);
+    }
+
+    if (sessionId && before) {
+      target.searchParams.set('before', before);
+    }
+
+    if (sessionId && messageLimit) {
+      target.searchParams.set('messageLimit', messageLimit);
     }
 
     if (!sessionId && mode !== 'transfer-targets') {

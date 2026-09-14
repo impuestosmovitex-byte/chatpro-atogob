@@ -215,6 +215,8 @@ export class InboxController {
     @Headers('x-chatpro-role-key') roleKey = '',
     @Query('company') company = '',
     @Query('after') after = '',
+    @Query('before') before = '',
+    @Query('messageLimit') messageLimit = '',
     @Param('sessionId') sessionId = '',
   ) {
     this.authorize(key);
@@ -235,6 +237,8 @@ export class InboxController {
         },
         sessionId,
         after,
+        before,
+        messageLimit,
       );
 
     const conversation =
@@ -243,6 +247,8 @@ export class InboxController {
         companySlug,
         sessionId,
         after,
+        before,
+        messageLimit,
       ));
     const actor = await this.actor(
       sessionType,

@@ -1194,6 +1194,8 @@ export default function Home() {
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [openingSessionId, setOpeningSessionId] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -1241,6 +1243,15 @@ export default function Home() {
   const listAbortRef = useRef<AbortController | null>(null);
   const nextSessionsOffsetRef = useRef(0);
   const pendingSessionsTotalRef = useRef(0);
+  const activeSessionIdRef = useRef("");
+  const loadingOlderMessagesRef = useRef(false);
+  const preserveScrollOnPrependRef = useRef(false);
+  const stickToBottomRef = useRef(true);
+  const autoScrollSessionRef = useRef("");
+
+  useEffect(() => {
+    activeSessionIdRef.current = selected?.session.id ?? "";
+  }, [selected?.session.id]);
 
   useEffect(() => {
     setMobileActionsOpen(false);
@@ -1774,6 +1785,8 @@ export default function Home() {
     }
   }
 
+  const HISTORY_PAGE_SIZE = 120;
+
   async function openConversation(
     sessionId: string,
     silent = false,
@@ -1832,6 +1845,11 @@ export default function Home() {
 
       if (silent && afterCreatedAt) {
         params.set("after", afterCreatedAt);
+      } else {
+        params.set(
+          "messageLimit",
+          String(HISTORY_PAGE_SIZE),
+        );
       }
 
       const response = await fetch(`/api/inbox?${params.toString()}`, {
@@ -1909,13 +1927,25 @@ export default function Home() {
           };
         });
       } else {
+        const initialMessages = data.messages ?? [];
+
         setSelected({
           company,
           session,
           contact: data.contact ?? null,
-          messages: data.messages ?? [],
+          messages: initialMessages,
           historyRestricted: data.historyRestricted === true,
         });
+
+        setHasOlderMessages(
+          data.historyRestricted !== true &&
+          initialMessages.length >= HISTORY_PAGE_SIZE,
+        );
+
+        loadingOlderMessagesRef.current = false;
+        preserveScrollOnPrependRef.current = false;
+        stickToBottomRef.current = true;
+        autoScrollSessionRef.current = "";
 
         setMessage("");
         setQuickReplyOpen(false);
@@ -1960,6 +1990,170 @@ export default function Home() {
     }
   }
 
+  async function loadOlderMessages() {
+    if (
+      !selected ||
+      loadingChat ||
+      loadingOlderMessagesRef.current ||
+      !hasOlderMessages ||
+      selected.historyRestricted === true
+    ) {
+      return;
+    }
+
+    const sessionId = selected.session.id;
+
+    const earliestMessage = selected.messages.find(
+      (item) =>
+        typeof item.createdAt === "string" &&
+        item.createdAt.trim(),
+    );
+
+    const before = earliestMessage?.createdAt?.trim() ?? "";
+
+    if (!before) {
+      setHasOlderMessages(false);
+      return;
+    }
+
+    const feed = messageFeedRef.current;
+
+    const previousScrollHeight = feed?.scrollHeight ?? 0;
+    const previousScrollTop = feed?.scrollTop ?? 0;
+
+    loadingOlderMessagesRef.current = true;
+    setLoadingOlderMessages(true);
+
+    try {
+      const params = new URLSearchParams({
+        sessionId,
+        before,
+        messageLimit: String(HISTORY_PAGE_SIZE),
+      });
+
+      const response = await fetch(
+        `/api/inbox?${params.toString()}`,
+        { cache: "no-store" },
+      );
+
+      const data = (await readJson(response)) as ApiConversation;
+
+      if (
+        !response.ok ||
+        !data.ok ||
+        !data.session ||
+        !data.company
+      ) {
+        throw new Error(
+          data.error ||
+          "No se pudo cargar el historial anterior.",
+        );
+      }
+
+      if (activeSessionIdRef.current !== sessionId) {
+        return;
+      }
+
+      const olderMessages = data.messages ?? [];
+
+      setHasOlderMessages(
+        olderMessages.length >= HISTORY_PAGE_SIZE,
+      );
+
+      if (!olderMessages.length) {
+        return;
+      }
+
+      preserveScrollOnPrependRef.current = true;
+
+      setSelected((current) => {
+        if (
+          !current ||
+          current.session.id !== sessionId
+        ) {
+          return current;
+        }
+
+        const combined = [
+          ...olderMessages,
+          ...current.messages,
+        ];
+
+        const uniqueMessages: InboxMessage[] = [];
+        const seen = new Set<string>();
+
+        for (const item of combined) {
+          const key =
+            item.id ??
+            `${item.sessionId}-${item.createdAt ?? ""}-${item.authorType}-${item.message}`;
+
+          if (seen.has(key)) {
+            continue;
+          }
+
+          seen.add(key);
+          uniqueMessages.push(item);
+        }
+
+        uniqueMessages.sort((first, second) => {
+          const firstTime = first.createdAt
+            ? new Date(first.createdAt).getTime()
+            : 0;
+
+          const secondTime = second.createdAt
+            ? new Date(second.createdAt).getTime()
+            : 0;
+
+          return firstTime - secondTime;
+        });
+
+        return {
+          ...current,
+          company: data.company!,
+          session: data.session!,
+          contact: data.contact ?? current.contact,
+          messages: uniqueMessages,
+          historyRestricted:
+            data.historyRestricted === true,
+        };
+      });
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const currentFeed = messageFeedRef.current;
+
+          if (
+            currentFeed &&
+            activeSessionIdRef.current === sessionId
+          ) {
+            const addedHeight =
+              currentFeed.scrollHeight -
+              previousScrollHeight;
+
+            currentFeed.scrollTop =
+              previousScrollTop + addedHeight;
+          }
+
+          preserveScrollOnPrependRef.current = false;
+        });
+      });
+    } catch (caught) {
+      preserveScrollOnPrependRef.current = false;
+
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No se pudo cargar el historial anterior.",
+      );
+    } finally {
+      loadingOlderMessagesRef.current = false;
+
+      if (activeSessionIdRef.current === sessionId) {
+        setLoadingOlderMessages(false);
+      }
+    }
+  }
+
   async function runAction(action: "take" | "close" | "resume_ai" | "message") {
     if (!selected) return;
 
@@ -1967,6 +2161,10 @@ export default function Home() {
     const cleanMessage = message.trim();
 
     if (action === "message" && !cleanMessage) return;
+
+    if (action === "message") {
+      stickToBottomRef.current = true;
+    }
 
     if (action === "close" && customerHasLastWord) {
       setError(
@@ -3151,12 +3349,81 @@ export default function Home() {
       return;
     }
 
+    if (preserveScrollOnPrependRef.current) {
+      return;
+    }
+
+    const sessionChanged =
+      autoScrollSessionRef.current !==
+      selected.session.id;
+
+    if (sessionChanged) {
+      autoScrollSessionRef.current =
+        selected.session.id;
+      stickToBottomRef.current = true;
+    }
+
+    if (
+      !sessionChanged &&
+      !stickToBottomRef.current
+    ) {
+      return;
+    }
+
     const frame = requestAnimationFrame(() => {
       feed.scrollTop = feed.scrollHeight;
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [selected?.session.id, selected?.messages.length, loadingChat]);
+  }, [
+    selected?.session.id,
+    selected?.messages.length,
+    loadingChat,
+  ]);
+
+  useEffect(() => {
+    const feed = messageFeedRef.current;
+
+    if (!feed || !selected?.session.id) {
+      return;
+    }
+
+    const handleHistoryScroll = () => {
+      const distanceFromBottom =
+        feed.scrollHeight -
+        feed.scrollTop -
+        feed.clientHeight;
+
+      stickToBottomRef.current =
+        distanceFromBottom <= 140;
+
+      if (
+        feed.scrollTop <= 120 &&
+        hasOlderMessages &&
+        !loadingOlderMessagesRef.current &&
+        !loadingChat
+      ) {
+        void loadOlderMessages();
+      }
+    };
+
+    feed.addEventListener(
+      "scroll",
+      handleHistoryScroll,
+      { passive: true },
+    );
+
+    return () => {
+      feed.removeEventListener(
+        "scroll",
+        handleHistoryScroll,
+      );
+    };
+  }, [
+    selected?.session.id,
+    hasOlderMessages,
+    loadingChat,
+  ]);
 
   useEffect(() => {
     const feed = messageFeedRef.current;
@@ -4663,6 +4930,12 @@ export default function Home() {
                 <div className="message-feed" ref={messageFeedRef}>
                   {loadingChat ? (
                     <p className="feed-loading">Abriendo historial…</p>
+                  ) : null}
+
+                  {!loadingChat && loadingOlderMessages ? (
+                    <p className="feed-loading">
+                      Cargando mensajes anteriores…
+                    </p>
                   ) : null}
                   {!loadingChat && !selected.messages.length ? (
                     <p className="feed-loading">

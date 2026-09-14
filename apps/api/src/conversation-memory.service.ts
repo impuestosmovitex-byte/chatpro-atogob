@@ -2321,6 +2321,8 @@ export class ConversationMemoryService {
     companySlug: string,
     sessionId: string,
     afterCreatedAt = '',
+    beforeCreatedAt = '',
+    messageLimitInput = '',
   ): Promise<InboxConversation> {
     const profile = await this.getCompanyProfile(companySlug);
     const id = sessionId.trim();
@@ -2404,10 +2406,25 @@ export class ConversationMemoryService {
     );
 
     const requestedAfter = afterCreatedAt.trim();
+    const requestedBefore = beforeCreatedAt.trim();
+
     const validAfter =
       requestedAfter && !Number.isNaN(Date.parse(requestedAfter))
         ? requestedAfter
         : '';
+
+    const validBefore =
+      requestedBefore && !Number.isNaN(Date.parse(requestedBefore))
+        ? requestedBefore
+        : '';
+
+    const parsedMessageLimit =
+      Number.parseInt(messageLimitInput.trim(), 10);
+
+    const safeMessageLimit =
+      Number.isFinite(parsedMessageLimit) && parsedMessageLimit > 0
+        ? Math.min(Math.max(parsedMessageLimit, 20), 200)
+        : 0;
 
     const messageFields =
       'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at';
@@ -2415,14 +2432,30 @@ export class ConversationMemoryService {
     let messagesQuery = client
       .from('conversations')
       .select(messageFields)
-      .in('session_id', relatedSessionIds)
-      .order('created_at', { ascending: true });
+      .in('session_id', relatedSessionIds);
 
     if (validAfter) {
-      messagesQuery = messagesQuery.gte(
+      messagesQuery = messagesQuery
+        .gte('created_at', validAfter)
+        .order('created_at', { ascending: true });
+    } else {
+      if (validBefore) {
+        messagesQuery = messagesQuery.lt(
+          'created_at',
+          validBefore,
+        );
+      }
+
+      messagesQuery = messagesQuery.order(
         'created_at',
-        validAfter,
+        { ascending: false },
       );
+
+      if (safeMessageLimit > 0) {
+        messagesQuery = messagesQuery.limit(
+          safeMessageLimit,
+        );
+      }
     }
 
     const {
@@ -2435,6 +2468,12 @@ export class ConversationMemoryService {
         `No se pudo consultar el historial completo: ${messageError.message}`,
       );
     }
+
+    const orderedMessageRows =
+      validAfter
+        ? (messageRows ?? [])
+        : [...(messageRows ?? [])].reverse();
+
     const contactsByPhone = await this.getContactsByPhones(
       profile.id,
       [session.customerPhone],
@@ -2444,7 +2483,7 @@ export class ConversationMemoryService {
       company: { id: profile.id, slug: profile.slug, name: profile.name },
       session,
       contact: contactsByPhone.get(session.customerPhone) ?? null,
-      messages: (messageRows ?? []).map((row) => this.toInboxMessage(row)),
+      messages: orderedMessageRows.map((row) => this.toInboxMessage(row)),
     };
   }
 

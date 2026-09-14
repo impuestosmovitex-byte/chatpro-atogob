@@ -399,6 +399,8 @@ export class MetaSocialInboxService {
     },
     sessionIdInput: string,
     afterInput = '',
+    beforeInput = '',
+    messageLimitInput = '',
   ): Promise<InboxConversation | null> {
     const sessionId = sessionIdInput.trim();
 
@@ -512,12 +514,25 @@ export class MetaSocialInboxService {
     };
 
     const requestedAfter = afterInput.trim();
+    const requestedBefore = beforeInput.trim();
 
     const validAfter =
-      requestedAfter &&
-      !Number.isNaN(Date.parse(requestedAfter))
+      requestedAfter && !Number.isNaN(Date.parse(requestedAfter))
         ? requestedAfter
         : '';
+
+    const validBefore =
+      requestedBefore && !Number.isNaN(Date.parse(requestedBefore))
+        ? requestedBefore
+        : '';
+
+    const parsedMessageLimit =
+      Number.parseInt(messageLimitInput.trim(), 10);
+
+    const safeMessageLimit =
+      Number.isFinite(parsedMessageLimit) && parsedMessageLimit > 0
+        ? Math.min(Math.max(parsedMessageLimit, 20), 200)
+        : 0;
 
     let messagesQuery = client
       .from('social_conversations')
@@ -525,12 +540,30 @@ export class MetaSocialInboxService {
         'id, session_id, message, sender, author_type, message_type, media_url, provider_message_id, created_at',
       )
       .eq('session_id', sessionId)
-      .eq('company_id', company.id)
-      .order('created_at', { ascending: true });
+      .eq('company_id', company.id);
 
     if (validAfter) {
-      messagesQuery =
-        messagesQuery.gte('created_at', validAfter);
+      messagesQuery = messagesQuery
+        .gte('created_at', validAfter)
+        .order('created_at', { ascending: true });
+    } else {
+      if (validBefore) {
+        messagesQuery = messagesQuery.lt(
+          'created_at',
+          validBefore,
+        );
+      }
+
+      messagesQuery = messagesQuery.order(
+        'created_at',
+        { ascending: false },
+      );
+
+      if (safeMessageLimit > 0) {
+        messagesQuery = messagesQuery.limit(
+          safeMessageLimit,
+        );
+      }
     }
 
     const { data: messageRows, error: messageError } =
@@ -541,6 +574,11 @@ export class MetaSocialInboxService {
         `No se pudo consultar el historial social: ${messageError.message}`,
       );
     }
+
+    const orderedMessageRows =
+      validAfter
+        ? (messageRows ?? [])
+        : [...(messageRows ?? [])].reverse();
 
     const contact: ContactRecord = {
       id: `social-session:${sessionId}`,
@@ -565,7 +603,7 @@ export class MetaSocialInboxService {
       session,
       contact,
       messages:
-        (messageRows ?? []).map((messageRow) =>
+        orderedMessageRows.map((messageRow) =>
           this.toInboxMessage(messageRow),
         ),
     };
