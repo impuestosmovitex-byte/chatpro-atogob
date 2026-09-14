@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import { SupabaseService } from './supabase.service';
 import type {
   AttentionStatus,
@@ -23,6 +24,143 @@ export class MetaSocialInboxService {
   constructor(
     private readonly supabaseService: SupabaseService,
   ) {}
+
+  private async getLastSocialAdvisorActivityAt(
+    sessionId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('social_conversations')
+      .select('created_at')
+      .eq('session_id', sessionId)
+      .eq('author_type', 'advisor')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo consultar la última actividad del asesor social: ${error.message}`,
+      );
+    }
+
+    return typeof data?.created_at === 'string'
+      ? data.created_at
+      : null;
+  }
+
+  @Interval(10 * 60 * 1000)
+  async closeInactiveHumanSocialConversations(): Promise<void> {
+    const idleHours = 24;
+    const cutoffTime =
+      Date.now() - idleHours * 60 * 60 * 1000;
+    const cutoff = new Date(cutoffTime).toISOString();
+
+    const client = this.supabaseService.getClient();
+
+    const { data, error } = await client
+      .from('social_conversation_sessions')
+      .select('id, channel, taken_at')
+      .eq('attention_status', 'human')
+      .lte('taken_at', cutoff)
+      .limit(500);
+
+    if (error) {
+      console.error(
+        '[ChatPro][social-human-timeout] No se pudieron consultar chats sociales:',
+        error,
+      );
+      return;
+    }
+
+    let closed = 0;
+
+    for (const row of data ?? []) {
+      const sessionId =
+        typeof row?.id === 'string' ? row.id : '';
+
+      if (!sessionId) {
+        continue;
+      }
+
+      try {
+        const lastAdvisorActivity =
+          await this.getLastSocialAdvisorActivityAt(
+            sessionId,
+          );
+
+        const candidateTimes = [
+          lastAdvisorActivity,
+          typeof row.taken_at === 'string'
+            ? row.taken_at
+            : null,
+        ]
+          .filter(
+            (value): value is string =>
+              Boolean(value),
+          )
+          .map((value) =>
+            new Date(value).getTime(),
+          )
+          .filter((value) =>
+            Number.isFinite(value),
+          );
+
+        if (!candidateTimes.length) {
+          continue;
+        }
+
+        const referenceTime =
+          Math.max(...candidateTimes);
+
+        if (referenceTime > cutoffTime) {
+          continue;
+        }
+
+        await this.assertSocialConversationCanClose(sessionId);
+
+        const now = new Date().toISOString();
+
+        const { error: closeError } = await client
+          .from('social_conversation_sessions')
+          .update({
+            attention_status: 'closed',
+            assigned_to_user_id: null,
+            assigned_to_name: null,
+            taken_at: null,
+            closed_at: now,
+            updated_at: now,
+          })
+          .eq('id', sessionId)
+          .eq('attention_status', 'human');
+
+        if (closeError) {
+          throw new Error(
+            `No se pudo cerrar la conversación social: ${closeError.message}`,
+          );
+        }
+
+        closed += 1;
+
+        console.log(
+          `[ChatPro][social-human-timeout] cerrada sesión=${sessionId} canal=${String(
+            row.channel ?? 'social',
+          )} motivo=inactividad-${idleHours}h`,
+        );
+      } catch (closeError) {
+        console.error(
+          `[ChatPro][social-human-timeout] Falló sesión=${sessionId}:`,
+          closeError,
+        );
+      }
+    }
+
+    if (closed > 0) {
+      console.log(
+        `[ChatPro][social-human-timeout] conversaciones finalizadas=${closed}`,
+      );
+    }
+  }
 
   async listSessions(
     companyId: string,
@@ -488,6 +626,31 @@ export class MetaSocialInboxService {
     return conversation.session;
   }
 
+  private async assertSocialConversationCanClose(
+    sessionId: string,
+  ): Promise<void> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('social_conversations')
+      .select('author_type')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo verificar el último mensaje social antes de finalizar la conversación: ${error.message}`,
+      );
+    }
+
+    if (data?.author_type === 'customer') {
+      throw new Error(
+        'No se puede finalizar la conversación porque el cliente está esperando respuesta.',
+      );
+    }
+  }
+
   async closeConversation(
     company: {
       id: string;
@@ -496,6 +659,8 @@ export class MetaSocialInboxService {
     },
     sessionId: string,
   ) {
+    await this.assertSocialConversationCanClose(sessionId);
+
     const now = new Date().toISOString();
 
     const { error } = await this.supabaseService

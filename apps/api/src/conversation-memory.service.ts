@@ -1506,7 +1506,33 @@ export class ConversationMemoryService {
     });
   }
 
+  private async assertConversationCanClose(
+    sessionId: string,
+  ): Promise<void> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('conversations')
+      .select('author_type')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo verificar el último mensaje antes de finalizar la conversación: ${error.message}`,
+      );
+    }
+
+    if (data?.author_type === 'customer') {
+      throw new Error(
+        'No se puede finalizar la conversación porque el cliente está esperando respuesta.',
+      );
+    }
+  }
+
   async closeConversation(sessionId: string): Promise<ConversationSession> {
+    await this.assertConversationCanClose(sessionId);
     const session = await this.getSessionById(sessionId);
 
     await this.conversationEventsService.record({
@@ -1623,8 +1649,6 @@ export class ConversationMemoryService {
         `asesor=${session.assignedToUserId || 'sin-asignar'} ` +
         `motivo=inactividad-${idleHours}h`,
     );
-
-    await this.closeConversation(session.id);
 
     return this.resumeAiConversation(
       session.id,
