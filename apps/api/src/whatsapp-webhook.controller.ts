@@ -2697,7 +2697,7 @@ export class WhatsappWebhookController {
           },
         );
 
-        return 'Claro 😊 Envíame el número de pedido que aparece en tu confirmación y lo reviso. Si no lo encuentras, dime y lo validamos con el celular o correo registrado en la compra.';
+        return 'Claro 😊 Para revisar tu pedido, envíame el número de pedido. Si no lo tienes, puedes enviarme el celular o correo registrado en la compra.';
       }
 
       case 'accept_order_updates':
@@ -3463,6 +3463,55 @@ export class WhatsappWebhookController {
       );
     }
 
+    const normalizedPendingLookupText =
+      this.normalizeText(originalText);
+
+    const pendingLookupAttempts =
+      Number(flow.attempts ?? 0);
+
+    const doesNotKnowOrderNumber =
+      pendingLookupAttempts === 0 &&
+      /\b(no me se|no se|no tengo|no recuerdo)\b/.test(
+        normalizedPendingLookupText,
+      ) &&
+      /\b(numero|pedido)\b/.test(
+        normalizedPendingLookupText,
+      );
+
+    if (doesNotKnowOrderNumber) {
+      await this.conversationMemoryService.updateSession(
+        session.id,
+        {
+          stage: 'active',
+          context: {
+            ...session.context,
+            customer_service_flow: {
+              ...flow,
+              type: 'order_lookup',
+              order_reference_unavailable: true,
+              updated_at: new Date().toISOString(),
+            },
+          },
+        },
+      );
+
+      return 'No hay problema 😊 Envíame el celular o correo registrado en la compra y lo reviso.';
+    }
+
+    const cannotProvideMoreLookupData =
+      pendingLookupAttempts >= 1 &&
+      /\b(no lo tengo|no tengo|no lo se|no se|no recuerdo|no entiendo|ya te dije|ya me dijiste|ya me dijo eso|quiero una respuesta)\b/.test(
+        normalizedPendingLookupText,
+      );
+
+    if (cannotProvideMoreLookupData) {
+      return this.requestCustomerServiceHuman(
+        session,
+        'El cliente no puede aportar más datos para la validación automática del pedido.',
+        'Conservar los datos que el cliente ya entregó y continuar la revisión con un asesor. No volver a pedir número de pedido, correo, celular ni fecha aproximada.',
+      );
+    }
+
     const pendingIntent =
       await this.classifyPendingOrderLookupIntent(
         originalText,
@@ -3823,6 +3872,9 @@ export class WhatsappWebhookController {
         ? flow.identifiers as Record<string, unknown>
         : {};
 
+    const orderReferenceUnavailable =
+      flow.order_reference_unavailable === true;
+
     // Conservamos identificadores entregados en mensajes anteriores.
     // Un nuevo valor del mismo tipo reemplaza únicamente ese valor.
     const lookupIdentifiers = {
@@ -3842,7 +3894,7 @@ export class WhatsappWebhookController {
       !lookupIdentifiers.email &&
       !lookupIdentifiers.phone
     ) {
-      return 'Envíame el número de pedido que aparece en tu confirmación 😊. Si no lo encuentras, dime y lo validamos con el celular o correo registrado en la compra.';
+      return 'Envíame el número de pedido 😊. Si no lo tienes, puedes enviarme el celular o correo registrado en la compra.';
     }
 
     // Primer intento rápido:
@@ -3885,6 +3937,7 @@ export class WhatsappWebhookController {
         type: 'order_lookup',
         identifiers: lookupIdentifiers,
         attempts: attemptNumber,
+        order_reference_unavailable: orderReferenceUnavailable,
         updated_at: new Date().toISOString(),
       },
     };
@@ -3936,14 +3989,22 @@ export class WhatsappWebhookController {
       }
 
       if (lookupIdentifiers.email) {
-        return 'Por seguridad, confirma también el número del pedido o celular utilizado en esa compra 😊';
+        return orderReferenceUnavailable
+          ? 'Perfecto, ya tengo el correo 😊. Confírmame el celular registrado en la compra.'
+          : 'Por seguridad, confirma también el número del pedido o celular utilizado en esa compra 😊';
       }
 
-      return 'Por seguridad, confirma también el número del pedido o correo utilizado en esa compra 😊';
+      return orderReferenceUnavailable
+        ? 'Perfecto, ya tengo el celular 😊. Confírmame el correo registrado en la compra.'
+        : 'Por seguridad, confirma también el número del pedido o correo utilizado en esa compra 😊';
     }
 
     if (result.next_action === 'ask_order_reference') {
-      return 'Encontré más de un pedido asociado a esos datos. Envíame el número exacto del pedido que deseas consultar 😊';
+      return this.requestCustomerServiceHuman(
+        session,
+        'No fue posible determinar de forma automática el pedido exacto.',
+        `El cliente ya entregó datos de validación pero el sistema todavía requiere seleccionar un pedido exacto. Pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}.`,
+      );
     }
 
     if (result.next_action === 'ask_alternate_identifier') {

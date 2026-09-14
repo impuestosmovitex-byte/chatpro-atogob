@@ -251,7 +251,17 @@ export class CustomerOrderService {
       ).values(),
     );
 
-    if (uniqueOrders.length === 1) {
+    if (uniqueOrders.length >= 1) {
+      const latestOrder = [...uniqueOrders].sort((left, right) => {
+        const leftTimestamp =
+          Date.parse(String(left.processedAt || left.createdAt || '')) || 0;
+
+        const rightTimestamp =
+          Date.parse(String(right.processedAt || right.createdAt || '')) || 0;
+
+        return rightTimestamp - leftTimestamp;
+      })[0];
+
       return {
         ok: true,
         found: true,
@@ -259,23 +269,24 @@ export class CustomerOrderService {
         requires_human: false,
         next_action: 'answer_order',
         lookup_identifiers: lookupIdentifiers,
-        orders: [this.toPayload(uniqueOrders[0])],
+        orders: [this.toPayload(latestOrder)],
         message:
-          'Pedido validado con correo y teléfono coincidentes.',
+          uniqueOrders.length > 1
+            ? 'Correo y teléfono validados. Se seleccionó el pedido más reciente del cliente.'
+            : 'Pedido validado con correo y teléfono coincidentes.',
       };
     }
 
     return {
       ok: true,
       found: false,
-      ambiguous: uniqueOrders.length > 1,
       requires_verification: true,
-      requires_human: false,
-      next_action: 'ask_order_reference',
+      requires_human: true,
+      next_action: 'human_attention',
       lookup_identifiers: lookupIdentifiers,
       orders: [],
       message:
-        'Para ubicar de forma segura la compra exacta, solicita el número de pedido.',
+        'Correo y teléfono no permitieron validar un mismo pedido. Requiere revisión humana.',
     };
   }
 
