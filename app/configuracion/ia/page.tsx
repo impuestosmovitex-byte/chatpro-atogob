@@ -16,6 +16,7 @@ type CommercialFlow = {
   showRestrictionsOnlyWhenRelevant: boolean;
   askBeforeShowingCatalog: boolean;
   salesInstructions: string;
+  serviceInstructions: string;
   shippingInstructions: string;
   paymentInstructions: string;
   checkoutInstructions: string;
@@ -76,6 +77,7 @@ const EMPTY_FLOW: CommercialFlow = {
   showRestrictionsOnlyWhenRelevant: true,
   askBeforeShowingCatalog: true,
   salesInstructions: '',
+  serviceInstructions: '',
   shippingInstructions: '',
   paymentInstructions: '',
   checkoutInstructions: '',
@@ -211,6 +213,7 @@ function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
 
 const INSTRUCTION_LIMITS = {
   salesInstructions: 50_000,
+  serviceInstructions: 50_000,
   shippingInstructions: 50_000,
   paymentInstructions: 50_000,
   checkoutInstructions: 60_000,
@@ -225,6 +228,7 @@ type InstructionLimitKey = keyof typeof INSTRUCTION_LIMITS;
 
 const INSTRUCTION_LABELS: Record<InstructionLimitKey, string> = {
   salesInstructions: 'Proceso de ventas',
+  serviceInstructions: 'Servicio al cliente y postventa',
   shippingInstructions: 'Ciudades y envíos',
   paymentInstructions: 'Medios de pago',
   checkoutInstructions: 'Finalización de compra y checkout',
@@ -270,6 +274,7 @@ function CharacterCounter({
 function getExceededInstructionFields(configuration: Configuration) {
   const values: Record<InstructionLimitKey, string> = {
     salesInstructions: configuration.commercialFlow.salesInstructions,
+    serviceInstructions: configuration.commercialFlow.serviceInstructions,
     shippingInstructions: configuration.commercialFlow.shippingInstructions,
     paymentInstructions: configuration.commercialFlow.paymentInstructions,
     checkoutInstructions: configuration.commercialFlow.checkoutInstructions,
@@ -597,8 +602,8 @@ export default function ConfiguracionPage() {
           <section className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>2. FLUJO COMERCIAL</p>
-                <h2>Qué debe hacer para vender</h2>
+                <p>2. VENTAS Y SERVICIO AL CLIENTE</p>
+                <h2>Cómo atender antes y después de la compra</h2>
               </div>
               <span>Configurable por empresa</span>
             </div>
@@ -722,13 +727,31 @@ export default function ConfiguracionPage() {
             </label>
 
             <label>
+              <span>Servicio al cliente y postventa</span>
+              <textarea
+                value={configuration.commercialFlow.serviceInstructions}
+                onChange={(event) =>
+                  updateFlow('serviceInstructions', event.target.value)
+                }
+                placeholder="Define cómo debe atender esta empresa consultas de pedidos, postventa, cambios, garantías, seguimiento y en qué situaciones debe trasladar el caso a un asesor. Usa únicamente información e integraciones reales de la empresa."
+                rows={6}
+                maxLength={INSTRUCTION_LIMITS.serviceInstructions}
+                disabled={loading}
+              />
+              <CharacterCounter
+                value={configuration.commercialFlow.serviceInstructions}
+                limit={INSTRUCTION_LIMITS.serviceInstructions}
+              />
+            </label>
+
+            <label>
               <span>Ciudades y envíos</span>
               <textarea
                 value={configuration.commercialFlow.shippingInstructions}
                 onChange={(event) =>
                   updateFlow('shippingInstructions', event.target.value)
                 }
-                placeholder="Ejemplo: Para Cali el envío cuesta $13.900. Confirma ciudad antes de hablar de tiempos, costo o disponibilidad de contraentrega. No inventes condiciones."
+                placeholder="Define las ciudades atendidas, cómo se calcula el costo de envío, cuándo aplica envío gratis y las condiciones de entrega de esta empresa. No inventes valores ni condiciones."
                 rows={5}
                 maxLength={INSTRUCTION_LIMITS.shippingInstructions}
                 disabled={loading}
@@ -746,7 +769,7 @@ export default function ConfiguracionPage() {
                 onChange={(event) =>
                   updateFlow('paymentInstructions', event.target.value)
                 }
-                placeholder="Ejemplo: Contraentrega solo está disponible en Bogotá. Para otras ciudades ofrece Addi, Sistecrédito, SUMAS, transferencia o tarjeta según corresponda."
+                placeholder="Define los medios de pago disponibles para esta empresa, sus condiciones y cuándo debe ofrecerse cada opción. No menciones medios de pago que no estén configurados."
                 rows={5}
                 maxLength={INSTRUCTION_LIMITS.paymentInstructions}
                 disabled={loading}
@@ -764,7 +787,7 @@ export default function ConfiguracionPage() {
                 onChange={(event) =>
                   updateFlow('checkoutInstructions', event.target.value)
                 }
-                placeholder="Ejemplo: Solo envía el checkout después de confirmar producto, variante, ciudad y medio de pago. Para Addi, indica que complete sus datos en Shopify y seleccione Addi al final."
+                placeholder="Define qué información debe estar confirmada antes de enviar el checkout y qué instrucciones debe recibir el cliente según el medio de pago seleccionado."
                 rows={5}
                 maxLength={INSTRUCTION_LIMITS.checkoutInstructions}
                 disabled={loading}

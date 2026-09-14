@@ -17,6 +17,7 @@ import {
 type CommercialFlow = {
   welcomeMessage: string;
   salesInstructions: string;
+  serviceInstructions: string;
   shippingInstructions: string;
   paymentInstructions: string;
   checkoutInstructions: string;
@@ -83,6 +84,7 @@ function commercialFlowFrom(value: unknown): CommercialFlow {
   return {
     welcomeMessage: cleanText(source.welcome_message),
     salesInstructions: cleanText(source.sales_instructions, 50_000),
+    serviceInstructions: cleanText(source.service_instructions, 50_000),
     shippingInstructions: cleanText(source.shipping_instructions, 50_000),
     paymentInstructions: cleanText(source.payment_instructions, 50_000),
     checkoutInstructions: cleanText(source.checkout_instructions, 60_000),
@@ -201,6 +203,7 @@ function shippingTrackingFrom(value: unknown): ShippingTracking {
 
 const SETTINGS_TEXT_LIMITS = {
   salesInstructions: 50_000,
+  serviceInstructions: 50_000,
   shippingInstructions: 50_000,
   paymentInstructions: 50_000,
   checkoutInstructions: 60_000,
@@ -245,6 +248,12 @@ function validateSettingsTextLimits(body: SettingsBody) {
     commercialFlow.salesInstructions,
     SETTINGS_TEXT_LIMITS.salesInstructions,
     'Proceso de ventas',
+  );
+
+  validateTextLimit(
+    commercialFlow.serviceInstructions,
+    SETTINGS_TEXT_LIMITS.serviceInstructions,
+    'Servicio al cliente y postventa',
   );
 
   validateTextLimit(

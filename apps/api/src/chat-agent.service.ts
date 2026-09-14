@@ -1993,6 +1993,7 @@ export class ChatAgentService {
           ]
         : scope === 'service'
           ? [
+              ['service_instructions', 'Servicio al cliente y postventa'],
               ['shipping_instructions', 'Ciudades y envíos'],
               ['payment_instructions', 'Medios de pago'],
             ]
@@ -2273,9 +2274,16 @@ export class ChatAgentService {
       typeof commercialFlow.sales_instructions === 'string'
         ? commercialFlow.sales_instructions.trim()
         : '';
+
+    const configuredServiceInstructions =
+      typeof commercialFlow.service_instructions === 'string'
+        ? commercialFlow.service_instructions.trim()
+        : '';
+
     const routingCompanyInstructions = [
       profile.aiInstructions?.trim() || '',
       configuredSalesInstructions,
+      configuredServiceInstructions,
     ]
       .filter(Boolean)
       .join('\n');

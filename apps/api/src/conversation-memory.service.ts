@@ -3486,6 +3486,7 @@ export class ConversationMemoryService {
       ['welcome_message', 'welcomeMessage'],
       ['area_welcome_message', 'areaWelcomeMessage'],
       ['sales_instructions', 'salesInstructions'],
+      ['service_instructions', 'serviceInstructions'],
       ['shipping_instructions', 'shippingInstructions'],
       ['payment_instructions', 'paymentInstructions'],
       ['checkout_instructions', 'checkoutInstructions'],
