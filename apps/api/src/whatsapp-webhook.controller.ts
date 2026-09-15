@@ -3005,6 +3005,16 @@ export class WhatsappWebhookController {
           await this.resolveReply(profile, session, input.text)
         ).trim();
 
+        if (
+          reply ===
+          '__CHATPRO_INTERNAL_SUPPRESS_EXTERNAL_AUTOMATION_7F4D__'
+        ) {
+          console.log(
+            `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
+          );
+          return;
+        }
+
         if (!reply) {
           throw new Error(
             'La IA devolvió una respuesta vacía.',
