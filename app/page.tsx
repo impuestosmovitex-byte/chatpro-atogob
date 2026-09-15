@@ -2198,13 +2198,6 @@ export default function Home() {
       stickToBottomRef.current = true;
     }
 
-    if (action === "close" && customerHasLastWord) {
-      setError(
-        "No puedes finalizar esta conversación porque el cliente está esperando respuesta.",
-      );
-      return;
-    }
-
     const optimisticId = `optimistic-${Date.now()}`;
     const optimisticCreatedAt = new Date().toISOString();
 
@@ -3343,25 +3336,6 @@ export default function Home() {
   const isInternalTest = Boolean(
     selected?.session.context?.internal_test === true,
   );
-
-  const lastSelectedMessage = useMemo(() => {
-    if (!selected) {
-      return null;
-    }
-
-    for (let index = selected.messages.length - 1; index >= 0; index -= 1) {
-      const item = selected.messages[index];
-
-      if (item.sessionId === selected.session.id) {
-        return item;
-      }
-    }
-
-    return null;
-  }, [selected]);
-
-  const customerHasLastWord =
-    lastSelectedMessage?.authorType === "customer";
 
   const cartLines = useMemo(
     () => (selected ? getCart(selected.session.context) : []),
@@ -4840,12 +4814,7 @@ export default function Home() {
                                   className="danger"
                                   type="button"
                                   role="menuitem"
-                                  disabled={actionLoading || customerHasLastWord}
-                                  title={
-                                    customerHasLastWord
-                                      ? "Debes responder al cliente antes de finalizar."
-                                      : undefined
-                                  }
+                                  disabled={actionLoading}
                                   onClick={() => {
                                     setMobileActionsOpen(false);
                                     void runAction("close");
@@ -4924,19 +4893,12 @@ export default function Home() {
                         <button
                           className="button quiet"
                           type="button"
-                          disabled={actionLoading || customerHasLastWord}
-                          title={
-                            customerHasLastWord
-                              ? "Debes responder al cliente antes de finalizar."
-                              : undefined
-                          }
+                          disabled={actionLoading}
                           onClick={() => void runAction("close")}
                         >
                           {actionLoading
                             ? "Finalizando…"
-                            : customerHasLastWord
-                              ? "Cliente esperando respuesta"
-                              : "Finalizar conversación"}
+                            : "Finalizar conversación"}
                         </button>
                       </>
                     ) : null}

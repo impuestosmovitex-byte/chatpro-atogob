@@ -696,8 +696,11 @@ export class MetaSocialInboxService {
       name: string;
     },
     sessionId: string,
+    options: { allowCustomerLastWord?: boolean } = {},
   ) {
-    await this.assertSocialConversationCanClose(sessionId);
+    if (options.allowCustomerLastWord !== true) {
+      await this.assertSocialConversationCanClose(sessionId);
+    }
 
     const now = new Date().toISOString();
 

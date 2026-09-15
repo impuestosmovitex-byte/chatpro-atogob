@@ -805,6 +805,7 @@ export class InboxController {
           await this.metaSocialInboxService.closeConversation(
             companyInfo,
             sessionId,
+            { allowCustomerLastWord: true },
           ),
       };
     }
@@ -814,6 +815,7 @@ export class InboxController {
       session:
         await this.conversationMemoryService.closeConversation(
           sessionId,
+          { allowCustomerLastWord: true },
         ),
     };
   }

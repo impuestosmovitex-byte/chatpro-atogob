@@ -1531,8 +1531,14 @@ export class ConversationMemoryService {
     }
   }
 
-  async closeConversation(sessionId: string): Promise<ConversationSession> {
-    await this.assertConversationCanClose(sessionId);
+  async closeConversation(
+    sessionId: string,
+    options: { allowCustomerLastWord?: boolean } = {},
+  ): Promise<ConversationSession> {
+    if (options.allowCustomerLastWord !== true) {
+      await this.assertConversationCanClose(sessionId);
+    }
+
     const session = await this.getSessionById(sessionId);
 
     await this.conversationEventsService.record({
