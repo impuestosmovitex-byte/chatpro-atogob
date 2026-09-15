@@ -1995,6 +1995,7 @@ export class ChatAgentService {
 
     const next: JsonObject = { ...existing };
     let shippingInputsChanged = false;
+    let paymentEvidenceShouldClear = false;
 
     if (city) {
       const previousCity =
@@ -2010,6 +2011,7 @@ export class ChatAgentService {
 
       if (cityChanged) {
         shippingInputsChanged = true;
+        paymentEvidenceShouldClear = true;
       }
     }
 
@@ -2027,6 +2029,7 @@ export class ChatAgentService {
 
       if (paymentChanged) {
         shippingInputsChanged = true;
+        paymentEvidenceShouldClear = true;
         next.payment_instructions_sent = false;
         next.checkout_instructions_sent = false;
       }
@@ -2043,6 +2046,7 @@ export class ChatAgentService {
         previousDeliveryMethod !== deliveryMethod
       ) {
         shippingInputsChanged = true;
+        paymentEvidenceShouldClear = true;
       }
 
       next.delivery_method = deliveryMethod;
@@ -2077,14 +2081,20 @@ export class ChatAgentService {
 
     next.updated_at = new Date().toISOString();
 
+    const nextContext: JsonObject = {
+      ...currentSession.context,
+      sale_context: next,
+    };
+
+    if (paymentEvidenceShouldClear) {
+      delete nextContext.last_payment_evidence;
+    }
+
     const updated =
       await this.conversationMemoryService.updateSession(
         currentSession.id,
         {
-          context: {
-            ...currentSession.context,
-            sale_context: next,
-          },
+          context: nextContext,
         },
       );
 
@@ -2101,9 +2111,18 @@ export class ChatAgentService {
     const currentSession =
       await this.conversationMemoryService.getSessionById(session.id);
 
+    const paymentEvidence =
+      currentSession.context.last_payment_evidence;
+
     return {
       ok: true,
       sale_context: this.readSaleContext(currentSession.context),
+      payment_evidence:
+        paymentEvidence &&
+        typeof paymentEvidence === 'object' &&
+        !Array.isArray(paymentEvidence)
+          ? paymentEvidence
+          : null,
     };
   }
 
@@ -2138,14 +2157,18 @@ export class ChatAgentService {
 
     this.clearResolvedShipping(next);
 
+    const nextContext: JsonObject = {
+      ...currentSession.context,
+      sale_context: next,
+    };
+
+    delete nextContext.last_payment_evidence;
+
     const updated =
       await this.conversationMemoryService.updateSession(
         currentSession.id,
         {
-          context: {
-            ...currentSession.context,
-            sale_context: next,
-          },
+          context: nextContext,
         },
       );
 
@@ -2400,12 +2423,13 @@ export class ChatAgentService {
         '- Si la persona corrige “solo quiero X” o “por qué me vas a cobrar todo”, acepta la corrección, deja solo los productos confirmados para la compra actual y vuelve a resumir el carrito.',
       '- session.context.sale_context conserva ciudad, costo de envío, medio de pago, confirmación del carrito y pasos enviados. Úsalo antes de volver a preguntar.',
       '- Cuando la persona entregue o cambie ciudad, medio de pago o indique claramente envío a domicilio o recogida, llama remember_sale_context. delivery_method debe ser shipping o pickup únicamente cuando esa elección esté clara.',
+      '- Cuando delivery_method ya sea shipping, no vuelvas a ofrecer recogida ni preguntes nuevamente si quiere envío. Cuando ya sea pickup, no vuelvas a ofrecer envío a domicilio. Solo cambia el método si la persona lo solicita expresamente.',
       '- Nunca calcules, inventes ni escribas por tu cuenta shipping_cost_cop. El backend valida la tarifa exclusivamente contra la configuración de la empresa activa y el subtotal real.',
       '- Después de remember_sale_context o get_sale_context revisa shipping_resolution_status antes de hablar del costo de envío.',
       '- Si shipping_resolution_status es needs_city, pide únicamente la ciudad. Si es needs_payment, pide únicamente el medio de pago. Si es needs_delivery_method, pregunta si desea envío o recogida.',
       '- Si shipping_quote_validated es true, el shipping_cost_cop fue validado contra una regla real de la empresa. Solo entonces puedes afirmar ese valor.',
       '- Solo puedes decir “envío gratis” cuando shipping_quote_validated sea true y shipping_cost_cop sea 0.',
-      '- Si shipping_deferred_to_checkout es true, explica únicamente que el costo de envío se calculará o confirmará en checkout según la regla configurada. No inventes un total final.',
+      '- Si shipping_deferred_to_checkout es true, considera resuelto únicamente el requisito de cálculo del envío: no pidas autorización adicional para que el checkout lo calcule o confirme. El siguiente paso de cierre debe seguir las instrucciones activas del medio de pago y checkout de la empresa. Si checkout es el siguiente paso real, genera el enlace; si existe un paso externo previo configurado, completa primero ese paso. No inventes un total final.',
       '- Si el envío no está validado ni diferido al checkout, no llames “total final” al subtotal de productos y no inventes una tarifa.',
       '- Antes de confirmar una tarifa usa siempre el carrito real. products_subtotal_cop corresponde al subtotal de productos; grand_total_cop solo existe cuando el envío fue validado.',
       '- Si todas las formas de pago tienen la misma tarifa para esa ciudad, informa el envío validado y pregunta cómo pagará únicamente cuando el flujo configurado lo requiera.',
@@ -2413,8 +2437,19 @@ export class ChatAgentService {
       '- Cuando el carrito cambie, la cotización anterior queda inválida y el backend vuelve a resolverla usando el subtotal nuevo.',
       '- Presenta únicamente los medios habilitados por la configuración de la empresa. “Pago antes del despacho” no es un medio de pago.',
       '- Cuando seleccione un medio, habla únicamente de ese medio y usa get_cart antes de responder.',
-      '- No impongas una pregunta adicional antes del checkout. Sigue las instrucciones de checkout configuradas por la empresa y el estado real de la compra. Si la persona ya indicó claramente que desea finalizar, marca cart_confirmed=true sin inventar pasos adicionales.',
-      '- Cuando hagas una pregunta de confirmación configurada, usa remember_sale_context con cart_confirmation_requested=true y cart_confirmed=false.',
+      '- Después de seleccionar el medio, ejecuta el siguiente paso configurado para ESE medio sin pedir permiso adicional. No confundas “medio seleccionado” con “checkout inmediato”: algunos medios pueden requerir un pago externo o comprobante antes del checkout, mientras otros continúan directamente al checkout.',
+      '- No impongas una pregunta adicional antes del checkout. Sigue las instrucciones de checkout configuradas por la empresa y el estado real de la compra.',
+      '- Una solicitud inequívoca como “pagar”, “finalizar”, “mándame el enlace”, “envíame el enlace”, “quiero pagar” o equivalente resuelve la decisión de finalizar cuando el carrito ya está listo. Usa remember_sale_context con cart_confirmed=true y no vuelvas a pedir autorización para continuar.',
+      '- La elección de un medio de pago confirma ese medio, pero NO significa que todos los medios deban ir inmediatamente a checkout. Determina el siguiente paso exclusivamente con las instrucciones activas de Medios de pago y Finalización de compra y checkout de la empresa.',
+      '- Si la configuración indica que el medio se procesa dentro del checkout, cuando carrito, ciudad, envío y demás datos realmente necesarios estén resueltos, genera el checkout directamente sin pedir otra confirmación.',
+      '- Si la configuración indica pago externo antes del checkout, entrega únicamente el mecanismo externo configurado y las instrucciones mínimas correspondientes. No llames create_checkout_link antes de completar ese paso ni envíes simultáneamente el checkout.',
+      '- Cuando un pago externo requiera comprobante y llegue un comprobante real correspondiente a ese flujo, conserva carrito, ciudad y medio de pago y continúa al checkout posterior cuando así lo indique la configuración. No vuelvas a pedir autorización para generar ese checkout.',
+      '- session.context.last_payment_evidence o payment_evidence indican únicamente que se recibió evidencia de pago dentro del flujo comercial vigente; nunca significan por sí solos que el pago fue aprobado, conciliado o validado.',
+      '- Si después del comprobante cambian realmente el carrito, una ciudad ya confirmada, el método de entrega ya confirmado o el medio de pago ya seleccionado, la evidencia anterior deja de ser válida para continuar ese flujo.',
+      '- Si la configuración exige comprobante antes del checkout posterior y payment_evidence vigente confirma que ya fue recibido, no vuelvas a pedir el mismo comprobante ni una autorización adicional: ejecuta el siguiente paso configurado.',
+      '- Una vez seleccionado un medio de pago, no vuelvas a presentar alternativas ni cambies de medio salvo que la persona lo solicite expresamente.',
+      '- Si previamente preguntaste si desea agregar algo más y después la persona pide pagar, finalizar o recibir el enlace, considera esa decisión resuelta. No vuelvas a preguntar si desea agregar productos.',
+      '- Cuando hagas una pregunta de confirmación realmente requerida por la configuración y todavía no exista intención inequívoca de finalizar, usa remember_sale_context con cart_confirmation_requested=true y cart_confirmed=false.',
       '- Cuando la persona confirme que no agregará más o pida finalizar, usa remember_sale_context con cart_confirmed=true.',
       '- Si agrega, elimina o cambia un producto, la confirmación anterior deja de ser válida. Usa nuevamente el carrito real y el envío recalculado.',
       '- Antes del resumen final usa get_cart. Muestra producto y variante, subtotal de productos, envío únicamente si está validado, y grand_total_cop únicamente cuando exista.',
@@ -3535,7 +3570,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       cart_confirmed: {
         type: 'boolean',
         description:
-          'true únicamente cuando confirmó que no agregará más o pidió finalizar.',
+          'true cuando confirmó que no agregará más o expresó intención inequívoca de finalizar, pagar o continuar con el mecanismo de cierre. No requiere una segunda confirmación y no reemplaza los pasos específicos configurados para el medio de pago.',
       },
       payment_instructions_sent: {
         type: 'boolean',
@@ -3563,7 +3598,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'get_sale_context',
   description:
-    'Consulta ciudad, método de entrega, estado del envío, medio de pago y pasos ya enviados antes de volver a preguntarlos.',
+    'Consulta ciudad, método de entrega, estado del envío, medio de pago, pasos ya enviados y evidencia de pago externa vigente antes de volver a preguntar o repetir un paso.',
   strict: true,
   parameters: {
     type: 'object',
@@ -3628,7 +3663,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'create_checkout_link',
   description:
-    'Crea el link real de carrito y pago de Shopify con los productos que ya estén agregados.',
+    'Crea el checkout real de la integración comercial activa con los productos que ya estén agregados. Úsala sin pedir una confirmación adicional únicamente cuando, según las instrucciones activas de pago y checkout de la empresa, el checkout sea el siguiente paso real. Si el medio seleccionado requiere primero un pago externo, comprobante u otro paso configurado, completa primero ese paso y no generes el checkout prematuramente.',
   strict: true,
   parameters: {
     type: 'object',
@@ -4065,9 +4100,6 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           const saleContext =
             this.readSaleContext(currentSession.context);
 
-          const cartConfirmed =
-            saleContext.cart_confirmed === true;
-
           const shippingValue =
             typeof saleContext.shipping_cost_cop === 'string' ||
             typeof saleContext.shipping_cost_cop === 'number'
@@ -4085,16 +4117,6 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             typeof saleContext.shipping_resolution_status === 'string'
               ? saleContext.shipping_resolution_status
               : '';
-
-          if (!cartConfirmed) {
-            return {
-              ok: false,
-              next_action: 'confirm_cart',
-              error:
-                'Antes de crear el checkout confirma que la persona desea finalizar la compra actual.',
-              sale_context: saleContext,
-            };
-          }
 
           if (!shippingValidated && !shippingDeferred) {
             const nextAction =
