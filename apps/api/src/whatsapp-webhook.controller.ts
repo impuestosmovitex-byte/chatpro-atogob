@@ -1633,6 +1633,43 @@ export class WhatsappWebhookController {
         return;
       }
 
+      if (
+        (multimodalIntent.imageType === 'product' ||
+          multimodalIntent.imageType === 'mixed') &&
+        !multimodalIntent.hasProductIntent &&
+        !multimodalIntent.hasPaymentIntent
+      ) {
+        const clarification =
+          `Claro 😊 Cuéntame qué necesitas con lo que me enviaste y te ayudo ` +
+          `con lo relacionado con ${profile.name}.`;
+
+        await this.whatsappMessagingService.sendText(
+          profile.id,
+          input.phone,
+          clarification,
+        );
+
+        replySent = true;
+
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: clarification,
+          sender: 'assistant',
+          authorType: 'ai',
+          aiResponse: clarification,
+        });
+
+        await this.conversationMemoryService.touchSession(session.id);
+
+        console.log(
+          `[ChatPro][visual-clarification] Se conservaron las referencias visuales y se pidió intención a ${input.phone}`,
+        );
+
+        return;
+      }
+
       if (visualBurstReferences.length > 1) {
         const burstCustomerMessage = [
           '[RAFAGA_VISUAL_MULTIPRODUCTO]',
@@ -1904,6 +1941,11 @@ export class WhatsappWebhookController {
         'payment_proof: recibo, transferencia, comprobante, consignación, pantalla de pago o evidencia de una transacción.',
         'product: artículo, objeto, captura de catálogo, carrito o checkout cuando el contenido relevante sean uno o varios productos.',
         'mixed: el bloque reciente contiene simultáneamente pago y solicitud/interés de producto, aunque la imagen actual muestre solo uno de ellos.',
+        'IMPORTANTE: image_type describe QUÉ CONTIENE la imagen; has_product_intent describe QUÉ QUIERE HACER la persona. No confundas ambas cosas.',
+        'has_product_intent=true únicamente cuando el texto actual, el historial inmediato o el contexto activo indiquen claramente que la persona quiere identificar, buscar, seleccionar, agregar, comprar, comparar, consultar o revisar ese producto, o cuando la IA le haya pedido expresamente enviar una imagen/referencia para continuar una compra.',
+        'Una imagen que simplemente muestra un producto, ficha técnica, publicación, catálogo o captura comercial NO demuestra por sí sola intención de compra ni una solicitud de análisis.',
+        'Si la imagen contiene productos pero no existe una solicitud o continuidad clara relacionada con ellos, usa primary_intent=clarify y has_product_intent=false. No inventes lo que la persona quiere hacer.',
+        'No intentes decidir si la imagen pertenece o no a la marca únicamente por su fondo, modelo, diseño, logo ausente o apariencia visual.',
         'Si la IA solicitó un comprobante y la imagen parece evidencia de pago, hasPaymentIntent debe ser true.',
         'Si el cliente dice "esta también", "quiero agregar esta", "quiero esta", "quiero estos", "quiero todo esto" o equivalente y la imagen contiene uno o varios productos, hasProductIntent debe ser true aunque antes estuvieran hablando de pago.',
         'Una captura de carrito o checkout que muestre productos no es un comprobante de pago únicamente por contener total, botón de pagar, medios de pago o información de checkout.',
