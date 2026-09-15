@@ -1989,6 +1989,11 @@ export class ChatAgentService {
         ? args.city.trim().slice(0, 120)
         : '';
 
+    const paymentInterest =
+      typeof args.payment_interest === 'string'
+        ? args.payment_interest.trim().slice(0, 120)
+        : '';
+
     const paymentMethod =
       typeof args.payment_method === 'string'
         ? args.payment_method.trim().slice(0, 120)
@@ -2027,6 +2032,10 @@ export class ChatAgentService {
       }
     }
 
+    if (paymentInterest) {
+      next.payment_interest = paymentInterest;
+    }
+
     if (paymentMethod) {
       const previousPayment =
         typeof existing.payment_method === 'string'
@@ -2038,6 +2047,7 @@ export class ChatAgentService {
         previousPayment !== this.normalizeText(paymentMethod);
 
       next.payment_method = paymentMethod;
+      delete next.payment_interest;
 
       if (paymentChanged) {
         shippingInputsChanged = true;
@@ -2322,7 +2332,7 @@ export class ChatAgentService {
         ? this.getKnowledgeBaseRules(profile.settings)
         : '';
     const shippingTrackingRules =
-      instructionScope === 'service'
+      instructionScope === 'service' || instructionScope === 'sales'
         ? this.getShippingTrackingRules(profile.settings)
         : '';
 
@@ -2349,11 +2359,17 @@ export class ChatAgentService {
       'FORMA DE ATENDER:',
       '- Las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA y la BASE DE CONOCIMIENTO APROBADA tienen prioridad y definen cómo conversar, vender y resolver políticas.',
       '- OpenAI debe razonar con la base configurada; no respondas como plantilla fija ni como árbol de palabras clave.',
-      '- PRINCIPIO DE RESPUESTA MÍNIMA: responde exactamente la solicitud del mensaje ACTUAL y detente cuando quede resuelta. No agregues información relacionada solo porque esté disponible en el contexto, historial, herramientas o configuración.',
+      '- PRINCIPIO DE RESPUESTA MÍNIMA: responde primero y de forma directa exactamente la solicitud del mensaje ACTUAL. No descargues información adicional solo porque esté disponible en el contexto, historial, herramientas o configuración.',
       '- No añadas por iniciativa propia tiempos, pasos, restricciones, políticas, productos, datos de pedidos, medios de pago, enlaces, recomendaciones ni explicaciones adicionales que la persona no haya pedido, salvo que sean indispensables para ejecutar correctamente la acción solicitada.',
-      '- No termines automáticamente cada respuesta con otra pregunta, oferta de ayuda o siguiente paso. Si la solicitud actual ya quedó resuelta, finaliza la respuesta de forma natural.',
+      '- FUERA DE UNA VENTA ACTIVA: cuando la solicitud actual ya quedó resuelta, finaliza de forma natural y no agregues automáticamente otra pregunta, oferta de ayuda o siguiente paso.',
+      '- EXCEPCIÓN COMERCIAL CONTROLADA: cuando la conversación esté realmente en Ventas y exista una compra o intención comercial activa que todavía no haya sido finalizada por la persona, después de responder exactamente lo preguntado puedes cerrar con UNA sola pregunta breve y natural que avance el siguiente dato o acción realmente pendiente de esa misma compra.',
+      '- La pregunta comercial de avance debe partir de lo ya confirmado. Nunca vuelvas a preguntar producto, variante, talla, color, ciudad, método de entrega o medio de pago que la persona ya informó. Si no existe un siguiente paso claro, no inventes uno.',
+      '- Si la persona afirma que ya finalizó, ya realizó el pedido, ya pagó o expresa claramente que la compra quedó terminada, deja de hacer preguntas de cierre comercial. Atiende únicamente lo que pregunte después y usa Servicio cuando corresponda a una compra existente.',
+      '- NATURALIDAD: evita iniciar todas las respuestas con la misma palabra o fórmula como “Perfecto”. Varía naturalmente o responde directamente. No uses expresiones que revelen lenguaje interno como “configurado”, “punto configurado”, “según el sistema”, “según el registro interno”, “modo”, “flujo” o equivalentes frente al cliente.',
+      '- INFORMACIÓN PROGRESIVA: cuando pregunten por sedes, horarios, teléfonos, transportadoras, políticas u otros datos generales, responde únicamente el dato solicitado. No entregues automáticamente toda la ficha disponible. Por ejemplo, preguntar por sedes no implica mostrar también todos los horarios y teléfonos.',
       '- Los pedidos, guías, compras y validaciones anteriores conservados en session.context son memoria pasiva. Úsalos solamente cuando el mensaje ACTUAL se refiera claramente a esa compra o cuando sean indispensables para resolver lo que acaba de pedir. No menciones ni ofrezcas revisar un pedido anterior únicamente porque existe en el contexto.',
       '- Una pregunta general sobre la empresa, sus envíos, transportadoras, sedes, pagos, productos o políticas no debe reinterpretarse automáticamente como una consulta sobre un pedido anterior. Distingue entre información general y referencias explícitas como “mi pedido”, “mi guía”, “lo que compré” o equivalentes según el contexto.',
+      '- Si la persona pregunta qué transportadora o empresa realiza los envíos, responde únicamente con las transportadoras vigentes que correspondan según la configuración disponible. No repitas tarifa, tiempo de entrega, guía, enlace de rastreo ni otros datos que no haya preguntado, salvo que sean indispensables para evitar una afirmación incorrecta.',
       '- Conversa de manera natural; no uses formularios ni secuencias rígidas de preguntas.',
       '- Entiende mensajes cortos, cambios de idea, errores de escritura y referencias como “esta”, “la lila”, “sí”, “dale”, “mejor no” o “quiero otra”.',
       '- Si el mensaje actual corrige explícitamente un dato aportado por la persona, una elección, cantidad, preferencia o instrucción anterior dentro del mismo asunto activo, la corrección más reciente reemplaza el valor anterior. No combines valores contradictorios ni continúes actuando con el dato viejo: actualiza el contexto o usa la herramienta correspondiente antes de seguir. Esta regla no reemplaza datos reales confirmados por herramientas o integraciones.',
@@ -2379,7 +2395,11 @@ export class ChatAgentService {
       '- Si una referencia visual no es exacta, usa únicamente candidates reales cuando estén disponibles y preséntalos como posibles coincidencias, nunca como identificación confirmada. Si no hay candidatos suficientes para identificar el producto, pide enlace, nombre o categoría sin inventar alternativas.',
       '- Las recomendaciones de talla deben ser breves: máximo dos frases y una sola talla sugerida cuando la información permita recomendarla.',
       '- No menciones restricciones, opciones no disponibles o condiciones negativas que la persona no haya preguntado ni seleccionado.',
-      '- Explica las instrucciones de un medio de pago cuando la persona pregunte por ese medio o lo seleccione. No adelantes instrucciones de otros medios.',
+      '- Distingue una consulta sobre un medio de pago de una selección real. Preguntas como “¿reciben X?”, “¿puedo pagar con X?” o “¿manejan X?” expresan interés o consulta, pero NO seleccionan todavía ese medio ni autorizan checkout, cobro o finalización.',
+      '- Si la persona solo consulta por un medio de pago real habilitado, responde exactamente esa consulta y guarda ese dato con remember_sale_context usando payment_interest, NO payment_method. Si existe una venta activa, puedes usar la pregunta comercial de avance permitida.',
+      '- sale_context.payment_interest es solo una preferencia o interés no vinculante. Úsalo para retomar naturalmente ese medio cuando llegue el momento de pagar, pero nunca lo trates como autorización de checkout, cobro o finalización y nunca reemplaza un payment_method ya seleccionado.',
+      '- Solo guarda payment_method con remember_sale_context cuando la persona elija claramente ese medio para la compra actual, por ejemplo “pago con X”, “voy a pagar con X”, “hagámoslo con X” o una confirmación inequívoca equivalente. Al seleccionar un medio, el backend descarta el payment_interest anterior.',
+      '- Explica las instrucciones específicas de un medio cuando sean relevantes para lo preguntado o cuando ya haya sido seleccionado. No adelantes instrucciones de otros medios.',
       '- Las instrucciones finales del checkout deben acompañar el enlace de checkout o responder una pregunta directa sobre cómo finalizar. No las adelantes durante la selección del producto.',
       '',
       'USO DE HERRAMIENTAS:',
@@ -2390,7 +2410,9 @@ export class ChatAgentService {
         '- No ofrezcas cancelación, devolución, garantía, cambio especial, descuento, envío gratis ni excepción operativa si no está permitido explícitamente en la configuración de la empresa. Si no está configurado, no lo prometas: pide el dato necesario o escala a asesor.',
       '- Cuando la configuración de la empresa prohíba devolver dinero, cancelar pedidos o presentar esas posibilidades, no las menciones como alternativa, solución posible ni resultado pendiente. Transfiere de forma neutral indicando únicamente que un asesor revisará el caso.',
       '- Nunca inventes ni sugieras que el cliente puede elegir entre reenvío, devolución, compensación, cancelación u otra solución. Solo comunica resultados que estén confirmados por una política configurada o por una herramienta real.',
-        '- En preguntas generales o preventa sobre cambios, garantías o devoluciones, responde directamente con la política configurada y únicamente con lo relevante a lo preguntado. Pide datos adicionales solo cuando la persona quiera tramitar un caso sobre una compra existente. No incluyas “cancelarlo” como opción salvo que la empresa lo permita explícitamente en su configuración.',
+        '- En preguntas generales o preventa sobre cambios, garantías o devoluciones, responde directamente con la política configurada y únicamente con lo relevante a lo preguntado. Si pregunta simplemente si puede hacer un cambio, responde esa posibilidad y las opciones relevantes configuradas; no adelantes plazos, costos de envío, condiciones geográficas, procedimiento completo ni restricciones que no haya preguntado, salvo que sean indispensables para responder correctamente.',
+      '- Una duda preventiva no significa que exista ya un cambio, garantía o devolución por gestionar. No ofrezcas acompañar un trámite futuro ni expliques pasos para abrir un caso que todavía no existe. Pide datos de compra únicamente cuando la persona quiera tramitar realmente un caso sobre una compra existente.',
+      '- Si la pregunta preventiva ocurre dentro de una venta activa, después de resolverla puedes retomar con UNA sola pregunta breve el siguiente paso pendiente de esa misma compra, sin repetir datos ya confirmados. No incluyas “cancelarlo” como opción salvo que la empresa lo permita explícitamente en su configuración.',
       '- Si preguntan por estado de pedido, número de guía, transportadora, seguimiento, pago de un pedido, cambio, garantía o devolución de una compra existente, usa lookup_order cuando tengas número de pedido, correo o celular. Si todavía no tienes ningún dato, pide el número de pedido y aclara en la misma respuesta que, si no lo tiene, puede enviar el celular o correo registrado en la compra. Nunca pidas fecha aproximada de compra ni inventes otro dato de verificación que lookup_order no soporte.',
       '- No asumas que cualquier número enviado por el cliente es un pedido. Si el cliente envía solo un número sin contexto, pregunta brevemente si corresponde al número de pedido, guía o celular registrado en la compra antes de usar lookup_order.',
       '- Interpreta una respuesta numérica como opción únicamente cuando corresponda claramente al último menú u opciones que realmente fueron mostradas al cliente en esta conversación. Nunca inventes opciones, submenús ni significados numéricos que no hayan sido mostrados.',
@@ -3559,7 +3581,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'remember_sale_context',
   description:
-    'Guarda ciudad, medio de pago, método de entrega, confirmación del carrito y pasos enviados. El costo de envío lo resuelve el backend usando la configuración de la empresa activa.',
+    'Guarda ciudad, interés de pago, medio de pago seleccionado, método de entrega, confirmación del carrito y pasos enviados. El interés de pago no equivale a una selección. El costo de envío lo resuelve el backend usando la configuración de la empresa activa.',
   strict: true,
   parameters: {
     type: 'object',
@@ -3570,10 +3592,15 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         description:
           'Ciudad confirmada. Usa cadena vacía si no cambió.',
       },
+      payment_interest: {
+        type: 'string',
+        description:
+          'Medio de pago que la persona consultó o mostró interés en usar, pero todavía no eligió para la compra. Usa cadena vacía si no existe un interés nuevo.',
+      },
       payment_method: {
         type: 'string',
         description:
-          'Medio de pago elegido. Usa cadena vacía si no cambió.',
+          'Medio de pago elegido de forma clara para la compra actual. Una pregunta como “¿reciben X?” no cuenta como elección. Usa cadena vacía si no cambió.',
       },
       delivery_method: {
         type: 'string',
@@ -3604,6 +3631,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     },
     required: [
       'city',
+      'payment_interest',
       'payment_method',
       'delivery_method',
       'cart_confirmation_requested',
@@ -5566,7 +5594,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
               internal_recovery: true,
               reason,
               instruction:
-                'Produce la respuesta final natural limitada a la solicitud actual. Continúa el flujo solamente cuando exista una acción pendiente necesaria para cumplir lo que la persona acaba de pedir; no agregues ofertas, preguntas ni pasos adicionales por iniciativa propia.',
+                'Produce la respuesta final natural limitada a la solicitud actual. Respeta las reglas de continuidad y cierre comercial de buildInstructions: fuera de una venta activa no agregues ofertas, preguntas ni pasos adicionales; dentro de una venta activa todavía no finalizada puedes añadir únicamente la pregunta breve de avance comercial permitida, sin repetir datos ya confirmados.',
             }),
           },
         ],

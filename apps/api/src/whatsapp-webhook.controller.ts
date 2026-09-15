@@ -3749,9 +3749,34 @@ export class WhatsappWebhookController {
       })
       .sort((left, right) => right.overlap - left.overlap);
 
+    const localAreaCandidate = scored[0]?.area ?? null;
+    const localAreaText = localAreaCandidate
+      ? this.normalizeText(
+          `${localAreaCandidate.name} ${localAreaCandidate.description}`,
+        )
+      : '';
+
+    const localAreaLooksLikeService =
+      localAreaCandidate?.areaType === 'service' ||
+      (
+        localAreaCandidate?.areaType === null &&
+        /\b(servicio|soporte|postventa|pedido|garantia|cambio|devolucion)\b/.test(
+          localAreaText,
+        )
+      );
+
+    const explicitExistingPurchaseSignal =
+      /\b(mi pedido|mi compra|lo que compre|ya compre|ya lo compre|producto recibido|me llego|no me llego|recibi|recibido|numero de pedido|pedido #|mi guia|seguimiento de mi pedido)\b/.test(
+        normalizedMessage,
+      );
+
     if (
       scored[0]?.overlap >= 2 &&
-      scored[0].overlap > (scored[1]?.overlap ?? 0)
+      scored[0].overlap > (scored[1]?.overlap ?? 0) &&
+      (
+        !localAreaLooksLikeService ||
+        explicitExistingPurchaseSignal
+      )
     ) {
       console.log(
         `[ChatPro][direct-area] source=local area="${scored[0].area.name}"`,
@@ -3777,8 +3802,10 @@ export class WhatsappWebhookController {
           'Devuelve únicamente JSON válido y sin markdown:',
           '{"area_id":"id o null","confidence":"low|medium|high","explicit_intent":true|false}',
           'Usa exclusivamente las áreas entregadas, considerando tanto su nombre como su descripción.',
-          'Selecciona un área cuando el cliente ya explicó qué necesita: explorar o comprar productos, pagar, consultar un pedido, reportar un problema, solicitar cambio, garantía, devolución o atención humana.',
-          'Devuelve area_id null cuando sea solo un saludo, una respuesta sin contexto, contenido ambiguo o no exista una correspondencia clara.',
+          'Selecciona un área cuando el cliente ya explicó una intención operativa clara: explorar o comprar productos, pagar una compra activa, consultar una compra o pedido existente, reportar un problema real, tramitar un cambio/garantía/devolución de una compra existente o solicitar atención humana.',
+          'Una pregunta general o preventiva como saber si existen cambios, garantías, devoluciones, medios de pago, envíos o políticas NO es por sí sola una solicitud de postventa. No selecciones un área de Servicio únicamente porque aparezcan palabras como cambio, garantía o devolución.',
+          'Para seleccionar Servicio por cambio, garantía, devolución o problema debe existir una señal clara de compra existente, producto recibido, pedido realizado o intención actual de tramitar ese caso. Si solo está evaluando comprar o preguntando condiciones antes de comprar, no lo conviertas en postventa.',
+          'Devuelve area_id null cuando sea solo un saludo, una respuesta sin contexto, contenido ambiguo, una consulta preventiva que no define un área operativa clara o no exista una correspondencia suficiente.',
           'No obligues al cliente a usar el menú cuando la intención sea clara.',
           `Empresa: ${profile.name}.`,
         ].join('\n'),
