@@ -395,6 +395,115 @@ export class WhatsappWebhookController {
     return true;
   }
 
+  private async handoffUnhandledInboundFailure(input: {
+    incomingPhoneNumberId: string;
+    phone: string;
+    incomingMessageId: string | null;
+    reason: string;
+    summary: string;
+    notifyCustomer?: boolean;
+  }): Promise<void> {
+    const conversationKey =
+      `${input.incomingPhoneNumberId}:${input.phone}`;
+
+    if (
+      input.incomingMessageId &&
+      !this.isCurrentInboundMessage(
+        conversationKey,
+        input.incomingMessageId,
+      )
+    ) {
+      console.log(
+        `[ChatPro][inbound-failover] No se transfiere ${input.phone} porque llegó un mensaje más reciente.`,
+      );
+      return;
+    }
+
+    try {
+      const integration =
+        await this.companyIntegrationService.findActiveIntegrationByExternalId(
+          'meta',
+          'whatsapp',
+          input.incomingPhoneNumberId,
+        );
+
+      if (!integration) {
+        console.error(
+          `[ChatPro][inbound-failover] No existe integración activa para ${input.phone}.`,
+        );
+        return;
+      }
+
+      const profile =
+        await this.conversationMemoryService.getCompanyProfileById(
+          integration.companyId,
+        );
+
+      let session =
+        await this.conversationMemoryService.getOrCreateSessionByCompanyId(
+          integration.companyId,
+          input.phone,
+        );
+
+      if (
+        session.attentionStatus === 'waiting' ||
+        session.attentionStatus === 'human'
+      ) {
+        return;
+      }
+
+      if (session.attentionStatus === 'closed') {
+        session =
+          await this.conversationMemoryService.resumeAiConversation(
+            session.id,
+          );
+      }
+
+      const handoffReply =
+        await this.requestCustomerServiceHuman(
+          session,
+          input.reason,
+          input.summary,
+        );
+
+      if (input.notifyCustomer === false) {
+        return;
+      }
+
+      try {
+        await this.whatsappMessagingService.sendText(
+          profile.id,
+          input.phone,
+          handoffReply,
+        );
+
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: handoffReply,
+          sender: 'assistant',
+          authorType: 'ai',
+          aiResponse: handoffReply,
+        });
+
+        await this.conversationMemoryService.touchSession(
+          session.id,
+        );
+      } catch (notifyError) {
+        console.error(
+          `[ChatPro][inbound-failover] La sesión ${session.id} quedó transferida, pero falló el aviso al cliente:`,
+          notifyError,
+        );
+      }
+    } catch (handoffError) {
+      console.error(
+        `[ChatPro][inbound-failover] No se pudo transferir ${input.phone}:`,
+        handoffError,
+      );
+    }
+  }
+
   private async processIncomingLocation(input: {
     incomingPhoneNumberId: string;
     phone: string;
@@ -502,48 +611,77 @@ export class WhatsappWebhookController {
       return;
     }
 
-    session = await this.attachRecoveryContext(
-      session,
-      profile.id,
-      input.phone,
-    );
+    let replySentToCustomer = false;
 
-    const reply = await this.resolveReply(
-      profile,
-      session,
-      customerMessage,
-    );
-
-    if (
-      !this.isCurrentInboundMessage(
-        conversationKey,
-        input.incomingMessageId,
-      )
-    ) {
-      console.log(
-        `Respuesta de ubicación cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+    try {
+      session = await this.attachRecoveryContext(
+        session,
+        profile.id,
+        input.phone,
       );
-      return;
+
+      const reply = (
+        await this.resolveReply(
+          profile,
+          session,
+          customerMessage,
+        )
+      ).trim();
+
+      if (!reply) {
+        throw new Error(
+          'La IA devolvió una respuesta vacía para la ubicación.',
+        );
+      }
+
+      if (
+        !this.isCurrentInboundMessage(
+          conversationKey,
+          input.incomingMessageId,
+        )
+      ) {
+        console.log(
+          `Respuesta de ubicación cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+        );
+        return;
+      }
+
+      await this.whatsappMessagingService.sendText(
+        profile.id,
+        input.phone,
+        reply,
+      );
+
+      replySentToCustomer = true;
+
+      await this.conversationMemoryService.saveMessage({
+        companyId: profile.id,
+        sessionId: session.id,
+        customerPhone: input.phone,
+        message: reply,
+        sender: 'assistant',
+        authorType: 'ai',
+        aiResponse: reply,
+      });
+
+      await this.conversationMemoryService.touchSession(session.id);
+      console.log(`Ubicación comprendida y respondida a ${input.phone}`);
+    } catch (error) {
+      console.error(
+        '[ChatPro][inbound-failover] Falló la respuesta a una ubicación:',
+        error,
+      );
+
+      await this.handoffUnhandledInboundFailure({
+        incomingPhoneNumberId: input.incomingPhoneNumberId,
+        phone: input.phone,
+        incomingMessageId: input.incomingMessageId,
+        reason: 'Fallo técnico procesando una ubicación.',
+        summary:
+          'El cliente envió una ubicación y el procesamiento automático no pudo completarse. Un asesor debe continuar desde el último mensaje.',
+        notifyCustomer: !replySentToCustomer,
+      });
     }
-
-    await this.whatsappMessagingService.sendText(
-      profile.id,
-      input.phone,
-      reply,
-    );
-
-    await this.conversationMemoryService.saveMessage({
-      companyId: profile.id,
-      sessionId: session.id,
-      customerPhone: input.phone,
-      message: reply,
-      sender: 'assistant',
-      authorType: 'ai',
-      aiResponse: reply,
-    });
-
-    await this.conversationMemoryService.touchSession(session.id);
-    console.log(`Ubicación comprendida y respondida a ${input.phone}`);
   }
 
   private async processIncomingAttachment(input: {
@@ -621,26 +759,43 @@ export class WhatsappWebhookController {
 
     await this.conversationMemoryService.touchSession(session.id);
 
-    const media =
-      await this.whatsappMessagingService.downloadRawMedia(
-        profile.id,
-        input.mediaId,
-        input.mimeType || 'application/octet-stream',
+    try {
+      const media =
+        await this.whatsappMessagingService.downloadRawMedia(
+          profile.id,
+          input.mediaId,
+          input.mimeType || 'application/octet-stream',
+        );
+
+      await this.conversationMemoryService.persistIncomingMedia({
+        companyId: profile.id,
+        sessionId: session.id,
+        mediaId: input.mediaId,
+        providerMessageId: input.incomingMessageId,
+        buffer: media.buffer,
+        mimeType: media.mimeType,
+        filename: input.filename || media.filename,
+      });
+
+      console.log(
+        `${input.messageType === 'video' ? 'Video' : 'Documento'} guardado de ${input.phone}`,
+      );
+    } catch (error) {
+      console.error(
+        '[ChatPro][inbound-failover] Falló la descarga o guardado del archivo:',
+        error,
       );
 
-    await this.conversationMemoryService.persistIncomingMedia({
-      companyId: profile.id,
-      sessionId: session.id,
-      mediaId: input.mediaId,
-      providerMessageId: input.incomingMessageId,
-      buffer: media.buffer,
-      mimeType: media.mimeType,
-      filename: input.filename || media.filename,
-    });
-
-    console.log(
-      `${input.messageType === 'video' ? 'Video' : 'Documento'} guardado de ${input.phone}`,
-    );
+      await this.handoffUnhandledInboundFailure({
+        incomingPhoneNumberId: input.incomingPhoneNumberId,
+        phone: input.phone,
+        incomingMessageId: input.incomingMessageId,
+        reason: 'Fallo técnico procesando un archivo.',
+        summary:
+          'El cliente envió un video o documento y no fue posible procesarlo automáticamente. Un asesor debe continuar desde el último mensaje.',
+      });
+      return;
+    }
 
     if (
       session.attentionStatus === 'waiting' ||
@@ -675,51 +830,80 @@ export class WhatsappWebhookController {
       return;
     }
 
-    session = await this.attachRecoveryContext(
-      session,
-      profile.id,
-      input.phone,
-    );
+    let replySentToCustomer = false;
 
-    const reply = await this.resolveReply(
-      profile,
-      session,
-      customerMessage,
-    );
-
-    if (
-      !this.isCurrentInboundMessage(
-        conversationKey,
-        input.incomingMessageId,
-      )
-    ) {
-      console.log(
-        `Respuesta de ${input.messageType} cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+    try {
+      session = await this.attachRecoveryContext(
+        session,
+        profile.id,
+        input.phone,
       );
-      return;
+
+      const reply = (
+        await this.resolveReply(
+          profile,
+          session,
+          customerMessage,
+        )
+      ).trim();
+
+      if (!reply) {
+        throw new Error(
+          'La IA devolvió una respuesta vacía para el archivo.',
+        );
+      }
+
+      if (
+        !this.isCurrentInboundMessage(
+          conversationKey,
+          input.incomingMessageId,
+        )
+      ) {
+        console.log(
+          `Respuesta de ${input.messageType} cancelada porque llegó otro mensaje durante el procesamiento de ${input.phone}`,
+        );
+        return;
+      }
+
+      await this.whatsappMessagingService.sendText(
+        profile.id,
+        input.phone,
+        reply,
+      );
+
+      replySentToCustomer = true;
+
+      await this.conversationMemoryService.saveMessage({
+        companyId: profile.id,
+        sessionId: session.id,
+        customerPhone: input.phone,
+        message: reply,
+        sender: 'assistant',
+        authorType: 'ai',
+        aiResponse: reply,
+      });
+
+      await this.conversationMemoryService.touchSession(session.id);
+
+      console.log(
+        `${input.messageType === 'video' ? 'Video' : 'Documento'} comprendido en contexto y respondido a ${input.phone}`,
+      );
+    } catch (error) {
+      console.error(
+        '[ChatPro][inbound-failover] Falló la respuesta al archivo:',
+        error,
+      );
+
+      await this.handoffUnhandledInboundFailure({
+        incomingPhoneNumberId: input.incomingPhoneNumberId,
+        phone: input.phone,
+        incomingMessageId: input.incomingMessageId,
+        reason: 'Fallo técnico respondiendo a un archivo.',
+        summary:
+          'El cliente envió un video o documento y la respuesta automática no pudo completarse. Un asesor debe continuar desde el último mensaje.',
+        notifyCustomer: !replySentToCustomer,
+      });
     }
-
-    await this.whatsappMessagingService.sendText(
-      profile.id,
-      input.phone,
-      reply,
-    );
-
-    await this.conversationMemoryService.saveMessage({
-      companyId: profile.id,
-      sessionId: session.id,
-      customerPhone: input.phone,
-      message: reply,
-      sender: 'assistant',
-      authorType: 'ai',
-      aiResponse: reply,
-    });
-
-    await this.conversationMemoryService.touchSession(session.id);
-
-    console.log(
-      `${input.messageType === 'video' ? 'Video' : 'Documento'} comprendido en contexto y respondido a ${input.phone}`,
-    );
   }
 
   private markInboundActivity(
@@ -1542,12 +1726,16 @@ export class WhatsappWebhookController {
           'Recibí la imagen, pero no logré analizarla correctamente. ' +
           'Puedes enviarla otra vez, escribir qué producto buscas o compartir el enlace para ayudarte.';
 
+        let fallbackSentToCustomer = false;
+
         try {
           await this.whatsappMessagingService.sendText(
             profile.id,
             input.phone,
             fallback,
           );
+
+          fallbackSentToCustomer = true;
 
           await this.conversationMemoryService.saveMessage({
             companyId: profile.id,
@@ -1565,6 +1753,16 @@ export class WhatsappWebhookController {
             'No se pudo enviar la respuesta de respaldo para la imagen:',
             fallbackError,
           );
+
+          await this.handoffUnhandledInboundFailure({
+            incomingPhoneNumberId: input.incomingPhoneNumberId,
+            phone: input.phone,
+            incomingMessageId: input.incomingMessageId,
+            reason: 'Fallo técnico procesando una imagen.',
+            summary:
+              'El cliente envió una imagen y el procesamiento automático no pudo completarse correctamente. Un asesor debe continuar desde el último mensaje.',
+            notifyCustomer: !fallbackSentToCustomer,
+          });
         }
       }
     }
@@ -2036,6 +2234,8 @@ export class WhatsappWebhookController {
     mimeType: string;
     voice: boolean;
   }): Promise<void> {
+    let replySentToCustomer = false;
+
     try {
       const integration =
         await this.companyIntegrationService.findActiveIntegrationByExternalId(
@@ -2157,11 +2357,19 @@ export class WhatsappWebhookController {
         input.phone,
       );
 
-      const reply = await this.resolveReply(
-        profile,
-        session,
-        transcription,
-      );
+      const reply = (
+        await this.resolveReply(
+          profile,
+          session,
+          transcription,
+        )
+      ).trim();
+
+      if (!reply) {
+        throw new Error(
+          'La IA devolvió una respuesta vacía para el audio.',
+        );
+      }
 
       if (
         !this.isCurrentInboundMessage(
@@ -2181,6 +2389,8 @@ export class WhatsappWebhookController {
         reply,
       );
 
+      replySentToCustomer = true;
+
       await this.conversationMemoryService.saveMessage({
         companyId: profile.id,
         sessionId: session.id,
@@ -2195,6 +2405,16 @@ export class WhatsappWebhookController {
       console.log(`Audio comprendido y respondido a ${input.phone}`);
     } catch (error) {
       console.error('No se pudo procesar el audio entrante:', error);
+
+      await this.handoffUnhandledInboundFailure({
+        incomingPhoneNumberId: input.incomingPhoneNumberId,
+        phone: input.phone,
+        incomingMessageId: input.incomingMessageId,
+        reason: 'Fallo técnico procesando un audio.',
+        summary:
+          'El cliente envió un audio y el procesamiento automático no pudo completarse. Un asesor debe continuar desde el último mensaje.',
+        notifyCustomer: !replySentToCustomer,
+      });
     }
   }
 
