@@ -3130,30 +3130,14 @@ export class WhatsappWebhookController {
     } catch (error) {
       console.error('No se pudo procesar la conversación:', error);
 
-      try {
-        const fallbackIntegration =
-          await this.companyIntegrationService.findActiveIntegrationByExternalId(
-            'meta',
-            'whatsapp',
-            input.incomingPhoneNumberId,
-          );
-
-        const canSendFallback =
-          this.isCurrentInboundMessage(
-            `${input.incomingPhoneNumberId}:${input.phone}`,
-            input.incomingMessageId,
-          );
-
-        if (fallbackIntegration && canSendFallback) {
-          await this.whatsappMessagingService.sendText(
-            fallbackIntegration.companyId,
-            input.phone,
-            'Estamos revisando la información para ayudarte. Por favor intenta nuevamente en unos minutos.',
-          );
-        }
-      } catch (sendError) {
-        console.error('No se pudo enviar el mensaje de respaldo:', sendError);
-      }
+      await this.handoffUnhandledInboundFailure({
+        incomingPhoneNumberId: input.incomingPhoneNumberId,
+        phone: input.phone,
+        incomingMessageId: input.incomingMessageId,
+        reason: 'Fallo técnico procesando un mensaje de texto.',
+        summary:
+          'El procesamiento automático del último mensaje del cliente no pudo completarse. Un asesor debe continuar desde el último mensaje.',
+      });
     }
   }
 
