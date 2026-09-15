@@ -1,4 +1,4 @@
-import { CartService } from './cart.service';
+import { CartService, type CartLine } from './cart.service';
 import { CustomerOrderService } from './customer-order.service';
 import { CompanyCommerceService } from './company-commerce.service';
 import { type CompanyCommerceProduct } from './company-shopify.service';
@@ -45,6 +45,23 @@ type SelectedVariantSelection = SelectedVariant & {
 type VariantSelectionRequest = {
   optionValues: string[];
   quantity: number;
+};
+
+type VisualCartItemRequest = {
+  productUrl: string;
+  optionValues: string[];
+  quantity: number;
+};
+
+type VisualVariantCandidate = {
+  id: string;
+  legacyResourceId: string;
+  title: string;
+  price: string;
+  options: Array<{
+    name: string;
+    value: string;
+  }>;
 };
 
 @Injectable()
@@ -1881,10 +1898,15 @@ export class ChatAgentService {
       '- session.context.commercial_visual_references contiene las referencias visuales comerciales conservadas durante toda la conversación de venta activa, incluso si fueron enviadas en ráfagas diferentes o después de respuestas anteriores de la IA.',
       '- Usa commercial_visual_references para resolver frases como “los dos que te mandé”, “las cinco fotos”, “el primero”, “el anterior”, “también este” o referencias a productos mostrados anteriormente durante la misma compra.',
       '- Una nueva foto, una nueva búsqueda, una nueva ráfaga o una respuesta de la IA no eliminan commercial_visual_references.',
-      '- Si una referencia anterior tiene matched_product.url y el cliente decide comprar o configurar ese producto, usa select_product_by_url antes de consultar variantes o agregarlo al carrito.',
+      '- Si una referencia anterior tiene matched_product.url y el cliente decide comprar o configurar un solo producto, usa select_product_by_url antes de consultar variantes o agregarlo al carrito.',
       '- commercial_visual_references son referencias comerciales, no productos del carrito. Nunca asumas que fueron agregadas hasta que una herramienta de carrito lo confirme.',
       '- Una ráfaga visual no agrega productos automáticamente al carrito. Solo ejecuta acciones de compra cuando la intención del cliente sea explícita y las variantes necesarias estén realmente resueltas.',
-      '- Si last_visual_reference.match_type es exact y matched_product existe, esa referencia ya fue validada contra el catálogo real y quedó seleccionada. Usa get_selected_product para consultar precio y variantes reales.',
+      '- Cuando el cliente pida explícitamente comprar dos o más referencias visuales, usa add_visual_products_to_cart en una sola operación únicamente cuando todas las referencias que forman parte de ese pedido tengan match_type exact.',
+      '- Si dentro del conjunto que el cliente pidió comprar existe siquiera una referencia con match_type similar o none, no agregues todavía ninguna de las referencias de ese conjunto al carrito. Conserva las exactas y pide una sola aclaración breve únicamente por las referencias no resueltas.',
+      '- Para add_visual_products_to_cart incluye todas las referencias visuales que el cliente pidió comprar en ese conjunto y usa exclusivamente su matched_product.url cuando match_type sea exact. Nunca omitas silenciosamente una referencia solicitada ni uses candidates como productos confirmados.',
+      '- En cada item de add_visual_products_to_cart envía únicamente talla, color, medida u otras opciones realmente visibles o confirmadas por el cliente. Si una opción necesaria no está resuelta, envía option_values vacío o solo los valores conocidos; la herramienta validará si falta información.',
+      '- add_visual_products_to_cart es atómica: si alguna referencia no puede resolverse a una variante única, el carrito no cambia. Pide una sola aclaración breve únicamente por los productos indicados en unresolved y después vuelve a ejecutar el lote completo.',
+      '- Si last_visual_reference.match_type es exact y matched_product existe, esa referencia fue validada contra el catálogo real, pero no significa que selectedProduct ya esté cargado. Para un solo producto usa select_product_by_url antes de consultar sus variantes.',
       '- Si match_type es similar, no afirmes que encontraste la referencia exacta. Presenta como máximo las opciones reales incluidas en candidates y pregunta cuál corresponde.',
       '- Si match_type es none, explica brevemente que no pudiste confirmar la referencia exacta y ofrece buscar por nombre, enlace o categoría.',
       '- Nunca inventes un enlace ni presentes como disponible un producto externo que no exista en el catálogo de la empresa activa.',
@@ -2846,6 +2868,50 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 },
 {
   type: 'function',
+  name: 'add_visual_products_to_cart',
+  description:
+    'Agrega en una sola operación dos o más productos provenientes de referencias visuales exactas que el cliente pidió comprar. Usa únicamente matched_product.url con match_type exact. Valida cada producto y variante contra el catálogo real. Si falta una variante o alguna referencia no es exacta, no modifica el carrito y devuelve únicamente lo que falta aclarar.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      items: {
+        type: 'array',
+        minItems: 2,
+        maxItems: 10,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            product_url: {
+              type: 'string',
+              description:
+                'URL real tomada de matched_product.url de una referencia visual exacta.',
+            },
+            option_values: {
+              type: 'array',
+              description:
+                'Valores de variante confirmados o claramente visibles para este producto, por ejemplo Negro y M. Usa arreglo vacío si no hay opciones conocidas.',
+              items: {
+                type: 'string',
+              },
+            },
+            quantity: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 99,
+            },
+          },
+          required: ['product_url', 'option_values', 'quantity'],
+        },
+      },
+    },
+    required: ['items'],
+  },
+},
+{
+  type: 'function',
   name: 'replace_cart_line_variant',
   description:
     'Reemplaza una línea existente del carrito por la variante ya seleccionada. Úsala solo para un cambio confirmado de talla, color o variante de un producto que ya está en el carrito. No la uses para agregar un producto nuevo.',
@@ -3095,6 +3161,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         'get_selected_product',
         'select_variant',
         'add_selected_variant_to_cart',
+        'add_visual_products_to_cart',
         'replace_cart_line_variant',
         'set_cart_line_quantity',
         'remove_cart_line',
@@ -3159,6 +3226,27 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           session,
           this.readVariantSelections(args),
         );
+      }
+
+      if (name === 'add_visual_products_to_cart') {
+        const currentSession =
+          await this.conversationMemoryService.getSessionById(session.id);
+
+        const result = await this.addVisualProductsToCart(
+          currentSession,
+          this.readVisualCartItems(args),
+        );
+
+        if (
+          result &&
+          typeof result === 'object' &&
+          !Array.isArray(result) &&
+          (result as { ok?: unknown }).ok === true
+        ) {
+          await this.invalidateSaleContextAfterCartChange(currentSession);
+        }
+
+        return this.enrichCartToolResult(currentSession, result);
       }
 
       if (name === 'add_selected_variant_to_cart') {
@@ -3608,6 +3696,384 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           options: node.selectedOptions,
         })),
       })),
+    };
+  }
+
+  private visualProductKey(url: string): string {
+    const cleanUrl = url.trim();
+
+    if (!cleanUrl) {
+      return '';
+    }
+
+    try {
+      const parsed = new URL(cleanUrl);
+      const protocol = parsed.protocol.toLowerCase();
+      const host = parsed.host.toLowerCase();
+      const pathname =
+        parsed.pathname.replace(/\/+$/, '').toLowerCase() || '/';
+
+      return `url:${protocol}//${host}${pathname}`;
+    } catch {
+      return `url:${cleanUrl
+        .split(/[?#]/, 1)[0]
+        .replace(/\/+$/, '')
+        .toLowerCase()}`;
+    }
+  }
+
+  private readExactVisualProductKeys(context: JsonObject): Set<string> {
+    const references: Array<Record<string, unknown>> = [];
+
+    const appendReference = (value: unknown) => {
+      if (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value)
+      ) {
+        references.push(value as Record<string, unknown>);
+      }
+    };
+
+    const appendReferences = (value: unknown) => {
+      if (!Array.isArray(value)) {
+        return;
+      }
+
+      for (const item of value) {
+        appendReference(item);
+      }
+    };
+
+    appendReference(context.last_visual_reference);
+    appendReferences(context.commercial_visual_references);
+
+    const burst =
+      context.visual_reference_burst &&
+      typeof context.visual_reference_burst === 'object' &&
+      !Array.isArray(context.visual_reference_burst)
+        ? context.visual_reference_burst as Record<string, unknown>
+        : null;
+
+    appendReferences(burst?.references);
+
+    const keys = new Set<string>();
+
+    for (const reference of references) {
+      if (reference.match_type !== 'exact') {
+        continue;
+      }
+
+      const matchedProduct =
+        reference.matched_product &&
+        typeof reference.matched_product === 'object' &&
+        !Array.isArray(reference.matched_product)
+          ? reference.matched_product as Record<string, unknown>
+          : null;
+
+      const url =
+        matchedProduct && typeof matchedProduct.url === 'string'
+          ? matchedProduct.url.trim()
+          : '';
+
+      const key = this.visualProductKey(url);
+
+      if (key) {
+        keys.add(key);
+      }
+    }
+
+    return keys;
+  }
+
+  private customerVisibleVariantOptions(
+    options: Array<{ name: string; value: string }>,
+  ): Array<{ name: string; value: string }> {
+    return options
+      .filter((option) => {
+        const name = this.normalizeText(option.name);
+        const value = this.normalizeText(option.value);
+
+        if (!name || !value) {
+          return false;
+        }
+
+        if (
+          value === 'default title' ||
+          (name === 'title' && value === 'default title')
+        ) {
+          return false;
+        }
+
+        return true;
+      })
+      .map((option) => ({
+        name: option.name,
+        value: option.value,
+      }));
+  }
+
+  private summarizeVisualVariantOptions(
+    variants: VisualVariantCandidate[],
+  ): Array<{
+    name: string;
+    values: string[];
+  }> {
+    const options = new Map<string, Set<string>>();
+
+    for (const variant of variants) {
+      for (const option of this.customerVisibleVariantOptions(
+        variant.options,
+      )) {
+        if (!options.has(option.name)) {
+          options.set(option.name, new Set<string>());
+        }
+
+        options.get(option.name)?.add(option.value);
+      }
+    }
+
+    return Array.from(options.entries()).map(([name, values]) => ({
+      name,
+      values: Array.from(values),
+    }));
+  }
+
+  private resolveVisualVariant(
+    variants: VisualVariantCandidate[],
+    requestedOptionValues: string[],
+  ): {
+    variant: VisualVariantCandidate | null;
+    reason: string;
+  } {
+    if (!variants.length) {
+      return {
+        variant: null,
+        reason: 'product_without_sellable_variants',
+      };
+    }
+
+    const requestedValues = Array.from(
+      new Set(
+        requestedOptionValues
+          .map((value) => this.normalizeText(value))
+          .filter(Boolean),
+      ),
+    );
+
+    if (!requestedValues.length) {
+      if (variants.length === 1) {
+        return {
+          variant: variants[0],
+          reason: 'single_variant',
+        };
+      }
+
+      return {
+        variant: null,
+        reason: 'missing_variant_options',
+      };
+    }
+
+    const matches = variants.filter((variant) =>
+      requestedValues.every((requestedValue) =>
+        variant.options.some(
+          (option) =>
+            this.normalizeText(option.value) === requestedValue,
+        ),
+      ),
+    );
+
+    if (matches.length === 1) {
+      return {
+        variant: matches[0],
+        reason: 'exact_variant',
+      };
+    }
+
+    if (!matches.length) {
+      return {
+        variant: null,
+        reason: 'variant_options_not_found',
+      };
+    }
+
+    return {
+      variant: null,
+      reason: 'variant_options_incomplete',
+    };
+  }
+
+  private async addVisualProductsToCart(
+    session: ConversationSession,
+    items: VisualCartItemRequest[],
+  ) {
+    if (items.length < 2) {
+      return {
+        ok: false,
+        cart_unchanged: true,
+        error:
+          'Se requieren al menos dos referencias visuales válidas para usar el agregado multiproducto.',
+      };
+    }
+
+    const exactVisualKeys =
+      this.readExactVisualProductKeys(session.context);
+
+    const usesCompanyCommerce =
+      await this.usesCompanyCommerce(session);
+
+    const lines: CartLine[] = [];
+    const unresolved: Array<Record<string, unknown>> = [];
+
+    for (const item of items.slice(0, 10)) {
+      const visualKey = this.visualProductKey(item.productUrl);
+
+      if (!visualKey || !exactVisualKeys.has(visualKey)) {
+        unresolved.push({
+          product_url: item.productUrl,
+          reason: 'visual_reference_not_exact',
+          requested_options: item.optionValues,
+        });
+        continue;
+      }
+
+      let productId = '';
+      let productTitle = '';
+      let productUrl = item.productUrl;
+      let variants: VisualVariantCandidate[] = [];
+
+      if (usesCompanyCommerce) {
+        const handle = this.getHandleFromProductUrl(item.productUrl);
+
+        if (!handle) {
+          unresolved.push({
+            product_url: item.productUrl,
+            reason: 'invalid_product_url',
+            requested_options: item.optionValues,
+          });
+          continue;
+        }
+
+        const product =
+          await this.companyCommerceService.getProductByHandle(
+            session.companyId,
+            handle,
+          );
+
+        if (!product) {
+          unresolved.push({
+            product_url: item.productUrl,
+            reason: 'product_not_available',
+            requested_options: item.optionValues,
+          });
+          continue;
+        }
+
+        productId = product.id;
+        productTitle = product.title;
+        productUrl = product.onlineStoreUrl || item.productUrl;
+        variants = product.variants.map((variant) => ({
+          id: variant.id,
+          legacyResourceId: variant.legacyResourceId,
+          title: variant.title,
+          price: variant.price,
+          options: variant.options.map((option) => ({ ...option })),
+        }));
+      } else {
+        const product =
+          await this.shopifyService.getProductFromUrl(item.productUrl);
+
+        if (!product) {
+          unresolved.push({
+            product_url: item.productUrl,
+            reason: 'product_not_available',
+            requested_options: item.optionValues,
+          });
+          continue;
+        }
+
+        productId = product.id;
+        productTitle = product.title;
+        productUrl = product.onlineStoreUrl || item.productUrl;
+        variants = product.variants.edges.map(({ node }) => ({
+          id: node.id,
+          legacyResourceId: node.legacyResourceId,
+          title: node.title,
+          price: node.price,
+          options: node.selectedOptions.map((option) => ({ ...option })),
+        }));
+      }
+
+      const resolution = this.resolveVisualVariant(
+        variants,
+        item.optionValues,
+      );
+
+      if (!resolution.variant) {
+        unresolved.push({
+          product_title: productTitle,
+          product_url: productUrl,
+          reason: resolution.reason,
+          requested_options: item.optionValues,
+          available_options:
+            this.summarizeVisualVariantOptions(variants),
+        });
+        continue;
+      }
+
+      const variant = resolution.variant;
+      const customerOptions =
+        this.customerVisibleVariantOptions(variant.options);
+
+      lines.push({
+        productId,
+        productTitle,
+        productUrl,
+        variantId: variant.id,
+        variantLegacyId: variant.legacyResourceId,
+        variantTitle:
+          this.normalizeText(variant.title) === 'default title'
+            ? ''
+            : variant.title,
+        unitPrice: variant.price,
+        options: customerOptions,
+        quantity: item.quantity,
+      });
+    }
+
+    if (unresolved.length) {
+      return {
+        ok: false,
+        cart_unchanged: true,
+        next_action: 'clarify_unresolved_visual_products',
+        resolved_not_added: lines.map((line) => ({
+          product_title: line.productTitle,
+          product_url: line.productUrl,
+          options: line.options,
+          quantity: line.quantity,
+        })),
+        unresolved,
+      };
+    }
+
+    if (lines.length !== items.length) {
+      return {
+        ok: false,
+        cart_unchanged: true,
+        error:
+          'No se pudieron resolver todas las referencias visuales del lote.',
+      };
+    }
+
+    const result = await this.cartService.addCartLines(
+      session,
+      lines,
+    );
+
+    return {
+      ...result,
+      visual_batch_count: lines.length,
     };
   }
 
@@ -4361,6 +4827,63 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       price: variant.price,
       options,
     };
+  }
+
+  private readVisualCartItems(
+    args: JsonObject,
+  ): VisualCartItemRequest[] {
+    const value = args.items;
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const items: VisualCartItemRequest[] = [];
+
+    for (const item of value.slice(0, 10)) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return [];
+      }
+
+      const raw = item as Record<string, unknown>;
+      const productUrl =
+        typeof raw.product_url === 'string'
+          ? raw.product_url.trim()
+          : '';
+
+      const optionValues = Array.isArray(raw.option_values)
+        ? Array.from(
+            new Set(
+              raw.option_values
+                .filter(
+                  (option): option is string =>
+                    typeof option === 'string' &&
+                    option.trim().length > 0,
+                )
+                .map((option) => option.trim()),
+            ),
+          )
+        : [];
+
+      const quantity = Number(raw.quantity);
+
+      if (
+        !productUrl ||
+        !Number.isInteger(quantity) ||
+        quantity < 1 ||
+        quantity > 99
+      ) {
+        return [];
+      }
+
+      items.push({
+        productUrl,
+        optionValues,
+        quantity,
+      });
+    }
+
+    return items;
   }
 
   private readVariantSelections(
