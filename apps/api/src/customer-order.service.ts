@@ -102,16 +102,27 @@ export class CustomerOrderService {
     }
 
     let matchesByIdentifier: OrderLookupResult[][] = [];
+    const discoveredOrders = new Map<string, OrderLookupResult>();
 
     try {
-      // Los identificadores se consultan en paralelo para reducir
-      // el tiempo de respuesta sin disminuir la seguridad.
+      // Consultamos cada identificador por separado para conservar
+      // la barrera de privacidad.
+      //
+      // Además guardamos los pedidos descubiertos por cualquiera de
+      // los identificadores. Esto permite validar localmente un segundo
+      // dato visible en el pedido aunque Shopify no encuentre ese mismo
+      // pedido mediante otra representación del dato, por ejemplo un
+      // teléfono local frente al teléfono con prefijo internacional.
       matchesByIdentifier = await Promise.all(
         identifierInputs.map(async (identifier) => {
           const providerOrders = await this.lookupFromProvider(
             companyId,
             identifier.input,
           );
+
+          for (const order of providerOrders) {
+            discoveredOrders.set(String(order.id), order);
+          }
 
           return providerOrders.filter((order) =>
             this.matchesLookupIdentifier(order, identifier.input),
@@ -126,6 +137,36 @@ export class CustomerOrderService {
         error:
           'No pude consultar el pedido en este momento. No muestres información de ningún pedido.',
       };
+    }
+
+    // Cruce seguro adicional:
+    // un pedido encontrado por correo, número de pedido o teléfono puede
+    // demostrar otro identificador SOLO cuando ese dato está realmente
+    // visible dentro del pedido y coincide.
+    //
+    // Nunca asumimos coincidencia si el dato está oculto.
+    for (let index = 0; index < identifierInputs.length; index += 1) {
+      const identifier = identifierInputs[index];
+      const verifiedById = new Map<string, OrderLookupResult>();
+
+      for (const order of matchesByIdentifier[index] ?? []) {
+        verifiedById.set(String(order.id), order);
+      }
+
+      for (const order of discoveredOrders.values()) {
+        if (
+          this.matchesLookupIdentifierStrictly(
+            order,
+            identifier.input,
+          )
+        ) {
+          verifiedById.set(String(order.id), order);
+        }
+      }
+
+      matchesByIdentifier[index] = Array.from(
+        verifiedById.values(),
+      );
     }
 
     const matchesFor = (
@@ -356,6 +397,57 @@ export class CustomerOrderService {
       // Si el dato protegido está oculto, conservamos el pedido encontrado.
       if (!actualEmail) {
         return true;
+      }
+
+      return actualEmail === requestedEmail;
+    }
+
+    return false;
+  }
+
+  private matchesLookupIdentifierStrictly(
+    order: OrderLookupResult,
+    input: OrderLookupInput,
+  ): boolean {
+    const requestedReference = this.normalizeOrderReference(
+      input.orderReference,
+    );
+
+    if (requestedReference) {
+      const actualReference = this.normalizeOrderReference(order.name);
+      return actualReference === requestedReference;
+    }
+
+    const requestedPhone = this.normalizePhone(input.phone);
+
+    if (requestedPhone) {
+      const phones = [
+        order.customer?.phone,
+        order.shippingAddress?.phone,
+      ]
+        .map((value) => this.normalizePhone(value))
+        .filter(Boolean);
+
+      // En validación cruzada un dato ausente nunca cuenta como válido.
+      if (!phones.length) {
+        return false;
+      }
+
+      return phones.some((phone) =>
+        this.samePhone(phone, requestedPhone),
+      );
+    }
+
+    const requestedEmail = this.clean(input.email).toLowerCase();
+
+    if (requestedEmail) {
+      const actualEmail = this.clean(
+        order.customer?.email,
+      ).toLowerCase();
+
+      // En validación cruzada un dato oculto tampoco cuenta como válido.
+      if (!actualEmail) {
+        return false;
       }
 
       return actualEmail === requestedEmail;
