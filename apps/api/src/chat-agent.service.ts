@@ -1569,42 +1569,447 @@ export class ChatAgentService {
       : '';
   }
 
+  private clearResolvedShipping(next: JsonObject): void {
+    delete next.shipping_cost_cop;
+    delete next.shipping_quote_validated;
+    delete next.shipping_quote_source;
+    delete next.shipping_quote_evidence;
+    delete next.shipping_quote_products_total_cop;
+    delete next.shipping_quote_city;
+    delete next.shipping_quote_payment_method;
+    delete next.shipping_quote_delivery_method;
+    delete next.shipping_quote_free_threshold_cop;
+    delete next.shipping_quote_resolved_at;
+    delete next.shipping_deferred_to_checkout;
+  }
+
+  private extractCopAmounts(text: string): number[] {
+    const patterns = [
+      /\$\s*\d[\d.\s]*(?:,\d{1,2})?/gi,
+      /\b(?:cop|pesos?)\s*:?\s*\$?\s*\d[\d.\s]*(?:,\d{1,2})?/gi,
+      /\d[\d.\s]*(?:,\d{1,2})?\s*(?:cop|pesos?)\b/gi,
+      /\b(?:costo|valor|tarifa)(?:\s+de\s+env[ií]o)?\s*(?:es|de|:)?\s*\$?\s*\d[\d.\s]*(?:,\d{1,2})?/gi,
+      /\b(?:gratis|sin\s+costo|sin\s+cobro)[^.\n]{0,50}(?:desde|a\s+partir\s+de|superior(?:es)?\s+a)\s*\$?\s*\d[\d.\s]*(?:,\d{1,2})?/gi,
+      /\d[\d.\s]*(?:,\d{1,2})?[^.\n]{0,50}(?:env[ií]o\s+gratis|sin\s+costo\s+de\s+env[ií]o)/gi,
+      /\b(?:costo|valor|tarifa)(?:\s+de\s+env[ií]o)?\s*(?:es|de|:)?\s*0\b/gi,
+    ];
+
+    const matches = patterns.flatMap(
+      (pattern) => text.match(pattern) ?? [],
+    );
+
+    const values = matches
+      .map((value) => this.normalizeCopAmount(value))
+      .filter(Boolean)
+      .map((value) => Number(value))
+      .filter(
+        (value) =>
+          Number.isFinite(value) &&
+          value >= 0,
+      );
+
+    return Array.from(new Set(values));
+  }
+
+  private async resolveShippingQuoteForSession(
+    session: ConversationSession,
+  ): Promise<ConversationSession> {
+    const currentSession =
+      await this.conversationMemoryService.getSessionById(session.id);
+
+    const saleContext: JsonObject = {
+      ...this.readSaleContext(currentSession.context),
+    };
+
+    this.clearResolvedShipping(saleContext);
+
+    const persist = async () =>
+      this.conversationMemoryService.updateSession(
+        currentSession.id,
+        {
+          context: {
+            ...currentSession.context,
+            sale_context: saleContext,
+          },
+        },
+      );
+
+    const cartResult = await this.cartService.getCart(currentSession);
+    const cartOutput =
+      cartResult &&
+      typeof cartResult === 'object' &&
+      !Array.isArray(cartResult)
+        ? cartResult as JsonObject
+        : {};
+
+    const cart =
+      cartOutput.cart &&
+      typeof cartOutput.cart === 'object' &&
+      !Array.isArray(cartOutput.cart)
+        ? cartOutput.cart as JsonObject
+        : null;
+
+    const productsTotal =
+      cart &&
+      (typeof cart.products_total_cop === 'string' ||
+        typeof cart.products_total_cop === 'number')
+        ? Number(cart.products_total_cop)
+        : NaN;
+
+    if (!Number.isFinite(productsTotal) || productsTotal < 0) {
+      saleContext.shipping_resolution_status = 'waiting_for_cart';
+      saleContext.shipping_resolution_reason =
+        'Hace falta un carrito válido para calcular el envío.';
+      return persist();
+    }
+
+    let profile: CompanyProfile;
+
+    try {
+      profile =
+        await this.conversationMemoryService.getCompanyProfileById(
+          currentSession.companyId,
+        );
+    } catch {
+      saleContext.shipping_resolution_status = 'unavailable';
+      saleContext.shipping_resolution_reason =
+        'No se pudo cargar la configuración de la empresa activa.';
+      return persist();
+    }
+
+    const commercialFlow =
+      profile.settings.commercial_flow &&
+      typeof profile.settings.commercial_flow === 'object' &&
+      !Array.isArray(profile.settings.commercial_flow)
+        ? profile.settings.commercial_flow as JsonObject
+        : {};
+
+    const sectionKeys = [
+      'sales_instructions',
+      'shipping_instructions',
+      'payment_instructions',
+      'checkout_instructions',
+    ] as const;
+
+    const sections: Record<string, string> = {};
+
+    for (const key of sectionKeys) {
+      const value = commercialFlow[key];
+
+      if (typeof value === 'string' && value.trim()) {
+        sections[key] = value.trim();
+      }
+    }
+
+    if (!Object.keys(sections).length) {
+      saleContext.shipping_resolution_status = 'not_configured';
+      saleContext.shipping_resolution_reason =
+        'La empresa activa no tiene reglas comerciales de envío configuradas.';
+      return persist();
+    }
+
+    const city =
+      typeof saleContext.city === 'string'
+        ? saleContext.city.trim()
+        : '';
+
+    const paymentMethod =
+      typeof saleContext.payment_method === 'string'
+        ? saleContext.payment_method.trim()
+        : '';
+
+    const configuredDeliveryMethod =
+      typeof saleContext.delivery_method === 'string'
+        ? saleContext.delivery_method.trim().toLowerCase()
+        : '';
+
+    const deliveryMethod =
+      configuredDeliveryMethod === 'pickup' ||
+      configuredDeliveryMethod === 'shipping'
+        ? configuredDeliveryMethod
+        : '';
+
+    try {
+      const response = await this.getClient().responses.create({
+        model: this.getModel(),
+        instructions: [
+          'Eres un resolvedor interno de reglas comerciales de una plataforma multiempresa.',
+          'No hablas con el cliente y no inventas políticas.',
+          'Tu única fuente permitida son las secciones de configuración entregadas en instruction_sections.',
+          'Debes determinar el costo de envío aplicable al carrito actual usando subtotal, ciudad, medio de pago y método de entrega cuando esas variables sean necesarias.',
+          'Si una regla depende de un dato ausente, devuelve needs_city, needs_payment o needs_delivery_method.',
+          'Si la empresa indica explícitamente que el envío se calcula o confirma dentro del checkout, devuelve defer_to_checkout.',
+          'Si no existe una regla suficiente para determinarlo, devuelve not_configured o ambiguous. Nunca completes vacíos con conocimiento general.',
+          'Para status=resolved, rule_evidence debe ser una copia literal y breve del fragmento de configuración que respalda el cálculo.',
+          'source_key debe indicar exactamente de cuál sección salió rule_evidence.',
+          'Un costo positivo solo puede salir de un valor monetario explícito presente en rule_evidence.',
+          'shipping_cost_cop=0 solo es válido cuando rule_evidence diga explícitamente gratis, sin costo, sin cobro, costo cero o un valor 0.',
+          'Si aplicas envío gratis por monto mínimo, coloca ese monto en free_shipping_threshold_cop.',
+          'No confundas tiempos de entrega, porcentajes, cantidades, horarios o días con costos de envío.',
+          'Devuelve únicamente JSON válido, sin markdown, con esta estructura exacta:',
+          '{"status":"resolved|defer_to_checkout|needs_city|needs_payment|needs_delivery_method|not_configured|ambiguous","shipping_cost_cop":"","free_shipping_threshold_cop":"","source_key":"","rule_evidence":"","reason":""}',
+          'shipping_cost_cop y free_shipping_threshold_cop deben ser cadenas numéricas enteras en COP, sin símbolos, o cadena vacía.',
+          'reason debe ser breve y no contener razonamiento interno.',
+        ].join('\n'),
+        input: JSON.stringify({
+          products_total_cop: String(Math.round(productsTotal)),
+          city,
+          payment_method: paymentMethod,
+          delivery_method: deliveryMethod,
+          instruction_sections: sections,
+        }),
+      });
+
+      const raw = (response.output_text || '')
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '');
+
+      let parsed: Record<string, unknown>;
+
+      try {
+        const value = JSON.parse(raw) as unknown;
+
+        parsed =
+          value &&
+          typeof value === 'object' &&
+          !Array.isArray(value)
+            ? value as Record<string, unknown>
+            : {};
+      } catch {
+        parsed = {};
+      }
+
+      const allowedStatuses = new Set([
+        'resolved',
+        'defer_to_checkout',
+        'needs_city',
+        'needs_payment',
+        'needs_delivery_method',
+        'not_configured',
+        'ambiguous',
+      ]);
+
+      const status =
+        typeof parsed.status === 'string' &&
+        allowedStatuses.has(parsed.status)
+          ? parsed.status
+          : 'ambiguous';
+
+      const reason =
+        typeof parsed.reason === 'string'
+          ? parsed.reason.trim().slice(0, 240)
+          : '';
+
+      saleContext.shipping_resolution_status = status;
+      saleContext.shipping_resolution_reason =
+        reason || 'No se pudo determinar una tarifa de envío válida.';
+
+      if (
+        status !== 'resolved' &&
+        status !== 'defer_to_checkout'
+      ) {
+        return persist();
+      }
+
+      const sourceKey =
+        typeof parsed.source_key === 'string'
+          ? parsed.source_key.trim()
+          : '';
+
+      const evidence =
+        typeof parsed.rule_evidence === 'string'
+          ? parsed.rule_evidence.trim()
+          : '';
+
+      const sourceText = sections[sourceKey] || '';
+
+      if (
+        !sourceText ||
+        !evidence ||
+        !this.normalizeText(sourceText).includes(
+          this.normalizeText(evidence),
+        )
+      ) {
+        saleContext.shipping_resolution_status = 'ambiguous';
+        saleContext.shipping_resolution_reason =
+          'La regla de envío no pudo validarse contra la configuración real de la empresa.';
+        return persist();
+      }
+
+      if (status === 'defer_to_checkout') {
+        saleContext.shipping_deferred_to_checkout = true;
+        saleContext.shipping_quote_source = sourceKey;
+        saleContext.shipping_quote_evidence = evidence;
+        saleContext.shipping_quote_products_total_cop =
+          String(Math.round(productsTotal));
+        saleContext.shipping_quote_city = city;
+        saleContext.shipping_quote_payment_method = paymentMethod;
+        saleContext.shipping_quote_delivery_method = deliveryMethod;
+        saleContext.shipping_quote_resolved_at =
+          new Date().toISOString();
+
+        return persist();
+      }
+
+      const shippingText =
+        this.normalizeCopAmount(parsed.shipping_cost_cop);
+
+      const shippingCost =
+        shippingText !== ''
+          ? Number(shippingText)
+          : NaN;
+
+      if (!Number.isFinite(shippingCost) || shippingCost < 0) {
+        saleContext.shipping_resolution_status = 'ambiguous';
+        saleContext.shipping_resolution_reason =
+          'La configuración no produjo un costo de envío numérico válido.';
+        return persist();
+      }
+
+      const evidenceAmounts = this.extractCopAmounts(evidence);
+      const normalizedEvidence = this.normalizeText(evidence);
+      const explicitFree =
+        normalizedEvidence.includes('gratis') ||
+        normalizedEvidence.includes('sin costo') ||
+        normalizedEvidence.includes('sin cobro') ||
+        normalizedEvidence.includes('costo cero');
+
+      const thresholdText =
+        this.normalizeCopAmount(
+          parsed.free_shipping_threshold_cop,
+        );
+
+      const freeThreshold =
+        thresholdText !== ''
+          ? Number(thresholdText)
+          : NaN;
+
+      if (shippingCost === 0) {
+        if (!explicitFree && !evidenceAmounts.includes(0)) {
+          saleContext.shipping_resolution_status = 'ambiguous';
+          saleContext.shipping_resolution_reason =
+            'No existe evidencia explícita de envío sin costo.';
+          return persist();
+        }
+
+        if (Number.isFinite(freeThreshold) && freeThreshold > 0) {
+          if (
+            !evidenceAmounts.includes(freeThreshold) ||
+            productsTotal < freeThreshold
+          ) {
+            saleContext.shipping_resolution_status = 'ambiguous';
+            saleContext.shipping_resolution_reason =
+              'El carrito no cumple una condición validada de envío gratis.';
+            return persist();
+          }
+        }
+      } else {
+        if (!evidenceAmounts.includes(shippingCost)) {
+          saleContext.shipping_resolution_status = 'ambiguous';
+          saleContext.shipping_resolution_reason =
+            'El costo calculado no aparece explícitamente en la regla configurada.';
+          return persist();
+        }
+
+        if (
+          Number.isFinite(freeThreshold) &&
+          freeThreshold > 0 &&
+          productsTotal >= freeThreshold
+        ) {
+          saleContext.shipping_resolution_status = 'ambiguous';
+          saleContext.shipping_resolution_reason =
+            'La tarifa calculada contradice el umbral configurado de envío gratis.';
+          return persist();
+        }
+      }
+
+      saleContext.shipping_cost_cop =
+        String(Math.round(shippingCost));
+      saleContext.shipping_quote_validated = true;
+      saleContext.shipping_quote_source = sourceKey;
+      saleContext.shipping_quote_evidence = evidence;
+      saleContext.shipping_quote_products_total_cop =
+        String(Math.round(productsTotal));
+      saleContext.shipping_quote_city = city;
+      saleContext.shipping_quote_payment_method = paymentMethod;
+      saleContext.shipping_quote_delivery_method = deliveryMethod;
+
+      if (
+        Number.isFinite(freeThreshold) &&
+        freeThreshold > 0
+      ) {
+        saleContext.shipping_quote_free_threshold_cop =
+          String(Math.round(freeThreshold));
+      }
+
+      saleContext.shipping_quote_resolved_at =
+        new Date().toISOString();
+
+      return persist();
+    } catch (error) {
+      console.error(
+        '[ChatPro][shipping] No se pudo resolver la tarifa configurada:',
+        error,
+      );
+
+      this.clearResolvedShipping(saleContext);
+      saleContext.shipping_resolution_status = 'unavailable';
+      saleContext.shipping_resolution_reason =
+        'No fue posible validar la tarifa de envío en este momento.';
+
+      return persist();
+    }
+  }
+
   private async rememberSaleContext(
     session: ConversationSession,
     args: JsonObject,
   ) {
     const currentSession =
       await this.conversationMemoryService.getSessionById(session.id);
+
     const existing =
       this.readSaleContext(currentSession.context);
+
     const city =
       typeof args.city === 'string'
         ? args.city.trim().slice(0, 120)
         : '';
+
     const paymentMethod =
       typeof args.payment_method === 'string'
         ? args.payment_method.trim().slice(0, 120)
         : '';
-    const shippingCost =
-      this.normalizeCopAmount(args.shipping_cost_cop);
-    const hasShippingCost = shippingCost !== '';
+
+    const rawDeliveryMethod =
+      typeof args.delivery_method === 'string'
+        ? args.delivery_method.trim().toLowerCase()
+        : '';
+
+    const deliveryMethod =
+      rawDeliveryMethod === 'shipping' ||
+      rawDeliveryMethod === 'pickup'
+        ? rawDeliveryMethod
+        : '';
+
     const next: JsonObject = { ...existing };
+    let shippingInputsChanged = false;
 
     if (city) {
       const previousCity =
         typeof existing.city === 'string'
           ? this.normalizeText(existing.city)
           : '';
+
       const cityChanged =
         Boolean(previousCity) &&
         previousCity !== this.normalizeText(city);
 
       next.city = city;
 
-      if (cityChanged && !hasShippingCost) {
-        delete next.shipping_cost_cop;
-        next.payment_instructions_sent = false;
-        next.checkout_instructions_sent = false;
+      if (cityChanged) {
+        shippingInputsChanged = true;
       }
     }
 
@@ -1613,6 +2018,7 @@ export class ChatAgentService {
         typeof existing.payment_method === 'string'
           ? this.normalizeText(existing.payment_method)
           : '';
+
       const paymentChanged =
         Boolean(previousPayment) &&
         previousPayment !== this.normalizeText(paymentMethod);
@@ -1620,17 +2026,30 @@ export class ChatAgentService {
       next.payment_method = paymentMethod;
 
       if (paymentChanged) {
-        if (!hasShippingCost) {
-          delete next.shipping_cost_cop;
-        }
-
+        shippingInputsChanged = true;
         next.payment_instructions_sent = false;
         next.checkout_instructions_sent = false;
       }
     }
 
-    if (hasShippingCost) {
-      next.shipping_cost_cop = shippingCost;
+    if (deliveryMethod) {
+      const previousDeliveryMethod =
+        typeof existing.delivery_method === 'string'
+          ? existing.delivery_method.trim().toLowerCase()
+          : '';
+
+      if (
+        previousDeliveryMethod &&
+        previousDeliveryMethod !== deliveryMethod
+      ) {
+        shippingInputsChanged = true;
+      }
+
+      next.delivery_method = deliveryMethod;
+    }
+
+    if (shippingInputsChanged) {
+      this.clearResolvedShipping(next);
     }
 
     if (typeof args.cart_confirmation_requested === 'boolean') {
@@ -1669,9 +2088,12 @@ export class ChatAgentService {
         },
       );
 
+    const resolved =
+      await this.resolveShippingQuoteForSession(updated);
+
     return {
       ok: true,
-      sale_context: this.readSaleContext(updated.context),
+      sale_context: this.readSaleContext(resolved.context),
     };
   }
 
@@ -1690,6 +2112,7 @@ export class ChatAgentService {
   ): Promise<void> {
     const currentSession =
       await this.conversationMemoryService.getSessionById(session.id);
+
     const recoveryContext = currentSession.context.cart_recovery;
     const isRecoveryCart =
       Boolean(recoveryContext) &&
@@ -1702,6 +2125,7 @@ export class ChatAgentService {
 
     const existing =
       this.readSaleContext(currentSession.context);
+
     const next: JsonObject = {
       ...existing,
       cart_confirmation_requested: false,
@@ -1712,17 +2136,27 @@ export class ChatAgentService {
       updated_at: new Date().toISOString(),
     };
 
-    delete next.shipping_cost_cop;
+    this.clearResolvedShipping(next);
 
-    await this.conversationMemoryService.updateSession(
-      currentSession.id,
-      {
-        context: {
-          ...currentSession.context,
-          sale_context: next,
+    const updated =
+      await this.conversationMemoryService.updateSession(
+        currentSession.id,
+        {
+          context: {
+            ...currentSession.context,
+            sale_context: next,
+          },
         },
-      },
-    );
+      );
+
+    try {
+      await this.resolveShippingQuoteForSession(updated);
+    } catch (error) {
+      console.error(
+        '[ChatPro][shipping] No se pudo recalcular el envío después de cambiar el carrito:',
+        error,
+      );
+    }
   }
 
   private async enrichCartToolResult(
@@ -1739,42 +2173,68 @@ export class ChatAgentService {
 
     const currentSession =
       await this.conversationMemoryService.getSessionById(session.id);
+
     const saleContext =
       this.readSaleContext(currentSession.context);
+
     const output = { ...(result as JsonObject) };
+
     const cart =
       output.cart &&
       typeof output.cart === 'object' &&
       !Array.isArray(output.cart)
         ? output.cart as JsonObject
         : null;
+
     const productsTotal =
       cart &&
       (typeof cart.products_total_cop === 'string' ||
         typeof cart.products_total_cop === 'number')
         ? Number(cart.products_total_cop)
         : NaN;
+
     const shippingCost =
       typeof saleContext.shipping_cost_cop === 'string' ||
       typeof saleContext.shipping_cost_cop === 'number'
         ? Number(saleContext.shipping_cost_cop)
         : NaN;
 
+    const shippingValidated =
+      saleContext.shipping_quote_validated === true;
+
+    const shippingDeferred =
+      saleContext.shipping_deferred_to_checkout === true;
+
     output.sale_context = saleContext;
 
-    if (Number.isFinite(shippingCost)) {
-      output.shipping_cost_cop = String(
-        Math.round(shippingCost),
-      );
+    if (Number.isFinite(productsTotal)) {
+      output.products_subtotal_cop =
+        String(Math.round(productsTotal));
     }
 
     if (
-      Number.isFinite(productsTotal) &&
+      shippingValidated &&
       Number.isFinite(shippingCost)
     ) {
-      output.grand_total_cop = String(
-        Math.round(productsTotal + shippingCost),
-      );
+      output.shipping_cost_cop =
+        String(Math.round(shippingCost));
+
+      output.shipping_quote_validated = true;
+
+      if (Number.isFinite(productsTotal)) {
+        output.grand_total_cop = String(
+          Math.round(productsTotal + shippingCost),
+        );
+        output.total_source =
+          'cart_plus_validated_company_shipping';
+      }
+    } else {
+      delete output.shipping_cost_cop;
+      delete output.grand_total_cop;
+
+      if (shippingDeferred) {
+        output.shipping_deferred_to_checkout = true;
+      }
     }
 
     return output;
@@ -1937,21 +2397,27 @@ export class ChatAgentService {
       '- Cambiar el medio de pago no puede agregar, eliminar ni reemplazar productos. Conserva exactamente el carrito real y modifica únicamente pago, envío, promociones aplicables y total.',
         '- Si la persona corrige “solo quiero X” o “por qué me vas a cobrar todo”, acepta la corrección, deja solo los productos confirmados para la compra actual y vuelve a resumir el carrito.',
       '- session.context.sale_context conserva ciudad, costo de envío, medio de pago, confirmación del carrito y pasos enviados. Úsalo antes de volver a preguntar.',
-      '- Cuando la persona entregue o cambie ciudad o medio de pago, llama remember_sale_context.',
-      '- Antes de confirmar una tarifa, verifica la combinación real de empresa, ciudad, medio de pago y subtotal.',
-      '- Si todas las formas de pago tienen la misma tarifa para esa ciudad, informa el envío y pregunta cómo pagará.',
-      '- Si la tarifa cambia según el medio de pago, guarda la ciudad, no confirmes todavía un valor único y pregunta primero cómo pagará.',
-      '- Cuando seleccione el medio de pago, calcula y guarda la tarifa exacta correspondiente. El valor 0 significa envío gratis y es válido.',
-      '- Cuando el carrito cambie, vuelve a calcular envío y total. No reutilices una tarifa anterior.',
-      '- Presenta únicamente los medios habilitados para la ubicación y el pedido. “Pago antes del despacho” no es un medio de pago.',
+      '- Cuando la persona entregue o cambie ciudad, medio de pago o indique claramente envío a domicilio o recogida, llama remember_sale_context. delivery_method debe ser shipping o pickup únicamente cuando esa elección esté clara.',
+      '- Nunca calcules, inventes ni escribas por tu cuenta shipping_cost_cop. El backend valida la tarifa exclusivamente contra la configuración de la empresa activa y el subtotal real.',
+      '- Después de remember_sale_context o get_sale_context revisa shipping_resolution_status antes de hablar del costo de envío.',
+      '- Si shipping_resolution_status es needs_city, pide únicamente la ciudad. Si es needs_payment, pide únicamente el medio de pago. Si es needs_delivery_method, pregunta si desea envío o recogida.',
+      '- Si shipping_quote_validated es true, el shipping_cost_cop fue validado contra una regla real de la empresa. Solo entonces puedes afirmar ese valor.',
+      '- Solo puedes decir “envío gratis” cuando shipping_quote_validated sea true y shipping_cost_cop sea 0.',
+      '- Si shipping_deferred_to_checkout es true, explica únicamente que el costo de envío se calculará o confirmará en checkout según la regla configurada. No inventes un total final.',
+      '- Si el envío no está validado ni diferido al checkout, no llames “total final” al subtotal de productos y no inventes una tarifa.',
+      '- Antes de confirmar una tarifa usa siempre el carrito real. products_subtotal_cop corresponde al subtotal de productos; grand_total_cop solo existe cuando el envío fue validado.',
+      '- Si todas las formas de pago tienen la misma tarifa para esa ciudad, informa el envío validado y pregunta cómo pagará únicamente cuando el flujo configurado lo requiera.',
+      '- Si la tarifa depende del medio de pago y falta ese dato, conserva la ciudad y pregunta solo cómo pagará.',
+      '- Cuando el carrito cambie, la cotización anterior queda inválida y el backend vuelve a resolverla usando el subtotal nuevo.',
+      '- Presenta únicamente los medios habilitados por la configuración de la empresa. “Pago antes del despacho” no es un medio de pago.',
       '- Cuando seleccione un medio, habla únicamente de ese medio y usa get_cart antes de responder.',
-      '- No impongas una pregunta adicional antes del checkout. Sigue las instrucciones de checkout configuradas por la empresa y el estado real de la compra. Si la persona ya indicó claramente que desea finalizar y están completos los datos requeridos por el flujo configurado, continúa sin agregar pasos conversacionales no configurados.',
-      '- Cuando hagas esa pregunta, usa remember_sale_context con cart_confirmation_requested=true y cart_confirmed=false.',
-      '- Cuando confirme que no agregará más o que desea finalizar, usa remember_sale_context con cart_confirmed=true.',
-      '- Si agrega, elimina o cambia un producto, la confirmación anterior deja de ser válida. Recalcula el envío y presenta nuevamente el resumen.',
-      '- Antes del resumen final, guarda la tarifa correcta y usa get_cart. Muestra producto y variante, subtotal, envío y total general.',
-      '- No solicites por WhatsApp dirección ni teléfono cuando las instrucciones de la empresa indiquen que esos datos se completan en checkout. El nombre conversacional o nombre de pila sí puede preguntarse de forma natural cuando las instrucciones específicas de la empresa lo indiquen; no lo confundas con los datos formales de entrega o facturación.',
-      '- Usa create_checkout_link solo cuando ciudad, medio de pago, envío y carrito estén confirmados.',
+      '- No impongas una pregunta adicional antes del checkout. Sigue las instrucciones de checkout configuradas por la empresa y el estado real de la compra. Si la persona ya indicó claramente que desea finalizar, marca cart_confirmed=true sin inventar pasos adicionales.',
+      '- Cuando hagas una pregunta de confirmación configurada, usa remember_sale_context con cart_confirmation_requested=true y cart_confirmed=false.',
+      '- Cuando la persona confirme que no agregará más o pida finalizar, usa remember_sale_context con cart_confirmed=true.',
+      '- Si agrega, elimina o cambia un producto, la confirmación anterior deja de ser válida. Usa nuevamente el carrito real y el envío recalculado.',
+      '- Antes del resumen final usa get_cart. Muestra producto y variante, subtotal de productos, envío únicamente si está validado, y grand_total_cop únicamente cuando exista.',
+      '- No solicites por WhatsApp dirección ni teléfono cuando las instrucciones de la empresa indiquen que esos datos se completan en checkout. El nombre conversacional sí puede preguntarse si la configuración específica lo indica.',
+      '- Usa create_checkout_link únicamente después de que la persona haya pedido finalizar o el flujo configurado autorice hacerlo. La herramienta verificará el carrito y que el envío esté validado o explícitamente diferido al checkout.',
 
       '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para completar datos y finalizar. Nunca lo sustituyas por un cart_url.',
       '- Si sale_context.payment_instructions_sent es true, no vuelvas a enviar los mismos datos; pide únicamente el comprobante o el paso pendiente.',
@@ -3024,7 +3490,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'get_cart',
   description:
-    'Consulta el resumen, IDs, cantidades y total real del carrito.',
+    'Consulta productos, IDs, cantidades y subtotal real de productos del carrito. El total final solo existe cuando el envío esté validado.',
   strict: true,
   parameters: {
     type: 'object',
@@ -3037,7 +3503,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'remember_sale_context',
   description:
-    'Guarda ciudad, costo de envío, medio de pago, confirmación del carrito y pasos enviados. Úsala cada vez que uno de esos datos cambie.',
+    'Guarda ciudad, medio de pago, método de entrega, confirmación del carrito y pasos enviados. El costo de envío lo resuelve el backend usando la configuración de la empresa activa.',
   strict: true,
   parameters: {
     type: 'object',
@@ -3053,10 +3519,11 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         description:
           'Medio de pago elegido. Usa cadena vacía si no cambió.',
       },
-      shipping_cost_cop: {
+      delivery_method: {
         type: 'string',
+        enum: ['shipping', 'pickup', ''],
         description:
-          'Costo de envío numérico en COP, sin símbolos. Usa cadena vacía si todavía no se conoce.',
+          'Método confirmado por el cliente: shipping para envío, pickup para recogida, o cadena vacía si aún no está claro.',
       },
       cart_confirmation_requested: {
         type: 'boolean',
@@ -3082,7 +3549,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     required: [
       'city',
       'payment_method',
-      'shipping_cost_cop',
+      'delivery_method',
       'cart_confirmation_requested',
       'cart_confirmed',
       'payment_instructions_sent',
@@ -3094,7 +3561,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'get_sale_context',
   description:
-    'Consulta ciudad, envío, medio de pago y pasos ya enviados antes de volver a preguntarlos.',
+    'Consulta ciudad, método de entrega, estado del envío, medio de pago y pasos ya enviados antes de volver a preguntarlos.',
   strict: true,
   parameters: {
     type: 'object',
@@ -3580,40 +4047,71 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       }
 
       if (name === 'create_checkout_link') {
-        const currentSession =
+        let currentSession =
           await this.conversationMemoryService.getSessionById(session.id);
-        const saleContext =
-          this.readSaleContext(currentSession.context);
+
         const recoveryContext = currentSession.context.cart_recovery;
         const isRecoveryCart =
           Boolean(recoveryContext) &&
           typeof recoveryContext === 'object' &&
           !Array.isArray(recoveryContext);
 
-        const hasCity =
-          typeof saleContext.city === 'string' &&
-          saleContext.city.trim().length > 0;
-        const hasPayment =
-          typeof saleContext.payment_method === 'string' &&
-          saleContext.payment_method.trim().length > 0;
-        const shippingValue =
-          typeof saleContext.shipping_cost_cop === 'string' ||
-          typeof saleContext.shipping_cost_cop === 'number'
-            ? Number(saleContext.shipping_cost_cop)
-            : NaN;
-        const hasShipping = Number.isFinite(shippingValue);
+        if (!isRecoveryCart) {
+          currentSession =
+            await this.resolveShippingQuoteForSession(currentSession);
 
-        if (
-          !isRecoveryCart &&
-          (!hasCity || !hasPayment || !hasShipping)
-        ) {
-          return {
-            ok: false,
-            next_action: 'complete_sale_context',
-            error:
-              'Antes del checkout confirma ciudad, medio de pago y costo de envío.',
-            sale_context: saleContext,
-          };
+          const saleContext =
+            this.readSaleContext(currentSession.context);
+
+          const cartConfirmed =
+            saleContext.cart_confirmed === true;
+
+          const shippingValue =
+            typeof saleContext.shipping_cost_cop === 'string' ||
+            typeof saleContext.shipping_cost_cop === 'number'
+              ? Number(saleContext.shipping_cost_cop)
+              : NaN;
+
+          const shippingValidated =
+            saleContext.shipping_quote_validated === true &&
+            Number.isFinite(shippingValue);
+
+          const shippingDeferred =
+            saleContext.shipping_deferred_to_checkout === true;
+
+          const shippingStatus =
+            typeof saleContext.shipping_resolution_status === 'string'
+              ? saleContext.shipping_resolution_status
+              : '';
+
+          if (!cartConfirmed) {
+            return {
+              ok: false,
+              next_action: 'confirm_cart',
+              error:
+                'Antes de crear el checkout confirma que la persona desea finalizar la compra actual.',
+              sale_context: saleContext,
+            };
+          }
+
+          if (!shippingValidated && !shippingDeferred) {
+            const nextAction =
+              shippingStatus === 'needs_city'
+                ? 'ask_city'
+                : shippingStatus === 'needs_payment'
+                  ? 'ask_payment_method'
+                  : shippingStatus === 'needs_delivery_method'
+                    ? 'ask_delivery_method'
+                    : 'resolve_shipping';
+
+            return {
+              ok: false,
+              next_action: nextAction,
+              error:
+                'No se puede crear el checkout hasta validar el envío con la configuración de la empresa o confirmar que se calcula dentro del checkout.',
+              sale_context: saleContext,
+            };
+          }
         }
 
         const result =
