@@ -1730,8 +1730,11 @@ export class WhatsappWebhookController {
       const visualCustomerMessage = [
         '[REFERENCIA_VISUAL]',
         input.caption
-          ? `Texto escrito por el cliente junto a la imagen: ${input.caption}`
+          ? `Mensaje real actual del cliente escrito junto a la imagen: ${input.caption}`
           : 'El cliente envió solamente una imagen y quiere atención sobre lo que aparece.',
+        input.caption
+          ? 'Procesa ese texto exactamente como un mensaje real del cliente. Antes de responder, conserva con las herramientas comerciales disponibles cualquier dato explícito que entregue para la venta actual, como ciudad, interés o selección de medio de pago y método de entrega. No vuelvas a solicitar un dato que ya esté expresado allí.'
+          : '',
         `Descripción visual: ${analysis.summary}`,
         `Categoría aproximada: ${analysis.category}`,
         analysis.productName
