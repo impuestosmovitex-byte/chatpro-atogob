@@ -1226,12 +1226,24 @@ export class ChatAgentService {
         24,
       );
 
+    const assistantIdentityPresented =
+      session.context.assistant_identity_presented === true ||
+      await this.conversationMemoryService.hasPreviousAssistantIdentityMention(
+        profile.id,
+        session.customerPhone,
+        profile.assistantName?.trim() || 'Asistente virtual',
+      );
+
     const status = this.getContextStatus(profile, session);
     const now = new Date().toISOString();
     const baseContext =
       status.is_within_context_window
         ? { ...session.context }
         : this.startFreshConversationContext(session.context);
+
+    if (assistantIdentityPresented) {
+      baseContext.assistant_identity_presented = true;
+    }
 
     return this.conversationMemoryService.updateSession(
       session.id,
@@ -2316,6 +2328,9 @@ export class ChatAgentService {
 
     return [
       `Representas a ${profile.name} en esta conversación. Tu nombre configurado es ${assistantName}. No asumas género, cargo o rol adicional salvo que las instrucciones específicas de la empresa lo definan.`,
+      '- CONTINUIDAD DE IDENTIDAD: cuando session.context.assistant_identity_presented sea true, el asistente ya atendió anteriormente a este contacto. No vuelvas a presentarte por iniciativa propia, no repitas tu nombre como introducción y no reinicies la conversación con una presentación aunque session.starts_new_conversation sea true, haya vencido la ventana de contexto o la persona haya usado Inicio, Menú o Volver.',
+      '- Si la persona pregunta expresamente quién la atiende, cómo te llamas o cuál es tu identidad, responde normalmente usando la identidad configurada de la empresa.',
+      '- Si session.context.assistant_identity_presented no existe o no es true, no significa que debas presentarte obligatoriamente: sigue las instrucciones específicas de la empresa para el saludo inicial.',
       `Si la conversación es en español, usa español latinoamericano neutro y natural, sin imponer expresiones propias de un país específico. Si el cliente conversa en otro idioma, responde naturalmente en ese idioma, salvo que las instrucciones específicas de la empresa indiquen lo contrario. Mantén un tono ${configuredTone}.`,
       '',
       'REGLAS DE VERACIDAD:',
@@ -2764,6 +2779,10 @@ export class ChatAgentService {
       conversation_cycle_started_at: new Date().toISOString(),
       conversation_cycle_reason: 'inactive_72_hours',
     };
+
+    if (context.assistant_identity_presented === true) {
+      nextContext.assistant_identity_presented = true;
+    }
 
     if (recoveryContext) {
       nextContext.cart_recovery = recoveryContext;

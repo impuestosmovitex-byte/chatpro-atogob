@@ -2821,6 +2821,44 @@ export class ConversationMemoryService {
     return true;
   }
 
+  async hasPreviousAssistantIdentityMention(
+    companyId: string,
+    customerPhone: string,
+    assistantName: string,
+  ): Promise<boolean> {
+    const normalizedCustomerPhone =
+      this.normalizePhone(customerPhone);
+    const identity = assistantName.trim();
+
+    if (!normalizedCustomerPhone || !identity) {
+      return false;
+    }
+
+    const escapedIdentity = identity
+      .replace(/\\/g, '\\\\')
+      .replace(/%/g, '\\%')
+      .replace(/_/g, '\\_');
+
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('conversations')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('customer_phone', normalizedCustomerPhone)
+      .eq('author_type', 'ai')
+      .ilike('message', `%${escapedIdentity}%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `No se pudo verificar si el asistente ya había presentado su identidad: ${error.message}`,
+      );
+    }
+
+    return Boolean(data?.id);
+  }
+
   async saveMessage(input: SaveMessageInput): Promise<'saved' | 'duplicate'> {
     const customerPhone = this.normalizePhone(input.customerPhone);
 
