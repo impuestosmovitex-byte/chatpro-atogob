@@ -1434,24 +1434,72 @@ export class WhatsappWebhookController {
       const visualMimeType =
         media.mimeType.split(';')[0].trim().toLowerCase() ||
         'image/jpeg';
-      const visualMatch =
-        await this.chatAgentService.matchIncomingVisualReference(
-          profile,
-          session,
-          {
-            imageDataUrl:
-              `data:${visualMimeType};base64,` +
-              media.buffer.toString('base64'),
-            summary: analysis.summary,
-            productName: analysis.productName,
-            reference: analysis.reference,
-            visiblePrice: analysis.visiblePrice,
-            visibleText: analysis.visibleText,
-            category: analysis.category,
-            colors: analysis.colors,
-            searchTerms: analysis.searchTerms,
-          },
+      const imageDataUrl =
+        `data:${visualMimeType};base64,` +
+        media.buffer.toString('base64');
+
+      const visualItems = analysis.products.length
+        ? analysis.products
+        : [
+            {
+              summary: analysis.summary,
+              category: analysis.category,
+              productName: analysis.productName,
+              reference: analysis.reference,
+              visiblePrice: analysis.visiblePrice,
+              quantity: 1,
+              variantText: '',
+              colors: analysis.colors,
+              visibleText: analysis.visibleText,
+              searchTerms: analysis.searchTerms,
+            },
+          ];
+
+      const activeProfile = profile;
+      const activeSession = session;
+
+      if (!activeProfile || !activeSession) {
+        throw new Error(
+          'No hay perfil o sesión activa para validar referencias visuales.',
         );
+      }
+
+      const matchedVisualItems = await Promise.all(
+        visualItems.map(async (visualItem) => ({
+          visualItem,
+          visualMatch:
+            await this.chatAgentService.matchIncomingVisualReference(
+              activeProfile,
+              activeSession,
+              {
+                imageDataUrl,
+                summary: visualItem.summary,
+                productName: visualItem.productName,
+                reference: visualItem.reference,
+                visiblePrice: visualItem.visiblePrice,
+                visibleText: [
+                  visualItem.visibleText,
+                  visualItem.variantText,
+                ]
+                  .filter(Boolean)
+                  .join(' | '),
+                category: visualItem.category,
+                colors: visualItem.colors,
+                searchTerms: visualItem.searchTerms,
+              },
+            ),
+        })),
+      );
+
+      const primaryVisualMatch = matchedVisualItems[0];
+
+      if (!primaryVisualMatch) {
+        throw new Error(
+          'No se obtuvo ninguna referencia visual para validar.',
+        );
+      }
+
+      const visualMatch = primaryVisualMatch.visualMatch;
 
       const currentSession =
         await this.conversationMemoryService.getSessionById(session.id);
@@ -1460,7 +1508,10 @@ export class WhatsappWebhookController {
         ...currentSession.context,
       };
 
-      if (visualMatch.matchType !== 'exact') {
+      if (
+        analysis.products.length <= 1 &&
+        visualMatch.matchType !== 'exact'
+      ) {
         delete nextVisualContext.selectedProduct;
         delete nextVisualContext.selectedVariant;
         delete nextVisualContext.selectedVariants;
@@ -1470,35 +1521,43 @@ export class WhatsappWebhookController {
         delete nextVisualContext.purchaseIntentAt;
       }
 
-      const visualReference = {
-        summary: analysis.summary,
-        category: analysis.category,
-        product_name: analysis.productName || null,
-        reference: analysis.reference || null,
-        visible_price: analysis.visiblePrice || null,
-        colors: analysis.colors,
-        visible_text: analysis.visibleText,
-        search_terms: analysis.searchTerms,
-        source_hint: analysis.sourceHint,
-        confidence: analysis.confidence,
-        match_type: visualMatch.matchType,
-        match_confidence: visualMatch.confidence,
-        matched_product: visualMatch.matchedProduct
-          ? {
-              title: visualMatch.matchedProduct.title,
-              url: visualMatch.matchedProduct.url,
-              price_from_cop:
-                visualMatch.matchedProduct.priceFromCop || null,
-            }
-          : null,
-        candidates: visualMatch.candidates.slice(0, 3).map((candidate) => ({
-          title: candidate.title,
-          url: candidate.url,
-          price_from_cop: candidate.priceFromCop || null,
-        })),
-        caption: input.caption || null,
-        received_at: receivedAt,
-      };
+      const visualReferences = matchedVisualItems.map(
+        ({ visualItem, visualMatch: itemMatch }) => ({
+          summary: visualItem.summary,
+          category: visualItem.category,
+          product_name: visualItem.productName || null,
+          reference: visualItem.reference || null,
+          visible_price: visualItem.visiblePrice || null,
+          quantity: visualItem.quantity,
+          variant_text: visualItem.variantText || null,
+          colors: visualItem.colors,
+          visible_text: visualItem.visibleText,
+          search_terms: visualItem.searchTerms,
+          source_hint: analysis.sourceHint,
+          confidence: analysis.confidence,
+          match_type: itemMatch.matchType,
+          match_confidence: itemMatch.confidence,
+          matched_product: itemMatch.matchedProduct
+            ? {
+                title: itemMatch.matchedProduct.title,
+                url: itemMatch.matchedProduct.url,
+                price_from_cop:
+                  itemMatch.matchedProduct.priceFromCop || null,
+              }
+            : null,
+          candidates: itemMatch.candidates
+            .slice(0, 3)
+            .map((candidate) => ({
+              title: candidate.title,
+              url: candidate.url,
+              price_from_cop: candidate.priceFromCop || null,
+            })),
+          caption: input.caption || null,
+          received_at: receivedAt,
+        }),
+      );
+
+      const visualReference = visualReferences[0];
 
       nextVisualContext.last_visual_reference = visualReference;
 
@@ -1514,7 +1573,7 @@ export class WhatsappWebhookController {
 
       nextVisualContext.commercial_visual_references = [
         ...existingCommercialVisualReferences,
-        visualReference,
+        ...visualReferences,
       ].slice(-20);
 
       const currentVisualBurst =
@@ -1537,7 +1596,7 @@ export class WhatsappWebhookController {
 
       const visualBurstReferences = [
         ...currentBurstReferences,
-        visualReference,
+        ...visualReferences,
       ].slice(-10);
 
       nextVisualContext.visual_reference_burst = {
@@ -1577,14 +1636,15 @@ export class WhatsappWebhookController {
       if (visualBurstReferences.length > 1) {
         const burstCustomerMessage = [
           '[RAFAGA_VISUAL_MULTIPRODUCTO]',
-          `El cliente envió ${visualBurstReferences.length} imágenes dentro de una misma ráfaga.`,
-          'Cada imagen puede representar un producto distinto. No reemplaces conceptualmente las referencias anteriores por la última imagen.',
-          'No interpretes varias imágenes como varias unidades del último producto.',
+          `Se detectaron ${visualBurstReferences.length} referencias comerciales dentro del bloque visual reciente.`,
+          'Una sola imagen puede contener varios productos y también puede haber varias imágenes dentro de la misma ráfaga.',
+          'Cada referencia puede representar un producto distinto. No reemplaces conceptualmente las referencias anteriores por la última.',
+          'No interpretes varias referencias como varias unidades del último producto salvo que la cantidad esté expresamente indicada.',
           'Si el cliente se refiere a “las dos”, “ambas”, “todas” o equivalente, conserva cada referencia como producto independiente.',
           `Referencias analizadas de esta ráfaga: ${JSON.stringify(visualBurstReferences)}`,
           'Los matched_product de tipo exact son productos ya validados contra el catálogo real.',
           'Las referencias similar o none no deben presentarse como coincidencias exactas.',
-          'Responde una sola vez teniendo en cuenta el conjunto completo de imágenes.',
+          'Responde una sola vez teniendo en cuenta el conjunto completo de referencias y productos.',
           'No agregues productos al carrito salvo que la intención de compra del cliente sea explícita y estén resueltas las variantes necesarias.',
         ].join('\n');
 
@@ -1842,10 +1902,12 @@ export class WhatsappWebhookController {
         'Las personas escriben de forma desordenada, cambian de tema y pueden expresar varias intenciones. No decidas solo por el mensaje anterior ni solo por la imagen.',
         'Debes distinguir comprobantes de pago, productos, imágenes de cambios/garantías, documentos o guías.',
         'payment_proof: recibo, transferencia, comprobante, consignación, pantalla de pago o evidencia de una transacción.',
-        'product: artículo, objeto, captura de catálogo o referencia comercial de producto.',
+        'product: artículo, objeto, captura de catálogo, carrito o checkout cuando el contenido relevante sean uno o varios productos.',
         'mixed: el bloque reciente contiene simultáneamente pago y solicitud/interés de producto, aunque la imagen actual muestre solo uno de ellos.',
         'Si la IA solicitó un comprobante y la imagen parece evidencia de pago, hasPaymentIntent debe ser true.',
-        'Si el cliente dice "esta también", "quiero agregar esta", "quiero esta" o equivalente y la imagen es un producto, hasProductIntent debe ser true aunque antes estuvieran hablando de pago.',
+        'Si el cliente dice "esta también", "quiero agregar esta", "quiero esta", "quiero estos", "quiero todo esto" o equivalente y la imagen contiene uno o varios productos, hasProductIntent debe ser true aunque antes estuvieran hablando de pago.',
+        'Una captura de carrito o checkout que muestre productos no es un comprobante de pago únicamente por contener total, botón de pagar, medios de pago o información de checkout.',
+        'Marca payment_proof únicamente cuando exista evidencia de una transacción ya realizada, como recibo, transferencia, consignación o confirmación efectiva de pago.',
         'Si hay evidencia de pago o comprobante recibido, la intención principal puede ser validate_payment. Tu función aquí es clasificar la imagen, no decidir si debe transferirse a un asesor. El siguiente paso depende de las instrucciones configuradas para la empresa y de las acciones reales disponibles.',
         'No marques pago únicamente porque antes se mencionó pagar: exige evidencia actual, texto actual de pago o una solicitud explícita previa de comprobante que la imagen responda.',
         'Devuelve únicamente JSON válido, sin markdown, con esta estructura exacta:',
@@ -2070,6 +2132,18 @@ export class WhatsappWebhookController {
     colors: string[];
     visibleText: string;
     searchTerms: string[];
+    products: Array<{
+      summary: string;
+      category: string;
+      productName: string;
+      reference: string;
+      visiblePrice: string;
+      quantity: number;
+      variantText: string;
+      colors: string[];
+      visibleText: string;
+      searchTerms: string[];
+    }>;
     sourceHint: 'catalog_screenshot' | 'external_reference' | 'unknown';
     confidence: 'low' | 'medium' | 'high';
   }> {
@@ -2120,8 +2194,8 @@ export class WhatsappWebhookController {
       instructions: [
         'Analiza la imagen como referencia comercial enviada por un cliente.',
         'Devuelve únicamente JSON válido y sin markdown con esta estructura:',
-        '{"summary":"...","category":"...","product_name":"...","reference":"...","visible_price":"...","colors":["..."],"visible_text":"...","search_terms":["..."],"source_hint":"catalog_screenshot|external_reference|unknown","confidence":"low|medium|high"}',
-        'summary: describe objetivamente el producto principal, sin inventar atributos, características ni disponibilidad.',
+        '{"summary":"...","category":"...","product_name":"...","reference":"...","visible_price":"...","colors":["..."],"visible_text":"...","search_terms":["..."],"products":[{"summary":"...","category":"...","product_name":"...","reference":"...","visible_price":"...","quantity":1,"variant_text":"...","colors":["..."],"visible_text":"...","search_terms":["..."]}],"source_hint":"catalog_screenshot|external_reference|unknown","confidence":"low|medium|high"}',
+        'summary: describe objetivamente la imagen comercial. Si contiene varios productos, indica que hay múltiples artículos sin mezclarlos entre sí.',
         'category: categoría breve y útil en español para buscar dentro del catálogo real de la empresa.',
         'product_name: copia el nombre comercial legible del producto; déjalo vacío si está oculto o no es claro.',
         'reference: copia una referencia, SKU o código claramente legible; déjalo vacío si no aparece.',
@@ -2129,7 +2203,14 @@ export class WhatsappWebhookController {
         'colors: únicamente colores claramente visibles.',
         'visible_text: copia el texto comercial legible que pueda ayudar a identificar el producto.',
         'search_terms: genera entre 3 y 8 búsquedas cortas e independientes que ayuden a recuperar el producto dentro de un catálogo real. Incluye la categoría observada, rasgos visuales distintivos y, cuando sea razonable, sinónimos o nombres comerciales alternativos que una tienda podría usar para ese mismo tipo de producto. No inventes marca, referencia ni atributos que no sean visibles.',
-        'catalog_screenshot: parece captura de una tienda, catálogo o publicación comercial.',
+        'products: identifica por separado cada producto o línea de producto claramente distinguible en la imagen, con máximo 8 elementos. Esto incluye capturas de carrito, checkout, catálogo o pedidos donde aparezcan varios artículos.',
+        'No reduzcas una captura de carrito o checkout a un solo producto principal cuando sean visibles varios artículos distintos.',
+        'En cada elemento de products copia únicamente los datos que correspondan a ese artículo. No mezcles nombre, precio, referencia, talla, color o cantidad de productos diferentes.',
+        'quantity: usa la cantidad claramente visible para ese artículo. Si no aparece una cantidad, usa 1.',
+        'variant_text: copia talla, color, medida u otras opciones visibles asociadas específicamente a ese producto. Déjalo vacío si no es claro.',
+        'Si solo existe un producto, products debe contener un solo elemento.',
+        'Los campos product_name, reference, visible_price y demás campos superiores representan el producto principal o primero y se conservan por compatibilidad.',
+        'catalog_screenshot: parece captura de una tienda, catálogo, carrito, checkout o publicación comercial.',
         'external_reference: parece una foto o referencia externa sin prueba de pertenecer a la empresa.',
         'unknown: no es posible determinar el origen.',
         'Nunca afirmes que el producto pertenece a la empresa ni que existe en su catálogo.',
@@ -2200,19 +2281,143 @@ export class WhatsappWebhookController {
     const summary =
       readText(parsed.summary, 1000) ||
       `Se observa un producto de la categoría ${category}.`;
+    const productName = readText(parsed.product_name, 240);
+    const reference = readText(parsed.reference, 120);
+    const visiblePrice = readText(parsed.visible_price, 80);
+    const colors = readList(parsed.colors, 6, 50);
+    const visibleText = readText(parsed.visible_text, 1200);
     const rawSourceHint = readText(parsed.source_hint, 40);
     const rawConfidence = readText(parsed.confidence, 20);
     const searchTerms = readList(parsed.search_terms, 8, 100);
 
+    const products: Array<{
+      summary: string;
+      category: string;
+      productName: string;
+      reference: string;
+      visiblePrice: string;
+      quantity: number;
+      variantText: string;
+      colors: string[];
+      visibleText: string;
+      searchTerms: string[];
+    }> = [];
+
+    const productIndexByKey = new Map<string, number>();
+
+    if (Array.isArray(parsed.products)) {
+      for (const item of parsed.products.slice(0, 8)) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          continue;
+        }
+
+        const product = item as Record<string, unknown>;
+        const rawItemCategory = readText(product.category, 120);
+        const rawItemSummary = readText(product.summary, 700);
+        const itemProductName = readText(product.product_name, 240);
+        const itemReference = readText(product.reference, 120);
+        const itemVisiblePrice = readText(product.visible_price, 80);
+        const itemVariantText = readText(product.variant_text, 240);
+        const itemColors = readList(product.colors, 6, 50);
+        const itemVisibleText = readText(product.visible_text, 700);
+        const itemSearchTerms = readList(product.search_terms, 8, 100);
+
+        const hasProductEvidence = Boolean(
+          rawItemCategory ||
+          rawItemSummary ||
+          itemProductName ||
+          itemReference ||
+          itemVisiblePrice ||
+          itemVariantText ||
+          itemVisibleText ||
+          itemColors.length ||
+          itemSearchTerms.length
+        );
+
+        if (!hasProductEvidence) {
+          continue;
+        }
+
+        const itemCategory = rawItemCategory || 'producto';
+        const itemSummary =
+          rawItemSummary ||
+          `Se observa un producto de la categoría ${itemCategory}.`;
+
+        const rawQuantity = Number(product.quantity);
+        const quantity =
+          Number.isInteger(rawQuantity) && rawQuantity > 0
+            ? Math.min(rawQuantity, 99)
+            : 1;
+
+        const identityKey = [
+          itemReference,
+          itemProductName,
+          itemVariantText,
+          itemVisibleText,
+          itemCategory,
+        ]
+          .filter(Boolean)
+          .join('|')
+          .toLowerCase();
+
+        if (!identityKey) {
+          continue;
+        }
+
+        const existingIndex = productIndexByKey.get(identityKey);
+
+        if (existingIndex !== undefined) {
+          products[existingIndex].quantity = Math.min(
+            products[existingIndex].quantity + quantity,
+            99,
+          );
+          continue;
+        }
+
+        productIndexByKey.set(identityKey, products.length);
+
+        products.push({
+          summary: itemSummary,
+          category: itemCategory,
+          productName: itemProductName,
+          reference: itemReference,
+          visiblePrice: itemVisiblePrice,
+          quantity,
+          variantText: itemVariantText,
+          colors: itemColors,
+          visibleText: itemVisibleText,
+          searchTerms: itemSearchTerms.length
+            ? itemSearchTerms
+            : [itemCategory],
+        });
+      }
+    }
+
+    if (!products.length) {
+      products.push({
+        summary,
+        category,
+        productName,
+        reference,
+        visiblePrice,
+        quantity: 1,
+        variantText: '',
+        colors,
+        visibleText,
+        searchTerms: searchTerms.length ? searchTerms : [category],
+      });
+    }
+
     return {
       summary,
       category,
-      productName: readText(parsed.product_name, 240),
-      reference: readText(parsed.reference, 120),
-      visiblePrice: readText(parsed.visible_price, 80),
-      colors: readList(parsed.colors, 6, 50),
-      visibleText: readText(parsed.visible_text, 1200),
+      productName,
+      reference,
+      visiblePrice,
+      colors,
+      visibleText,
       searchTerms: searchTerms.length ? searchTerms : [category],
+      products,
       sourceHint:
         rawSourceHint === 'catalog_screenshot' ||
         rawSourceHint === 'external_reference'
