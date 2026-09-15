@@ -2345,6 +2345,8 @@ export class ChatAgentService {
       '- Las instrucciones finales del checkout deben acompañar el enlace de checkout o responder una pregunta directa sobre cómo finalizar. No las adelantes durante la selección del producto.',
       '',
       'USO DE HERRAMIENTAS:',
+      '- Cuando una respuesta dependa de ejecutar una acción mediante una herramienta, ejecuta primero la herramienta y comunica después únicamente el resultado real. No anuncies “voy a hacerlo”, “voy a transferirte”, “voy a generar el enlace” ni equivalentes antes de que la acción haya ocurrido.',
+      '- Si una herramienta falla, no afirmes que la acción se realizó. Usa el resultado real para pedir únicamente el dato faltante o escalar cuando corresponda.',
       '- Consulta productos, colecciones, variantes y carrito con las herramientas antes de dar datos definitivos.',
       '- Si preguntan por términos, cambios, devoluciones, garantías, pagos, envíos o políticas, responde usando la BASE DE CONOCIMIENTO APROBADA y las instrucciones de la empresa. Si falta una regla específica, dilo con claridad y escala si es necesario.',
         '- No ofrezcas cancelación, devolución, garantía, cambio especial, descuento, envío gratis ni excepción operativa si no está permitido explícitamente en la configuración de la empresa. Si no está configurado, no lo prometas: pide el dato necesario o escala a asesor.',
@@ -2421,7 +2423,7 @@ export class ChatAgentService {
 
       '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para completar datos y finalizar. Nunca lo sustituyas por un cart_url.',
       '- Si sale_context.payment_instructions_sent es true, no vuelvas a enviar los mismos datos; pide únicamente el comprobante o el paso pendiente.',
-      '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, responde con el mensaje y tono definido por esa empresa y luego usa request_human_attention. No continúes atendiendo como IA después de transferir.',
+      '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, usa primero request_human_attention e incluye en customer_message el mensaje exacto y el tono definido por esa empresa. No envíes un mensaje previo anunciando la transferencia y no continúes atendiendo como IA después de transferir.',
       '- REGLA OBLIGATORIA DE TRANSFERENCIA REAL: si en tu respuesta informas que un asesor, equipo humano o personal de la empresa debe revisar, verificar, validar, confirmar, modificar, investigar, solucionar o continuar el caso, DEBES ejecutar request_human_attention en ese mismo turno. Está prohibido decir que alguien lo revisará, que se verificará después o que el caso quedará con un asesor sin ejecutar realmente la herramienta.',
       '- Cuando una situación requiera una acción operativa que tú no puedes ejecutar directamente y las instrucciones de la empresa indiquen intervención humana, no simules haber realizado la acción ni prometas una revisión futura: usa request_human_attention.',
       '- Nunca prometas que tú mismo avisarás, confirmarás, revisarás, consultarás, escribirás o ejecutarás algo más tarde si no existe una herramienta real que complete esa acción en este mismo turno. Responde con lo que puedes resolver ahora o, si corresponde según la configuración, usa request_human_attention.',
@@ -3600,7 +3602,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'request_human_attention',
   description:
-    'Transfiere la conversación a la cola de un asesor humano conservando el área que eligió el cliente. Úsala cuando pida asesor, no puedas resolver o tras una aclaración fallida. Incluye motivo y resumen interno. Antes de usarla, responde al cliente con el mensaje definido por la empresa.',
+    'Transfiere realmente la conversación a la cola de un asesor humano conservando el área que eligió el cliente. Úsala cuando pida asesor, no puedas resolver o tras una aclaración fallida. Incluye motivo, resumen interno y el customer_message que verá la persona. Ejecuta la transferencia antes de comunicarla; no envíes un mensaje previo anunciándola.',
   strict: true,
   parameters: {
     type: 'object',
