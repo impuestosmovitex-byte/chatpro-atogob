@@ -61,6 +61,38 @@ export class CartService {
     private readonly conversationEventsService: ConversationEventsService,
   ) {}
 
+  private isTechnicalDefaultVariantTitle(
+    value: unknown,
+  ): boolean {
+    return (
+      typeof value === 'string' &&
+      value.trim().toLowerCase() === 'default title'
+    );
+  }
+
+  private publicVariantTitle(value: string): string {
+    return this.isTechnicalDefaultVariantTitle(value)
+      ? ''
+      : value.trim();
+  }
+
+  private publicVariantOptions(
+    options: ProductOption[],
+  ): ProductOption[] {
+    return options
+      .filter(
+        (option) =>
+          !(
+            option.name.trim().toLowerCase() === 'title' &&
+            this.isTechnicalDefaultVariantTitle(option.value)
+          ),
+      )
+      .map((option) => ({
+        name: option.name.trim(),
+        value: option.value.trim(),
+      }));
+  }
+
   private async refreshSession(
     session: ConversationSession,
   ): Promise<ConversationSession> {
@@ -771,8 +803,9 @@ export class CartService {
         product_url: line.productUrl,
         variant_id: line.variantId,
         variant_legacy_id: line.variantLegacyId,
-        variant_title: line.variantTitle,
-        options: line.options.map((option) => ({ ...option })),
+        variant_title:
+          this.publicVariantTitle(line.variantTitle),
+        options: this.publicVariantOptions(line.options),
         quantity: line.quantity,
         unit_price: line.unitPrice,
         currency,
@@ -797,8 +830,9 @@ export class CartService {
         product_id: line.productId,
         variant_id: line.variantId,
         product_title: line.productTitle,
-        variant_title: line.variantTitle,
-        options: line.options,
+        variant_title:
+          this.publicVariantTitle(line.variantTitle),
+        options: this.publicVariantOptions(line.options),
         quantity: line.quantity,
         unit_price_cop: line.unitPrice,
         line_total_cop: String(
@@ -879,9 +913,9 @@ export class CartService {
     return {
       id: variant.id,
       legacyResourceId: variant.legacyResourceId,
-      title: variant.title,
+      title: this.publicVariantTitle(variant.title),
       price: variant.price,
-      options,
+      options: this.publicVariantOptions(options),
     };
   }
 
@@ -892,29 +926,36 @@ export class CartService {
       return [];
     }
 
-    return value.filter((line): line is CartLine => {
-      if (
-        !line ||
-        typeof line !== 'object' ||
-        Array.isArray(line)
-      ) {
-        return false;
-      }
+    return value
+      .filter((line): line is CartLine => {
+        if (
+          !line ||
+          typeof line !== 'object' ||
+          Array.isArray(line)
+        ) {
+          return false;
+        }
 
-      const item = line as Record<string, unknown>;
+        const item = line as Record<string, unknown>;
 
-      return (
-        typeof item.productId === 'string' &&
-        typeof item.productTitle === 'string' &&
-        typeof item.productUrl === 'string' &&
-        typeof item.variantId === 'string' &&
-        typeof item.variantLegacyId === 'string' &&
-        typeof item.variantTitle === 'string' &&
-        typeof item.unitPrice === 'string' &&
-        Array.isArray(item.options) &&
-        Number.isInteger(item.quantity) &&
-        Number(item.quantity) > 0
-      );
-    });
+        return (
+          typeof item.productId === 'string' &&
+          typeof item.productTitle === 'string' &&
+          typeof item.productUrl === 'string' &&
+          typeof item.variantId === 'string' &&
+          typeof item.variantLegacyId === 'string' &&
+          typeof item.variantTitle === 'string' &&
+          typeof item.unitPrice === 'string' &&
+          Array.isArray(item.options) &&
+          Number.isInteger(item.quantity) &&
+          Number(item.quantity) > 0
+        );
+      })
+      .map((line) => ({
+        ...line,
+        variantTitle:
+          this.publicVariantTitle(line.variantTitle),
+        options: this.publicVariantOptions(line.options),
+      }));
   }
 }

@@ -528,9 +528,11 @@ export class CompanyShopifyService {
           imageAlt: node.featuredImage?.altText || null,
           variants: availableVariants.map((variant) => ({
             legacyResourceId: variant.legacyResourceId,
-            title: variant.title,
+            title: this.publicVariantTitle(variant.title),
             price: variant.price,
-            options: variant.selectedOptions,
+            options: this.publicVariantOptions(
+              variant.selectedOptions,
+            ),
           })),
         };
       })
@@ -891,7 +893,8 @@ export class CompanyShopifyService {
       lineItems: node.lineItems.edges.map(({ node: line }) => ({
         title: line.title,
         quantity: line.quantity,
-        variantTitle: line.variantTitle ?? null,
+        variantTitle:
+          this.publicVariantTitleOrNull(line.variantTitle),
         unitPrice: line.originalUnitPriceSet.shopMoney,
       })),
       fulfillments,
@@ -1234,7 +1237,7 @@ export class CompanyShopifyService {
           },
           previewVariants: variants.map((variant) => ({
             legacyResourceId: variant.legacyResourceId,
-            title: variant.title,
+            title: this.publicVariantTitle(variant.title),
             sku: variant.sku,
             price: variant.price,
             availableForSale: variant.availableForSale,
@@ -1717,6 +1720,9 @@ async searchCommerceProducts(
       const active = product.status.toUpperCase() === 'ACTIVE';
       const published = Boolean(product.publishedAt);
       const productUrl = product.onlineStoreUrl || '';
+      const variantDisplayTitle =
+        this.publicVariantTitle(variant.title) ||
+        product.title;
 
       if (!active || !published) {
         throw new Error(
@@ -1726,7 +1732,7 @@ async searchCommerceProducts(
 
       if (!variant.availableForSale) {
         throw new Error(
-          `La variante "${variant.title}" ya no está disponible para vender.`,
+          `La variante "${variantDisplayTitle}" ya no está disponible para vender.`,
         );
       }
 
@@ -1741,7 +1747,7 @@ async searchCommerceProducts(
         line.quantity > availableQuantity
       ) {
         throw new Error(
-          `No hay inventario suficiente para la variante "${variant.title}".`,
+          `No hay inventario suficiente para la variante "${variantDisplayTitle}".`,
         );
       }
 
@@ -1752,10 +1758,12 @@ async searchCommerceProducts(
         productUrl,
         variantId: variant.id,
         variantLegacyId: variant.legacyResourceId,
-        variantTitle: variant.title,
+        variantTitle: this.publicVariantTitle(variant.title),
         sku: variant.sku,
         unitPrice: variant.price,
-        options: variant.selectedOptions.map((option) => ({ ...option })),
+        options: this.publicVariantOptions(
+          variant.selectedOptions,
+        ),
         quantity: line.quantity,
       };
     });
@@ -1792,13 +1800,15 @@ async searchCommerceProducts(
       .map((variant) => ({
         id: variant.id,
         legacyResourceId: variant.legacyResourceId,
-        title: variant.title,
+        title: this.publicVariantTitle(variant.title),
         sku: variant.sku,
         price: variant.price,
         inventoryQuantity: variant.inventoryQuantity,
         inventoryPolicy: variant.inventoryPolicy,
         tracked: variant.inventoryItem.tracked,
-        options: variant.selectedOptions.map((option) => ({ ...option })),
+        options: this.publicVariantOptions(
+          variant.selectedOptions,
+        ),
       }));
 
     if (!variants.length) {
@@ -2030,7 +2040,8 @@ async searchCommerceProducts(
         total: node.totalPriceSet.shopMoney,
         lines: node.lineItems.edges.map(({ node: line }) => ({
           title: line.title,
-          variantTitle: line.variantTitle,
+          variantTitle:
+            this.publicVariantTitleOrNull(line.variantTitle),
           quantity: line.quantity,
           product: line.product
             ? {
@@ -2044,9 +2055,11 @@ async searchCommerceProducts(
             ? {
                 id: line.variant.id,
                 legacyResourceId: line.variant.legacyResourceId,
-                title: line.variant.title,
+                title: this.publicVariantTitle(line.variant.title),
                 price: line.variant.price,
-                options: line.variant.selectedOptions,
+                options: this.publicVariantOptions(
+                  line.variant.selectedOptions,
+                ),
               }
             : null,
           unitPrice: line.originalUnitPriceSet.shopMoney,
@@ -2220,6 +2233,51 @@ async searchCommerceProducts(
     return value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
+  }
+
+  private isTechnicalDefaultVariantTitle(
+    value: unknown,
+  ): boolean {
+    return this.text(value).toLowerCase() === 'default title';
+  }
+
+  private publicVariantTitle(value: unknown): string {
+    const title = this.text(value);
+
+    return this.isTechnicalDefaultVariantTitle(title)
+      ? ''
+      : title;
+  }
+
+  private publicVariantTitleOrNull(
+    value: unknown,
+  ): string | null {
+    const title = this.publicVariantTitle(value);
+
+    return title || null;
+  }
+
+  private publicVariantOptions(
+    options: Array<{ name: string; value: string }>,
+  ): Array<{ name: string; value: string }> {
+    if (!Array.isArray(options)) {
+      return [];
+    }
+
+    return options
+      .filter((option) => {
+        const name = this.text(option?.name);
+        const value = this.text(option?.value);
+
+        return !(
+          name.toLowerCase() === 'title' &&
+          this.isTechnicalDefaultVariantTitle(value)
+        );
+      })
+      .map((option) => ({
+        name: this.text(option.name),
+        value: this.text(option.value),
+      }));
   }
 
   private text(value: unknown): string {
