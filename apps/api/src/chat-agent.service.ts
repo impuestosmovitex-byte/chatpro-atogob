@@ -2289,7 +2289,94 @@ export class ChatAgentService {
     _session: ConversationSession,
     reply: string,
   ): Promise<string> {
-    return reply;
+    const clean = reply.trim();
+
+    if (!clean) {
+      return clean;
+    }
+
+    const internalLanguagePatterns = [
+      /\bguard(?:é|e|amos|ado|ada)\b.{0,80}\b(?:inter[eé]s|ciudad|pago|talla|color|dato|datos|informaci[oó]n)\b/i,
+      /\bregistr(?:é|e|amos|ado|ada)\b.{0,80}\b(?:ciudad|pago|talla|color|dato|datos|informaci[oó]n)\b/i,
+      /\bconfigur(?:é|e|amos|ado|ada)\b.{0,80}\b(?:talla|color|pago|env[ií]o|carrito|pedido)\b/i,
+      /\b(?:he|hemos)\s+(?:guardado|registrado|configurado)\b/i,
+      /\b(?:voy a|vamos a|proceder[ée] a|procederemos a)\s+(?:validar|verificar|revisar|procesar|consultar|configurar|registrar|guardar)\b/i,
+      /\bseg[uú]n (?:el |la )?(?:sistema|configuraci[oó]n|base de datos|flujo)\b/i,
+      /\b(?:el sistema|la configuraci[oó]n|el flujo)\s+(?:indica|muestra|dice|requiere|permite)\b/i,
+    ];
+
+    const needsHumanRewrite = internalLanguagePatterns.some(
+      (pattern) => pattern.test(clean),
+    );
+
+    if (!needsHumanRewrite) {
+      return clean;
+    }
+
+    try {
+      const response = await this.getClient().responses.create({
+        model: this.getModel(),
+        instructions: [
+          'Eres un filtro final de redacción para atención comercial y servicio al cliente.',
+          'Tu única tarea es reescribir el borrador para que suene como una persona atendiendo naturalmente por WhatsApp.',
+          'No agregues información nueva.',
+          'No cambies hechos, nombres, productos, tallas, colores, cantidades, precios, condiciones, enlaces ni datos que aparezcan en el borrador.',
+          'No inventes resultados, validaciones, aprobaciones, transferencias, pagos, pedidos ni acciones realizadas.',
+          'Elimina lenguaje de sistema o procesos internos como guardar, registrar, configurar, procesar, validar internamente, consultar el sistema o revisar la configuración.',
+          'No narres lo que una herramienta, sistema, flujo, configuración o base de datos está haciendo.',
+          'Si el borrador contiene una pregunta concreta útil para continuar, conserva esa pregunta y elimina únicamente el lenguaje interno que la antecede.',
+          'Si el borrador ya contiene un resultado concreto, expresa directamente ese resultado de forma natural.',
+          'No añadas una nueva pregunta que no estuviera implícita en el borrador.',
+          'No conviertas el mensaje en una transferencia a un asesor.',
+          'No digas que harás algo después si el borrador no contiene un resultado real.',
+          'Mantén la respuesta breve y natural.',
+          'Devuelve únicamente el mensaje final, sin explicaciones, etiquetas ni comillas.',
+          'Si no es posible eliminar el lenguaje interno sin inventar información o cambiar el sentido, devuelve exactamente __CHATPRO_KEEP_ORIGINAL__.',
+        ].join('\n'),
+        input: JSON.stringify({
+          borrador: clean,
+        }),
+      });
+
+      const rewritten = this.cleanReply(response.output_text);
+
+      if (
+        !rewritten ||
+        rewritten === '__CHATPRO_KEEP_ORIGINAL__'
+      ) {
+        console.warn(
+          '[ChatPro][human-output] No fue seguro reescribir una respuesta detectada como interna.',
+        );
+        return clean;
+      }
+
+      const originalUrls =
+        clean.match(/https?:\/\/[^\s<>()]+/gi) ?? [];
+
+      const lostUrl = originalUrls.some(
+        (url) => !rewritten.includes(url),
+      );
+
+      if (lostUrl) {
+        console.warn(
+          '[ChatPro][human-output] La reescritura intentó eliminar un enlace real; se conservó la respuesta original.',
+        );
+        return clean;
+      }
+
+      console.log(
+        '[ChatPro][human-output] Se humanizó una respuesta con lenguaje interno.',
+      );
+
+      return rewritten;
+    } catch (error) {
+      console.error(
+        '[ChatPro][human-output] No se pudo aplicar la protección de lenguaje humano:',
+        error,
+      );
+
+      return clean;
+    }
   }
 
   private buildInstructions(
@@ -2358,6 +2445,15 @@ export class ChatAgentService {
       '',
       'FORMA DE ATENDER:',
       '- Las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA y la BASE DE CONOCIMIENTO APROBADA tienen prioridad y definen cómo conversar, vender y resolver políticas.',
+      '- ORDEN DE RESOLUCIÓN OBLIGATORIO: primero usa la configuración vigente y la base de conocimiento de la empresa; después usa las herramientas reales disponibles; si falta un único dato, pide solamente ese dato; transfiere a una persona únicamente cuando después de esos pasos el caso realmente no pueda resolverse o una instrucción específica exija intervención humana.',
+      '- RESOLVER ANTES DE TRANSFERIR: nunca uses request_human_attention como sustituto de consultar una configuración, una política, el carrito, el contexto comercial, un pedido o una herramienta disponible.',
+      '- Una ciudad, un medio de pago, una talla, una referencia, una sede, una dirección, un horario o una respuesta corta del cliente no son por sí mismos motivos para transferir. Interpreta el dato dentro del contexto y continúa la atención.',
+      '- Las preguntas generales sobre sedes, dirección, horarios, medios de pago, envíos, transportadoras, productos o políticas deben responderse directamente cuando la información exista en la configuración, base de conocimiento o herramientas, aunque la conversación esté actualmente clasificada como Ventas o Servicio.',
+      '- Cuando el cliente informe o cambie ciudad, método de entrega o medio de pago durante una compra, procesa ese dato con las herramientas comerciales disponibles y continúa según el resultado real. No anuncies que vas a validar y no transfieras solo porque deba resolverse una condición comercial.',
+      '- Si una herramienta devuelve que falta otro dato, pide únicamente ese dato. Si devuelve una tarifa, condición, estado o resultado válido, responde directamente. Solo considera intervención humana cuando la herramienta o configuración realmente no permitan continuar.',
+      '- LENGUAJE HUMANO OBLIGATORIO: piensa y ejecuta herramientas internamente, pero habla únicamente del resultado útil para el cliente. Nunca narres operaciones internas como guardar, registrar, configurar, procesar, actualizar estado, ejecutar una herramienta, consultar una variable o cambiar un flujo.',
+      '- Evita expresiones de sistema como “guardé tu interés”, “registré tu ciudad”, “configuré la talla”, “voy a procesar”, “procederé a validar”, “según el sistema”, “según la configuración” o equivalentes. Responde como una asesora real que ya entendió el dato.',
+      '- Cuando una acción interna se complete correctamente, no describas la acción técnica. Por ejemplo, si el cliente elige una talla, continúa naturalmente con la talla elegida; si informa ciudad, responde el dato comercial que corresponda o pide el siguiente dato realmente faltante.',
       '- OpenAI debe razonar con la base configurada; no respondas como plantilla fija ni como árbol de palabras clave.',
       '- PRINCIPIO DE RESPUESTA MÍNIMA: responde primero y de forma directa exactamente la solicitud del mensaje ACTUAL. No descargues información adicional solo porque esté disponible en el contexto, historial, herramientas o configuración.',
       '- No añadas por iniciativa propia tiempos, pasos, restricciones, políticas, productos, datos de pedidos, medios de pago, enlaces, recomendaciones ni explicaciones adicionales que la persona no haya pedido, salvo que sean indispensables para ejecutar correctamente la acción solicitada.',
@@ -2501,7 +2597,7 @@ export class ChatAgentService {
       '- Cuando create_checkout_link devuelva checkout_url, comparte únicamente ese checkout_url para completar datos y finalizar. Nunca lo sustituyas por un cart_url.',
       '- Si sale_context.payment_instructions_sent es true, no vuelvas a enviar los mismos datos; pide únicamente el comprobante o el paso pendiente.',
       '- Cuando las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA indiquen pasar el caso a un asesor, usa primero request_human_attention e incluye en customer_message el mensaje exacto y el tono definido por esa empresa. No envíes un mensaje previo anunciando la transferencia y no continúes atendiendo como IA después de transferir.',
-      '- REGLA OBLIGATORIA DE TRANSFERENCIA REAL: si en tu respuesta informas que un asesor, equipo humano o personal de la empresa debe revisar, verificar, validar, confirmar, modificar, investigar, solucionar o continuar el caso, DEBES ejecutar request_human_attention en ese mismo turno. Está prohibido decir que alguien lo revisará, que se verificará después o que el caso quedará con un asesor sin ejecutar realmente la herramienta.',
+      '- REGLA OBLIGATORIA DE TRANSFERENCIA REAL: únicamente después de determinar, siguiendo el orden de resolución anterior, que el caso sí requiere intervención humana, si vas a informar al cliente que un asesor continuará el caso DEBES ejecutar request_human_attention en ese mismo turno. Las palabras revisar, verificar, validar o confirmar NO constituyen por sí solas una razón para transferir. Primero agota configuración, base de conocimiento y herramientas disponibles. Está prohibido anunciar una transferencia sin ejecutarla realmente.',
       '- Cuando una situación requiera una acción operativa que tú no puedes ejecutar directamente y las instrucciones de la empresa indiquen intervención humana, no simules haber realizado la acción ni prometas una revisión futura: usa request_human_attention.',
       '- Nunca prometas que tú mismo avisarás, confirmarás, revisarás, consultarás, escribirás o ejecutarás algo más tarde si no existe una herramienta real que complete esa acción en este mismo turno. Responde con lo que puedes resolver ahora o, si corresponde según la configuración, usa request_human_attention.',
       '- Al usar request_human_attention, customer_message debe ser el mensaje exacto que verá la persona: natural, breve, útil y alineado al tono/configuración de la empresa. No uses una frase fija si la empresa configuró otra forma de atención.',
@@ -3689,7 +3785,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'request_human_attention',
   description:
-    'Transfiere realmente la conversación a la cola de un asesor humano conservando el área que eligió el cliente. Úsala cuando la persona pida explícitamente un asesor, cuando una herramienta real ya haya indicado que requiere intervención humana, cuando no puedas resolver después de usar las herramientas disponibles o tras una aclaración fallida. PROHIBIDO usarla como atajo: si el cliente acaba de responder una ciudad para calcular envío, primero usa remember_sale_context y procesa el resultado de shipping_resolution_status; si acaba de responder número de pedido, correo o celular solicitado para consultar una compra, primero usa lookup_order. Si esas herramientas pueden responder o solicitan otro dato, continúa con la IA y no transfieras. Incluye motivo, resumen interno y el customer_message que verá la persona. Ejecuta la transferencia antes de comunicarla; no envíes un mensaje previo anunciándola.',
+    'Transfiere realmente la conversación a la cola de un asesor humano conservando el área que eligió el cliente. Úsala solamente cuando la persona pida explícitamente un asesor, una herramienta real indique que requiere intervención humana, una instrucción específica de la empresa obligue a escalar, o el caso siga sin poder resolverse después de consultar configuración, base de conocimiento, contexto y herramientas disponibles. PROHIBIDO usarla como atajo para preguntas generales de sedes, dirección, horarios, pagos, envíos, transportadoras, productos o políticas cuando la información esté disponible. Si el cliente acaba de responder una ciudad, método de entrega o medio de pago durante una compra, primero usa remember_sale_context y procesa el resultado real antes de considerar transferencia. Si acaba de responder número de pedido, correo o celular solicitado para consultar una compra, primero usa lookup_order. Si las herramientas pueden responder o solicitan otro dato, continúa con la IA y no transfieras. Incluye motivo, resumen interno y el customer_message que verá la persona. Ejecuta la transferencia antes de comunicarla; no envíes un mensaje previo anunciándola.',
   strict: true,
   parameters: {
     type: 'object',
