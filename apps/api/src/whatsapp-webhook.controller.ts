@@ -4048,8 +4048,7 @@ export class WhatsappWebhookController {
       Number(flow.attempts ?? 0);
 
     const doesNotKnowOrderNumber =
-      pendingLookupAttempts === 0 &&
-      /\b(no me se|no se|no tengo|no recuerdo)\b/.test(
+      /\b(no me se|no se|no tengo|no recuerdo|no lo tengo|no lo se)\b/.test(
         normalizedPendingLookupText,
       ) &&
       /\b(numero|pedido)\b/.test(
@@ -4566,15 +4565,15 @@ export class WhatsappWebhookController {
         return 'Por seguridad, confirma también el correo o celular utilizado en esa compra 😊';
       }
 
-      if (lookupIdentifiers.email) {
-        return orderReferenceUnavailable
-          ? 'Perfecto, ya tengo el correo 😊. Confírmame el celular registrado en la compra.'
-          : 'Por seguridad, confirma también el número del pedido o celular utilizado en esa compra 😊';
+      if (lookupIdentifiers.email && !lookupIdentifiers.phone) {
+        return 'Perfecto, ya tengo el correo 😊. Confírmame el celular registrado en la compra.';
       }
 
-      return orderReferenceUnavailable
-        ? 'Perfecto, ya tengo el celular 😊. Confírmame el correo registrado en la compra.'
-        : 'Por seguridad, confirma también el número del pedido o correo utilizado en esa compra 😊';
+      if (lookupIdentifiers.phone && !lookupIdentifiers.email) {
+        return 'Perfecto, ya tengo el celular 😊. Confírmame el correo registrado en la compra.';
+      }
+
+      return 'Para validar la compra de forma segura, envíame el correo y celular registrados en el pedido.';
     }
 
     if (result.next_action === 'ask_order_reference') {
@@ -4587,11 +4586,25 @@ export class WhatsappWebhookController {
 
     if (result.next_action === 'ask_alternate_identifier') {
       if (!lookupIdentifiers.orderReference) {
-        return 'Para ubicar la compra exacta, envíame el número de pedido que aparece en tu confirmación 😊';
+        if (lookupIdentifiers.email && !lookupIdentifiers.phone) {
+          return 'Ya tengo el correo 😊. Confírmame el celular registrado en la compra.';
+        }
+
+        if (lookupIdentifiers.phone && !lookupIdentifiers.email) {
+          return 'Ya tengo el celular 😊. Confírmame el correo registrado en la compra.';
+        }
+
+        if (lookupIdentifiers.email && lookupIdentifiers.phone) {
+          return this.requestCustomerServiceHuman(
+            session,
+            'No fue posible validar automáticamente el pedido con correo y celular.',
+            'El cliente ya entregó correo y celular para validar la compra, pero el sistema no pudo identificar un pedido único. No volver a pedir el número de pedido.',
+          );
+        }
       }
 
       if (!lookupIdentifiers.email && !lookupIdentifiers.phone) {
-        return 'Ya tengo tu número de pedido 😊. Puede que la compra se haya realizado con otro número. Confírmame el celular registrado en la compra o el correo utilizado.';
+        return 'Ya tengo tu número de pedido 😊. Confírmame el celular registrado en la compra o el correo utilizado.';
       }
 
       if (!lookupIdentifiers.email) {
@@ -4599,7 +4612,7 @@ export class WhatsappWebhookController {
       }
 
       if (!lookupIdentifiers.phone) {
-        return 'Ya tengo el pedido y el correo que me enviaste ��. Para terminar de validarlo, confírmame el celular registrado en la compra.';
+        return 'Ya tengo el pedido y el correo que me enviaste 😊. Para terminar de validarlo, confírmame el celular registrado en la compra.';
       }
     }
 
