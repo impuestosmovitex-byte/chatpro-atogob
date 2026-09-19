@@ -928,12 +928,6 @@ export class CompanyShopifyService {
               ... on Order {
                 email
                 phone
-                customer {
-                  firstName
-                  lastName
-                  email
-                  phone
-                }
                 shippingAddress {
                   name
                   phone
