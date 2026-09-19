@@ -41,7 +41,7 @@ export class CustomerOrderService {
     }
 
     const identifierInputs: Array<{
-      kind: 'orderReference' | 'email' | 'phone';
+      kind: 'orderReference' | 'email';
       input: OrderLookupInput;
     }> = [];
 
@@ -65,17 +65,7 @@ export class CustomerOrderService {
       });
     }
 
-    if (phone) {
-      identifierInputs.push({
-        kind: 'phone',
-        input: {
-          phone,
-          limit: 5,
-        },
-      });
-    }
-
-    const identifierCount = identifierInputs.length;
+    const identifierCount = [orderReference, email, phone].filter(Boolean).length;
 
     const lookupIdentifiers = {
       order_reference: Boolean(orderReference),
@@ -170,7 +160,7 @@ export class CustomerOrderService {
     }
 
     const matchesFor = (
-      kind: 'orderReference' | 'email' | 'phone',
+      kind: 'orderReference' | 'email',
     ): OrderLookupResult[] => {
       const index = identifierInputs.findIndex(
         (identifier) => identifier.kind === kind,
@@ -182,12 +172,13 @@ export class CustomerOrderService {
     };
 
     // Si tenemos número de pedido, este es el ancla principal.
-    // El pedido queda validado cuando ese número coincide con
-    // AL MENOS UNO de los datos secundarios entregados:
-    // correo O teléfono.
     //
-    // Así, un teléfono diferente no invalida un correo correcto
-    // y un correo diferente no invalida un teléfono correcto.
+    // El correo puede verificarse mediante una búsqueda real soportada
+    // por Shopify. El teléfono no se usa como filtro de pedidos:
+    // se compara de forma estricta contra el pedido encontrado.
+    //
+    // Cuando llegan varios datos secundarios, basta con que al menos uno
+    // valide el mismo pedido anclado por número.
     if (orderReference) {
       const referenceOrders = matchesFor('orderReference');
       const referenceIds = new Set(
@@ -207,11 +198,14 @@ export class CustomerOrderService {
       }
 
       if (phone) {
-        for (const order of matchesFor('phone')) {
-          const id = String(order.id);
-
-          if (referenceIds.has(id)) {
-            verifiedIds.add(id);
+        for (const order of referenceOrders) {
+          if (
+            this.matchesLookupIdentifierStrictly(
+              order,
+              { phone },
+            )
+          ) {
+            verifiedIds.add(String(order.id));
           }
         }
       }
@@ -272,23 +266,26 @@ export class CustomerOrderService {
       };
     }
 
-    // Si el cliente no conoce el número del pedido,
-    // correo + teléfono pueden validar únicamente cuando ambos
-    // conducen a un solo pedido real.
+    // Si el cliente no conoce el número del pedido, correo + teléfono
+    // pueden validar una compra.
+    //
+    // Shopify busca los pedidos por correo. Después ChatPro verifica
+    // localmente que el teléfono entregado coincida con el teléfono
+    // visible del cliente o de la dirección de envío de ese pedido.
     const emailOrders = matchesFor('email');
-    const phoneOrders = matchesFor('phone');
 
-    const phoneIds = new Set(
-      phoneOrders.map((order) => String(order.id)),
-    );
-
-    const commonOrders = emailOrders.filter((order) =>
-      phoneIds.has(String(order.id)),
-    );
+    const verifiedByPhone = phone
+      ? emailOrders.filter((order) =>
+          this.matchesLookupIdentifierStrictly(
+            order,
+            { phone },
+          ),
+        )
+      : [];
 
     const uniqueOrders = Array.from(
       new Map(
-        commonOrders.map((order) => [String(order.id), order]),
+        verifiedByPhone.map((order) => [String(order.id), order]),
       ).values(),
     );
 
@@ -322,12 +319,12 @@ export class CustomerOrderService {
       ok: true,
       found: false,
       requires_verification: true,
-      requires_human: true,
-      next_action: 'human_attention',
+      requires_human: false,
+      next_action: 'ask_alternate_identifier',
       lookup_identifiers: lookupIdentifiers,
       orders: [],
       message:
-        'Correo y teléfono no permitieron validar un mismo pedido. Requiere revisión humana.',
+        'Correo y teléfono no permitieron confirmar automáticamente la compra. Pide el número de pedido antes de considerar atención humana.',
     };
   }
 

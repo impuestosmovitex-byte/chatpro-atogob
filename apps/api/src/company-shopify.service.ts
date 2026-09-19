@@ -803,7 +803,6 @@ export class CompanyShopifyService {
     const queries: string[] = [];
     const rawReference = String(input.orderReference ?? '').trim();
     const email = String(input.email ?? '').trim().toLowerCase();
-    const phone = this.normalizeOrderPhone(input.phone);
 
     if (rawReference) {
       const clean = rawReference.replace(/^#/, '').trim();
@@ -829,35 +828,7 @@ export class CompanyShopifyService {
       queries.push(`email:${email}`);
     }
 
-    if (phone) {
-      const rawPhone = String(input.phone ?? '').trim();
-      const compactRawPhone = rawPhone.replace(/[^\d+]/g, '');
-      const phoneQueries = new Set<string>();
-
-      phoneQueries.add(phone);
-
-      if (compactRawPhone.startsWith('+')) {
-        phoneQueries.add(compactRawPhone);
-      } else {
-        phoneQueries.add(`+${phone}`);
-      }
-
-      if (phone.length > 10) {
-        phoneQueries.add(phone.slice(-10));
-      }
-
-      for (const phoneQuery of phoneQueries) {
-        if (phoneQuery) {
-          queries.push(`phone:${phoneQuery}`);
-        }
-      }
-    }
-
     return Array.from(new Set(queries)).slice(0, 8);
-  }
-
-  private normalizeOrderPhone(value: unknown): string {
-    return String(value ?? '').replace(/\D/g, '').slice(0, 20);
   }
 
   private toCustomerOrder(node: CompanyShopifyOrderNode): CompanyShopifyCustomerOrder {
