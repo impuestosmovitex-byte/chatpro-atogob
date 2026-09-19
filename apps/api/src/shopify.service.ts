@@ -486,10 +486,26 @@ export class ShopifyService {
     }
 
     if (phone) {
-      queries.push(`phone:${phone}`);
+      const rawPhone = String(input.phone ?? '').trim();
+      const compactRawPhone = rawPhone.replace(/[^\d+]/g, '');
+      const phoneQueries = new Set<string>();
+
+      phoneQueries.add(phone);
+
+      if (compactRawPhone.startsWith('+')) {
+        phoneQueries.add(compactRawPhone);
+      } else {
+        phoneQueries.add(`+${phone}`);
+      }
 
       if (phone.length > 10) {
-        queries.push(`phone:${phone.slice(-10)}`);
+        phoneQueries.add(phone.slice(-10));
+      }
+
+      for (const phoneQuery of phoneQueries) {
+        if (phoneQuery) {
+          queries.push(`phone:${phoneQuery}`);
+        }
       }
     }
 
