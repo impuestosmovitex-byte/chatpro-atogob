@@ -1473,6 +1473,7 @@ export class WhatsappWebhookController {
               activeSession,
               {
                 imageDataUrl,
+                customerText: input.caption || '',
                 summary: visualItem.summary,
                 productName: visualItem.productName,
                 reference: visualItem.reference,

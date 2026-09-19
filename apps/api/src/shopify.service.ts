@@ -36,6 +36,14 @@ type ShopifyProduct = {
     url: string;
     altText: string | null;
   } | null;
+  images: {
+    edges: Array<{
+      node: {
+        url: string;
+        altText: string | null;
+      };
+    }>;
+  };
   variants: {
     edges: Array<{
       node: ShopifyProductVariant;
@@ -254,6 +262,14 @@ export class ShopifyService {
               url
               altText
             }
+            images(first: 12) {
+              edges {
+                node {
+                  url
+                  altText
+                }
+              }
+            }
             variants(first: 100) {
               edges {
                 node {
@@ -324,6 +340,14 @@ export class ShopifyService {
                 featuredImage {
                   url
                   altText
+                }
+                images(first: 12) {
+                  edges {
+                    node {
+                      url
+                      altText
+                    }
+                  }
                 }
                 variants(first: 100) {
                   edges {

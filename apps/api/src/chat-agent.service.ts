@@ -698,6 +698,7 @@ export class ChatAgentService {
     session: ConversationSession,
     input: {
       imageDataUrl: string;
+      customerText: string;
       summary: string;
       productName: string;
       reference: string;
@@ -730,6 +731,7 @@ export class ChatAgentService {
       title: string;
       url: string;
       imageUrl: string | null;
+      imageUrls: string[];
       priceFromCop: string;
       textScore: number;
       bundleLike: boolean;
@@ -922,11 +924,28 @@ export class ChatAgentService {
           }
 
           const id = compact(product.id, 300) || url;
-          const imageUrl =
-            typeof product.image_url === 'string' &&
-            product.image_url.trim()
-              ? product.image_url.trim()
-              : null;
+          const imageUrls = Array.from(
+            new Set(
+              [
+                ...(Array.isArray(product.image_urls)
+                  ? product.image_urls
+                      .filter(
+                        (value): value is string =>
+                          typeof value === 'string',
+                      )
+                      .map((value) => value.trim())
+                  : []),
+                typeof product.image_url === 'string'
+                  ? product.image_url.trim()
+                  : '',
+              ].filter(
+                (value) =>
+                  typeof value === 'string' &&
+                  /^https?:\/\//i.test(value),
+              ),
+            ),
+          );
+          const imageUrl = imageUrls[0] ?? null;
           const priceFromCop =
             typeof product.price_from_cop === 'string' ||
             typeof product.price_from_cop === 'number'
@@ -937,6 +956,7 @@ export class ChatAgentService {
             title,
             url,
             imageUrl,
+            imageUrls,
             priceFromCop,
             textScore: scoreTitle(title, priceFromCop),
             bundleLike: this.isBundleLikeProductTitle(title),
@@ -970,10 +990,23 @@ export class ChatAgentService {
           'es',
           { sensitivity: 'base' },
         );
-      })
-      .slice(0, 12);
-    const top = ranked[0] ?? null;
-    const second = ranked[1] ?? null;
+      });
+
+    const normalizedCustomerText = normalized(input.customerText);
+
+    const wantsBundle =
+      /\b(combo|pack|bundle|kit|duo|trio|promocion|oferta|paquete)\b/.test(
+        normalizedCustomerText,
+      );
+
+    const intentRanked = (
+      wantsBundle
+        ? ranked.filter((candidate) => candidate.bundleLike)
+        : ranked.filter((candidate) => !candidate.bundleLike)
+    ).slice(0, 12);
+
+    const top = intentRanked[0] ?? null;
+    const second = intentRanked[1] ?? null;
     const hasSpecificText =
       Boolean(input.productName.trim()) ||
       Boolean(input.reference.trim()) ||
@@ -1032,130 +1065,197 @@ export class ChatAgentService {
       }
     }
 
-    const visualDescription =
-      normalized(input.summary);
-    const imageShowsSeveralProducts =
-      /\b(varios|varias|dos|tres|cuatro|combo|pack|kit|conjunto de)\b/.test(
-        visualDescription,
-      );
-    const preferredVisualPool =
-      imageShowsSeveralProducts
-        ? ranked
-        : ranked.filter((candidate) => !candidate.bundleLike);
-    const visualCandidates = (
-      preferredVisualPool.length
-        ? preferredVisualPool
-        : ranked
-    )
+    const visualCandidates = intentRanked
       .filter(
         (candidate) =>
-          typeof candidate.imageUrl === 'string' &&
-          /^https?:\/\//i.test(candidate.imageUrl),
+          candidate.imageUrls.some((imageUrl) =>
+            /^https?:\/\//i.test(imageUrl),
+          ),
       )
       .slice(0, 8);
+
+    const visualImageCandidates: Array<{
+      candidate: VisualCandidate;
+      imageUrl: string;
+      imageNumber: number;
+    }> = [];
+
+    // Reparto por rondas: primero la foto 1 de cada producto,
+    // luego la foto 2, etc. Así un producto con muchas fotos no
+    // desplaza del análisis a los demás candidatos.
+    for (let imageIndex = 0; imageIndex < 12; imageIndex += 1) {
+      for (const candidate of visualCandidates) {
+        const imageUrl = candidate.imageUrls[imageIndex];
+
+        if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
+          continue;
+        }
+
+        visualImageCandidates.push({
+          candidate,
+          imageUrl,
+          imageNumber: imageIndex + 1,
+        });
+      }
+    }
     let visualChoice: VisualCandidate | null = null;
     let visualMatchType: 'exact' | 'similar' | 'none' = 'none';
     let visualConfidence = 0;
     let visualReason = '';
 
+    const visualRank = (
+      value: 'exact' | 'similar' | 'none',
+    ): number => {
+      if (value === 'exact') {
+        return 2;
+      }
+
+      if (value === 'similar') {
+        return 1;
+      }
+
+      return 0;
+    };
+
     if (
-      visualCandidates.length &&
+      visualImageCandidates.length &&
       /^data:image\//i.test(input.imageDataUrl)
     ) {
-      try {
-        const content: any[] = [
-          {
-            type: 'input_text',
-            text:
-              'IMAGEN DEL CLIENTE. Compárala con los candidatos reales del catálogo.',
-          },
-          {
-            type: 'input_image',
-            image_url: input.imageDataUrl,
-            detail: 'high',
-          },
-        ];
+      const batchSize = 16;
 
-        visualCandidates.forEach((candidate, index) => {
-          content.push(
+      for (
+        let batchStart = 0;
+        batchStart < visualImageCandidates.length;
+        batchStart += batchSize
+      ) {
+        const batch = visualImageCandidates.slice(
+          batchStart,
+          batchStart + batchSize,
+        );
+
+        try {
+          const content: any[] = [
             {
               type: 'input_text',
               text:
-                `CANDIDATO ${index + 1}: ${candidate.title}. ` +
-                `Precio desde: ${candidate.priceFromCop || 'sin dato'}.`,
+                'IMAGEN DEL CLIENTE. Compárala con las fotos reales de productos del catálogo.',
             },
             {
               type: 'input_image',
-              image_url: candidate.imageUrl,
-              detail: 'auto',
+              image_url: input.imageDataUrl,
+              detail: 'high',
             },
+          ];
+
+          batch.forEach((entry, index) => {
+            content.push(
+              {
+                type: 'input_text',
+                text:
+                  `CANDIDATO ${index + 1}: ${entry.candidate.title}. ` +
+                  `Foto ${entry.imageNumber} de ese producto. ` +
+                  `Precio desde: ${entry.candidate.priceFromCop || 'sin dato'}.`,
+              },
+              {
+                type: 'input_image',
+                image_url: entry.imageUrl,
+                detail: 'auto',
+              },
+            );
+          });
+
+          const response = await this.getClient().responses.create({
+            model: this.getModel(),
+            instructions: [
+              'Compara una imagen enviada por un cliente con fotografías reales de productos de una tienda.',
+              'Cada CANDIDATO representa una fotografía concreta de un producto real del catálogo.',
+              'Devuelve únicamente JSON válido y sin markdown:',
+              '{"match_type":"exact|similar|none","candidate_index":1,"confidence":0.0,"reason":"..."}',
+              'exact significa que la foto corresponde al mismo producto o referencia, aunque cambien encuadre, fondo, modelo, iluminación, orientación, color disponible o ángulo.',
+              'similar significa que comparte categoría o estilo, pero no puedes asegurar que sea la misma referencia.',
+              'none significa que ninguna fotografía del lote permite confirmar la referencia.',
+              'No marques exact solo porque dos prendas pertenezcan a la misma categoría o tengan una forma común.',
+              'Si reconoces detalles estructurales distintos, estampado diferente, cortes diferentes o elementos incompatibles, no es exact.',
+              'candidate_index empieza en 1. Usa null cuando match_type sea none.',
+              `Empresa activa: ${profile.name}.`,
+            ].join('\n'),
+            input: [
+              {
+                role: 'user',
+                content,
+              },
+            ],
+          } as any);
+
+          const raw = response.output_text
+            .trim()
+            .replace(/^```(?:json)?\s*/i, '')
+            .replace(/\s*```$/i, '');
+
+          const parsed = JSON.parse(raw) as {
+            match_type?: unknown;
+            candidate_index?: unknown;
+            confidence?: unknown;
+            reason?: unknown;
+          };
+
+          const index = Number(parsed.candidate_index);
+          const confidence = Number(parsed.confidence);
+          const matchType =
+            parsed.match_type === 'exact' ||
+            parsed.match_type === 'similar'
+              ? parsed.match_type
+              : 'none';
+
+          const safeConfidence =
+            Number.isFinite(confidence)
+              ? Math.min(1, Math.max(0, confidence))
+              : 0;
+
+          const batchChoice =
+            Number.isInteger(index) &&
+            index >= 1 &&
+            index <= batch.length
+              ? batch[index - 1]?.candidate ?? null
+              : null;
+
+          if (batchChoice && matchType !== 'none') {
+            const currentRank = visualRank(visualMatchType);
+            const newRank = visualRank(matchType);
+
+            if (
+              newRank > currentRank ||
+              (
+                newRank === currentRank &&
+                safeConfidence > visualConfidence
+              )
+            ) {
+              visualChoice = batchChoice;
+              visualMatchType = matchType;
+              visualConfidence = safeConfidence;
+              visualReason = compact(parsed.reason, 360);
+            }
+          }
+
+          if (
+            visualMatchType === 'exact' &&
+            visualConfidence >= 0.97
+          ) {
+            break;
+          }
+        } catch (error) {
+          console.error(
+            '[ChatPro][visual-match] no se pudo comparar un lote de imágenes:',
+            error,
           );
-        });
-
-        const response = await this.getClient().responses.create({
-          model: this.getModel(),
-          instructions: [
-            'Compara una imagen enviada por un cliente con imágenes de productos reales de una tienda.',
-            'Devuelve únicamente JSON válido y sin markdown:',
-            '{"match_type":"exact|similar|none","candidate_index":1,"confidence":0.0,"reason":"..."}',
-            'exact significa que es el mismo producto o referencia visual, aunque cambien el encuadre, fondo, iluminación, orientación o ángulo.',
-            'similar significa que comparte categoría o estilo, pero no puedes asegurar que sea la misma referencia.',
-            'none significa que ningún candidato es suficientemente parecido.',
-            'Sé conservador: no uses exact solo por compartir categoría, forma, apariencia general o atributos visuales comunes.',
-            'candidate_index empieza en 1. Usa null cuando match_type sea none.',
-            `Empresa activa: ${profile.name}.`,
-          ].join('\n'),
-          input: [
-            {
-              role: 'user',
-              content,
-            },
-          ],
-        } as any);
-        const raw = response.output_text
-          .trim()
-          .replace(/^```(?:json)?\s*/i, '')
-          .replace(/\s*```$/i, '');
-        const parsed = JSON.parse(raw) as {
-          match_type?: unknown;
-          candidate_index?: unknown;
-          confidence?: unknown;
-          reason?: unknown;
-        };
-        const index = Number(parsed.candidate_index);
-        const confidence = Number(parsed.confidence);
-        const matchType =
-          parsed.match_type === 'exact' ||
-          parsed.match_type === 'similar'
-            ? parsed.match_type
-            : 'none';
-
-        visualMatchType = matchType;
-        visualConfidence =
-          Number.isFinite(confidence)
-            ? Math.min(1, Math.max(0, confidence))
-            : 0;
-        visualReason = compact(parsed.reason, 360);
-
-        if (
-          Number.isInteger(index) &&
-          index >= 1 &&
-          index <= visualCandidates.length
-        ) {
-          visualChoice = visualCandidates[index - 1] ?? null;
         }
-      } catch (error) {
-        console.error(
-          '[ChatPro][visual-match] no se pudo comparar imágenes:',
-          error,
-        );
       }
     }
 
     if (
       visualMatchType === 'exact' &&
       visualChoice &&
-      visualConfidence >= 0.84
+      visualConfidence >= 0.88
     ) {
       const exact = await selectExactCandidate(
         visualChoice,
@@ -1520,7 +1620,7 @@ export class ChatAgentService {
   }
 
   private isBundleLikeProductTitle(title: string): boolean {
-    return /\b(combo|pack|bundle|kit|duo|trio|x\s*\d+|\d+\s*(unidades|prendas|productos))\b/i.test(
+    return /\b(combo|pack|bundle|kit|duo|trio|promocion|oferta|paquete|x\s*\d+|\d+\s*(unidades|prendas|productos|blusas?|vestidos?|pantalones?|camisetas?|tops?|enterizos?|faldas?|chaquetas?))\b/i.test(
       this.normalizeText(title),
     );
   }
@@ -4363,6 +4463,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           title: product.title,
           url: product.onlineStoreUrl,
           image_url: product.imageUrl,
+          image_urls: product.imageUrls,
           price_from_cop: this.getCompanyStartingPrice(product),
           variants: product.variants.slice(0, 10).map((variant) => ({
             id: variant.id,
@@ -4384,6 +4485,9 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         title: product.title,
         url: product.onlineStoreUrl,
         image_url: product.featuredImage?.url ?? null,
+        image_urls: product.images.edges
+          .map(({ node }) => node.url)
+          .filter((url) => /^https?:\/\//i.test(url)),
         price_from_cop: this.getStartingPrice(product),
         variants: product.variants.edges.slice(0, 10).map(({ node }) => ({
           id: node.id,

@@ -242,6 +242,14 @@ type ShopifyCommerceProductNode = {
     url: string;
     altText: string | null;
   } | null;
+  images: {
+    edges: Array<{
+      node: {
+        url: string;
+        altText: string | null;
+      };
+    }>;
+  };
   variants: {
     edges: Array<{ node: ShopifyCommerceVariantNode }>;
   };
@@ -381,6 +389,7 @@ export type CompanyCommerceProduct = {
   onlineStoreUrl: string | null;
   imageUrl: string | null;
   imageAlt: string | null;
+  imageUrls: string[];
   variants: Array<{
     id: string;
     legacyResourceId: string;
@@ -1526,6 +1535,14 @@ async searchCommerceProducts(
                   url
                   altText
                 }
+                images(first: 12) {
+                  edges {
+                    node {
+                      url
+                      altText
+                    }
+                  }
+                }
                 variants(first: 100) {
                   edges {
                     node {
@@ -1591,6 +1608,14 @@ async searchCommerceProducts(
             featuredImage {
               url
               altText
+            }
+            images(first: 12) {
+              edges {
+                node {
+                  url
+                  altText
+                }
+              }
             }
             variants(first: 100) {
               edges {
@@ -1796,6 +1821,15 @@ async searchCommerceProducts(
       return null;
     }
 
+    const imageUrls = Array.from(
+      new Set(
+        [
+          product.featuredImage?.url || '',
+          ...product.images.edges.map(({ node }) => node.url || ''),
+        ].filter((value) => /^https?:\/\//i.test(value)),
+      ),
+    );
+
     return {
       id: product.id,
       title: product.title,
@@ -1803,8 +1837,12 @@ async searchCommerceProducts(
       status,
       publishedAt,
       onlineStoreUrl,
-      imageUrl: product.featuredImage?.url || null,
-      imageAlt: product.featuredImage?.altText || null,
+      imageUrl: imageUrls[0] || null,
+      imageAlt:
+        product.featuredImage?.altText ||
+        product.images.edges[0]?.node.altText ||
+        null,
+      imageUrls,
       variants,
     };
   }
