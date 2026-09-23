@@ -69,9 +69,13 @@ export class ClientsController {
       actor,
       payload.session,
     );
+    const aiTakeSettings =
+      await this.getAiTakeSettings(payload.company.id);
+
     const start = this.startAvailability(
       actor,
       payload.client,
+      aiTakeSettings,
     );
 
     return {
@@ -115,12 +119,21 @@ export class ClientsController {
       payload.company.id,
     );
 
+    const aiTakeSettings =
+      await this.getAiTakeSettings(payload.company.id);
+
     return {
       ok: true,
       ...payload,
       canEdit: this.hasPermission(actor, 'clients.manage'),
       clients: payload.clients
-        .map((client) => this.secureClientSummary(actor, client))
+        .map((client) =>
+          this.secureClientSummary(
+            actor,
+            client,
+            aiTakeSettings,
+          ),
+        )
         .filter(
           (client) =>
             !client.historyRestricted || client.startAvailable,
@@ -166,7 +179,14 @@ export class ClientsController {
           company,
           phone,
         );
-      const start = this.startAvailability(actor, payload.client);
+      const aiTakeSettings =
+        await this.getAiTakeSettings(payload.company.id);
+
+      const start = this.startAvailability(
+        actor,
+        payload.client,
+        aiTakeSettings,
+      );
 
       if (!start.startAvailable) {
         throw new ForbiddenException(
@@ -175,21 +195,19 @@ export class ClientsController {
         );
       }
 
-      if (!actor.userId) {
-        throw new BadRequestException(
-          'Inicia sesión con un usuario para tomar la conversación.',
-        );
-      }
+      const advisor = actor.userId
+        ? {
+            userId: actor.userId,
+            fullName: actor.fullName,
+          }
+        : await this.resolveBootstrapOwner(payload.company.id);
 
       return {
         ok: true,
         session:
           await this.conversationMemoryService.takeConversation(
             payload.session.id,
-            {
-              userId: actor.userId,
-              fullName: actor.fullName,
-            },
+            advisor,
           ),
       };
     }
@@ -374,6 +392,77 @@ export class ClientsController {
     };
   }
 
+  private async resolveBootstrapOwner(
+    companyId: string,
+  ): Promise<{ userId: string; fullName: string }> {
+    const c = this.supabaseService.getClient();
+
+    const { data: memberships, error: membershipError } = await c
+      .from('company_memberships')
+      .select('user_id,role_id')
+      .eq('company_id', companyId)
+      .eq('active', true);
+
+    if (membershipError)
+      throw new BadRequestException(
+        `No se pudo resolver el propietario: ${membershipError.message}`,
+      );
+
+    const rows = (memberships ?? []).filter(
+      (row: any) =>
+        typeof row.user_id === 'string' && typeof row.role_id === 'string',
+    );
+    const roleIds = rows.map((row: any) => row.role_id);
+
+    if (!roleIds.length)
+      throw new ForbiddenException(
+        'No hay un propietario activo configurado para tomar conversaciones.',
+      );
+
+    const { data: roles, error: rolesError } = await c
+      .from('app_roles')
+      .select('id,key')
+      .in('id', roleIds);
+
+    if (rolesError)
+      throw new BadRequestException(
+        `No se pudieron cargar los roles: ${rolesError.message}`,
+      );
+
+    const ownerRoleIds = new Set(
+      (roles ?? [])
+        .filter((role: any) => role?.key === 'owner')
+        .map((role: any) => role.id)
+        .filter((id: unknown): id is string => typeof id === 'string'),
+    );
+
+    const owner = rows.find((row: any) => ownerRoleIds.has(row.role_id));
+
+    if (!owner)
+      throw new ForbiddenException(
+        'No hay un propietario activo configurado para tomar conversaciones.',
+      );
+
+    const { data: profile, error: profileError } = await c
+      .from('app_profiles')
+      .select('full_name')
+      .eq('user_id', owner.user_id)
+      .maybeSingle();
+
+    if (profileError)
+      throw new BadRequestException(
+        `No se pudo cargar el propietario: ${profileError.message}`,
+      );
+
+    return {
+      userId: owner.user_id,
+      fullName:
+        typeof profile?.full_name === 'string' && profile.full_name.trim()
+          ? profile.full_name.trim()
+          : 'Propietario',
+    };
+  }
+
   private canViewHistory(
     actor: Actor,
     session: Pick<
@@ -413,6 +502,46 @@ export class ClientsController {
     );
   }
 
+  private async getAiTakeSettings(
+    companyId: string,
+  ): Promise<{
+    advisorsCanTakeAi: boolean;
+    aiTakeAfterMinutes: number;
+  }> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('company_support_settings')
+      .select('advisors_can_take_ai,ai_take_after_minutes')
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        `No se pudo cargar la configuración de chats de IA: ${error.message}`,
+      );
+    }
+
+    const settings = data as {
+      advisors_can_take_ai?: boolean | null;
+      ai_take_after_minutes?: number | null;
+    } | null;
+
+    const configuredMinutes = Number(
+      settings?.ai_take_after_minutes,
+    );
+
+    return {
+      advisorsCanTakeAi:
+        settings?.advisors_can_take_ai === true,
+      aiTakeAfterMinutes:
+        Number.isInteger(configuredMinutes) &&
+        configuredMinutes >= 1 &&
+        configuredMinutes <= 10080
+          ? configuredMinutes
+          : 60,
+    };
+  }
+
   private startAvailability(
     actor: Actor,
     client: Pick<
@@ -422,6 +551,10 @@ export class ClientsController {
       | 'lastMessageAt'
       | 'totalMessages'
     >,
+    settings: {
+      advisorsCanTakeAi: boolean;
+      aiTakeAfterMinutes: number;
+    },
   ): {
     startAvailable: boolean;
     startBlockedReason: string | null;
@@ -453,6 +586,13 @@ export class ClientsController {
       };
     }
 
+    if (client.attentionStatus === 'closed') {
+      return {
+        startAvailable: true,
+        startBlockedReason: null,
+      };
+    }
+
     if (
       client.attentionStatus === 'waiting' ||
       client.totalMessages === 0
@@ -463,32 +603,77 @@ export class ClientsController {
       };
     }
 
-    const lastActivity = new Date(client.lastMessageAt).getTime();
-    const inactiveForTwelveHours =
-      Number.isFinite(lastActivity) &&
-      Date.now() - lastActivity >= 12 * 60 * 60 * 1000;
+    if (client.attentionStatus !== 'ai') {
+      return {
+        startAvailable: false,
+        startBlockedReason:
+          'Esta conversación no está disponible.',
+      };
+    }
 
-    if (
-      inactiveForTwelveHours &&
-      (client.attentionStatus === 'ai' ||
-        client.attentionStatus === 'closed')
-    ) {
+    if (actor.isFullAccess) {
       return {
         startAvailable: true,
         startBlockedReason: null,
       };
     }
 
+    if (!settings.advisorsCanTakeAi) {
+      return {
+        startAvailable: false,
+        startBlockedReason:
+          'La empresa no permite que los asesores tomen chats atendidos por la IA.',
+      };
+    }
+
+    const lastActivity =
+      new Date(client.lastMessageAt).getTime();
+
+    if (!Number.isFinite(lastActivity)) {
+      return {
+        startAvailable: false,
+        startBlockedReason:
+          'No se pudo validar la última actividad.',
+      };
+    }
+
+    const elapsedMinutes = Math.floor(
+      (Date.now() - lastActivity) / 60000,
+    );
+
+    const remainingMinutes = Math.max(
+      0,
+      settings.aiTakeAfterMinutes - elapsedMinutes,
+    );
+
+    if (remainingMinutes > 0) {
+      return {
+        startAvailable: false,
+        startBlockedReason:
+          `La IA sigue activa. Podrás iniciar esta conversación en ${remainingMinutes} minuto${remainingMinutes === 1 ? '' : 's'}.`,
+      };
+    }
+
     return {
-      startAvailable: false,
-      startBlockedReason:
-        'La IA tuvo actividad durante las últimas 12 horas.',
+      startAvailable: true,
+      startBlockedReason: null,
     };
   }
 
-  private secureClientSummary(actor: Actor, client: ClientSummary) {
+  private secureClientSummary(
+    actor: Actor,
+    client: ClientSummary,
+    settings: {
+      advisorsCanTakeAi: boolean;
+      aiTakeAfterMinutes: number;
+    },
+  ) {
     const historyRestricted = !this.canViewHistory(actor, client);
-    const start = this.startAvailability(actor, client);
+    const start = this.startAvailability(
+      actor,
+      client,
+      settings,
+    );
 
     return {
       ...client,
