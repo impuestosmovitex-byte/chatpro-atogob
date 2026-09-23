@@ -628,6 +628,13 @@ export class WhatsappWebhookController {
         )
       ).trim();
 
+      if (this.shouldSuppressExternalAutomationReply(reply)) {
+        console.log(
+          `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
+        );
+        return;
+      }
+
       if (!reply) {
         throw new Error(
           'La IA devolvió una respuesta vacía para la ubicación.',
@@ -846,6 +853,13 @@ export class WhatsappWebhookController {
           customerMessage,
         )
       ).trim();
+
+      if (this.shouldSuppressExternalAutomationReply(reply)) {
+        console.log(
+          `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
+        );
+        return;
+      }
 
       if (!reply) {
         throw new Error(
@@ -1273,6 +1287,13 @@ export class WhatsappWebhookController {
           serviceEvidenceMessage,
         );
 
+        if (this.shouldSuppressExternalAutomationReply(serviceReply)) {
+          console.log(
+            `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
+          );
+          return;
+        }
+
         if (
           !this.isCurrentInboundMessage(
             `${input.incomingPhoneNumberId}:${input.phone}`,
@@ -1389,6 +1410,13 @@ export class WhatsappWebhookController {
           session,
           contextualImageMessage,
         );
+
+        if (this.shouldSuppressExternalAutomationReply(contextualReply)) {
+          console.log(
+            `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
+          );
+          return;
+        }
 
         if (
           !this.isCurrentInboundMessage(
@@ -1692,6 +1720,13 @@ export class WhatsappWebhookController {
           burstCustomerMessage,
         );
 
+        if (this.shouldSuppressExternalAutomationReply(burstReply)) {
+          console.log(
+            `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
+          );
+          return;
+        }
+
         if (
           !this.isCurrentInboundMessage(
             `${input.incomingPhoneNumberId}:${input.phone}`,
@@ -1774,6 +1809,13 @@ export class WhatsappWebhookController {
         session,
         visualCustomerMessage,
       );
+
+      if (this.shouldSuppressExternalAutomationReply(reply)) {
+        console.log(
+          `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
+        );
+        return;
+      }
 
       if (
         !this.isCurrentInboundMessage(
@@ -2131,6 +2173,13 @@ export class WhatsappWebhookController {
       updated,
       paymentEvidenceMessage,
     );
+
+    if (this.shouldSuppressExternalAutomationReply(reply)) {
+      console.log(
+        `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
+      );
+      return;
+    }
 
     if (
       !this.isCurrentInboundMessage(
@@ -2616,6 +2665,13 @@ export class WhatsappWebhookController {
         )
       ).trim();
 
+      if (this.shouldSuppressExternalAutomationReply(reply)) {
+        console.log(
+          `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
+        );
+        return;
+      }
+
       if (!reply) {
         throw new Error(
           'La IA devolvió una respuesta vacía para el audio.',
@@ -3051,10 +3107,7 @@ export class WhatsappWebhookController {
           await this.resolveReply(profile, session, input.text)
         ).trim();
 
-        if (
-          reply ===
-          '__CHATPRO_INTERNAL_SUPPRESS_EXTERNAL_AUTOMATION_7F4D__'
-        ) {
+        if (this.shouldSuppressExternalAutomationReply(reply)) {
           console.log(
             `[ChatPro][bot-loop] Respuesta automática externa ignorada para ${input.phone}`,
           );
@@ -3519,6 +3572,15 @@ export class WhatsappWebhookController {
       );
       return session;
     }
+  }
+
+  private shouldSuppressExternalAutomationReply(
+    reply: string,
+  ): boolean {
+    return (
+      reply.trim() ===
+      '__CHATPRO_INTERNAL_SUPPRESS_EXTERNAL_AUTOMATION_7F4D__'
+    );
   }
 
   private async resolveReply(
