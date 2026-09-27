@@ -26,6 +26,7 @@ import {
 export class WhatsappWebhookController {
   private readonly conversationQueues = new Map<string, Promise<void>>();
   private readonly recentProductUrlMessages = new Map<string, number>();
+  private readonly whatsappProfileNameCache = new Map<string, string>();
   private readonly latestInboundMessages = new Map<
     string,
     {
@@ -112,6 +113,22 @@ export class WhatsappWebhookController {
 
     try {
       const incomingPhoneNumberId = this.getIncomingPhoneNumberId(body);
+
+      const whatsappProfileName =
+        this.getIncomingWhatsappProfileName(
+          body,
+          phone,
+        );
+
+      if (whatsappProfileName) {
+        await this.syncIncomingWhatsappProfileName({
+          incomingPhoneNumberId,
+          phone,
+          displayName:
+            whatsappProfileName,
+        });
+      }
+
       const conversationKey = `${incomingPhoneNumberId}:${phone}`;
 
       if (message.type === 'audio') {
@@ -5585,6 +5602,148 @@ export class WhatsappWebhookController {
       ? rawMessageId.trim()
       : null;
   }
+
+  private getIncomingWhatsappProfileName(
+    body: any,
+    phone: string,
+  ): string {
+    const contacts =
+      body?.entry?.[0]
+        ?.changes?.[0]
+        ?.value?.contacts;
+
+    if (!Array.isArray(contacts) || !contacts.length) {
+      return '';
+    }
+
+    const requestedPhone =
+      phone.replace(/\D/g, '');
+
+    const contact =
+      contacts.find((item: any) => {
+        const waId =
+          typeof item?.wa_id === 'string'
+            ? item.wa_id.replace(/\D/g, '')
+            : '';
+
+        return (
+          waId &&
+          requestedPhone &&
+          waId === requestedPhone
+        );
+      }) ?? contacts[0];
+
+    const rawName =
+      contact?.profile?.name;
+
+    return typeof rawName === 'string'
+      ? rawName
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 160)
+      : '';
+  }
+
+  private async syncIncomingWhatsappProfileName(
+    input: {
+      incomingPhoneNumberId: string;
+      phone: string;
+      displayName: string;
+    },
+  ): Promise<void> {
+    const displayName =
+      input.displayName
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160);
+
+    if (!displayName) {
+      return;
+    }
+
+    const cacheKey =
+      `${input.incomingPhoneNumberId}:${input.phone}`;
+
+    if (
+      this.whatsappProfileNameCache.get(
+        cacheKey,
+      ) === displayName
+    ) {
+      return;
+    }
+
+    try {
+      const integration =
+        await this.companyIntegrationService
+          .findActiveIntegrationByExternalId(
+            'meta',
+            'whatsapp',
+            input.incomingPhoneNumberId,
+          );
+
+      if (!integration) {
+        return;
+      }
+
+      const profile =
+        await this.conversationMemoryService
+          .getCompanyProfileById(
+            integration.companyId,
+          );
+
+      // Si el usuario de ChatPro ya puso un nombre manual,
+      // lo respetamos y no lo sobrescribimos automáticamente.
+      try {
+        const existing =
+          await this.conversationMemoryService
+            .getClientProfile(
+              profile.slug,
+              input.phone,
+            );
+
+        const existingName =
+          existing.client.contact
+            ?.displayName
+            ?.trim() ||
+          '';
+
+        if (existingName) {
+          this.whatsappProfileNameCache.set(
+            cacheKey,
+            displayName,
+          );
+
+          return;
+        }
+      } catch {
+        // Es normal para un cliente nuevo que aún no tenga sesión.
+      }
+
+      await this.conversationMemoryService
+        .updateContact(
+          profile.slug,
+          input.phone,
+          {
+            displayName,
+          },
+        );
+
+      this.whatsappProfileNameCache.set(
+        cacheKey,
+        displayName,
+      );
+
+      console.log(
+        `[ChatPro][WhatsApp] nombre de perfil sincronizado phone=${input.phone.slice(-4)}`,
+      );
+    } catch (error) {
+      console.warn(
+        `[ChatPro][WhatsApp] No se pudo sincronizar el nombre del perfil phone=${input.phone.slice(-4)}:`,
+        error,
+      );
+    }
+  }
+
 
   private getIncomingPhoneNumberId(body: any): string {
     const rawPhoneNumberId =
