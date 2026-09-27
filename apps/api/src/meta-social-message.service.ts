@@ -1090,9 +1090,39 @@ export class MetaSocialMessageService {
 
       const response = await fetch(url);
 
+      const raw =
+        await response.text();
+
       if (!response.ok) {
+        let metaCode = '';
+        let metaMessage = '';
+
+        try {
+          const parsed =
+            this.record(
+              JSON.parse(raw),
+            );
+
+          const metaError =
+            this.record(
+              parsed.error,
+            );
+
+          metaCode =
+            this.text(
+              metaError.code,
+            );
+
+          metaMessage =
+            this.text(
+              metaError.message,
+            );
+        } catch {
+          // No registrar el cuerpo completo para evitar datos innecesarios.
+        }
+
         console.warn(
-          `[ChatPro][Messenger] Meta no permitió consultar perfil sender=${senderId} status=${response.status}`,
+          `[ChatPro][Messenger] Meta no permitió consultar perfil sender=${senderId} status=${response.status} code=${metaCode || 'n/a'} message=${metaMessage || 'n/a'}`,
         );
 
         return {
@@ -1103,7 +1133,11 @@ export class MetaSocialMessageService {
       }
 
       const payload =
-        this.record(await response.json());
+        this.record(
+          raw
+            ? JSON.parse(raw)
+            : {},
+        );
 
       const firstName =
         this.text(payload.first_name);
