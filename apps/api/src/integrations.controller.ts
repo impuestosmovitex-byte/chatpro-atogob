@@ -124,6 +124,7 @@ export class IntegrationsController {
 
     const rows = (data ?? []) as IntegrationRow[];
     await this.refreshWhatsappHealth(rows);
+    await this.refreshInstagramHealth(rows);
 
     const known = CATALOG.map((item) => {
       const matches = (candidate: IntegrationRow) =>
@@ -204,6 +205,228 @@ export class IntegrationsController {
       integrations: [...known, ...extra],
     };
   }
+
+  @Post('instagram/test')
+  async testInstagramConnection(
+    @Headers('x-chatpro-inbox-key')
+    accessKey: string | undefined,
+    @Query('company')
+    companySlug: string | undefined,
+  ) {
+    this.requireAccess(accessKey);
+
+    const company =
+      await this.getCompany(
+        companySlug,
+      );
+
+    const client =
+      this.supabaseService.getClient();
+
+    const {
+      data,
+      error,
+    } = await client
+      .from('company_integrations')
+      .select(
+        'id, provider, integration_type, external_id, status, config, credential_mode, credential_reference, credentials_encrypted, created_at, updated_at',
+      )
+      .eq(
+        'company_id',
+        company.id,
+      )
+      .eq(
+        'provider',
+        'meta',
+      )
+      .eq(
+        'integration_type',
+        'instagram',
+      )
+      .eq(
+        'status',
+        'active',
+      )
+      .order(
+        'updated_at',
+        {
+          ascending: false,
+        },
+      )
+      .limit(1)
+      .maybeSingle();
+
+    if (
+      error ||
+      !data
+    ) {
+      throw new BadRequestException(
+        error?.message ||
+          'No hay una conexión activa de Instagram para esta empresa.',
+      );
+    }
+
+    const row =
+      data as IntegrationRow;
+
+    const result =
+      await this.evaluateInstagramHealth(
+        row,
+      );
+
+    await this.persistInstagramHealth(
+      row,
+      result.config,
+    );
+
+    row.config =
+      result.config;
+
+    if (!result.ok) {
+      throw new BadRequestException(
+        result.error ||
+          'Instagram requiere reconexión.',
+      );
+    }
+
+    const config =
+      this.toRecord(
+        result.config,
+      );
+
+    return {
+      ok: true,
+      message:
+        'Conexión de Instagram verificada.',
+      instagram: {
+        username:
+          this.text(
+            config.username,
+          ) ||
+          null,
+        name:
+          this.text(
+            config.display_name,
+          ) ||
+          null,
+        profilePictureUrl:
+          this.text(
+            config.profile_picture_url,
+          ) ||
+          null,
+        accountType:
+          this.text(
+            config.account_type,
+          ) ||
+          null,
+      },
+      health:
+        this.healthDetails(
+          row,
+          config,
+        ),
+    };
+  }
+
+  @Post('instagram/disconnect')
+  async disconnectInstagram(
+    @Headers('x-chatpro-inbox-key')
+    accessKey: string | undefined,
+    @Query('company')
+    companySlug: string | undefined,
+  ) {
+    this.requireAccess(accessKey);
+
+    const company =
+      await this.getCompany(
+        companySlug,
+      );
+
+    const now =
+      new Date().toISOString();
+
+    const client =
+      this.supabaseService.getClient();
+
+    const {
+      data: activeRows,
+      error: readError,
+    } = await client
+      .from('company_integrations')
+      .select('id')
+      .eq(
+        'company_id',
+        company.id,
+      )
+      .eq(
+        'provider',
+        'meta',
+      )
+      .eq(
+        'integration_type',
+        'instagram',
+      )
+      .eq(
+        'status',
+        'active',
+      );
+
+    if (readError) {
+      throw new BadRequestException(
+        `No se pudo consultar Instagram: ${readError.message}`,
+      );
+    }
+
+    const count =
+      activeRows?.length || 0;
+
+    if (count) {
+      const {
+        error: disconnectError,
+      } = await client
+        .from(
+          'company_integrations',
+        )
+        .update({
+          status:
+            'disconnected',
+          credentials_encrypted:
+            null,
+          updated_at:
+            now,
+        })
+        .eq(
+          'company_id',
+          company.id,
+        )
+        .eq(
+          'provider',
+          'meta',
+        )
+        .eq(
+          'integration_type',
+          'instagram',
+        )
+        .eq(
+          'status',
+          'active',
+        );
+
+      if (disconnectError) {
+        throw new BadRequestException(
+          `No se pudo desconectar Instagram: ${disconnectError.message}`,
+        );
+      }
+    }
+
+    return {
+      ok: true,
+      disconnected: count,
+      message:
+        'Instagram quedó desconectado de ChatPro. Para volver a usarlo será necesario autorizar la cuenta nuevamente.',
+    };
+  }
+
 
   @Get('whatsapp/embedded/config')
   async getWhatsappEmbeddedConfig(
@@ -623,56 +846,452 @@ export class IntegrationsController {
     },
     row: IntegrationRow,
   ) {
-    const config = this.toRecord(row.config);
-    const health = this.healthDetails(row, config);
-    const displayStatus =
+    const config =
+      this.toRecord(
+        row.config,
+      );
+
+    const health =
+      this.healthDetails(
+        row,
+        config,
+      );
+
+    const usesMetaHealth =
       row.provider === 'meta' &&
-      row.integration_type === 'whatsapp' &&
+      (
+        row.integration_type ===
+          'whatsapp' ||
+        row.integration_type ===
+          'instagram'
+      );
+
+    const displayStatus:
+      IntegrationRow['status'] =
+      usesMetaHealth &&
       row.status === 'active' &&
       health.status === 'error'
         ? 'error'
         : row.status;
 
+    const isInstagram =
+      row.provider === 'meta' &&
+      row.integration_type ===
+        'instagram';
+
+    const displayStatusLabel =
+      isInstagram &&
+      displayStatus === 'active'
+        ? 'Conectada'
+        : isInstagram &&
+            displayStatus ===
+              'error'
+          ? 'Requiere reconexión'
+          : this.statusLabel(
+              displayStatus,
+            );
+
     return {
       id: row.id,
       key: item.key,
-      provider: row.provider,
-      integrationType: row.integration_type,
+      provider:
+        row.provider,
+      integrationType:
+        row.integration_type,
       name: item.name,
-      description: item.description,
-      status: displayStatus,
-      statusLabel: this.statusLabel(displayStatus),
-      connectionReady: item.connectionReady,
-      credentialMode: row.credential_mode,
-      details: this.safeDetails(row, config),
+      description:
+        item.description,
+      status:
+        displayStatus,
+      statusLabel:
+        displayStatusLabel,
+      connectionReady:
+        item.connectionReady,
+      credentialMode:
+        row.credential_mode,
+      details:
+        this.safeDetails(
+          row,
+          config,
+        ),
       health,
-      connectedAt: row.created_at,
-      updatedAt: row.updated_at,
+      connectedAt:
+        row.created_at,
+      updatedAt:
+        row.updated_at,
     };
   }
 
-  private safeDetails(row: IntegrationRow, config: JsonObject) {
-    const apiVersion = this.text(config.api_version);
+  private safeDetails(
+    row: IntegrationRow,
+    config: JsonObject,
+  ) {
+    const apiVersion =
+      this.text(
+        config.api_version,
+      );
+
     const displayName =
-      this.text(config.display_name) ||
-      this.text(config.verified_name) ||
-      this.text(config.shop_name);
-    const storeUrl = this.text(config.store_url);
+      this.text(
+        config.display_name,
+      ) ||
+      this.text(
+        config.verified_name,
+      ) ||
+      this.text(
+        config.shop_name,
+      );
+
+    const storeUrl =
+      this.text(
+        config.store_url,
+      );
+
+    const username =
+      this.text(
+        config.username,
+      );
+
+    const profilePictureUrl =
+      this.text(
+        config.profile_picture_url,
+      );
+
+    const accountType =
+      this.text(
+        config.account_type,
+      );
+
+    const tokenExpiresAt =
+      this.text(
+        config.token_expires_at,
+      );
+
+    const rawSetupSource =
+      this.text(
+        config.setup_source,
+      );
+
+    const setupSource =
+      row.credential_mode ===
+      'environment'
+        ? 'Configuración técnica existente'
+        : rawSetupSource ===
+            'instagram_login'
+          ? 'Instagram Login'
+          : rawSetupSource ===
+              'meta_facebook_login'
+            ? 'Facebook Login'
+            : 'Credenciales protegidas';
 
     return {
-      displayName: displayName || null,
-      storeUrl: storeUrl || null,
-      apiVersion: apiVersion || null,
+      displayName:
+        displayName ||
+        null,
+      username:
+        username ||
+        null,
+      profilePictureUrl:
+        profilePictureUrl ||
+        null,
+      accountType:
+        accountType ||
+        null,
+      tokenExpiresAt:
+        tokenExpiresAt ||
+        null,
+      storeUrl:
+        storeUrl ||
+        null,
+      apiVersion:
+        apiVersion ||
+        null,
       phoneNumberId:
-        row.provider === 'meta' && row.integration_type === 'whatsapp'
+        row.provider === 'meta' &&
+        row.integration_type ===
+          'whatsapp'
           ? row.external_id
           : null,
-      businessAccountId: this.text(config.business_account_id) || null,
-      setupSource:
-        row.credential_mode === 'environment'
-          ? 'Configuración técnica existente'
-          : 'Credenciales protegidas',
+      businessAccountId:
+        this.text(
+          config.business_account_id,
+        ) ||
+        null,
+      setupSource,
     };
+  }
+
+  private async refreshInstagramHealth(
+    rows: IntegrationRow[],
+  ): Promise<void> {
+    const row =
+      rows.find(
+        (candidate) =>
+          candidate.provider ===
+            'meta' &&
+          candidate.integration_type ===
+            'instagram' &&
+          candidate.status ===
+            'active',
+      );
+
+    if (!row) {
+      return;
+    }
+
+    const result =
+      await this.evaluateInstagramHealth(
+        row,
+      );
+
+    await this.persistInstagramHealth(
+      row,
+      result.config,
+    );
+  }
+
+  private async evaluateInstagramHealth(
+    row: IntegrationRow,
+  ): Promise<{
+    ok: boolean;
+    config: JsonObject;
+    error: string | null;
+  }> {
+    const currentConfig =
+      this.toRecord(
+        row.config,
+      );
+
+    const checkedAt =
+      new Date().toISOString();
+
+    try {
+      const accessToken =
+        this.integrationAccessToken(
+          row,
+        );
+
+      const apiVersion =
+        this.text(
+          currentConfig.api_version,
+        ) ||
+        process.env
+          .META_INSTAGRAM_GRAPH_VERSION
+          ?.trim() ||
+        'v25.0';
+
+      const setupSource =
+        this.text(
+          currentConfig.setup_source,
+        );
+
+      const directInstagram =
+        setupSource ===
+        'instagram_login';
+
+      const host =
+        directInstagram
+          ? 'graph.instagram.com'
+          : 'graph.facebook.com';
+
+      const targetId =
+        directInstagram
+          ? 'me'
+          : row.external_id;
+
+      const url =
+        new URL(
+          `https://${host}/${apiVersion}/${encodeURIComponent(
+            targetId,
+          )}`,
+        );
+
+      url.searchParams.set(
+        'fields',
+        directInstagram
+          ? 'id,user_id,username,name,account_type,profile_picture_url'
+          : 'id,username,name',
+      );
+
+      const response =
+        await fetch(
+          url,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+            cache:
+              'no-store',
+          },
+        );
+
+      const raw =
+        await response.text();
+
+      if (!response.ok) {
+        throw new Error(
+          this.metaErrorMessage(
+            raw,
+            response.status,
+          ),
+        );
+      }
+
+      const payload =
+        this.parseJsonObject(
+          raw,
+        );
+
+      const expectedId =
+        this.digits(
+          row.external_id,
+        );
+
+      const returnedId =
+        directInstagram
+          ? this.digits(
+              payload.user_id,
+            )
+          : this.digits(
+              payload.id,
+            );
+
+      if (
+        !returnedId ||
+        returnedId !==
+          expectedId
+      ) {
+        throw new Error(
+          'La cuenta autorizada por Meta ya no coincide con la cuenta de Instagram guardada en ChatPro.',
+        );
+      }
+
+      const username =
+        this.text(
+          payload.username,
+        ) ||
+        this.text(
+          currentConfig.username,
+        );
+
+      const displayName =
+        this.text(
+          payload.name,
+        ) ||
+        this.text(
+          currentConfig.display_name,
+        ) ||
+        username;
+
+      const profilePictureUrl =
+        this.text(
+          payload.profile_picture_url,
+        ) ||
+        this.text(
+          currentConfig.profile_picture_url,
+        );
+
+      const rawAccountType =
+        this.text(
+          payload.account_type,
+        ).toUpperCase();
+
+      const accountType =
+        rawAccountType ===
+        'MEDIA_CREATOR'
+          ? 'CREATOR'
+          : rawAccountType ||
+            this.text(
+              currentConfig.account_type,
+            );
+
+      const nextConfig:
+        JsonObject = {
+          ...currentConfig,
+          api_version:
+            apiVersion,
+          username:
+            username ||
+            null,
+          display_name:
+            displayName ||
+            null,
+          profile_picture_url:
+            profilePictureUrl ||
+            null,
+          account_type:
+            accountType ||
+            null,
+          meta_health_status:
+            'healthy',
+          meta_health_checked_at:
+            checkedAt,
+          meta_health_error:
+            null,
+      };
+
+      return {
+        ok: true,
+        config:
+          nextConfig,
+        error:
+          null,
+      };
+    } catch (error) {
+      const safeError =
+        this.safeError(
+          error,
+        );
+
+      return {
+        ok: false,
+        config: {
+          ...currentConfig,
+          meta_health_status:
+            'error',
+          meta_health_checked_at:
+            checkedAt,
+          meta_health_error:
+            safeError,
+        },
+        error:
+          safeError,
+      };
+    }
+  }
+
+  private async persistInstagramHealth(
+    row: IntegrationRow,
+    nextConfig: JsonObject,
+  ): Promise<void> {
+    row.config =
+      nextConfig;
+
+    const {
+      error,
+    } =
+      await this.supabaseService
+        .getClient()
+        .from(
+          'company_integrations',
+        )
+        .update({
+          config:
+            nextConfig,
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          'id',
+          row.id,
+        );
+
+    if (error) {
+      console.error(
+        `[ChatPro][Instagram] No se pudo guardar health integration=${row.id}: ${error.message}`,
+      );
+    }
   }
 
   private async refreshWhatsappHealth(
@@ -762,7 +1381,7 @@ export class IntegrationsController {
         throw new Error(
           tokenEnv
             ? `Falta la variable segura ${tokenEnv}.`
-            : 'Falta la referencia segura del token de WhatsApp.',
+            : 'Falta la referencia segura del token de la integración.',
         );
       }
 
@@ -779,7 +1398,7 @@ export class IntegrationsController {
     const accessToken = this.text(credentials.access_token);
 
     if (!accessToken) {
-      throw new Error('No se encontró el token guardado de WhatsApp.');
+      throw new Error('No se encontró el token guardado de la integración.');
     }
 
     return accessToken;

@@ -618,7 +618,7 @@ export default function IntegracionesPage() {
               ) : null}
 
               {selected.key === 'instagram' ? (
-                <InstagramConnectButton />
+                <InstagramConnectButton integration={selected} />
               ) : null}
 
               {selected.key === 'shopify' && selected.status !== 'active' ? (
@@ -1030,7 +1030,7 @@ export default function IntegracionesPage() {
                     </div>
                   ) : null}
                 </div>
-              ) : selected.status === 'active' ? (
+              ) : selected.key === 'instagram' ? null : selected.status === 'active' ? (
                 <div className={styles.notice}>
                   Esta integración está activa. Las credenciales permanecen protegidas.
                 </div>

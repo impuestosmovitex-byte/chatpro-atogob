@@ -19,21 +19,80 @@ type InstagramConfig = {
   message?: string;
 };
 
-export function InstagramConnectButton() {
-  const [config, setConfig] =
+type InstagramIntegration = {
+  id?: string;
+  key?: string;
+  status:
+    | 'pending'
+    | 'active'
+    | 'disconnected'
+    | 'error';
+  statusLabel?: string;
+  details?: {
+    displayName?: string | null;
+    username?: string | null;
+    profilePictureUrl?: string | null;
+    accountType?: string | null;
+    tokenExpiresAt?: string | null;
+    apiVersion?: string | null;
+    setupSource?: string | null;
+  };
+  health?: {
+    status:
+      | 'healthy'
+      | 'error'
+      | 'not_checked';
+    statusLabel: string;
+    checkedAt: string | null;
+    error: string | null;
+  };
+};
+
+type Props = {
+  integration?:
+    | InstagramIntegration
+    | null;
+};
+
+export function InstagramConnectButton({
+  integration,
+}: Props) {
+  const [
+    config,
+    setConfig,
+  ] =
     useState<InstagramConfig | null>(
       null,
     );
 
-  const [loading, setLoading] =
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
   const [
     connecting,
     setConnecting,
-  ] = useState(false);
+  ] =
+    useState(false);
 
-  const [message, setMessage] =
+  const [
+    testing,
+    setTesting,
+  ] =
+    useState(false);
+
+  const [
+    disconnecting,
+    setDisconnecting,
+  ] =
+    useState(false);
+
+  const [
+    message,
+    setMessage,
+  ] =
     useState('');
 
   useEffect(() => {
@@ -150,7 +209,8 @@ export function InstagramConnectButton() {
     const expectedState =
       window.sessionStorage.getItem(
         'chatpro_instagram_oauth_state',
-      ) || '';
+      ) ||
+      '';
 
     window.sessionStorage.removeItem(
       'chatpro_instagram_oauth_state',
@@ -172,7 +232,8 @@ export function InstagramConnectButton() {
     const redirectUri =
       `${window.location.origin}/api/integrations/instagram/callback`;
 
-    let cancelled = false;
+    let cancelled =
+      false;
 
     async function finishOAuth() {
       setConnecting(true);
@@ -242,7 +303,7 @@ export function InstagramConnectButton() {
         window.setTimeout(
           () =>
             window.location.reload(),
-          900,
+          700,
         );
       } catch (error) {
         if (!cancelled) {
@@ -337,6 +398,172 @@ export function InstagramConnectButton() {
     );
   }
 
+  async function testConnection() {
+    setMessage('');
+    setTesting(true);
+
+    try {
+      const response =
+        await fetch(
+          '/api/integrations/instagram/test',
+          {
+            method:
+              'POST',
+            cache:
+              'no-store',
+          },
+        );
+
+      const data =
+        (await response.json()) as {
+          ok?: boolean;
+          message?: string;
+          error?: string;
+        };
+
+      if (
+        !response.ok ||
+        !data.ok
+      ) {
+        throw new Error(
+          data.message ||
+            data.error ||
+            'No se pudo verificar Instagram.',
+        );
+      }
+
+      setMessage(
+        data.message ||
+          'Conexión de Instagram verificada.',
+      );
+
+      window.setTimeout(
+        () =>
+          window.location.reload(),
+        650,
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo verificar Instagram.',
+      );
+
+      window.setTimeout(
+        () =>
+          window.location.reload(),
+        1400,
+      );
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function disconnectInstagram() {
+    const confirmed =
+      window.confirm(
+        '¿Desconectar Instagram de ChatPro? La cuenta de Instagram no se elimina, pero ChatPro dejará de procesar sus mensajes hasta que la vuelvas a autorizar.',
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setMessage('');
+    setDisconnecting(true);
+
+    try {
+      const response =
+        await fetch(
+          '/api/integrations/instagram/disconnect',
+          {
+            method:
+              'POST',
+            cache:
+              'no-store',
+          },
+        );
+
+      const data =
+        (await response.json()) as {
+          ok?: boolean;
+          message?: string;
+          error?: string;
+        };
+
+      if (
+        !response.ok ||
+        !data.ok
+      ) {
+        throw new Error(
+          data.message ||
+            data.error ||
+            'No se pudo desconectar Instagram.',
+        );
+      }
+
+      setMessage(
+        data.message ||
+          'Instagram quedó desconectado.',
+      );
+
+      window.setTimeout(
+        () =>
+          window.location.reload(),
+        650,
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo desconectar Instagram.',
+      );
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  const status =
+    integration?.status ||
+    'disconnected';
+
+  const connected =
+    status === 'active';
+
+  const requiresReconnect =
+    status === 'error';
+
+  const hasConnection =
+    connected ||
+    requiresReconnect;
+
+  const username =
+    integration?.details
+      ?.username
+      ?.trim() ||
+    '';
+
+  const displayName =
+    integration?.details
+      ?.displayName
+      ?.trim() ||
+    '';
+
+  const profilePictureUrl =
+    integration?.details
+      ?.profilePictureUrl
+      ?.trim() ||
+    '';
+
+  const accountType =
+    integration?.details
+      ?.accountType
+      ?.trim() ||
+    '';
+
+  const health =
+    integration?.health;
+
   return (
     <div
       className={
@@ -344,46 +571,205 @@ export function InstagramConnectButton() {
       }
     >
       <strong>
-        Conectar Instagram
+        {connected
+          ? 'Instagram conectado'
+          : requiresReconnect
+            ? 'Instagram requiere reconexión'
+            : 'Conectar Instagram'}
       </strong>
 
-      <p>
-        Conecta directamente una
-        cuenta profesional de
-        Instagram, ya sea Empresa o
-        Creador. No necesita estar
-        vinculada a una Página de
-        Facebook.
-      </p>
+      {hasConnection ? (
+        <>
+          <p>
+            {connected
+              ? 'ChatPro verificó la cuenta y las credenciales guardadas con Meta.'
+              : health?.error ||
+                'La conexión guardada ya no pudo verificarse correctamente con Meta.'}
+          </p>
 
-      <button
-        type="button"
-        className={
-          styles.connectButton
-        }
-        onClick={() =>
-          startLogin()
-        }
-        disabled={
-          loading ||
-          connecting ||
-          !config?.ready
-        }
-      >
-        {loading
-          ? 'Revisando configuración…'
-          : connecting
-            ? 'Conectando Instagram…'
-            : 'Conectar Instagram'}
-      </button>
+          <div
+            style={{
+              display:
+                'flex',
+              alignItems:
+                'center',
+              gap: 12,
+              padding:
+                '10px 0',
+            }}
+          >
+            {profilePictureUrl ? (
+              <img
+                src={
+                  profilePictureUrl
+                }
+                alt={
+                  username
+                    ? `@${username}`
+                    : 'Instagram'
+                }
+                width={52}
+                height={52}
+                referrerPolicy="no-referrer"
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius:
+                    '50%',
+                  objectFit:
+                    'cover',
+                }}
+              />
+            ) : null}
+
+            <div
+              style={{
+                display:
+                  'grid',
+                gap: 2,
+              }}
+            >
+              <strong>
+                {username
+                  ? `@${username}`
+                  : displayName ||
+                    'Cuenta de Instagram'}
+              </strong>
+
+              {displayName &&
+              (
+                !username ||
+                displayName.toLowerCase() !==
+                  username.toLowerCase()
+              ) ? (
+                <small>
+                  {displayName}
+                </small>
+              ) : null}
+
+              {accountType ? (
+                <small>
+                  Cuenta profesional ·{' '}
+                  {accountType ===
+                  'CREATOR'
+                    ? 'Creador'
+                    : accountType ===
+                        'BUSINESS'
+                      ? 'Empresa'
+                      : accountType}
+                </small>
+              ) : null}
+
+              <small>
+                {health?.statusLabel ||
+                  'Sin verificar'}
+              </small>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className={
+              styles.testButton
+            }
+            onClick={() =>
+              void testConnection()
+            }
+            disabled={
+              testing ||
+              connecting ||
+              disconnecting
+            }
+          >
+            {testing
+              ? 'Probando conexión…'
+              : 'Probar conexión'}
+          </button>
+
+          <button
+            type="button"
+            className={
+              styles.connectButton
+            }
+            onClick={() =>
+              startLogin()
+            }
+            disabled={
+              loading ||
+              connecting ||
+              testing ||
+              disconnecting ||
+              !config?.ready
+            }
+          >
+            {connecting
+              ? 'Reconectando Instagram…'
+              : 'Reconectar Instagram'}
+          </button>
+
+          <button
+            type="button"
+            className={
+              styles.testButton
+            }
+            onClick={() =>
+              void disconnectInstagram()
+            }
+            disabled={
+              disconnecting ||
+              connecting ||
+              testing
+            }
+          >
+            {disconnecting
+              ? 'Desconectando…'
+              : 'Desconectar Instagram'}
+          </button>
+        </>
+      ) : (
+        <>
+          <p>
+            Conecta directamente una
+            cuenta profesional de
+            Instagram, ya sea Empresa o
+            Creador. No necesita estar
+            vinculada a una Página de
+            Facebook.
+          </p>
+
+          <button
+            type="button"
+            className={
+              styles.connectButton
+            }
+            onClick={() =>
+              startLogin()
+            }
+            disabled={
+              loading ||
+              connecting ||
+              !config?.ready
+            }
+          >
+            {loading
+              ? 'Revisando configuración…'
+              : connecting
+                ? 'Conectando Instagram…'
+                : 'Conectar Instagram'}
+          </button>
+        </>
+      )}
 
       <small>
         {config?.ready
-          ? 'Instagram abrirá su autorización oficial. El token se procesa y guarda cifrado en el servidor y no se muestra en el navegador.'
+          ? 'La autorización se realiza directamente con Instagram. Las credenciales se procesan y guardan cifradas en el servidor.'
           : config?.message ||
-            (config?.missing?.length
-              ? `Falta configurar: ${config.missing.join(', ')}`
-              : 'Instagram todavía no está configurado.')}
+            (
+              config?.missing
+                ?.length
+                ? `Falta configurar: ${config.missing.join(', ')}`
+                : 'Instagram todavía no está configurado.'
+            )}
       </small>
 
       {message ? (
