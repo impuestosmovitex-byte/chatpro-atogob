@@ -9,6 +9,7 @@ import {
   type CompanyProfile,
   type ConversationSession,
 } from './conversation-memory.service';
+import { AgentSessionRuntimeService } from './agent-session-runtime.service';
 import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
 
@@ -75,6 +76,7 @@ export class ChatAgentService {
     private readonly shopifyService: ShopifyService,
     private readonly supabaseService: SupabaseService,
     private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly agentSessionRuntimeService: AgentSessionRuntimeService,
   ) {}
 
   private readConversationCategory(
@@ -401,7 +403,7 @@ export class ChatAgentService {
       return session;
     }
 
-    return this.conversationMemoryService.updateSession(
+    return this.agentSessionRuntimeService.updateSession(
       session.id,
       {
         context: {
@@ -489,7 +491,7 @@ export class ChatAgentService {
     activeSession =
       currentIntent === 'new_catalog_search' &&
       conversationCategory === 'sales'
-        ? await this.conversationMemoryService.updateSession(
+        ? await this.agentSessionRuntimeService.updateSession(
             activeSession.id,
             {
               stage: 'sales',
@@ -619,7 +621,7 @@ export class ChatAgentService {
         });
 
         activeSession =
-          await this.conversationMemoryService.getSessionById(
+          await this.agentSessionRuntimeService.getSessionById(
             activeSession.id,
           );
       }
@@ -1321,14 +1323,14 @@ export class ChatAgentService {
     session: ConversationSession,
   ): Promise<ConversationSession> {
     session =
-      await this.conversationMemoryService.releaseInactiveHumanForIncoming(
+      await this.agentSessionRuntimeService.releaseInactiveHumanForIncoming(
         session,
         24,
       );
 
     const assistantIdentityPresented =
       session.context.assistant_identity_presented === true ||
-      await this.conversationMemoryService.hasPreviousAssistantIdentityMention(
+      await this.agentSessionRuntimeService.hasPreviousAssistantIdentityMention(
         profile.id,
         session.customerPhone,
         profile.assistantName?.trim() || 'Asistente virtual',
@@ -1345,7 +1347,7 @@ export class ChatAgentService {
       baseContext.assistant_identity_presented = true;
     }
 
-    return this.conversationMemoryService.updateSession(
+    return this.agentSessionRuntimeService.updateSession(
       session.id,
       {
         stage:
@@ -1364,7 +1366,7 @@ export class ChatAgentService {
     session: ConversationSession,
   ): Promise<string | null> {
     const currentSession =
-      await this.conversationMemoryService.getSessionById(session.id);
+      await this.agentSessionRuntimeService.getSessionById(session.id);
     const result =
       await this.getSelectedProduct(currentSession);
 
@@ -1595,7 +1597,7 @@ export class ChatAgentService {
       return null;
     }
 
-    await this.conversationMemoryService.updateSession(
+    await this.agentSessionRuntimeService.updateSession(
       session.id,
       {
         stage: 'sales',
@@ -1727,7 +1729,7 @@ export class ChatAgentService {
     session: ConversationSession,
   ): Promise<ConversationSession> {
     const currentSession =
-      await this.conversationMemoryService.getSessionById(session.id);
+      await this.agentSessionRuntimeService.getSessionById(session.id);
 
     const saleContext: JsonObject = {
       ...this.readSaleContext(currentSession.context),
@@ -1736,7 +1738,7 @@ export class ChatAgentService {
     this.clearResolvedShipping(saleContext);
 
     const persist = async () =>
-      this.conversationMemoryService.updateSession(
+      this.agentSessionRuntimeService.updateSession(
         currentSession.id,
         {
           context: {
@@ -2079,7 +2081,7 @@ export class ChatAgentService {
     args: JsonObject,
   ) {
     const currentSession =
-      await this.conversationMemoryService.getSessionById(session.id);
+      await this.agentSessionRuntimeService.getSessionById(session.id);
 
     const existing =
       this.readSaleContext(currentSession.context);
@@ -2213,7 +2215,7 @@ export class ChatAgentService {
     }
 
     const updated =
-      await this.conversationMemoryService.updateSession(
+      await this.agentSessionRuntimeService.updateSession(
         currentSession.id,
         {
           context: nextContext,
@@ -2231,7 +2233,7 @@ export class ChatAgentService {
 
   private async getSaleContext(session: ConversationSession) {
     const currentSession =
-      await this.conversationMemoryService.getSessionById(session.id);
+      await this.agentSessionRuntimeService.getSessionById(session.id);
 
     const paymentEvidence =
       currentSession.context.last_payment_evidence;
@@ -2252,7 +2254,7 @@ export class ChatAgentService {
     session: ConversationSession,
   ): Promise<void> {
     const currentSession =
-      await this.conversationMemoryService.getSessionById(session.id);
+      await this.agentSessionRuntimeService.getSessionById(session.id);
 
     const recoveryContext = currentSession.context.cart_recovery;
     const isRecoveryCart =
@@ -2287,7 +2289,7 @@ export class ChatAgentService {
     delete nextContext.last_payment_evidence;
 
     const updated =
-      await this.conversationMemoryService.updateSession(
+      await this.agentSessionRuntimeService.updateSession(
         currentSession.id,
         {
           context: nextContext,
@@ -2317,7 +2319,7 @@ export class ChatAgentService {
     }
 
     const currentSession =
-      await this.conversationMemoryService.getSessionById(session.id);
+      await this.agentSessionRuntimeService.getSessionById(session.id);
 
     const saleContext =
       this.readSaleContext(currentSession.context);
@@ -3257,7 +3259,7 @@ export class ChatAgentService {
         const nextContext = { ...session.context };
         delete nextContext.clarification_state;
 
-        await this.conversationMemoryService.updateSession(session.id, {
+        await this.agentSessionRuntimeService.updateSession(session.id, {
           context: nextContext,
         });
       }
@@ -3267,7 +3269,7 @@ export class ChatAgentService {
 
     if (previous?.waiting_for_clarification === true) {
       const updated =
-        await this.conversationMemoryService.requestHumanAttention(
+        await this.agentSessionRuntimeService.requestHumanAttention(
           session.id,
           {
             reason:
@@ -3280,7 +3282,7 @@ export class ChatAgentService {
       return this.humanAttentionMessage(updated);
     }
 
-    await this.conversationMemoryService.updateSession(session.id, {
+    await this.agentSessionRuntimeService.updateSession(session.id, {
       context: {
         ...session.context,
         clarification_state: {
@@ -3380,7 +3382,7 @@ export class ChatAgentService {
       if (previous) {
         const nextContext = { ...session.context };
         delete nextContext.clarification_state;
-        await this.conversationMemoryService.updateSession(session.id, {
+        await this.agentSessionRuntimeService.updateSession(session.id, {
           context: nextContext,
         });
       }
@@ -3389,7 +3391,7 @@ export class ChatAgentService {
     }
 
     if (previous?.waiting_for_clarification === true) {
-      const updated = await this.conversationMemoryService.requestHumanAttention(
+      const updated = await this.agentSessionRuntimeService.requestHumanAttention(
         session.id,
         {
           reason: 'No se logró comprender la solicitud después de una aclaración.',
@@ -3401,7 +3403,7 @@ export class ChatAgentService {
       return this.humanAttentionMessage(updated);
     }
 
-    await this.conversationMemoryService.updateSession(session.id, {
+    await this.agentSessionRuntimeService.updateSession(session.id, {
       context: {
         ...session.context,
         clarification_state: {
@@ -3952,7 +3954,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (commercialTools.has(name)) {
         const currentSession =
-          await this.conversationMemoryService.getSessionById(session.id);
+          await this.agentSessionRuntimeService.getSessionById(session.id);
 
         const currentCategory =
           this.readConversationCategory(currentSession.context);
@@ -4008,7 +4010,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (name === 'add_visual_products_to_cart') {
         const currentSession =
-          await this.conversationMemoryService.getSessionById(session.id);
+          await this.agentSessionRuntimeService.getSessionById(session.id);
 
         const result = await this.addVisualProductsToCart(
           currentSession,
@@ -4136,7 +4138,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (name === 'lookup_order') {
         const currentSession =
-          await this.conversationMemoryService.getSessionById(
+          await this.agentSessionRuntimeService.getSessionById(
             session.id,
           );
 
@@ -4252,7 +4254,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
           delete completedContext.customer_service_flow;
 
-          await this.conversationMemoryService.updateSession(
+          await this.agentSessionRuntimeService.updateSession(
             serviceSession.id,
             {
               context: completedContext,
@@ -4261,7 +4263,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         } else {
           // La validación todavía está pendiente: guardamos únicamente
           // los datos entregados para esta consulta concreta.
-          await this.conversationMemoryService.updateSession(
+          await this.agentSessionRuntimeService.updateSession(
             serviceSession.id,
             {
               context: {
@@ -4284,7 +4286,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (name === 'request_human_attention') {
         const updatedSession =
-          await this.conversationMemoryService.requestHumanAttention(
+          await this.agentSessionRuntimeService.requestHumanAttention(
             session.id,
             {
               reason: this.readString(args, 'reason'),
@@ -4333,7 +4335,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (name === 'create_checkout_link') {
         let currentSession =
-          await this.conversationMemoryService.getSessionById(session.id);
+          await this.agentSessionRuntimeService.getSessionById(session.id);
 
         const recoveryContext = currentSession.context.cart_recovery;
         const isRecoveryCart =
@@ -4423,7 +4425,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       };
     }
 
-    await this.conversationMemoryService.updateSession(session.id, {
+    await this.agentSessionRuntimeService.updateSession(session.id, {
       stage: 'sales',
       context: {
         ...session.context,
@@ -4985,7 +4987,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       url: product.onlineStoreUrl ?? '',
     };
 
-    await this.conversationMemoryService.updateSession(session.id, {
+    await this.agentSessionRuntimeService.updateSession(session.id, {
       stage: 'product',
       context: {
         ...session.context,
@@ -5160,7 +5162,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
     const first = selectedVariants[0];
 
-    await this.conversationMemoryService.updateSession(session.id, {
+    await this.agentSessionRuntimeService.updateSession(session.id, {
       stage: 'variant',
       context: {
         ...session.context,
@@ -5210,7 +5212,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     session: ConversationSession,
     product: CompanyCommerceProduct,
   ) {
-    await this.conversationMemoryService.updateSession(session.id, {
+    await this.agentSessionRuntimeService.updateSession(session.id, {
       stage: 'product',
       context: {
         ...session.context,
@@ -5338,7 +5340,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
     const first = selectedVariants[0];
 
-    await this.conversationMemoryService.updateSession(session.id, {
+    await this.agentSessionRuntimeService.updateSession(session.id, {
       stage: 'variant',
       context: {
         ...session.context,
@@ -5437,24 +5439,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   }
 
   private async getRecentMessages(sessionId: string) {
-    const { data, error } = await this.supabaseService
-      .getClient()
-      .from('conversations')
-      .select('sender, message, created_at')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: false })
-      .limit(12);
-
-    if (error) {
-      return [];
-    }
-
-    return (data ?? [])
-      .reverse()
-      .map((message) => ({
-        sender: message.sender,
-        message: message.message,
-      }));
+    return this.agentSessionRuntimeService.getRecentMessages(
+      sessionId,
+      12,
+    );
   }
 
   private productSnapshot(product: ShopifyProduct) {
@@ -5833,7 +5821,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     reason: string,
   ): Promise<string> {
     const session =
-      await this.conversationMemoryService.getSessionById(sessionId);
+      await this.agentSessionRuntimeService.getSessionById(sessionId);
     const rawState =
       session.context.technical_failure_state &&
       typeof session.context.technical_failure_state === 'object' &&
@@ -5848,7 +5836,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
     if (nextCount >= 2) {
       const updated =
-        await this.conversationMemoryService.requestHumanAttention(
+        await this.agentSessionRuntimeService.requestHumanAttention(
           session.id,
           {
             reason:
@@ -5861,7 +5849,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       return this.humanAttentionMessage(updated);
     }
 
-    await this.conversationMemoryService.updateSession(session.id, {
+    await this.agentSessionRuntimeService.updateSession(session.id, {
       context: {
         ...session.context,
         technical_failure_state: {
@@ -5879,7 +5867,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     sessionId: string,
   ): Promise<void> {
     const session =
-      await this.conversationMemoryService.getSessionById(sessionId);
+      await this.agentSessionRuntimeService.getSessionById(sessionId);
 
     if (
       !session.context.technical_failure_state ||
@@ -5892,7 +5880,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     const nextContext = { ...session.context };
     delete nextContext.technical_failure_state;
 
-    await this.conversationMemoryService.updateSession(session.id, {
+    await this.agentSessionRuntimeService.updateSession(session.id, {
       context: nextContext,
     });
   }

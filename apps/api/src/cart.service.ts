@@ -3,6 +3,7 @@ import {
   ConversationMemoryService,
   type ConversationSession,
 } from './conversation-memory.service';
+import { AgentSessionRuntimeService } from './agent-session-runtime.service';
 import { ShopifyService } from './shopify.service';
 import { CompanyCommerceService } from './company-commerce.service';
 import { SupabaseService } from './supabase.service';
@@ -55,6 +56,7 @@ type CartLinksForSession = {
 export class CartService {
   constructor(
     private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly agentSessionRuntimeService: AgentSessionRuntimeService,
     private readonly shopifyService: ShopifyService,
     private readonly companyCommerceService: CompanyCommerceService,
     private readonly supabaseService: SupabaseService,
@@ -97,7 +99,7 @@ export class CartService {
     session: ConversationSession,
   ): Promise<ConversationSession> {
     const currentSession =
-      await this.conversationMemoryService.getSessionById(session.id);
+      await this.agentSessionRuntimeService.getSessionById(session.id);
 
     const lastCartUpdatedAt =
       typeof currentSession.context.lastCartUpdatedAt === 'string'
@@ -134,7 +136,7 @@ export class CartService {
 
     await this.closeExpiredRecoveryCart(currentSession);
 
-    return this.conversationMemoryService.updateSession(currentSession.id, {
+    return this.agentSessionRuntimeService.updateSession(currentSession.id, {
       stage: 'idle',
       context: nextContext,
     });
@@ -143,6 +145,11 @@ export class CartService {
   private async closeExpiredRecoveryCart(
     session: ConversationSession,
   ): Promise<void> {
+    // No ejecutar recuperación WhatsApp para sesiones sociales.
+    if (this.agentSessionRuntimeService.isSocialSession(session)) {
+      return;
+    }
+
     const client = this.supabaseService.getClient();
     const recoveryCartId = this.readRecoveryCartId(session.context);
     const now = new Date().toISOString();
@@ -275,7 +282,7 @@ export class CartService {
     const links = await this.buildCartLinksForSession(currentSession, cart);
 
     const updatedSession =
-      await this.conversationMemoryService.updateSession(currentSession.id, {
+      await this.agentSessionRuntimeService.updateSession(currentSession.id, {
         stage: 'sales',
         context: {
           ...currentSession.context,
@@ -576,7 +583,7 @@ export class CartService {
     }
 
     const updatedSession =
-      await this.conversationMemoryService.updateSession(session.id, {
+      await this.agentSessionRuntimeService.updateSession(session.id, {
         stage: 'checkout',
         context: {
           ...currentSession.context,
@@ -596,7 +603,12 @@ export class CartService {
     await this.conversationEventsService.record({
       companyId: updatedSession.companyId,
       sessionId: updatedSession.id,
-      customerPhone: updatedSession.customerPhone,
+      customerPhone:
+        this.agentSessionRuntimeService.isSocialSession(updatedSession)
+          ? null
+          : updatedSession.customerPhone,
+      channel:
+        this.agentSessionRuntimeService.getChannel(updatedSession),
       eventType: 'checkout_created',
       eventSource: 'ai',
       metadata: {
@@ -622,7 +634,7 @@ export class CartService {
       : null;
 
     const updatedSession =
-      await this.conversationMemoryService.updateSession(session.id, {
+      await this.agentSessionRuntimeService.updateSession(session.id, {
         stage: 'sales',
         context: {
           ...session.context,
@@ -685,6 +697,11 @@ export class CartService {
     state: 'active' | 'checkout_sent',
     checkoutUrl: string | null,
   ) {
+    // No registrar carritos sociales en abandoned_carts de WhatsApp.
+    if (this.agentSessionRuntimeService.isSocialSession(session)) {
+      return;
+    }
+
     const now = new Date().toISOString();
     const client = this.supabaseService.getClient();
     const recoveryCartId = this.readRecoveryCartId(session.context);
