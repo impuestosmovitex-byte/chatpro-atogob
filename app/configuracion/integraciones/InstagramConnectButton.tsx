@@ -95,6 +95,17 @@ export function InstagramConnectButton({
   ] =
     useState('');
 
+  const [
+    testFeedback,
+    setTestFeedback,
+  ] =
+    useState<{
+      ok: boolean;
+      title: string;
+      detail: string;
+      checkedAt: string;
+    } | null>(null);
+
   useEffect(() => {
     let active = true;
 
@@ -400,6 +411,7 @@ export function InstagramConnectButton({
 
   async function testConnection() {
     setMessage('');
+    setTestFeedback(null);
     setTesting(true);
 
     try {
@@ -419,6 +431,11 @@ export function InstagramConnectButton({
           ok?: boolean;
           message?: string;
           error?: string;
+          instagram?: {
+            username?: string;
+            name?: string;
+            accountType?: string;
+          };
         };
 
       if (
@@ -432,28 +449,54 @@ export function InstagramConnectButton({
         );
       }
 
-      setMessage(
-        data.message ||
-          'Conexión de Instagram verificada.',
-      );
+      const verifiedUsername =
+        data.instagram
+          ?.username
+          ?.trim();
 
-      window.setTimeout(
-        () =>
-          window.location.reload(),
-        650,
-      );
+      setTestFeedback({
+        ok: true,
+        title:
+          'Conexión correcta',
+        detail:
+          verifiedUsername
+            ? `Instagram respondió correctamente. @${verifiedUsername} está conectado y disponible para ChatPro.`
+            : 'Instagram respondió correctamente y la conexión está disponible para ChatPro.',
+        checkedAt:
+          new Date()
+            .toLocaleString(
+              'es-CO',
+              {
+                dateStyle:
+                  'short',
+                timeStyle:
+                  'short',
+              },
+            ),
+      });
     } catch (error) {
-      setMessage(
+      const detail =
         error instanceof Error
           ? error.message
-          : 'No se pudo verificar Instagram.',
-      );
+          : 'No se pudo verificar Instagram.';
 
-      window.setTimeout(
-        () =>
-          window.location.reload(),
-        1400,
-      );
+      setTestFeedback({
+        ok: false,
+        title:
+          'La conexión requiere atención',
+        detail,
+        checkedAt:
+          new Date()
+            .toLocaleString(
+              'es-CO',
+              {
+                dateStyle:
+                  'short',
+                timeStyle:
+                  'short',
+              },
+            ),
+      });
     } finally {
       setTesting(false);
     }
@@ -685,6 +728,69 @@ export function InstagramConnectButton({
               ? 'Probando conexión…'
               : 'Probar conexión'}
           </button>
+
+          {testFeedback ? (
+            <div
+              role={
+                testFeedback.ok
+                  ? 'status'
+                  : 'alert'
+              }
+              style={{
+                display:
+                  'grid',
+                gap: 5,
+                marginTop:
+                  10,
+                padding:
+                  '12px 14px',
+                borderRadius:
+                  10,
+                border:
+                  testFeedback.ok
+                    ? '1px solid #b7dfbf'
+                    : '1px solid #efc0c0',
+                background:
+                  testFeedback.ok
+                    ? '#eef9f0'
+                    : '#fff2f2',
+                color:
+                  testFeedback.ok
+                    ? '#1d642e'
+                    : '#8f2929',
+              }}
+            >
+              <strong>
+                {testFeedback.ok
+                  ? '✓ '
+                  : '⚠ '}
+                {testFeedback.title}
+              </strong>
+
+              <span>
+                {testFeedback.detail}
+              </span>
+
+              <small
+                style={{
+                  color:
+                    'inherit',
+                  opacity:
+                    0.75,
+                }}
+              >
+                Verificado:{' '}
+                {testFeedback.checkedAt}
+              </small>
+
+              {!testFeedback.ok ? (
+                <small>
+                  Usa “Reconectar Instagram”
+                  para renovar la autorización.
+                </small>
+              ) : null}
+            </div>
+          ) : null}
 
           <button
             type="button"
