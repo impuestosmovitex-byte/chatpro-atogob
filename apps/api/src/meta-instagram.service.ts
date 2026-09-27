@@ -54,6 +54,10 @@ export class MetaInstagramService {
     code: unknown;
     redirectUri: unknown;
   }) {
+    console.log(
+      `[ChatPro][Instagram][OAuth] connectFromInstagramLoginCode inicio companyId=${input.companyId}`,
+    );
+
     const code =
       this.text(input.code);
 
@@ -123,6 +127,10 @@ export class MetaInstagramService {
         'Instagram no permitió completar la autorización',
       );
 
+    console.log(
+      `[ChatPro][Instagram][OAuth] short-token OK userId=${this.digits(shortPayload.user_id) || 'n/a'}`,
+    );
+
     const shortAccessToken =
       this.text(
         shortPayload.access_token,
@@ -165,6 +173,10 @@ export class MetaInstagramService {
         },
         'Instagram no permitió extender la autorización',
       );
+
+    console.log(
+      '[ChatPro][Instagram][OAuth] long-token OK',
+    );
 
     const accessToken =
       this.text(
@@ -221,6 +233,10 @@ export class MetaInstagramService {
         },
         'Instagram no permitió consultar la cuenta autorizada',
       );
+
+    console.log(
+      `[ChatPro][Instagram][OAuth] profile OK id=${this.digits(profile.id) || 'n/a'} user_id=${this.digits(profile.user_id) || 'n/a'} account_type=${this.text(profile.account_type) || 'n/a'}`,
+    );
 
     const instagramScopedId =
       this.digits(profile.id);
@@ -298,6 +314,10 @@ export class MetaInstagramService {
         'Instagram no confirmó la suscripción de mensajes.',
       );
     }
+
+    console.log(
+      `[ChatPro][Instagram][OAuth] subscribed_apps OK professionalId=${instagramId}`,
+    );
 
     console.log(
       `[ChatPro][Instagram] conexión directa professionalId=${instagramId} scopedId=${instagramScopedId || 'n/a'} username=${username || 'n/a'}`,
@@ -453,10 +473,18 @@ export class MetaInstagramService {
         );
 
     if (saveError) {
+      console.error(
+        `[ChatPro][Instagram][OAuth] ERROR guardando integración professionalId=${instagramId}: ${saveError.message}`,
+      );
+
       throw new BadRequestException(
         `No se pudo guardar Instagram: ${saveError.message}`,
       );
     }
+
+    console.log(
+      `[ChatPro][Instagram][OAuth] integración guardada professionalId=${instagramId}`,
+    );
 
     const {
       error: disconnectError,

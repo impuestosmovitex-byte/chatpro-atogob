@@ -71,6 +71,10 @@ export class MetaInstagramController {
   ) {
     this.requireAccess(accessKey);
 
+    console.log(
+      `[ChatPro][Instagram][OAuth] exchange-code recibido company=${companySlug || 'sin-company'}`,
+    );
+
     const company =
       await this.getCompany(
         companySlug,
