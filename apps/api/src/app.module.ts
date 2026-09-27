@@ -16,6 +16,7 @@ import { CartRecoveryService } from './cart-recovery.service';
 import { CartRecoveryContextService } from './cart-recovery-context.service';
 import { CartService } from './cart.service';
 import { ChatAgentService } from './chat-agent.service';
+import { AgentSessionRuntimeService } from './agent-session-runtime.service';
 import { ClientsController } from './clients.controller';
 import { CompanyIntegrationService } from './company-integration.service';
 import { CompanyShopifyService } from './company-shopify.service';
@@ -138,6 +139,7 @@ import { ContactTagsController } from './contact-tags.controller';
     ConversationMemoryService,
     ConversationEventsService,
     CartService,
+    AgentSessionRuntimeService,
     ChatAgentService,
     CartRecoveryService,
     CartRecoveryContextService,
