@@ -310,6 +310,16 @@ export class MetaSocialMessageService {
             message: text,
             messageType,
             mediaUrl,
+            credentialsEncrypted:
+              integration.credentialsEncrypted,
+            setupSource:
+              typeof integration.config.setup_source === 'string'
+                ? integration.config.setup_source
+                : '',
+            apiVersion:
+              typeof integration.config.api_version === 'string'
+                ? integration.config.api_version
+                : '',
           });
 
         if (
@@ -357,6 +367,9 @@ export class MetaSocialMessageService {
     message: string;
     messageType: string;
     mediaUrl: string | null;
+    credentialsEncrypted: string | null;
+    setupSource?: string;
+    apiVersion?: string;
   }) {
     const client =
       this.supabaseService.getClient();
@@ -412,6 +425,49 @@ export class MetaSocialMessageService {
       );
     }
 
+    const currentDisplayName =
+      this.text(existingSession?.display_name);
+
+    const currentUsername =
+      this.text(existingSession?.username);
+
+    const currentProfilePictureUrl =
+      this.text(
+        existingSession?.profile_picture_url,
+      );
+
+    const needsProfile =
+      !currentDisplayName ||
+      !currentUsername ||
+      !currentProfilePictureUrl;
+
+    const profile =
+      needsProfile
+        ? await this.getInstagramProfile(
+            input.senderId,
+            input.credentialsEncrypted,
+            input.setupSource,
+            input.apiVersion,
+          )
+        : {
+            displayName: currentDisplayName,
+            username: currentUsername,
+            profilePictureUrl:
+              currentProfilePictureUrl,
+          };
+
+    const resolvedDisplayName =
+      profile.displayName ||
+      currentDisplayName;
+
+    const resolvedUsername =
+      profile.username ||
+      currentUsername;
+
+    const resolvedProfilePictureUrl =
+      profile.profilePictureUrl ||
+      currentProfilePictureUrl;
+
     let sessionId: string;
     let inboundMessageCount: number;
 
@@ -444,6 +500,12 @@ export class MetaSocialMessageService {
             'social_conversation_sessions',
           )
           .update({
+            display_name:
+              resolvedDisplayName || undefined,
+            username:
+              resolvedUsername || undefined,
+            profile_picture_url:
+              resolvedProfilePictureUrl || undefined,
             inbound_message_count:
               inboundMessageCount,
             attention_status:
@@ -477,9 +539,12 @@ export class MetaSocialMessageService {
           channel: 'instagram',
           external_customer_id:
             input.senderId,
-          display_name: null,
-          username: null,
-          profile_picture_url: null,
+          display_name:
+            resolvedDisplayName || null,
+          username:
+            resolvedUsername || null,
+          profile_picture_url:
+            resolvedProfilePictureUrl || null,
           inbound_message_count: 1,
           attention_status: 'ai',
           pending_count: 1,
@@ -583,15 +648,11 @@ export class MetaSocialMessageService {
               external_customer_id:
                 input.senderId,
               display_name:
-                existingSession?.display_name ||
-                null,
+                resolvedDisplayName || null,
               username:
-                existingSession?.username ||
-                null,
+                resolvedUsername || null,
               profile_picture_url:
-                existingSession
-                  ?.profile_picture_url ||
-                null,
+                resolvedProfilePictureUrl || null,
               inbound_message_count:
                 inboundMessageCount,
               last_activity_at: now,
@@ -616,6 +677,134 @@ export class MetaSocialMessageService {
 
     return sessionId;
   }
+
+  private async getInstagramProfile(
+    senderId: string,
+    credentialsEncrypted: string | null,
+    setupSource = '',
+    apiVersion = '',
+  ): Promise<{
+    displayName: string;
+    username: string;
+    profilePictureUrl: string;
+  }> {
+    const empty = {
+      displayName: '',
+      username: '',
+      profilePictureUrl: '',
+    };
+
+    if (!credentialsEncrypted) {
+      return empty;
+    }
+
+    try {
+      const credentials =
+        this.credentialsService.decrypt(
+          credentialsEncrypted,
+        );
+
+      const accessToken =
+        this.text(
+          credentials.access_token,
+        );
+
+      if (!accessToken) {
+        return empty;
+      }
+
+      const directInstagram =
+        setupSource.trim() ===
+        'instagram_login';
+
+      const version =
+        apiVersion.trim() ||
+        (
+          directInstagram
+            ? process.env
+                .META_INSTAGRAM_GRAPH_VERSION
+                ?.trim()
+            : process.env
+                .META_MESSENGER_GRAPH_VERSION
+                ?.trim()
+        ) ||
+        'v25.0';
+
+      const host =
+        directInstagram
+          ? 'graph.instagram.com'
+          : 'graph.facebook.com';
+
+      const url =
+        new URL(
+          `https://${host}/${version}/${encodeURIComponent(
+            senderId,
+          )}`,
+        );
+
+      url.searchParams.set(
+        'fields',
+        'name,username,profile_pic',
+      );
+
+      url.searchParams.set(
+        'access_token',
+        accessToken,
+      );
+
+      const response =
+        await fetch(url);
+
+      if (!response.ok) {
+        console.warn(
+          `[ChatPro][Instagram] perfil no disponible sender=${senderId} status=${response.status}`,
+        );
+
+        return empty;
+      }
+
+      const payload =
+        this.record(
+          await response.json(),
+        );
+
+      const username =
+        this.text(
+          payload.username,
+        );
+
+      const name =
+        this.text(
+          payload.name,
+        );
+
+      const profilePictureUrl =
+        this.text(
+          payload.profile_pic,
+        );
+
+      console.log(
+        `[ChatPro][Instagram] perfil sender=${senderId} username=${username || 'n/a'} picture=${profilePictureUrl ? 'yes' : 'no'}`,
+      );
+
+      return {
+        displayName:
+          username
+            ? `@${username}`
+            : name,
+        username,
+        profilePictureUrl,
+      };
+    } catch (error) {
+      console.warn(
+        '[ChatPro][Instagram] No se pudo consultar perfil:',
+        error,
+      );
+
+      return empty;
+    }
+  }
+
 
   private async saveIncomingMessengerMessage(input: {
     companyId: string;
