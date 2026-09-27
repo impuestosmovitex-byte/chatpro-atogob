@@ -13,17 +13,10 @@ type InstagramConfig = {
   appId?: string;
   apiVersion?: string;
   scopes?: string[];
+  loginMode?: string;
   missing?: string[];
   error?: string;
   message?: string;
-};
-
-type InstagramAccount = {
-  pageId: string;
-  pageName: string;
-  instagramId: string;
-  username?: string;
-  name?: string;
 };
 
 export function InstagramConnectButton() {
@@ -43,19 +36,6 @@ export function InstagramConnectButton() {
   const [message, setMessage] =
     useState('');
 
-  const [accounts, setAccounts] =
-    useState<InstagramAccount[]>([]);
-
-  const [
-    accessToken,
-    setAccessToken,
-  ] = useState('');
-
-  const [
-    selectedInstagramId,
-    setSelectedInstagramId,
-  ] = useState('');
-
   useEffect(() => {
     let active = true;
 
@@ -65,7 +45,8 @@ export function InstagramConnectButton() {
           await fetch(
             '/api/integrations/instagram/config',
             {
-              cache: 'no-store',
+              cache:
+                'no-store',
             },
           );
 
@@ -101,28 +82,40 @@ export function InstagramConnectButton() {
   useEffect(() => {
     if (
       !config?.ready ||
-      typeof window === 'undefined'
+      typeof window ===
+        'undefined'
     ) {
       return;
     }
 
     const url =
-      new URL(window.location.href);
+      new URL(
+        window.location.href,
+      );
 
     const code =
       url.searchParams
-        .get('instagram_code')
-        ?.trim() || '';
+        .get(
+          'instagram_code',
+        )
+        ?.trim() ||
+      '';
 
     const returnedState =
       url.searchParams
-        .get('instagram_state')
-        ?.trim() || '';
+        .get(
+          'instagram_state',
+        )
+        ?.trim() ||
+      '';
 
     const oauthError =
       url.searchParams
-        .get('instagram_error')
-        ?.trim() || '';
+        .get(
+          'instagram_error',
+        )
+        ?.trim() ||
+      '';
 
     if (
       !code &&
@@ -166,10 +159,11 @@ export function InstagramConnectButton() {
     if (
       !returnedState ||
       !expectedState ||
-      returnedState !== expectedState
+      returnedState !==
+        expectedState
     ) {
       setMessage(
-        'Meta regresó una autorización que no coincide con la solicitud iniciada en ChatPro.',
+        'Instagram regresó una autorización que no coincide con la solicitud iniciada en ChatPro.',
       );
 
       return;
@@ -184,7 +178,7 @@ export function InstagramConnectButton() {
       setConnecting(true);
 
       setMessage(
-        'Validando autorización con Meta…',
+        'Validando y guardando Instagram…',
       );
 
       try {
@@ -192,35 +186,40 @@ export function InstagramConnectButton() {
           await fetch(
             '/api/integrations/instagram/exchange-code',
             {
-              method: 'POST',
+              method:
+                'POST',
               headers: {
                 'content-type':
                   'application/json',
               },
-              body: JSON.stringify({
-                code,
-                redirectUri,
-              }),
+              body:
+                JSON.stringify({
+                  code,
+                  redirectUri,
+                }),
             },
           );
 
         const data =
           (await response.json()) as {
             ok?: boolean;
-            accessToken?: string;
             message?: string;
             error?: string;
+            instagram?: {
+              username?: string;
+              name?: string;
+              accountType?: string;
+            };
           };
 
         if (
           !response.ok ||
-          !data.ok ||
-          !data.accessToken
+          !data.ok
         ) {
           throw new Error(
             data.message ||
               data.error ||
-              'No se pudo completar la autorización de Meta.',
+              'No se pudo completar la conexión de Instagram.',
           );
         }
 
@@ -228,19 +227,29 @@ export function InstagramConnectButton() {
           return;
         }
 
-        setAccessToken(
-          data.accessToken,
+        const username =
+          data.instagram
+            ?.username
+            ?.trim();
+
+        setMessage(
+          username
+            ? `Instagram @${username} quedó conectado.`
+            : data.message ||
+                'Instagram quedó conectado.',
         );
 
-        await discoverAccounts(
-          data.accessToken,
+        window.setTimeout(
+          () =>
+            window.location.reload(),
+          900,
         );
       } catch (error) {
         if (!cancelled) {
           setMessage(
             error instanceof Error
               ? error.message
-              : 'No se pudo completar la conexión con Meta.',
+              : 'No se pudo completar la conexión de Instagram.',
           );
         }
       } finally {
@@ -257,74 +266,10 @@ export function InstagramConnectButton() {
     };
   }, [config?.ready]);
 
-  async function discoverAccounts(
-    token: string,
-  ) {
-    const response =
-      await fetch(
-        '/api/integrations/instagram/discover',
-        {
-          method: 'POST',
-          headers: {
-            'content-type':
-              'application/json',
-          },
-          body: JSON.stringify({
-            accessToken: token,
-          }),
-        },
-      );
-
-    const data =
-      (await response.json()) as {
-        ok?: boolean;
-        accounts?: InstagramAccount[];
-        message?: string;
-        error?: string;
-      };
-
-    if (
-      !response.ok ||
-      !data.ok ||
-      !data.accounts
-    ) {
-      throw new Error(
-        data.message ||
-          data.error ||
-          'No se pudieron consultar las cuentas de Instagram.',
-      );
-    }
-
-    if (!data.accounts.length) {
-      throw new Error(
-        'Meta no devolvió ninguna cuenta profesional de Instagram vinculada a una Página autorizada.',
-      );
-    }
-
-    setAccounts(
-      data.accounts,
-    );
-
-    if (
-      data.accounts.length === 1
-    ) {
-      setSelectedInstagramId(
-        data.accounts[0].instagramId,
-      );
-    }
-
-    setMessage(
-      data.accounts.length === 1
-        ? `Encontramos la cuenta @${data.accounts[0].username || data.accounts[0].name || 'Instagram'}. Confirma la conexión.`
-        : 'Selecciona la cuenta de Instagram que deseas conectar.',
-    );
-  }
-
-  async function startLogin() {
+  function startLogin() {
     if (
       !config?.ready ||
-      !config.appId ||
-      !config.apiVersion
+      !config.appId
     ) {
       setMessage(
         config?.message ||
@@ -335,16 +280,16 @@ export function InstagramConnectButton() {
     }
 
     setMessage('');
-    setAccounts([]);
-    setSelectedInstagramId('');
-    setAccessToken('');
 
     const redirectUri =
       `${window.location.origin}/api/integrations/instagram/callback`;
 
     const state =
       crypto.randomUUID()
-        .replace(/-/g, '');
+        .replace(
+          /-/g,
+          '',
+        );
 
     window.sessionStorage.setItem(
       'chatpro_instagram_oauth_state',
@@ -353,7 +298,7 @@ export function InstagramConnectButton() {
 
     const oauthUrl =
       new URL(
-        `https://www.facebook.com/${config.apiVersion}/dialog/oauth`,
+        'https://www.instagram.com/oauth/authorize',
       );
 
     oauthUrl.searchParams.set(
@@ -368,7 +313,8 @@ export function InstagramConnectButton() {
 
     oauthUrl.searchParams.set(
       'scope',
-      config.scopes?.join(',') || '',
+      config.scopes?.join(',') ||
+        '',
     );
 
     oauthUrl.searchParams.set(
@@ -381,199 +327,59 @@ export function InstagramConnectButton() {
       state,
     );
 
+    oauthUrl.searchParams.set(
+      'force_reauth',
+      'true',
+    );
+
     window.location.assign(
       oauthUrl.toString(),
     );
   }
 
-  async function completeConnection() {
-    if (
-      !accessToken ||
-      !selectedInstagramId
-    ) {
-      setMessage(
-        'Selecciona primero la cuenta de Instagram.',
-      );
-
-      return;
-    }
-
-    setConnecting(true);
-    setMessage('');
-
-    try {
-      const response =
-        await fetch(
-          '/api/integrations/instagram/complete',
-          {
-            method: 'POST',
-            headers: {
-              'content-type':
-                'application/json',
-            },
-            body: JSON.stringify({
-              accessToken,
-              instagramId:
-                selectedInstagramId,
-            }),
-          },
-        );
-
-      const data =
-        (await response.json()) as {
-          ok?: boolean;
-          message?: string;
-          error?: string;
-        };
-
-      if (
-        !response.ok ||
-        !data.ok
-      ) {
-        throw new Error(
-          data.message ||
-            data.error ||
-            'No se pudo conectar Instagram.',
-        );
-      }
-
-      setAccessToken('');
-
-      setMessage(
-        data.message ||
-          'Instagram quedó conectado.',
-      );
-
-      window.setTimeout(
-        () =>
-          window.location.reload(),
-        1000,
-      );
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'No se pudo terminar la conexión de Instagram.',
-      );
-    } finally {
-      setConnecting(false);
-    }
-  }
-
   return (
-    <div className={styles.testBox}>
+    <div
+      className={
+        styles.testBox
+      }
+    >
       <strong>
         Conectar Instagram
       </strong>
 
       <p>
-        Autoriza tu cuenta de Meta y
-        selecciona la cuenta profesional
-        de Instagram cuyos mensajes deseas
-        administrar desde ChatPro.
+        Conecta directamente una
+        cuenta profesional de
+        Instagram, ya sea Empresa o
+        Creador. No necesita estar
+        vinculada a una Página de
+        Facebook.
       </p>
 
-      {!accounts.length ? (
-        <button
-          type="button"
-          className={
-            styles.connectButton
-          }
-          onClick={() =>
-            void startLogin()
-          }
-          disabled={
-            loading ||
-            connecting ||
-            !config?.ready
-          }
-        >
-          {loading
-            ? 'Revisando configuración…'
-            : connecting
-              ? 'Conectando con Meta…'
-              : 'Conectar Instagram con Meta'}
-        </button>
-      ) : (
-        <>
-          <label htmlFor="instagram-account">
-            Cuenta de Instagram
-          </label>
-
-          <select
-            id="instagram-account"
-            value={
-              selectedInstagramId
-            }
-            onChange={(event) =>
-              setSelectedInstagramId(
-                event.target.value,
-              )
-            }
-            disabled={connecting}
-          >
-            <option value="">
-              Selecciona una cuenta
-            </option>
-
-            {accounts.map(
-              (account) => (
-                <option
-                  key={
-                    account.instagramId
-                  }
-                  value={
-                    account.instagramId
-                  }
-                >
-                  {account.username
-                    ? `@${account.username}`
-                    : account.name ||
-                      account.instagramId}
-                </option>
-              ),
-            )}
-          </select>
-
-          <button
-            type="button"
-            className={
-              styles.connectButton
-            }
-            onClick={() =>
-              void completeConnection()
-            }
-            disabled={
-              connecting ||
-              !selectedInstagramId
-            }
-          >
-            {connecting
-              ? 'Guardando conexión…'
-              : 'Confirmar Instagram'}
-          </button>
-
-          <button
-            type="button"
-            className={
-              styles.testButton
-            }
-            onClick={() => {
-              setAccounts([]);
-              setAccessToken('');
-              setSelectedInstagramId('');
-              setMessage('');
-            }}
-            disabled={connecting}
-          >
-            Elegir otra cuenta
-          </button>
-        </>
-      )}
+      <button
+        type="button"
+        className={
+          styles.connectButton
+        }
+        onClick={() =>
+          startLogin()
+        }
+        disabled={
+          loading ||
+          connecting ||
+          !config?.ready
+        }
+      >
+        {loading
+          ? 'Revisando configuración…'
+          : connecting
+            ? 'Conectando Instagram…'
+            : 'Conectar Instagram'}
+      </button>
 
       <small>
         {config?.ready
-          ? 'Meta abrirá su ventana oficial de autorización. ChatPro no mostrará el token guardado.'
+          ? 'Instagram abrirá su autorización oficial. El token se procesa y guarda cifrado en el servidor y no se muestra en el navegador.'
           : config?.message ||
             (config?.missing?.length
               ? `Falta configurar: ${config.missing.join(', ')}`

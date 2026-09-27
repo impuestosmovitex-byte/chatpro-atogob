@@ -16,29 +16,486 @@ export class MetaInstagramService {
   ) {}
 
   publicConfig() {
-    const settings = this.settings();
+    const settings =
+      this.instagramLoginSettings();
+
     const missing: string[] = [];
 
     if (!settings.appId) {
-      missing.push('META_MESSENGER_APP_ID');
+      missing.push(
+        'META_INSTAGRAM_APP_ID',
+      );
     }
 
     if (!settings.appSecret) {
-      missing.push('META_MESSENGER_APP_SECRET');
+      missing.push(
+        'META_INSTAGRAM_APP_SECRET',
+      );
     }
 
     return {
       ready: missing.length === 0,
-      appId: settings.appId || null,
-      apiVersion: settings.apiVersion,
+      appId:
+        settings.appId || null,
+      apiVersion:
+        settings.apiVersion,
+      loginMode:
+        'instagram_login',
       scopes: [
-        'pages_show_list',
-        'pages_manage_metadata',
-        'pages_read_engagement',
-        'instagram_basic',
-        'instagram_manage_messages',
+        'instagram_business_basic',
+        'instagram_business_manage_messages',
       ],
       missing,
+    };
+  }
+
+  async connectFromInstagramLoginCode(input: {
+    companyId: string;
+    code: unknown;
+    redirectUri: unknown;
+  }) {
+    const code =
+      this.text(input.code);
+
+    const redirectUri =
+      this.text(input.redirectUri);
+
+    if (!code) {
+      throw new BadRequestException(
+        'Instagram no devolvió un código de autorización.',
+      );
+    }
+
+    if (
+      !redirectUri ||
+      !redirectUri.startsWith('https://')
+    ) {
+      throw new BadRequestException(
+        'La URI de retorno de Instagram no es válida.',
+      );
+    }
+
+    const settings =
+      this.requireInstagramLoginSettings();
+
+    const shortTokenBody =
+      new URLSearchParams();
+
+    shortTokenBody.set(
+      'client_id',
+      settings.appId,
+    );
+
+    shortTokenBody.set(
+      'client_secret',
+      settings.appSecret,
+    );
+
+    shortTokenBody.set(
+      'grant_type',
+      'authorization_code',
+    );
+
+    shortTokenBody.set(
+      'redirect_uri',
+      redirectUri,
+    );
+
+    shortTokenBody.set(
+      'code',
+      code,
+    );
+
+    const shortPayload =
+      await this.metaJson(
+        new URL(
+          'https://api.instagram.com/oauth/access_token',
+        ),
+        {
+          method: 'POST',
+          headers: {
+            'content-type':
+              'application/x-www-form-urlencoded',
+          },
+          body:
+            shortTokenBody.toString(),
+        },
+        'Instagram no permitió completar la autorización',
+      );
+
+    const shortAccessToken =
+      this.text(
+        shortPayload.access_token,
+      );
+
+    if (
+      !shortAccessToken ||
+      shortAccessToken.length < 20
+    ) {
+      throw new BadRequestException(
+        'Instagram no devolvió un token de acceso válido.',
+      );
+    }
+
+    const longTokenUrl =
+      new URL(
+        'https://graph.instagram.com/access_token',
+      );
+
+    longTokenUrl.searchParams.set(
+      'grant_type',
+      'ig_exchange_token',
+    );
+
+    longTokenUrl.searchParams.set(
+      'client_secret',
+      settings.appSecret,
+    );
+
+    longTokenUrl.searchParams.set(
+      'access_token',
+      shortAccessToken,
+    );
+
+    const longPayload =
+      await this.metaJson(
+        longTokenUrl,
+        {
+          method: 'GET',
+        },
+        'Instagram no permitió extender la autorización',
+      );
+
+    const accessToken =
+      this.text(
+        longPayload.access_token,
+      );
+
+    if (
+      !accessToken ||
+      accessToken.length < 20
+    ) {
+      throw new BadRequestException(
+        'Instagram no devolvió una autorización de larga duración.',
+      );
+    }
+
+    const expiresInRaw =
+      Number(
+        longPayload.expires_in,
+      );
+
+    const expiresIn =
+      Number.isFinite(expiresInRaw) &&
+      expiresInRaw > 0
+        ? expiresInRaw
+        : null;
+
+    const profileUrl =
+      new URL(
+        `https://graph.instagram.com/${settings.apiVersion}/me`,
+      );
+
+    profileUrl.searchParams.set(
+      'fields',
+      [
+        'id',
+        'username',
+        'name',
+        'account_type',
+        'profile_picture_url',
+      ].join(','),
+    );
+
+    profileUrl.searchParams.set(
+      'access_token',
+      accessToken,
+    );
+
+    const profile =
+      await this.metaJson(
+        profileUrl,
+        {
+          method: 'GET',
+        },
+        'Instagram no permitió consultar la cuenta autorizada',
+      );
+
+    const instagramId =
+      this.digits(profile.id);
+
+    const username =
+      this.text(profile.username);
+
+    const instagramName =
+      this.text(profile.name) ||
+      username ||
+      'Instagram';
+
+    const rawAccountType =
+      this.text(
+        profile.account_type,
+      ).toUpperCase();
+
+    const accountType =
+      rawAccountType === 'MEDIA_CREATOR'
+        ? 'CREATOR'
+        : rawAccountType;
+
+    const profilePictureUrl =
+      this.text(
+        profile.profile_picture_url,
+      );
+
+    if (!instagramId) {
+      throw new BadRequestException(
+        'Instagram no devolvió el identificador de la cuenta autorizada.',
+      );
+    }
+
+    if (
+      accountType !== 'BUSINESS' &&
+      accountType !== 'CREATOR'
+    ) {
+      throw new BadRequestException(
+        'La cuenta debe ser profesional de Instagram: Empresa o Creador.',
+      );
+    }
+
+    const subscribeUrl =
+      new URL(
+        `https://graph.instagram.com/${settings.apiVersion}/${encodeURIComponent(
+          instagramId,
+        )}/subscribed_apps`,
+      );
+
+    subscribeUrl.searchParams.set(
+      'subscribed_fields',
+      'messages,messaging_postbacks',
+    );
+
+    subscribeUrl.searchParams.set(
+      'access_token',
+      accessToken,
+    );
+
+    const subscription =
+      await this.metaJson(
+        subscribeUrl,
+        {
+          method: 'POST',
+        },
+        'Instagram no permitió suscribir la cuenta a los webhooks de mensajes',
+      );
+
+    if (
+      subscription.success !== true
+    ) {
+      throw new BadRequestException(
+        'Instagram no confirmó la suscripción de mensajes.',
+      );
+    }
+
+    const client =
+      this.supabaseService.getClient();
+
+    const {
+      data: existing,
+      error: existingError,
+    } =
+      await client
+        .from(
+          'company_integrations',
+        )
+        .select(
+          'id, company_id',
+        )
+        .eq(
+          'provider',
+          'meta',
+        )
+        .eq(
+          'integration_type',
+          'instagram',
+        )
+        .eq(
+          'external_id',
+          instagramId,
+        )
+        .maybeSingle();
+
+    if (existingError) {
+      throw new BadRequestException(
+        `No se pudo validar Instagram: ${existingError.message}`,
+      );
+    }
+
+    if (
+      existing &&
+      existing.company_id !==
+        input.companyId
+    ) {
+      throw new BadRequestException(
+        'Esta cuenta de Instagram ya está conectada a otra empresa en ChatPro.',
+      );
+    }
+
+    const now =
+      new Date().toISOString();
+
+    const expiresAt =
+      expiresIn
+        ? new Date(
+            Date.now() +
+              expiresIn * 1000,
+          ).toISOString()
+        : null;
+
+    const { error: saveError } =
+      await client
+        .from(
+          'company_integrations',
+        )
+        .upsert(
+          {
+            company_id:
+              input.companyId,
+
+            provider:
+              'meta',
+
+            integration_type:
+              'instagram',
+
+            external_id:
+              instagramId,
+
+            status:
+              'active',
+
+            config: {
+              api_version:
+                settings.apiVersion,
+
+              display_name:
+                instagramName,
+
+              username:
+                username || null,
+
+              instagram_id:
+                instagramId,
+
+              account_type:
+                accountType,
+
+              profile_picture_url:
+                profilePictureUrl ||
+                null,
+
+              setup_source:
+                'instagram_login',
+
+              token_expires_at:
+                expiresAt,
+
+              meta_health_status:
+                'healthy',
+
+              meta_health_checked_at:
+                now,
+
+              meta_health_error:
+                null,
+            },
+
+            credential_mode:
+              'encrypted',
+
+            credential_reference: {
+              token_format:
+                'instagram_user_access_token',
+
+              instagram_id:
+                instagramId,
+            },
+
+            credentials_encrypted:
+              this.credentialsService.encrypt(
+                {
+                  access_token:
+                    accessToken,
+                },
+              ),
+
+            updated_at:
+              now,
+          },
+          {
+            onConflict:
+              'provider,integration_type,external_id',
+          },
+        );
+
+    if (saveError) {
+      throw new BadRequestException(
+        `No se pudo guardar Instagram: ${saveError.message}`,
+      );
+    }
+
+    const {
+      error: disconnectError,
+    } =
+      await client
+        .from(
+          'company_integrations',
+        )
+        .update({
+          status:
+            'disconnected',
+          updated_at:
+            now,
+        })
+        .eq(
+          'company_id',
+          input.companyId,
+        )
+        .eq(
+          'provider',
+          'meta',
+        )
+        .eq(
+          'integration_type',
+          'instagram',
+        )
+        .neq(
+          'external_id',
+          instagramId,
+        )
+        .eq(
+          'status',
+          'active',
+        );
+
+    if (disconnectError) {
+      throw new BadRequestException(
+        `Instagram quedó conectado, pero no se pudo cerrar la conexión anterior: ${disconnectError.message}`,
+      );
+    }
+
+    return {
+      instagramId,
+      username:
+        username || null,
+      name:
+        instagramName,
+      accountType,
+      profilePictureUrl:
+        profilePictureUrl ||
+        null,
+      expiresAt,
+      setupSource:
+        'instagram_login',
     };
   }
 
@@ -683,6 +1140,56 @@ export class MetaInstagramService {
     }
 
     return longLived;
+  }
+
+  private instagramLoginSettings() {
+    const rawVersion =
+      process.env
+        .META_INSTAGRAM_GRAPH_VERSION
+        ?.trim() ||
+      process.env
+        .META_MESSENGER_GRAPH_VERSION
+        ?.trim() ||
+      'v25.0';
+
+    const apiVersion =
+      /^v\d+\.\d+$/.test(
+        rawVersion,
+      )
+        ? rawVersion
+        : 'v25.0';
+
+    return {
+      appId:
+        process.env
+          .META_INSTAGRAM_APP_ID
+          ?.trim() ||
+        '',
+
+      appSecret:
+        process.env
+          .META_INSTAGRAM_APP_SECRET
+          ?.trim() ||
+        '',
+
+      apiVersion,
+    };
+  }
+
+  private requireInstagramLoginSettings() {
+    const settings =
+      this.instagramLoginSettings();
+
+    if (
+      !settings.appId ||
+      !settings.appSecret
+    ) {
+      throw new BadRequestException(
+        'Falta configurar la aplicación de Instagram Login en Railway.',
+      );
+    }
+
+    return settings;
   }
 
   private settings() {

@@ -328,6 +328,14 @@ export class MetaSocialMessageService {
               customerMessage: text,
               credentialsEncrypted:
                 integration.credentialsEncrypted,
+              setupSource:
+                typeof integration.config.setup_source === 'string'
+                  ? integration.config.setup_source
+                  : '',
+              apiVersion:
+                typeof integration.config.api_version === 'string'
+                  ? integration.config.api_version
+                  : '',
             });
           } catch (error) {
             console.error(

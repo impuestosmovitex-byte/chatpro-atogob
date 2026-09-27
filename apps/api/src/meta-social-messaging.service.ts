@@ -157,8 +157,19 @@ export class MetaSocialMessagingService {
       );
     }
 
+    const setupSource =
+      typeof config.setup_source === 'string'
+        ? config.setup_source.trim()
+        : '';
+
+    const graphHost =
+      channel === 'instagram' &&
+      setupSource === 'instagram_login'
+        ? 'graph.instagram.com'
+        : 'graph.facebook.com';
+
     const url = new URL(
-      `https://graph.facebook.com/${apiVersion}/${encodeURIComponent(
+      `https://${graphHost}/${apiVersion}/${encodeURIComponent(
         graphSenderId,
       )}/messages`,
     );
@@ -516,8 +527,19 @@ export class MetaSocialMessagingService {
       );
     }
 
+    const setupSource =
+      typeof config.setup_source === 'string'
+        ? config.setup_source.trim()
+        : '';
+
+    const graphHost =
+      channel === 'instagram' &&
+      setupSource === 'instagram_login'
+        ? 'graph.instagram.com'
+        : 'graph.facebook.com';
+
     const graphUrl = new URL(
-      `https://graph.facebook.com/${apiVersion}/${encodeURIComponent(
+      `https://${graphHost}/${apiVersion}/${encodeURIComponent(
         graphSenderId,
       )}/messages`,
     );

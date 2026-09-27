@@ -199,6 +199,8 @@ export class MetaSocialAiService {
     recipientId: string;
     customerMessage: string;
     credentialsEncrypted: string | null;
+    setupSource?: string;
+    apiVersion?: string;
   }): Promise<void> {
     const client = this.supabaseService.getClient();
 
@@ -323,6 +325,8 @@ export class MetaSocialAiService {
         recipientId: input.recipientId,
         text: reply,
         credentialsEncrypted: input.credentialsEncrypted,
+        setupSource: input.setupSource,
+        apiVersion: input.apiVersion,
       });
 
     const now = new Date().toISOString();
@@ -374,6 +378,8 @@ export class MetaSocialAiService {
     recipientId: string;
     text: string;
     credentialsEncrypted: string | null;
+    setupSource?: string;
+    apiVersion?: string;
   }): Promise<string | null> {
     if (!input.credentialsEncrypted) {
       throw new Error(
@@ -397,12 +403,23 @@ export class MetaSocialAiService {
       );
     }
 
+    const setupSource =
+      input.setupSource?.trim() || '';
+
     const version =
-      process.env.META_MESSENGER_GRAPH_VERSION?.trim() ||
+      input.apiVersion?.trim() ||
+      (setupSource === 'instagram_login'
+        ? process.env.META_INSTAGRAM_GRAPH_VERSION?.trim()
+        : process.env.META_MESSENGER_GRAPH_VERSION?.trim()) ||
       'v25.0';
 
+    const graphHost =
+      setupSource === 'instagram_login'
+        ? 'graph.instagram.com'
+        : 'graph.facebook.com';
+
     const url = new URL(
-      `https://graph.facebook.com/${version}/${encodeURIComponent(
+      `https://${graphHost}/${version}/${encodeURIComponent(
         input.instagramId,
       )}/messages`,
     );

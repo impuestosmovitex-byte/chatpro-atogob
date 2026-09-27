@@ -64,33 +64,35 @@ export class MetaInstagramController {
   async exchangeCode(
     @Headers('x-chatpro-inbox-key')
     accessKey: string | undefined,
-
     @Query('company')
     companySlug: string | undefined,
-
     @Body()
     body: ExchangeCodeBody,
   ) {
-    this.requireAccess(
-      accessKey,
-    );
+    this.requireAccess(accessKey);
 
     const company =
       await this.getCompany(
         companySlug,
       );
 
-    const authorization =
+    const instagram =
       await this.instagramService
-        .exchangeAuthorizationCode(
-          body.code,
-          body.redirectUri,
-        );
+        .connectFromInstagramLoginCode({
+          companyId:
+            company.id,
+          code:
+            body.code,
+          redirectUri:
+            body.redirectUri,
+        });
 
     return {
       ok: true,
+      message:
+        'Instagram quedó conectado para esta empresa.',
       company,
-      ...authorization,
+      instagram,
     };
   }
 
