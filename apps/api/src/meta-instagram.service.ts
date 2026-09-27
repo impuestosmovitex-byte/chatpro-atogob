@@ -200,6 +200,7 @@ export class MetaInstagramService {
       'fields',
       [
         'id',
+        'user_id',
         'username',
         'name',
         'account_type',
@@ -221,8 +222,12 @@ export class MetaInstagramService {
         'Instagram no permitió consultar la cuenta autorizada',
       );
 
-    const instagramId =
+    const instagramScopedId =
       this.digits(profile.id);
+
+    const instagramId =
+      this.digits(profile.user_id) ||
+      this.digits(shortPayload.user_id);
 
     const username =
       this.text(profile.username);
@@ -249,7 +254,7 @@ export class MetaInstagramService {
 
     if (!instagramId) {
       throw new BadRequestException(
-        'Instagram no devolvió el identificador de la cuenta autorizada.',
+        'Instagram no devolvió el user_id profesional requerido para recibir mensajes.',
       );
     }
 
@@ -264,9 +269,7 @@ export class MetaInstagramService {
 
     const subscribeUrl =
       new URL(
-        `https://graph.instagram.com/${settings.apiVersion}/${encodeURIComponent(
-          instagramId,
-        )}/subscribed_apps`,
+        `https://graph.instagram.com/${settings.apiVersion}/me/subscribed_apps`,
       );
 
     subscribeUrl.searchParams.set(
@@ -295,6 +298,10 @@ export class MetaInstagramService {
         'Instagram no confirmó la suscripción de mensajes.',
       );
     }
+
+    console.log(
+      `[ChatPro][Instagram] conexión directa professionalId=${instagramId} scopedId=${instagramScopedId || 'n/a'} username=${username || 'n/a'}`,
+    );
 
     const client =
       this.supabaseService.getClient();
@@ -386,6 +393,10 @@ export class MetaInstagramService {
               instagram_id:
                 instagramId,
 
+              instagram_scoped_id:
+                instagramScopedId ||
+                null,
+
               account_type:
                 accountType,
 
@@ -418,6 +429,10 @@ export class MetaInstagramService {
 
               instagram_id:
                 instagramId,
+
+              instagram_scoped_id:
+                instagramScopedId ||
+                null,
             },
 
             credentials_encrypted:
@@ -485,6 +500,9 @@ export class MetaInstagramService {
 
     return {
       instagramId,
+      instagramScopedId:
+        instagramScopedId ||
+        null,
       username:
         username || null,
       name:
