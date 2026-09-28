@@ -335,3 +335,35 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.backButton {
+  border: 1px solid #d8d9d5;
+  border-radius: 10px;
+  padding: 10px 13px;
+  background: #fff;
+  color: #292b31;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.backButton:hover {
+  background: #f6f6f3;
+}
+
+@media (max-width: 760px) {
+  .headerActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

@@ -351,22 +351,34 @@ export default function WhatsappTemplatesPage() {
       <section className={`workspace ${styles.workspace}`}>
         <header className={styles.header}>
           <div>
-            <p className="eyebrow">WHATSAPP MULTIEMPRESA</p>
-            <h1>Plantillas de Meta</h1>
+            <p className="eyebrow">AUTOMATIZACIONES</p>
+            <h1>Plantillas WhatsApp</h1>
             <p>
-              Sincroniza las plantillas de la empresa activa y asígnalas a
-              eventos generales de ChatPro.
+              Sincroniza las plantillas aprobadas de la empresa activa y
+              asígnalas a los eventos compatibles de MW1.
             </p>
           </div>
 
-          <button
-            className={styles.syncButton}
-            type="button"
-            onClick={() => void syncTemplates()}
-            disabled={syncing}
-          >
-            {syncing ? "Sincronizando…" : "Sincronizar con Meta"}
-          </button>
+          <div className={styles.headerActions}>
+            <button
+              className={styles.backButton}
+              type="button"
+              onClick={() =>
+                window.location.assign('/automatizaciones')
+              }
+            >
+              ← Volver a Automatizaciones
+            </button>
+
+            <button
+              className={styles.syncButton}
+              type="button"
+              onClick={() => void syncTemplates()}
+              disabled={syncing}
+            >
+              {syncing ? "Sincronizando…" : "Sincronizar con Meta"}
+            </button>
+          </div>
         </header>
 
         {error ? <div className={styles.error}>{error}</div> : null}
