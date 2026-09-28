@@ -2524,6 +2524,10 @@ export class ChatAgentService {
       instructionScope === 'service' || instructionScope === 'sales'
         ? this.getShippingTrackingRules(profile.settings)
         : '';
+    const closingOfferRules =
+      instructionScope === 'sales'
+        ? this.getClosingOfferRules(profile.settings)
+        : '';
 
     return [
       `Representas a ${profile.name} en esta conversación. Tu nombre configurado es ${assistantName}. No asumas género, cargo o rol adicional salvo que las instrucciones específicas de la empresa lo definan.`,
@@ -2676,6 +2680,12 @@ export class ChatAgentService {
       '- Si la tarifa depende del medio de pago y falta ese dato, conserva la ciudad y pregunta solo cómo pagará.',
       '- Cuando el carrito cambie, la cotización anterior queda inválida y el backend vuelve a resolverla usando el subtotal nuevo.',
       '- Presenta únicamente los medios habilitados por la configuración de la empresa. “Pago antes del despacho” no es un medio de pago.',
+      '- Una consulta general por todos los medios de pago no confirma ni reactiva un medio previamente elegido. Trátala como una consulta de opciones y no avances a instrucciones de pago o checkout basándote únicamente en un payment_method antiguo del contexto.',
+      '- Si alguna opción de pago configurada depende de ciudad, zona, cobertura u otra condición y esa condición todavía no está resuelta, no presentes esa opción como disponible.',
+      '- Cuando la persona pregunte por TODOS los medios de pago y la configuración indique que alguna opción depende de ciudad o cobertura, si sale_context.city todavía falta, pregunta únicamente la ciudad antes de enumerar los medios.',
+      '- Cuando la persona responda la ciudad después de esa pregunta, retoma la consulta original sobre medios de pago: presenta únicamente las opciones realmente aplicables para esa ubicación. No cambies el tema a costo de envío salvo que la persona también lo haya preguntado.',
+      '- Una opción condicionada por ciudad o cobertura solo puede presentarse como disponible cuando las instrucciones activas de la empresa la confirmen para esa ubicación. Nunca deduzcas disponibilidad porque la ciudad tenga envíos generales, porque exista una tarifa general o porque la configuración no la prohíba expresamente.',
+      '- Si la configuración no confirma positivamente una opción condicionada para la ubicación actual, no la ofrezcas ni generes checkout usando esa opción.',
       '- Cuando seleccione un medio, habla únicamente de ese medio y usa get_cart antes de responder.',
       '- Después de seleccionar el medio, ejecuta el siguiente paso configurado para ESE medio sin pedir permiso adicional. No confundas “medio seleccionado” con “checkout inmediato”: algunos medios pueden requerir un pago externo o comprobante antes del checkout, mientras otros continúan directamente al checkout.',
       '- No impongas una pregunta adicional antes del checkout. Sigue las instrucciones de checkout configuradas por la empresa y el estado real de la compra.',
@@ -2724,6 +2734,13 @@ export class ChatAgentService {
             '',
             'TRANSPORTADORAS Y SEGUIMIENTO CONFIGURADOS:',
             shippingTrackingRules,
+          ]
+        : []),
+      ...(closingOfferRules
+        ? [
+            '',
+            'OFERTAS DE CIERRE / RESCATE CONFIGURADAS:',
+            closingOfferRules,
           ]
         : []),
       '',
@@ -2832,6 +2849,186 @@ export class ChatAgentService {
     lines.unshift(...commonRules);
 
     return lines.join('\n');
+  }
+
+  private getClosingOfferRules(settings: JsonObject): string {
+    const source =
+      settings.closing_offers &&
+      typeof settings.closing_offers === 'object' &&
+      !Array.isArray(settings.closing_offers)
+        ? settings.closing_offers as JsonObject
+        : {};
+
+    if (source.enabled !== true) {
+      return '';
+    }
+
+    const rawRules = Array.isArray(source.rules) ? source.rules : [];
+
+    const clean = (value: unknown) =>
+      typeof value === 'string' ? value.trim() : '';
+
+    const boundaryTimestamp = (value: unknown, endOfDay = false) => {
+      const raw = clean(value);
+
+      if (!raw) {
+        return Number.NaN;
+      }
+
+      const normalized =
+        /^\d{4}-\d{2}-\d{2}$/.test(raw)
+          ? `${raw}${endOfDay ? 'T23:59:59.999Z' : 'T00:00:00.000Z'}`
+          : raw;
+
+      return Date.parse(normalized);
+    };
+
+    const now = Date.now();
+
+    const activeRules = rawRules
+      .map((item) =>
+        item && typeof item === 'object' && !Array.isArray(item)
+          ? item as JsonObject
+          : {},
+      )
+      .filter((rule) => {
+        if (rule.isActive === false) {
+          return false;
+        }
+
+        const startsAt = boundaryTimestamp(
+          rule.startsAt ?? rule.starts_at,
+          false,
+        );
+        const endsAt = boundaryTimestamp(
+          rule.endsAt ?? rule.ends_at,
+          true,
+        );
+
+        if (Number.isFinite(startsAt) && now < startsAt) {
+          return false;
+        }
+
+        if (Number.isFinite(endsAt) && now > endsAt) {
+          return false;
+        }
+
+        return true;
+      });
+
+    if (!activeRules.length) {
+      return '';
+    }
+
+    const numberValue = (value: unknown, fallback = 0) => {
+      const parsed =
+        typeof value === 'number'
+          ? value
+          : typeof value === 'string'
+            ? Number(value)
+            : Number.NaN;
+
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+
+    const triggerLabels: Record<string, string> = {
+      hesitation: 'Duda o falta de convencimiento',
+      price_objection: 'Objeción de precio',
+      discount_request: 'Solicitud explícita de descuento',
+      checkout_hesitation: 'Duda al momento de finalizar',
+      abandonment: 'Intención clara de abandonar o no continuar la compra',
+      cart_condition: 'Condición configurada del carrito',
+      custom: 'Disparador personalizado',
+    };
+
+    const lines = activeRules.map((rule, index) => {
+      const trigger = clean(rule.trigger);
+      const minItems = numberValue(rule.minItems ?? rule.min_items);
+      const minMatchingItems = numberValue(
+        rule.minMatchingItems ?? rule.min_matching_items,
+      );
+      const minSubtotalCop = numberValue(
+        rule.minSubtotalCop ?? rule.min_subtotal_cop,
+      );
+      const productScope =
+        clean(rule.productScope ?? rule.product_scope) || 'all';
+      const maxUses = Math.max(
+        1,
+        numberValue(
+          rule.maxUsesPerConversation ??
+            rule.max_uses_per_conversation,
+          1,
+        ),
+      );
+
+      return [
+        `OFERTA ${index + 1}: ${clean(rule.name) || 'Sin nombre visible'}`,
+        `- Disparador: ${triggerLabels[trigger] || trigger || 'Solo cuando las instrucciones de esta oferta lo indiquen'}.`,
+        clean(rule.benefit)
+          ? `- Beneficio autorizado: ${clean(rule.benefit)}`
+          : '',
+        clean(rule.code)
+          ? `- Código autorizado: ${clean(rule.code)}`
+          : '',
+        clean(rule.startsAt ?? rule.starts_at)
+          ? `- Vigente desde: ${clean(rule.startsAt ?? rule.starts_at)}.`
+          : '',
+        clean(rule.endsAt ?? rule.ends_at)
+          ? `- Vigente hasta: ${clean(rule.endsAt ?? rule.ends_at)}.`
+          : '',
+        `- Alcance de productos: ${productScope}.`,
+        clean(rule.eligibleProducts ?? rule.eligible_products)
+          ? `- Productos elegibles: ${clean(rule.eligibleProducts ?? rule.eligible_products)}`
+          : '',
+        clean(rule.eligibleCollections ?? rule.eligible_collections)
+          ? `- Colecciones elegibles: ${clean(rule.eligibleCollections ?? rule.eligible_collections)}`
+          : '',
+        clean(rule.eligibleCategories ?? rule.eligible_categories)
+          ? `- Categorías o tipos elegibles: ${clean(rule.eligibleCategories ?? rule.eligible_categories)}`
+          : '',
+        minItems > 0
+          ? `- Cantidad mínima real en carrito: ${minItems}.`
+          : '',
+        minMatchingItems > 0
+          ? `- Cantidad mínima de productos del carrito que deben coincidir con el alcance configurado: ${minMatchingItems}.`
+          : '',
+        minSubtotalCop > 0
+          ? `- Subtotal mínimo real del carrito: $${Math.round(minSubtotalCop).toLocaleString('es-CO')} COP.`
+          : '',
+        clean(rule.cities)
+          ? `- Ciudades permitidas: ${clean(rule.cities)}`
+          : '',
+        clean(rule.paymentMethods ?? rule.payment_methods)
+          ? `- Medios de pago permitidos: ${clean(rule.paymentMethods ?? rule.payment_methods)}`
+          : '',
+        clean(rule.excludedProducts ?? rule.excluded_products)
+          ? `- Productos excluidos: ${clean(rule.excludedProducts ?? rule.excluded_products)}`
+          : '',
+        `- Máximo de veces que puede ofrecerse en esta conversación: ${maxUses}.`,
+        `- Acumulable con otros beneficios: ${rule.stackable === true ? 'sí' : 'no'}.`,
+        clean(rule.instructions)
+          ? `- Instrucciones adicionales: ${clean(rule.instructions)}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    });
+
+    return [
+      '- Estas son OFERTAS DE RESCATE, distintas de las promociones normales de la empresa.',
+      '- No presentes una oferta de rescate al inicio de la venta, al responder un precio normal ni por rutina. Úsala únicamente cuando el disparador configurado ocurra realmente en una venta activa.',
+      '- Antes de ofrecer un beneficio condicionado por cantidad, subtotal, producto, colección, categoría, ciudad o medio de pago, usa el carrito real y el contexto comercial vigente. Si no puedes comprobar una condición, no afirmes que la oferta aplica.',
+      '- Cuando una oferta tenga productos, colecciones o categorías elegibles y minMatchingItems, cuenta únicamente las líneas o unidades del carrito que realmente coincidan con ese alcance. El total general de artículos no reemplaza esa comprobación.',
+      '- Una regla con disparador cart_condition puede activarse únicamente cuando el carrito real cumpla todas las condiciones configuradas. Una regla con disparador abandonment exige una intención clara de abandonar o no continuar; una simple duda o pregunta de precio no cuenta como abandono.',
+      '- Nunca inventes, aumentes, combines o sustituyas el beneficio configurado.',
+      '- Si existe código, usa exactamente el código configurado. No inventes otro.',
+      '- Ofrecer un beneficio no significa que ya fue aplicado. No afirmes que el descuento, código o envío gratis quedó aplicado hasta que una herramienta, carrito o checkout real lo confirme.',
+      '- No uses urgencia falsa, escasez, presión, culpa ni manipulación para presentar una oferta.',
+      '- No repitas una misma oferta más veces que el máximo configurado. Revisa la conversación antes de volver a ofrecerla.',
+      '- Si la oferta no es acumulable, no la combines con otro beneficio de rescate. Las promociones normales siguen sus propias reglas de compatibilidad configuradas.',
+      '- Cuando el cliente acepte una oferta, continúa únicamente con el siguiente paso real de la compra. No agregues otra oferta automáticamente.',
+      ...lines,
+    ].join('\n\n');
   }
 
   private getShippingTrackingRules(settings: JsonObject): string {

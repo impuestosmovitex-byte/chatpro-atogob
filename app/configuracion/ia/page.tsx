@@ -51,6 +51,35 @@ type ShippingTrackingSettings = {
   carriers: ShippingCarrier[];
 };
 
+type ClosingOfferRule = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  trigger: string;
+  benefit: string;
+  code: string;
+  startsAt: string;
+  endsAt: string;
+  productScope: string;
+  eligibleProducts: string;
+  eligibleCollections: string;
+  eligibleCategories: string;
+  minItems: number;
+  minMatchingItems: number;
+  minSubtotalCop: number;
+  cities: string;
+  paymentMethods: string;
+  excludedProducts: string;
+  instructions: string;
+  maxUsesPerConversation: number;
+  stackable: boolean;
+};
+
+type ClosingOffersSettings = {
+  enabled: boolean;
+  rules: ClosingOfferRule[];
+};
+
 type Configuration = {
   assistantName: string;
   tone: string;
@@ -59,6 +88,7 @@ type Configuration = {
   knowledgeBase: KnowledgeBase;
   cartRecovery: CartRecoverySettings;
   shippingTracking: ShippingTrackingSettings;
+  closingOffers: ClosingOffersSettings;
 };
 
 type ResponseData = {
@@ -105,6 +135,11 @@ const EMPTY_SHIPPING_TRACKING: ShippingTrackingSettings = {
   carriers: [],
 };
 
+const EMPTY_CLOSING_OFFERS: ClosingOffersSettings = {
+  enabled: false,
+  rules: [],
+};
+
 const EMPTY: Configuration = {
   assistantName: '',
   tone: 'Cercana, clara, breve y profesional',
@@ -113,6 +148,7 @@ const EMPTY: Configuration = {
   knowledgeBase: EMPTY_KNOWLEDGE,
   cartRecovery: EMPTY_CART_RECOVERY,
   shippingTracking: EMPTY_SHIPPING_TRACKING,
+  closingOffers: EMPTY_CLOSING_OFFERS,
 };
 
 function normalizeCartRecovery(
@@ -164,6 +200,46 @@ function normalizeShippingTracking(
   };
 }
 
+function normalizeClosingOffers(
+  value?: Partial<ClosingOffersSettings>,
+): ClosingOffersSettings {
+  const rules = Array.isArray(value?.rules)
+    ? value.rules.map((rule, index) => ({
+        id: rule?.id || `offer-${index + 1}`,
+        name: rule?.name ?? '',
+        isActive:
+          typeof rule?.isActive === 'boolean' ? rule.isActive : true,
+        trigger: rule?.trigger ?? 'custom',
+        benefit: rule?.benefit ?? '',
+        code: rule?.code ?? '',
+        startsAt: rule?.startsAt ?? '',
+        endsAt: rule?.endsAt ?? '',
+        productScope: rule?.productScope ?? 'all',
+        eligibleProducts: rule?.eligibleProducts ?? '',
+        eligibleCollections: rule?.eligibleCollections ?? '',
+        eligibleCategories: rule?.eligibleCategories ?? '',
+        minItems: Number(rule?.minItems) || 0,
+        minMatchingItems: Number(rule?.minMatchingItems) || 0,
+        minSubtotalCop: Number(rule?.minSubtotalCop) || 0,
+        cities: rule?.cities ?? '',
+        paymentMethods: rule?.paymentMethods ?? '',
+        excludedProducts: rule?.excludedProducts ?? '',
+        instructions: rule?.instructions ?? '',
+        maxUsesPerConversation:
+          Math.max(1, Number(rule?.maxUsesPerConversation) || 1),
+        stackable: rule?.stackable === true,
+      }))
+    : [];
+
+  return {
+    enabled:
+      typeof value?.enabled === 'boolean'
+        ? value.enabled
+        : rules.length > 0,
+    rules,
+  };
+}
+
 function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
   const flow: Partial<CommercialFlow> =
     value?.commercialFlow ?? {};
@@ -207,6 +283,7 @@ function normalizeConfiguration(value?: Partial<Configuration>): Configuration {
     },
     cartRecovery: normalizeCartRecovery(value?.cartRecovery),
     shippingTracking: normalizeShippingTracking(value?.shippingTracking),
+    closingOffers: normalizeClosingOffers(value?.closingOffers),
   };
 }
 
@@ -430,6 +507,80 @@ export default function ConfiguracionPage() {
         ...current.shippingTracking,
         carriers: current.shippingTracking.carriers.filter(
           (_carrier, itemIndex) => itemIndex !== index,
+        ),
+      },
+    }));
+  }
+
+  function updateClosingOffersEnabled(enabled: boolean) {
+    setConfiguration((current) => ({
+      ...current,
+      closingOffers: {
+        ...current.closingOffers,
+        enabled,
+      },
+    }));
+  }
+
+  function addClosingOffer() {
+    setConfiguration((current) => ({
+      ...current,
+      closingOffers: {
+        ...current.closingOffers,
+        enabled: true,
+        rules: [
+          ...current.closingOffers.rules,
+          {
+            id: `offer-${Date.now()}`,
+            name: '',
+            isActive: true,
+            trigger: 'custom',
+            benefit: '',
+            code: '',
+            startsAt: '',
+            endsAt: '',
+            productScope: 'all',
+            eligibleProducts: '',
+            eligibleCollections: '',
+            eligibleCategories: '',
+            minItems: 0,
+            minMatchingItems: 0,
+            minSubtotalCop: 0,
+            cities: '',
+            paymentMethods: '',
+            excludedProducts: '',
+            instructions: '',
+            maxUsesPerConversation: 1,
+            stackable: false,
+          },
+        ],
+      },
+    }));
+  }
+
+  function updateClosingOffer(
+    index: number,
+    key: keyof ClosingOfferRule,
+    value: string | number | boolean,
+  ) {
+    setConfiguration((current) => ({
+      ...current,
+      closingOffers: {
+        ...current.closingOffers,
+        rules: current.closingOffers.rules.map((rule, itemIndex) =>
+          itemIndex === index ? { ...rule, [key]: value } : rule,
+        ),
+      },
+    }));
+  }
+
+  function removeClosingOffer(index: number) {
+    setConfiguration((current) => ({
+      ...current,
+      closingOffers: {
+        ...current.closingOffers,
+        rules: current.closingOffers.rules.filter(
+          (_rule, itemIndex) => itemIndex !== index,
         ),
       },
     }));
@@ -1034,10 +1185,355 @@ export default function ConfiguracionPage() {
               ))}
             </section>
 
-          <section className={styles.card}>
+                    <section className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>5. BASE DE CONOCIMIENTO</p>
+                <p>5. OFERTAS DE CIERRE Y DESCUENTOS</p>
+                <h2>Beneficios configurables según el cliente y su carrito</h2>
+              </div>
+              <span>Configurable por empresa</span>
+            </div>
+
+            <label>
+              <span>Activar motor de ofertas</span>
+              <input
+                type="checkbox"
+                checked={configuration.closingOffers.enabled}
+                onChange={(event) =>
+                  updateClosingOffersEnabled(event.target.checked)
+                }
+                disabled={loading}
+              />
+              <small>
+                Si está apagado, la IA no podrá utilizar ninguna de estas ofertas.
+              </small>
+            </label>
+
+            <div className={styles.menuNote}>
+              <div>
+                <strong>Ofertas configuradas</strong>
+                <p>
+                  Define descuentos de rescate o beneficios que dependan de productos,
+                  cantidad, subtotal, ciudad, forma de pago o comportamiento del cliente.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={addClosingOffer}
+                disabled={loading}
+              >
+                Agregar oferta
+              </button>
+            </div>
+
+            {configuration.closingOffers.rules.map((offer, index) => (
+              <div className={styles.menuNote} key={offer.id || index}>
+                <div>
+                  <div className={styles.grid}>
+                    <label>
+                      <span>Nombre interno</span>
+                      <input
+                        value={offer.name}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'name', event.target.value)
+                        }
+                        placeholder="Ejemplo: Rescate por abandono"
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Oferta activa</span>
+                      <input
+                        type="checkbox"
+                        checked={offer.isActive}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'isActive', event.target.checked)
+                        }
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Cuándo puede activarse</span>
+                      <select
+                        value={offer.trigger}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'trigger', event.target.value)
+                        }
+                        disabled={loading}
+                      >
+                        <option value="hesitation">Cliente indeciso</option>
+                        <option value="price_objection">Objeción de precio</option>
+                        <option value="discount_request">Solicita descuento</option>
+                        <option value="checkout_hesitation">Duda al finalizar compra</option>
+                        <option value="abandonment">Dice que no continuará comprando</option>
+                        <option value="cart_condition">Condición del carrito</option>
+                        <option value="custom">Regla personalizada</option>
+                      </select>
+                    </label>
+
+                    <label>
+                      <span>Código de descuento</span>
+                      <input
+                        value={offer.code}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'code', event.target.value)
+                        }
+                        placeholder="Ejemplo: CODIGO10"
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Vigente desde</span>
+                      <input
+                        type="date"
+                        value={offer.startsAt}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'startsAt', event.target.value)
+                        }
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Vigente hasta</span>
+                      <input
+                        type="date"
+                        value={offer.endsAt}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'endsAt', event.target.value)
+                        }
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
+
+                  <label>
+                    <span>Beneficio que puede ofrecer</span>
+                    <textarea
+                      value={offer.benefit}
+                      onChange={(event) =>
+                        updateClosingOffer(index, 'benefit', event.target.value)
+                      }
+                      placeholder="Ejemplo: 10% de descuento en los productos que cumplen la condición."
+                      rows={3}
+                      disabled={loading}
+                    />
+                  </label>
+
+                  <div className={styles.grid}>
+                    <label>
+                      <span>La oferta aplica a</span>
+                      <select
+                        value={offer.productScope}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'productScope', event.target.value)
+                        }
+                        disabled={loading}
+                      >
+                        <option value="all">Todos los productos</option>
+                        <option value="products">Productos específicos</option>
+                        <option value="collections">Colecciones específicas</option>
+                        <option value="categories">Categorías o tipos</option>
+                        <option value="mixed">Combinación</option>
+                      </select>
+                    </label>
+
+                    <label>
+                      <span>Cantidad mínima total del carrito</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={offer.minItems}
+                        onChange={(event) =>
+                          updateClosingOffer(
+                            index,
+                            'minItems',
+                            Number(event.target.value) || 0,
+                          )
+                        }
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Mínimo de productos que deben coincidir</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={offer.minMatchingItems}
+                        onChange={(event) =>
+                          updateClosingOffer(
+                            index,
+                            'minMatchingItems',
+                            Number(event.target.value) || 0,
+                          )
+                        }
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Subtotal mínimo COP</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={offer.minSubtotalCop}
+                        onChange={(event) =>
+                          updateClosingOffer(
+                            index,
+                            'minSubtotalCop',
+                            Number(event.target.value) || 0,
+                          )
+                        }
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Máximo de usos por conversación</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={offer.maxUsesPerConversation}
+                        onChange={(event) =>
+                          updateClosingOffer(
+                            index,
+                            'maxUsesPerConversation',
+                            Math.max(1, Number(event.target.value) || 1),
+                          )
+                        }
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Acumulable con otros descuentos</span>
+                      <input
+                        type="checkbox"
+                        checked={offer.stackable}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'stackable', event.target.checked)
+                        }
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
+
+                  <div className={styles.grid}>
+                    <label>
+                      <span>Productos elegibles</span>
+                      <textarea
+                        value={offer.eligibleProducts}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'eligibleProducts', event.target.value)
+                        }
+                        placeholder="Nombres, referencias o identificadores. Separados por coma o por línea."
+                        rows={3}
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Colecciones elegibles</span>
+                      <textarea
+                        value={offer.eligibleCollections}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'eligibleCollections', event.target.value)
+                        }
+                        placeholder="Colecciones a las que aplica."
+                        rows={3}
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Categorías o tipos elegibles</span>
+                      <textarea
+                        value={offer.eligibleCategories}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'eligibleCategories', event.target.value)
+                        }
+                        placeholder="Ejemplo: pantalón, vestido, chaqueta."
+                        rows={3}
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Productos excluidos</span>
+                      <textarea
+                        value={offer.excludedProducts}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'excludedProducts', event.target.value)
+                        }
+                        placeholder="Productos que nunca reciben esta oferta."
+                        rows={3}
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Ciudades permitidas</span>
+                      <textarea
+                        value={offer.cities}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'cities', event.target.value)
+                        }
+                        placeholder="Déjalo vacío si aplica en cualquier ciudad."
+                        rows={3}
+                        disabled={loading}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Medios de pago permitidos</span>
+                      <textarea
+                        value={offer.paymentMethods}
+                        onChange={(event) =>
+                          updateClosingOffer(index, 'paymentMethods', event.target.value)
+                        }
+                        placeholder="Déjalo vacío si aplica con cualquier medio de pago."
+                        rows={3}
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
+
+                  <label>
+                    <span>Instrucciones adicionales</span>
+                    <textarea
+                      value={offer.instructions}
+                      onChange={(event) =>
+                        updateClosingOffer(index, 'instructions', event.target.value)
+                      }
+                      placeholder="Ejemplo: ofrecer únicamente después de confirmar que cumple todas las condiciones."
+                      rows={4}
+                      disabled={loading}
+                    />
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => removeClosingOffer(index)}
+                  disabled={loading}
+                >
+                  Quitar oferta
+                </button>
+              </div>
+            ))}
+          </section>
+
+<section className={styles.card}>
+            <div className={styles.sectionHeading}>
+              <div>
+                <p>6. BASE DE CONOCIMIENTO</p>
                 <h2>Políticas que la IA debe consultar</h2>
               </div>
               <span>No inventa respuestas</span>
@@ -1119,7 +1615,7 @@ export default function ConfiguracionPage() {
           <section className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>6. INSTRUCCIONES ADICIONALES</p>
+                <p>7. INSTRUCCIONES ADICIONALES</p>
                 <h2>Promociones, estilo y casos especiales</h2>
               </div>
             </div>

@@ -243,6 +243,7 @@ export class ConversationMemoryService {
       knowledgeBase?: unknown;
       cartRecovery?: unknown;
       shippingTracking?: unknown;
+      closingOffers?: unknown;
     },
   ): Promise<CompanyProfile> {
     const profile = await this.getCompanyProfile(companySlug);
@@ -307,6 +308,16 @@ export class ConversationMemoryService {
         nextSettings.shipping_tracking = shippingTracking;
       } else {
         delete nextSettings.shipping_tracking;
+      }
+    }
+
+    if (input.closingOffers !== undefined) {
+      const closingOffers = this.normalizeClosingOffers(input.closingOffers);
+
+      if (Object.keys(closingOffers).length) {
+        nextSettings.closing_offers = closingOffers;
+      } else {
+        delete nextSettings.closing_offers;
       }
     }
 
@@ -3581,6 +3592,120 @@ export class ConversationMemoryService {
     }
 
     return result;
+  }
+
+  private normalizeClosingOffers(value: unknown): JsonObject {
+    const source = this.toJsonObject(value);
+
+    const clean = (input: unknown, maxLength: number) =>
+      typeof input === 'string'
+        ? input.trim().slice(0, maxLength)
+        : '';
+
+    const numberValue = (
+      input: unknown,
+      fallback: number,
+      min: number,
+      max: number,
+    ) => {
+      const parsed =
+        typeof input === 'number'
+          ? input
+          : typeof input === 'string'
+            ? Number(input)
+            : Number.NaN;
+
+      return Number.isFinite(parsed) && parsed >= min && parsed <= max
+        ? parsed
+        : fallback;
+    };
+
+    const rawRules = Array.isArray(source.rules) ? source.rules : [];
+
+    const rules = rawRules
+      .map((item, index) => {
+        const rule = this.toJsonObject(item);
+
+        return {
+          id: clean(rule.id, 100) || `offer-${index + 1}`,
+          name: clean(rule.name, 200),
+          isActive:
+            typeof rule.isActive === 'boolean'
+              ? rule.isActive
+              : rule.is_active !== false,
+          trigger: clean(rule.trigger, 100),
+          benefit: clean(rule.benefit, 1000),
+          code: clean(rule.code, 200),
+          startsAt: clean(rule.startsAt ?? rule.starts_at, 100),
+          endsAt: clean(rule.endsAt ?? rule.ends_at, 100),
+          productScope:
+            clean(rule.productScope ?? rule.product_scope, 50) || 'all',
+          eligibleProducts: clean(
+            rule.eligibleProducts ?? rule.eligible_products,
+            5000,
+          ),
+          eligibleCollections: clean(
+            rule.eligibleCollections ?? rule.eligible_collections,
+            5000,
+          ),
+          eligibleCategories: clean(
+            rule.eligibleCategories ?? rule.eligible_categories,
+            5000,
+          ),
+          minItems: numberValue(
+            rule.minItems ?? rule.min_items,
+            0,
+            0,
+            1000,
+          ),
+          minMatchingItems: numberValue(
+            rule.minMatchingItems ?? rule.min_matching_items,
+            0,
+            0,
+            1000,
+          ),
+          minSubtotalCop: numberValue(
+            rule.minSubtotalCop ?? rule.min_subtotal_cop,
+            0,
+            0,
+            1_000_000_000,
+          ),
+          cities: clean(rule.cities, 2000),
+          paymentMethods: clean(
+            rule.paymentMethods ?? rule.payment_methods,
+            2000,
+          ),
+          excludedProducts: clean(
+            rule.excludedProducts ?? rule.excluded_products,
+            5000,
+          ),
+          instructions: clean(rule.instructions, 5000),
+          maxUsesPerConversation: numberValue(
+            rule.maxUsesPerConversation ??
+              rule.max_uses_per_conversation,
+            1,
+            1,
+            10,
+          ),
+          stackable:
+            typeof rule.stackable === 'boolean'
+              ? rule.stackable
+              : false,
+        };
+      })
+      .filter(
+        (rule) =>
+          rule.name ||
+          rule.benefit ||
+          rule.code ||
+          rule.instructions,
+      )
+      .slice(0, 50);
+
+    return {
+      enabled: source.enabled === true,
+      rules,
+    };
   }
 
   private normalizeCommercialFlow(value: unknown): JsonObject {

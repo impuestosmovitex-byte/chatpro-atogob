@@ -52,6 +52,35 @@ type ShippingTracking = {
   carriers: ShippingCarrier[];
 };
 
+type ClosingOfferRule = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  trigger: string;
+  benefit: string;
+  code: string;
+  startsAt: string;
+  endsAt: string;
+  productScope: string;
+  eligibleProducts: string;
+  eligibleCollections: string;
+  eligibleCategories: string;
+  minItems: number;
+  minMatchingItems: number;
+  minSubtotalCop: number;
+  cities: string;
+  paymentMethods: string;
+  excludedProducts: string;
+  instructions: string;
+  maxUsesPerConversation: number;
+  stackable: boolean;
+};
+
+type ClosingOffers = {
+  enabled: boolean;
+  rules: ClosingOfferRule[];
+};
+
 type SettingsBody = {
   assistantName?: unknown;
   tone?: unknown;
@@ -60,6 +89,7 @@ type SettingsBody = {
   knowledgeBase?: unknown;
   cartRecovery?: unknown;
   shippingTracking?: unknown;
+  closingOffers?: unknown;
 };
 
 function optionalText(value: unknown): string | undefined {
@@ -200,6 +230,121 @@ function shippingTrackingFrom(value: unknown): ShippingTracking {
   };
 }
 
+
+
+function closingOffersFrom(value: unknown): ClosingOffers {
+  const source =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+
+  const rawRules = Array.isArray(source.rules) ? source.rules : [];
+
+  const rules = rawRules
+    .map((item, index): ClosingOfferRule => {
+      const rule =
+        item && typeof item === 'object' && !Array.isArray(item)
+          ? item as Record<string, unknown>
+          : {};
+
+      const numberValue = (
+        input: unknown,
+        fallback: number,
+        min: number,
+        max: number,
+      ) => {
+        const parsed =
+          typeof input === 'number'
+            ? input
+            : typeof input === 'string'
+              ? Number(input)
+              : Number.NaN;
+
+        return Number.isFinite(parsed) && parsed >= min && parsed <= max
+          ? parsed
+          : fallback;
+      };
+
+      return {
+        id: cleanText(rule.id, 100) || `offer-${index + 1}`,
+        name: cleanText(rule.name, 200),
+        isActive:
+          typeof rule.isActive === 'boolean'
+            ? rule.isActive
+            : rule.is_active !== false,
+        trigger: cleanText(rule.trigger, 100),
+        benefit: cleanText(rule.benefit, 1000),
+        code: cleanText(rule.code, 200),
+        startsAt: cleanText(rule.startsAt ?? rule.starts_at, 100),
+        endsAt: cleanText(rule.endsAt ?? rule.ends_at, 100),
+        productScope:
+          cleanText(rule.productScope ?? rule.product_scope, 50) || 'all',
+        eligibleProducts: cleanText(
+          rule.eligibleProducts ?? rule.eligible_products,
+          5000,
+        ),
+        eligibleCollections: cleanText(
+          rule.eligibleCollections ?? rule.eligible_collections,
+          5000,
+        ),
+        eligibleCategories: cleanText(
+          rule.eligibleCategories ?? rule.eligible_categories,
+          5000,
+        ),
+        minItems: numberValue(
+          rule.minItems ?? rule.min_items,
+          0,
+          0,
+          1000,
+        ),
+        minMatchingItems: numberValue(
+          rule.minMatchingItems ?? rule.min_matching_items,
+          0,
+          0,
+          1000,
+        ),
+        minSubtotalCop: numberValue(
+          rule.minSubtotalCop ?? rule.min_subtotal_cop,
+          0,
+          0,
+          1_000_000_000,
+        ),
+        cities: cleanText(rule.cities, 2000),
+        paymentMethods: cleanText(
+          rule.paymentMethods ?? rule.payment_methods,
+          2000,
+        ),
+        excludedProducts: cleanText(
+          rule.excludedProducts ?? rule.excluded_products,
+          5000,
+        ),
+        instructions: cleanText(rule.instructions, 5000),
+        maxUsesPerConversation: numberValue(
+          rule.maxUsesPerConversation ?? rule.max_uses_per_conversation,
+          1,
+          1,
+          10,
+        ),
+        stackable:
+          typeof rule.stackable === 'boolean'
+            ? rule.stackable
+            : false,
+      };
+    })
+    .filter(
+      (rule) =>
+        rule.name ||
+        rule.benefit ||
+        rule.code ||
+        rule.instructions,
+    )
+    .slice(0, 50);
+
+  return {
+    enabled: source.enabled === true,
+    rules,
+  };
+}
 
 const SETTINGS_TEXT_LIMITS = {
   salesInstructions: 50_000,
@@ -353,6 +498,7 @@ export class CompanySettingsController {
         knowledgeBase: body?.knowledgeBase,
         cartRecovery: body?.cartRecovery,
         shippingTracking: body?.shippingTracking,
+        closingOffers: body?.closingOffers,
       });
 
     return {
@@ -401,6 +547,7 @@ export class CompanySettingsController {
         profile.settings,
       ),
       shippingTracking: shippingTrackingFrom(profile.settings.shipping_tracking),
+      closingOffers: closingOffersFrom(profile.settings.closing_offers),
     };
   }
 }
