@@ -3,8 +3,8 @@ import type { MetadataRoute } from 'next';
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',
-    name: 'ChatPro',
-    short_name: 'ChatPro',
+    name: 'MW1',
+    short_name: 'MW1',
     description:
       'Bandeja multiempresa para atender WhatsApp y otros canales con asesores e inteligencia artificial.',
     start_url: '/',

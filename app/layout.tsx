@@ -15,16 +15,16 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'ChatPro',
-    template: '%s | ChatPro',
+    default: 'MW1',
+    template: '%s | MW1',
   },
   description:
     'Bandeja multiempresa para atender WhatsApp y otros canales con asesores e inteligencia artificial.',
-  applicationName: 'ChatPro',
+  applicationName: 'MW1',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
-    title: 'ChatPro',
+    title: 'MW1',
     statusBarStyle: 'black-translucent',
   },
   formatDetection: {

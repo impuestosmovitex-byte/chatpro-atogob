@@ -45,20 +45,26 @@ const baseNavigation: Array<{
   {
     href: '/',
     label: 'Bandeja',
-    icon: '◉',
+    icon: '▣',
     exact: true,
     capability: 'inbox',
   },
   {
     href: '/clientes',
     label: 'Clientes',
-    icon: '◌',
+    icon: '♙',
     capability: 'clients',
+  },
+  {
+    href: '/configuracion/ia',
+    label: 'IA',
+    icon: '✦',
+    capability: 'configuration',
   },
   {
     href: '/automatizaciones',
     label: 'Automatizaciones',
-    icon: '◈',
+    icon: '⚡',
     capability: 'automations',
   },
   {
@@ -66,18 +72,6 @@ const baseNavigation: Array<{
     label: 'Estadísticas',
     icon: '▥',
     capability: 'statistics',
-  },
-  {
-    href: '/plantillas-whatsapp',
-    label: 'Plantillas WhatsApp',
-    icon: '▤',
-    capability: 'automations',
-  },
-  {
-    href: '/salud',
-    label: 'Salud y alertas',
-    icon: '!',
-    capability: 'health',
   },
 ];
 
@@ -260,8 +254,7 @@ export function AppSidebar({
     <>
       <aside className={styles.sidebar}>
       <div className={styles.brand}>
-        <span className={styles.dot} />
-        <span>Chat Pro</span>
+        <span className={styles.brandWord}>MW<span>1</span></span>
       </div>
 
       <nav className={styles.nav} aria-label="Navegación principal">
