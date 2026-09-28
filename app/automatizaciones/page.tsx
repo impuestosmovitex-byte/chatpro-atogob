@@ -379,21 +379,97 @@ export default function AutomationsPage() {
             <p className={styles.eyebrow}>OPERACIÓN AUTOMÁTICA</p>
             <h1>Automatizaciones · {companyName}</h1>
             <p>
-              Activa cada flujo y revisa todo lo que ChatPro intenta
+              Activa cada flujo y revisa todo lo que MW1 intenta
               enviar.
             </p>
           </div>
 
-          <button
-            type="button"
-            className={styles.messageSettings}
-            onClick={() =>
-              window.location.assign('/automatizaciones/mensajes')
-            }
-          >
-            Configurar mensajes
-          </button>
+
         </header>
+
+        <section className={styles.automationTools}>
+          <div className={styles.toolsHeading}>
+            <div>
+              <p className={styles.eyebrow}>HERRAMIENTAS</p>
+              <h2>Centro de automatizaciones</h2>
+            </div>
+            <span>
+              Accesos a funciones que ya existen en MW1.
+            </span>
+          </div>
+
+          <div className={styles.toolGrid}>
+            <article
+              className={`${styles.toolCard} ${styles.toolCardActive}`}
+            >
+              <div className={styles.toolIcon}>⚡</div>
+              <div>
+                <strong>Flujos automáticos</strong>
+                <p>
+                  Activa, pausa y supervisa los eventos automáticos
+                  configurados para esta empresa.
+                </p>
+              </div>
+              <span className={styles.currentBadge}>Estás aquí</span>
+            </article>
+
+            <button
+              type="button"
+              className={styles.toolCard}
+              onClick={() =>
+                window.location.assign('/automatizaciones/mensajes')
+              }
+            >
+              <div className={styles.toolIcon}>✉</div>
+              <div>
+                <strong>Mensajes automáticos</strong>
+                <p>
+                  Configura los textos y plantillas utilizados por
+                  los flujos compatibles.
+                </p>
+              </div>
+              <span className={styles.toolArrow}>→</span>
+            </button>
+
+            <button
+              type="button"
+              className={styles.toolCard}
+              onClick={() =>
+                window.location.assign(
+                  '/configuracion/respuestas-rapidas',
+                )
+              }
+            >
+              <div className={styles.toolIcon}>/</div>
+              <div>
+                <strong>Respuestas rápidas</strong>
+                <p>
+                  Administra los atajos que utilizan los asesores
+                  dentro de la bandeja.
+                </p>
+              </div>
+              <span className={styles.toolArrow}>→</span>
+            </button>
+
+            <button
+              type="button"
+              className={styles.toolCard}
+              onClick={() =>
+                window.location.assign('/plantillas-whatsapp')
+              }
+            >
+              <div className={styles.toolIcon}>▤</div>
+              <div>
+                <strong>Plantillas WhatsApp</strong>
+                <p>
+                  Sincroniza plantillas aprobadas por Meta y sus
+                  asignaciones existentes.
+                </p>
+              </div>
+              <span className={styles.toolArrow}>→</span>
+            </button>
+          </div>
+        </section>
 
         <section className={styles.metrics}>
           <article>
