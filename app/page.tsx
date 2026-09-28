@@ -1244,6 +1244,7 @@ export default function Home() {
   const nextSessionsOffsetRef = useRef(0);
   const pendingSessionsTotalRef = useRef(0);
   const activeSessionIdRef = useRef("");
+  const conversationDraftsRef = useRef<Record<string, string>>({});
   const loadingOlderMessagesRef = useRef(false);
   const preserveScrollOnPrependRef = useRef(false);
   const stickToBottomRef = useRef(true);
@@ -1979,7 +1980,7 @@ export default function Home() {
         stickToBottomRef.current = true;
         autoScrollSessionRef.current = "";
 
-        setMessage("");
+        setMessage(conversationDraftsRef.current[sessionId] ?? "");
         setQuickReplyOpen(false);
         setActionMessage("");
         setPreparedTemplate(null);
@@ -2250,6 +2251,7 @@ export default function Home() {
         ),
       );
 
+      conversationDraftsRef.current[sessionId] = "";
       setMessage("");
       setQuickReplyOpen(false);
     }
@@ -2320,6 +2322,7 @@ export default function Home() {
           };
         });
 
+        conversationDraftsRef.current[sessionId] = cleanMessage;
         setMessage(cleanMessage);
       }
 
@@ -2447,6 +2450,7 @@ export default function Home() {
       }
 
       setSelected(data.conversation);
+      conversationDraftsRef.current[data.conversation.session.id] = "";
       setMessage("");
       setQuickReplyOpen(false);
       setError("");
@@ -2488,6 +2492,7 @@ export default function Home() {
       }
 
       setSelected(data.conversation);
+      conversationDraftsRef.current[data.conversation.session.id] = "";
       setMessage("");
       setQuickReplyOpen(false);
       setError("");
@@ -2872,6 +2877,7 @@ export default function Home() {
       }
 
       setSelected(data.conversation);
+      conversationDraftsRef.current[data.conversation.session.id] = "";
       clearAttachmentDraft();
       setMessage("");
       setActionMessage("Archivo enviado.");
@@ -2935,6 +2941,7 @@ export default function Home() {
 
       const totalSent = imageFiles.length;
 
+      conversationDraftsRef.current[selected.session.id] = "";
       clearImageDraft();
       setMessage("");
       setActionMessage(
@@ -2954,6 +2961,7 @@ export default function Home() {
         setImagePreviewUrls((current) => current.slice(sentCount));
 
         // El texto ya salió como caption de la primera imagen.
+        conversationDraftsRef.current[selected.session.id] = "";
         setMessage("");
 
         await loadList(false);
@@ -3950,6 +3958,12 @@ export default function Home() {
   }
 
   function chooseQuickReply(reply: QuickReply) {
+    const sessionId = selected?.session.id ?? "";
+
+    if (sessionId) {
+      conversationDraftsRef.current[sessionId] = reply.body;
+    }
+
     setMessage(reply.body);
     setQuickReplyOpen(false);
   }
@@ -5162,7 +5176,14 @@ export default function Home() {
                     <textarea
                       value={message}
                       onChange={(event) => {
-                        setMessage(event.target.value);
+                        const next = event.target.value;
+                        const sessionId = selected?.session.id ?? "";
+
+                        if (sessionId) {
+                          conversationDraftsRef.current[sessionId] = next;
+                        }
+
+                        setMessage(next);
                         setQuickReplyOpen(false);
                       }}
                       placeholder="Escribe como cliente para probar el agente…"
@@ -5292,6 +5313,12 @@ export default function Home() {
                               value={message}
                               onChange={(event) => {
                                 const next = event.target.value;
+                                const sessionId = selected?.session.id ?? "";
+
+                                if (sessionId) {
+                                  conversationDraftsRef.current[sessionId] = next;
+                                }
+
                                 setMessage(next);
                                 setQuickReplyOpen(
                                   canUseQuickReplies &&
