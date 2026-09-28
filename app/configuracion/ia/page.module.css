@@ -13,6 +13,55 @@
 }
 
 .header,
+
+
+.editorNav {
+  max-width: 1060px;
+  margin: 0 auto 18px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 3px 0 5px;
+  scrollbar-width: thin;
+}
+
+.editorNavButton {
+  flex: 0 0 auto;
+  min-height: 39px;
+  padding: 0 14px;
+  border: 1px solid #dedfdc;
+  border-radius: 10px;
+  background: #fff;
+  color: #626872;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.editorNavButton:hover {
+  border-color: #c8c4b8;
+  color: #1b1c22;
+  transform: translateY(-1px);
+}
+
+.editorNavButtonActive {
+  border-color: #1b1c22;
+  background: #1b1c22;
+  color: #fff;
+}
+
+.editorNavButtonActive:hover {
+  border-color: #1b1c22;
+  background: #1b1c22;
+  color: #fff;
+}
+
 .form {
   max-width: 1060px;
   margin: 0 auto;

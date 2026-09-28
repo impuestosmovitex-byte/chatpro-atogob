@@ -7,6 +7,55 @@ import styles from './page.module.css';
 
 type ResponseLength = 'brief' | 'balanced' | 'detailed';
 
+type AiEditorView =
+  | 'assistant'
+  | 'sales'
+  | 'service'
+  | 'knowledge';
+
+const AI_VIEW_HASH: Record<AiEditorView, string> = {
+  assistant: 'asistente',
+  sales: 'ventas',
+  service: 'servicio',
+  knowledge: 'conocimiento',
+};
+
+const AI_VIEW_LABEL: Record<AiEditorView, string> = {
+  assistant: 'Asistente',
+  sales: 'Ventas',
+  service: 'Servicio al cliente',
+  knowledge: 'Base de conocimiento',
+};
+
+function aiViewFromHash(hash: string): AiEditorView {
+  const value = hash.replace(/^#/, '').trim().toLowerCase();
+
+  if (
+    value === 'ventas' ||
+    value === 'ventas-servicio' ||
+    value === 'recuperacion' ||
+    value === 'ofertas-cierre'
+  ) {
+    return 'sales';
+  }
+
+  if (
+    value === 'servicio' ||
+    value === 'seguimiento'
+  ) {
+    return 'service';
+  }
+
+  if (
+    value === 'conocimiento' ||
+    value === 'base-conocimiento'
+  ) {
+    return 'knowledge';
+  }
+
+  return 'assistant';
+}
+
 type CommercialFlow = {
   welcomeMessage: string;
   areaWelcomeMessage: string;
@@ -379,11 +428,38 @@ export default function ConfiguracionPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [activeView, setActiveView] =
+    useState<AiEditorView>('assistant');
 
   const exceededInstructionFields =
     getExceededInstructionFields(configuration);
   const hasExceededInstructionLimits =
     exceededInstructionFields.length > 0;
+
+  useEffect(() => {
+    const syncView = () => {
+      setActiveView(aiViewFromHash(window.location.hash));
+    };
+
+    syncView();
+    window.addEventListener('hashchange', syncView);
+
+    return () => {
+      window.removeEventListener('hashchange', syncView);
+    };
+  }, []);
+
+  function changeView(view: AiEditorView) {
+    setActiveView(view);
+    setMessage('');
+
+    const nextUrl =
+      `${window.location.pathname}${window.location.search}` +
+      `#${AI_VIEW_HASH[view]}`;
+
+    window.history.replaceState(null, '', nextUrl);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   useEffect(() => {
     async function load() {
@@ -645,8 +721,24 @@ export default function ConfiguracionPage() {
         <header className={styles.header}>
           <div>
             <p className={styles.eyebrow}>IA · CONFIGURACIÓN</p>
-            <h1>Asistente principal · {companyName}</h1>
-            <p>Configura la identidad, capacidades y conocimiento del asistente principal de esta empresa.</p>
+            <h1>
+              {activeView === 'sales'
+                ? `Ventas · ${companyName}`
+                : activeView === 'service'
+                  ? `Servicio al cliente · ${companyName}`
+                  : activeView === 'knowledge'
+                    ? `Base de conocimiento · ${companyName}`
+                    : `Asistente principal · ${companyName}`}
+            </h1>
+            <p>
+              {activeView === 'sales'
+                ? 'Define cómo la IA vende, cotiza, ofrece medios de pago, finaliza compras y recupera oportunidades.'
+                : activeView === 'service'
+                  ? 'Define cómo la IA atiende pedidos, postventa, seguimientos y casos que requieren soporte.'
+                  : activeView === 'knowledge'
+                    ? 'Administra las políticas y respuestas aprobadas que la IA puede consultar.'
+                    : 'Configura la identidad, el tono y el comportamiento general del asistente.'}
+            </p>
           </div>
           <button
             type="button"
@@ -657,11 +749,39 @@ export default function ConfiguracionPage() {
           </button>
         </header>
 
+        <nav
+          className={styles.editorNav}
+          aria-label="Secciones de configuración de IA"
+        >
+          {(
+            [
+              'assistant',
+              'sales',
+              'service',
+              'knowledge',
+            ] as AiEditorView[]
+          ).map((view) => (
+            <button
+              key={view}
+              type="button"
+              className={`${styles.editorNavButton} ${
+                activeView === view
+                  ? styles.editorNavButtonActive
+                  : ''
+              }`}
+              onClick={() => changeView(view)}
+            >
+              {AI_VIEW_LABEL[view]}
+            </button>
+          ))}
+        </nav>
+
         <form className={styles.form} onSubmit={save}>
-          <section id="asistente" className={styles.card}>
+          {activeView === 'assistant' ? (
+<section id="asistente" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>1. IDENTIDAD DEL ASISTENTE</p>
+                <p>IDENTIDAD DEL ASISTENTE</p>
                 <h2>Cómo se presenta y conversa</h2>
               </div>
               <span>Exclusivo de {companyName}</span>
@@ -749,17 +869,32 @@ export default function ConfiguracionPage() {
               </small>
             </label>
           </section>
+) : null}
 
-          <section id="ventas-servicio" className={styles.card}>
+          {activeView !== 'knowledge' ? (
+<section id="ventas-servicio" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>2. VENTAS Y SERVICIO AL CLIENTE</p>
-                <h2>Cómo atender antes y después de la compra</h2>
+                <p>
+                  {activeView === 'sales'
+                    ? 'VENTAS'
+                    : activeView === 'service'
+                      ? 'SERVICIO AL CLIENTE'
+                      : 'COMPORTAMIENTO GENERAL'}
+                </p>
+                <h2>
+                  {activeView === 'sales'
+                    ? 'Cómo acompañar y cerrar una compra'
+                    : activeView === 'service'
+                      ? 'Cómo atender después de la compra'
+                      : 'Cómo debe conversar la IA'}
+                </h2>
               </div>
               <span>Configurable por empresa</span>
             </div>
 
-            <div className={styles.grid}>
+            {activeView === 'assistant' ? (<>
+<div className={styles.grid}>
               <label>
                 <span>Longitud de respuesta</span>
                 <select
@@ -839,7 +974,11 @@ export default function ConfiguracionPage() {
               </small>
             </label>
 
-            <label>
+
+</>) : null}
+
+{activeView === 'sales' ? (
+<label>
               <span>Preguntar antes de mostrar el catálogo</span>
               <input
                 type="checkbox"
@@ -858,8 +997,10 @@ export default function ConfiguracionPage() {
                 Primero pregunta qué busca y después muestra solo la colección o productos relacionados.
               </small>
             </label>
+) : null}
 
-            <label>
+            {activeView === 'sales' ? (
+<label>
               <span>Proceso de ventas</span>
               <textarea
                 value={configuration.commercialFlow.salesInstructions}
@@ -876,8 +1017,10 @@ export default function ConfiguracionPage() {
                 limit={INSTRUCTION_LIMITS.salesInstructions}
               />
             </label>
+) : null}
 
-            <label>
+            {activeView === 'service' ? (
+<label>
               <span>Servicio al cliente y postventa</span>
               <textarea
                 value={configuration.commercialFlow.serviceInstructions}
@@ -894,8 +1037,10 @@ export default function ConfiguracionPage() {
                 limit={INSTRUCTION_LIMITS.serviceInstructions}
               />
             </label>
+) : null}
 
-            <label>
+            {activeView === 'sales' ? (
+<label>
               <span>Ciudades y envíos</span>
               <textarea
                 value={configuration.commercialFlow.shippingInstructions}
@@ -912,8 +1057,10 @@ export default function ConfiguracionPage() {
                 limit={INSTRUCTION_LIMITS.shippingInstructions}
               />
             </label>
+) : null}
 
-            <label>
+            {activeView === 'sales' ? (
+<label>
               <span>Medios de pago</span>
               <textarea
                 value={configuration.commercialFlow.paymentInstructions}
@@ -930,8 +1077,10 @@ export default function ConfiguracionPage() {
                 limit={INSTRUCTION_LIMITS.paymentInstructions}
               />
             </label>
+) : null}
 
-            <label>
+            {activeView === 'sales' ? (
+<label>
               <span>Cuándo enviar el checkout</span>
               <textarea
                 value={configuration.commercialFlow.checkoutInstructions}
@@ -948,12 +1097,15 @@ export default function ConfiguracionPage() {
                 limit={INSTRUCTION_LIMITS.checkoutInstructions}
               />
             </label>
+) : null}
           </section>
+) : null}
 
-          <section id="recuperacion" className={styles.card}>
+          {activeView === 'sales' ? (
+<section id="recuperacion" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>3. RECUPERACIÓN DE CARRITOS</p>
+                <p>RECUPERACIÓN DE CARRITOS</p>
                 <h2>Mensajes y seguridad para carritos abandonados</h2>
               </div>
               <span>Configurable por empresa</span>
@@ -1047,11 +1199,13 @@ export default function ConfiguracionPage() {
               </small>
             </label>
           </section>
+) : null}
 
-            <section id="seguimiento" className={styles.card}>
+            {activeView === 'service' ? (
+<section id="seguimiento" className={styles.card}>
               <div className={styles.sectionHeading}>
                 <div>
-                  <p>4. TRANSPORTADORAS Y SEGUIMIENTO</p>
+                  <p>TRANSPORTADORAS Y SEGUIMIENTO</p>
                   <h2>Cómo responder guías y rastreos</h2>
                 </div>
                 <span>Configurable por empresa</span>
@@ -1184,11 +1338,13 @@ export default function ConfiguracionPage() {
                 </div>
               ))}
             </section>
+) : null}
 
-                    <section id="ofertas-cierre" className={styles.card}>
+                    {activeView === 'sales' ? (
+<section id="ofertas-cierre" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>5. OFERTAS DE CIERRE Y DESCUENTOS</p>
+                <p>OFERTAS DE CIERRE Y DESCUENTOS</p>
                 <h2>Beneficios configurables según el cliente y su carrito</h2>
               </div>
               <span>Configurable por empresa</span>
@@ -1529,11 +1685,13 @@ export default function ConfiguracionPage() {
               </div>
             ))}
           </section>
+) : null}
 
+{activeView === 'knowledge' ? (
 <section id="base-conocimiento" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>6. BASE DE CONOCIMIENTO</p>
+                <p>BASE DE CONOCIMIENTO</p>
                 <h2>Políticas que la IA debe consultar</h2>
               </div>
               <span>No inventa respuestas</span>
@@ -1611,11 +1769,13 @@ export default function ConfiguracionPage() {
               />
             </label>
           </section>
+) : null}
 
-          <section id="instrucciones-adicionales" className={styles.card}>
+          {activeView === 'assistant' ? (
+<section id="instrucciones-adicionales" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
-                <p>7. INSTRUCCIONES ADICIONALES</p>
+                <p>INSTRUCCIONES GENERALES</p>
                 <h2>Promociones, estilo y casos especiales</h2>
               </div>
             </div>
@@ -1645,6 +1805,7 @@ export default function ConfiguracionPage() {
               OpenAI razona con estas reglas y políticas de {companyName}. No son respuestas fijas: son la base aprobada para responder, vender y saber cuándo escalar.
             </div>
           </section>
+) : null}
 
           {hasExceededInstructionLimits ? (
             <div className={styles.limitError}>
@@ -1665,7 +1826,7 @@ export default function ConfiguracionPage() {
             type="submit"
             disabled={loading || saving || hasExceededInstructionLimits}
           >
-            {saving ? 'Guardando…' : 'Guardar configuración comercial'}
+            {saving ? 'Guardando…' : 'Guardar configuración de IA'}
           </button>
         </form>
       </section>

@@ -237,7 +237,7 @@ export default function AiPage() {
                 recuperación y ofertas de cierre.
               </p>
 
-              <Link href="/ia/configuracion#ventas-servicio">
+              <Link href="/ia/configuracion#ventas">
                 Configurar ventas →
               </Link>
             </article>
@@ -263,7 +263,7 @@ export default function AiPage() {
                 seguimiento y transferencia a asesores.
               </p>
 
-              <Link href="/ia/configuracion#ventas-servicio">
+              <Link href="/ia/configuracion#servicio">
                 Configurar servicio →
               </Link>
             </article>
@@ -289,7 +289,7 @@ export default function AiPage() {
                 políticas y preguntas frecuentes.
               </p>
 
-              <Link href="/ia/configuracion#base-conocimiento">
+              <Link href="/ia/configuracion#conocimiento">
                 Administrar conocimiento →
               </Link>
             </article>
