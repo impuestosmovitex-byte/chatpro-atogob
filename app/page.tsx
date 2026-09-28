@@ -177,6 +177,23 @@ const advisorStatusLabel: Record<AdvisorStatus, string> = {
 
 type ConversationCategory = 'all' | 'sales' | 'service' | 'unclassified';
 
+type ConversationChannel =
+  | "whatsapp"
+  | "instagram"
+  | "messenger";
+
+type ConnectedChannel = {
+  id: string;
+  channel: ConversationChannel;
+  label: string;
+};
+
+type ConnectedChannelsResponse = {
+  ok?: boolean;
+  error?: string;
+  channels?: ConnectedChannel[];
+};
+
 function conversationAreaName(
   session: ConversationSession,
 ): string {
@@ -1152,6 +1169,11 @@ export default function Home() {
   const [canSendTemplates, setCanSendTemplates] = useState(false);
   const [canUseQuickReplies, setCanUseQuickReplies] = useState(false);
   const [canSendMedia, setCanSendMedia] = useState(false);
+  const [connectedChannels, setConnectedChannels] = useState<
+    ConnectedChannel[]
+  >([]);
+  const [channelFilter, setChannelFilter] =
+    useState<ConversationChannel>("whatsapp");
   const [filter, setFilter] = useState<"all" | AttentionStatus>("all");
   const [advisorFilter, setAdvisorFilter] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -1249,6 +1271,53 @@ export default function Home() {
   const preserveScrollOnPrependRef = useRef(false);
   const stickToBottomRef = useRef(true);
   const autoScrollSessionRef = useRef("");
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadConnectedChannels() {
+      try {
+        const response = await fetch("/api/inbox/channels", {
+          cache: "no-store",
+        });
+
+        const data =
+          (await readJson(response)) as ConnectedChannelsResponse;
+
+        if (
+          !alive ||
+          !response.ok ||
+          !data.ok ||
+          !Array.isArray(data.channels)
+        ) {
+          return;
+        }
+
+        setConnectedChannels(data.channels);
+
+        if (data.channels.length) {
+          setChannelFilter((current) =>
+            data.channels!.some(
+              (item) => item.channel === current,
+            )
+              ? current
+              : data.channels![0].channel,
+          );
+        }
+      } catch {
+        /*
+         * Si el endpoint técnico falla, la Bandeja sigue funcionando
+         * y más abajo usamos los canales detectados en las conversaciones.
+         */
+      }
+    }
+
+    void loadConnectedChannels();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     activeSessionIdRef.current = selected?.session.id ?? "";
@@ -3968,6 +4037,77 @@ export default function Home() {
     setQuickReplyOpen(false);
   }
 
+  const availableChannels = useMemo(() => {
+    const channelMap = new Map<
+      ConversationChannel,
+      ConnectedChannel
+    >();
+
+    for (const item of connectedChannels) {
+      channelMap.set(item.channel, item);
+    }
+
+    /*
+     * También detectamos canales presentes en conversaciones.
+     * Esto evita ocultar un canal válido si la consulta de
+     * integraciones tarda o tiene una falla temporal.
+     */
+    for (const session of sessions) {
+      const channel = customerChannel(
+        session,
+        session.contact,
+      );
+
+      if (
+        channel !== "whatsapp" &&
+        channel !== "instagram" &&
+        channel !== "messenger"
+      ) {
+        continue;
+      }
+
+      if (!channelMap.has(channel)) {
+        channelMap.set(channel, {
+          id: `session-${channel}`,
+          channel,
+          label:
+            channel === "instagram"
+              ? "Instagram"
+              : channel === "messenger"
+                ? "Messenger"
+                : "WhatsApp",
+        });
+      }
+    }
+
+    const order: ConversationChannel[] = [
+      "whatsapp",
+      "instagram",
+      "messenger",
+    ];
+
+    return order
+      .map((channel) => channelMap.get(channel))
+      .filter(
+        (item): item is ConnectedChannel =>
+          Boolean(item),
+      );
+  }, [connectedChannels, sessions]);
+
+  useEffect(() => {
+    if (!availableChannels.length) {
+      return;
+    }
+
+    setChannelFilter((current) =>
+      availableChannels.some(
+        (item) => item.channel === current,
+      )
+        ? current
+        : availableChannels[0].channel,
+    );
+  }, [availableChannels]);
+
   const visibleSessions =
     categoryFilter === 'all'
       ? sessions
@@ -3976,10 +4116,17 @@ export default function Home() {
             conversationCategory(session) === categoryFilter,
         );
 
+  const channelSessions = visibleSessions.filter(
+    (session) =>
+      customerChannel(session, session.contact) ===
+      channelFilter,
+  );
 
   const displayedSessions = unreadOnly
-    ? visibleSessions.filter((session) => session.pendingCount > 0)
-    : visibleSessions;
+    ? channelSessions.filter(
+        (session) => session.pendingCount > 0,
+      )
+    : channelSessions;
 
   const visibleConversationCount = displayedSessions.length;
 
@@ -4036,27 +4183,48 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="channel-tabs" aria-label="Canales">
-          <button className="channel-tab active" type="button">
-            <span className="whatsapp-icon">◔</span> WhatsApp
-          </button>
-          {canTestAgent ? (
-            <button
-              className="channel-tab"
-              type="button"
-              onClick={() => void startInternalTest()}
-              disabled={internalTestLoading}
-            >
-              {internalTestLoading ? "Preparando prueba…" : "Probar agente"}
-            </button>
-          ) : null}
-          <button className="channel-tab" type="button" disabled>
-            Instagram <small>Próximamente</small>
-          </button>
-          <button className="channel-tab" type="button" disabled>
-            Messenger <small>Próximamente</small>
-          </button>
-        </div>
+        {availableChannels.length ? (
+          <div
+            className="channel-tabs"
+            aria-label="Canales conectados"
+          >
+            {availableChannels.map((item) => (
+              <button
+                key={item.id}
+                className={`channel-tab ${
+                  channelFilter === item.channel
+                    ? "active"
+                    : ""
+                }`}
+                type="button"
+                onClick={() => {
+                  setChannelFilter(item.channel);
+                  setActionMessage("");
+                  setError("");
+
+                  if (
+                    selected &&
+                    customerChannel(
+                      selected.session,
+                      selected.contact,
+                    ) !== item.channel
+                  ) {
+                    setSelected(null);
+                  }
+                }}
+              >
+                <span aria-hidden="true">
+                  {item.channel === "whatsapp"
+                    ? "◉"
+                    : item.channel === "instagram"
+                      ? "◎"
+                      : "◍"}
+                </span>{" "}
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {error ? <div className="error-banner">{error}</div> : null}
         {actionMessage ? (
