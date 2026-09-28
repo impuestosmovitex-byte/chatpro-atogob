@@ -333,6 +333,679 @@ export class MetaSocialAiService {
   }
 
 
+  async replyToInstagramImage(input: {
+    companyId: string;
+    instagramId: string;
+    sessionId: string;
+    recipientId: string;
+    mediaUrl: string;
+    caption?: string;
+    credentialsEncrypted: string | null;
+    setupSource?: string;
+    apiVersion?: string;
+  }): Promise<void> {
+    const client = this.supabaseService.getClient();
+
+    const { data: sessionRow, error: sessionError } =
+      await client
+        .from('social_conversation_sessions')
+        .select('id, attention_status')
+        .eq('id', input.sessionId)
+        .eq('company_id', input.companyId)
+        .maybeSingle();
+
+    if (sessionError) {
+      throw new Error(
+        `No se pudo validar la sesión visual de Instagram: ${sessionError.message}`,
+      );
+    }
+
+    if (!sessionRow) {
+      return;
+    }
+
+    const attentionStatus =
+      typeof sessionRow.attention_status === 'string'
+        ? sessionRow.attention_status
+        : '';
+
+    if (attentionStatus !== 'ai') {
+      console.log(
+        `[ChatPro][Instagram][vision] IA omitida session=${input.sessionId} status=${attentionStatus}`,
+      );
+      return;
+    }
+
+    if (!input.mediaUrl.trim()) {
+      throw new Error(
+        'La imagen de Instagram no contiene una URL utilizable.',
+      );
+    }
+
+    const profile =
+      await this.conversationMemoryService.getCompanyProfileById(
+        input.companyId,
+      );
+
+    let commercialSession =
+      await this.agentSessionRuntimeService.getSessionById(
+        input.sessionId,
+      );
+
+    if (commercialSession.companyId !== input.companyId) {
+      throw new Error(
+        'La sesión comercial visual de Instagram no pertenece a la empresa activa.',
+      );
+    }
+
+    const mediaResponse = await fetch(input.mediaUrl);
+
+    if (!mediaResponse.ok) {
+      throw new Error(
+        `No se pudo descargar la imagen de Instagram (${mediaResponse.status}).`,
+      );
+    }
+
+    const rawMimeType =
+      mediaResponse.headers.get('content-type') || 'image/jpeg';
+
+    const mimeType =
+      rawMimeType.split(';')[0].trim().toLowerCase() ||
+      'image/jpeg';
+
+    const supportedMimeTypes = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+    ]);
+
+    if (!supportedMimeTypes.has(mimeType)) {
+      throw new Error(
+        `El formato ${mimeType} de Instagram no es compatible con visión.`,
+      );
+    }
+
+    const imageBuffer =
+      Buffer.from(await mediaResponse.arrayBuffer());
+
+    if (!imageBuffer.length) {
+      throw new Error(
+        'La imagen descargada desde Instagram está vacía.',
+      );
+    }
+
+    if (imageBuffer.length > 15 * 1024 * 1024) {
+      throw new Error(
+        'La imagen de Instagram supera el límite seguro de 15 MB.',
+      );
+    }
+
+    const imageDataUrl =
+      `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+
+    const { data: historyRows, error: historyError } =
+      await client
+        .from('social_conversations')
+        .select('author_type, message, message_type, created_at')
+        .eq('company_id', input.companyId)
+        .eq('session_id', input.sessionId)
+        .order('created_at', { ascending: false })
+        .limit(16);
+
+    if (historyError) {
+      console.error(
+        '[ChatPro][Instagram][vision] no se pudo cargar historial visual:',
+        historyError,
+      );
+    }
+
+    const history = (
+      (
+        historyRows ?? []
+      ) as Array<{
+        author_type?: string | null;
+        message?: string | null;
+        message_type?: string | null;
+      }>
+    )
+      .slice()
+      .reverse()
+      .map((item) => {
+        const role =
+          item.author_type === 'customer'
+            ? 'CLIENTE'
+            : item.author_type === 'advisor'
+              ? 'ASESOR'
+              : 'IA';
+
+        const type =
+          item.message_type && item.message_type !== 'text'
+            ? ` [${item.message_type}]`
+            : '';
+
+        return `${role}${type}: ${item.message || ''}`;
+      })
+      .join('\n')
+      .slice(-12000);
+
+    const visionResponse =
+      await this.getClient().responses.create({
+        model: this.getModel(),
+        instructions: [
+          'Eres el analizador multimodal central de una plataforma comercial multiempresa.',
+          'Analiza conjuntamente la imagen actual, el historial reciente y el contexto comercial.',
+          'Debes distinguir comprobantes de pago, productos, capturas de catálogo, documentos, garantías y otras imágenes.',
+          'Nunca afirmes que un producto pertenece a la empresa solamente por su apariencia.',
+          'Nunca afirmes que un pago está aprobado o confirmado solamente porque exista una captura.',
+          'payment_proof significa recibo, transferencia, consignación, comprobante o evidencia clara de una transacción ya realizada.',
+          'product significa producto, prenda, ficha de producto, captura de catálogo, carrito o publicación donde lo relevante sea uno o varios productos.',
+          'mixed significa que hay simultáneamente señales claras relacionadas con pago y producto.',
+          'has_product_intent=true cuando el historial o el mensaje muestran que la persona quiere identificar, consultar, comprar, agregar, revisar talla, color, disponibilidad o precio del producto.',
+          'Si la IA acaba de pedir una foto o referencia para continuar la venta, una imagen de producto sí puede tener intención comercial aunque llegue sin texto.',
+          'has_payment_intent=true cuando la imagen parece comprobante y el historial muestra que la persona estaba pagando o la IA había solicitado evidencia del pago.',
+          'Extrae datos del producto únicamente cuando sean visibles. No inventes nombre, referencia, precio, color ni texto.',
+          'Devuelve únicamente JSON válido, sin markdown, con esta estructura exacta:',
+          '{"image_type":"payment_proof|product|mixed|warranty_or_return|shipping_or_document|other|ambiguous","primary_intent":"validate_payment|add_or_review_product|customer_service|clarify","has_payment_intent":true,"has_product_intent":false,"confidence":"low|medium|high","reason":"...","advisor_summary":"...","summary":"...","category":"...","product_name":"...","reference":"...","visible_price":"...","colors":["..."],"visible_text":"...","search_terms":["..."]}',
+          'search_terms debe tener entre 1 y 8 términos breves útiles para buscar el producto en un catálogo real.',
+          'advisor_summary debe resumir en máximo 240 caracteres qué envió el cliente y qué parece necesitar.',
+          `Empresa activa: ${profile.name}.`,
+          `Instrucciones configuradas: ${(profile.aiInstructions || 'Sin instrucciones adicionales.').slice(0, 5000)}`,
+          `Contexto comercial: ${JSON.stringify(commercialSession.context).slice(0, 7000)}`,
+          `Historial reciente:\n${history || 'Sin historial previo.'}`,
+        ].join('\n'),
+        input: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_text',
+                text: input.caption?.trim()
+                  ? `Texto enviado junto a la imagen: ${input.caption.trim()}`
+                  : 'La imagen llegó sin texto adjunto. Interprétala usando el historial y el contexto.',
+              },
+              {
+                type: 'input_image',
+                image_url: imageDataUrl,
+                detail: 'auto',
+              },
+            ],
+          },
+        ],
+      } as any);
+
+    const raw =
+      (visionResponse.output_text || '')
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '');
+
+    let parsed: Record<string, unknown>;
+
+    try {
+      const value = JSON.parse(raw) as unknown;
+
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        Array.isArray(value)
+      ) {
+        throw new Error('JSON visual inválido');
+      }
+
+      parsed = value as Record<string, unknown>;
+    } catch {
+      throw new Error(
+        'OpenAI no devolvió una clasificación visual estructurada para Instagram.',
+      );
+    }
+
+    const readText = (
+      key: string,
+      max: number,
+    ): string =>
+      typeof parsed[key] === 'string'
+        ? String(parsed[key])
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, max)
+        : '';
+
+    const readList = (
+      key: string,
+      maxItems: number,
+      maxLength: number,
+    ): string[] =>
+      Array.isArray(parsed[key])
+        ? (parsed[key] as unknown[])
+            .filter(
+              (item): item is string =>
+                typeof item === 'string',
+            )
+            .map((item) =>
+              item
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, maxLength),
+            )
+            .filter(Boolean)
+            .slice(0, maxItems)
+        : [];
+
+    const allowedTypes = new Set([
+      'payment_proof',
+      'product',
+      'mixed',
+      'warranty_or_return',
+      'shipping_or_document',
+      'other',
+      'ambiguous',
+    ]);
+
+    const allowedIntents = new Set([
+      'validate_payment',
+      'add_or_review_product',
+      'customer_service',
+      'clarify',
+    ]);
+
+    const rawType = readText('image_type', 50);
+    const rawIntent = readText('primary_intent', 50);
+    const rawConfidence = readText('confidence', 20);
+
+    const imageType =
+      allowedTypes.has(rawType)
+        ? rawType
+        : 'ambiguous';
+
+    const primaryIntent =
+      allowedIntents.has(rawIntent)
+        ? rawIntent
+        : 'clarify';
+
+    const hasPaymentIntent =
+      parsed.has_payment_intent === true;
+
+    const hasProductIntent =
+      parsed.has_product_intent === true;
+
+    const confidence =
+      rawConfidence === 'high' ||
+      rawConfidence === 'medium'
+        ? rawConfidence
+        : 'low';
+
+    const reason =
+      readText('reason', 500) ||
+      'Clasificación multimodal de Instagram.';
+
+    const advisorSummary =
+      readText('advisor_summary', 240) ||
+      'Revisar la última imagen de Instagram.';
+
+    const summary =
+      readText('summary', 1000) ||
+      'El cliente envió una imagen.';
+
+    const category =
+      readText('category', 120) ||
+      'producto';
+
+    const productName =
+      readText('product_name', 240);
+
+    const reference =
+      readText('reference', 120);
+
+    const visiblePrice =
+      readText('visible_price', 80);
+
+    const colors =
+      readList('colors', 6, 50);
+
+    const visibleText =
+      readText('visible_text', 1200);
+
+    const searchTerms =
+      readList('search_terms', 8, 100);
+
+    console.log(
+      `[ChatPro][Instagram][vision] session=${input.sessionId} ` +
+        `type=${imageType} intent=${primaryIntent} ` +
+        `payment=${hasPaymentIntent} product=${hasProductIntent} ` +
+        `confidence=${confidence}`,
+    );
+
+    const now = new Date().toISOString();
+
+    let agentMessage: string;
+
+    if (
+      hasPaymentIntent &&
+      (
+        primaryIntent === 'validate_payment' ||
+        imageType === 'payment_proof' ||
+        imageType === 'mixed'
+      )
+    ) {
+      commercialSession =
+        await this.agentSessionRuntimeService.updateSession(
+          commercialSession.id,
+          {
+            context: {
+              ...commercialSession.context,
+              multimodal_last_intent: {
+                image_type: imageType,
+                primary_intent: primaryIntent,
+                has_payment_intent: hasPaymentIntent,
+                has_product_intent: hasProductIntent,
+                confidence,
+                reason,
+                received_at: now,
+              },
+              last_payment_evidence: {
+                received: true,
+                image_type: imageType,
+                confidence,
+                received_at: now,
+              },
+            },
+          },
+        );
+
+      agentMessage = [
+        '[COMPROBANTE_DE_PAGO_RECIBIDO]',
+        input.caption?.trim()
+          ? `Texto actual del cliente: ${input.caption.trim()}`
+          : 'El cliente envió el comprobante sin texto adicional.',
+        `Tipo interpretado: ${imageType}.`,
+        `Confianza: ${confidence}.`,
+        `Contexto interpretado: ${advisorSummary}.`,
+        'La imagen parece evidencia o comprobante de pago.',
+        'No afirmes que el pago está validado, aprobado o confirmado únicamente por haber recibido esta imagen.',
+        'No reinicies la venta ni vuelvas a pedir datos que ya estén guardados.',
+        'No vuelvas a solicitar el mismo comprobante.',
+        'Continúa desde el estado actual de la compra usando la configuración real de Medios de pago y Finalización de compra y checkout.',
+        'Si la configuración indica que después del comprobante corresponde crear el checkout y están completos los requisitos, utiliza las herramientas reales disponibles.',
+        'No transfieras automáticamente a un asesor solamente por recibir el comprobante.',
+      ].join('\n');
+    } else if (
+      imageType === 'product' ||
+      imageType === 'mixed'
+    ) {
+      const visualMatch =
+        await this.chatAgentService.matchIncomingVisualReference(
+          profile,
+          commercialSession,
+          {
+            imageDataUrl,
+            customerText: input.caption?.trim() || '',
+            summary,
+            productName,
+            reference,
+            visiblePrice,
+            visibleText,
+            category,
+            colors,
+            searchTerms:
+              searchTerms.length
+                ? searchTerms
+                : [category],
+          },
+        );
+
+      commercialSession =
+        await this.agentSessionRuntimeService.getSessionById(
+          commercialSession.id,
+        );
+
+      const visualReference = {
+        summary,
+        category,
+        product_name: productName || null,
+        reference: reference || null,
+        visible_price: visiblePrice || null,
+        colors,
+        visible_text: visibleText,
+        search_terms:
+          searchTerms.length
+            ? searchTerms
+            : [category],
+        source_hint: 'instagram_image',
+        confidence,
+        match_type: visualMatch.matchType,
+        match_confidence: visualMatch.confidence,
+        matched_product: visualMatch.matchedProduct
+          ? {
+              title: visualMatch.matchedProduct.title,
+              url: visualMatch.matchedProduct.url,
+              price_from_cop:
+                visualMatch.matchedProduct.priceFromCop || null,
+            }
+          : null,
+        candidates: visualMatch.candidates
+          .slice(0, 3)
+          .map((candidate) => ({
+            title: candidate.title,
+            url: candidate.url,
+            price_from_cop:
+              candidate.priceFromCop || null,
+          })),
+        caption: input.caption?.trim() || null,
+        received_at: now,
+      };
+
+      const previousReferences =
+        Array.isArray(
+          commercialSession.context
+            .commercial_visual_references,
+        )
+          ? (
+              commercialSession.context
+                .commercial_visual_references as unknown[]
+            ).filter(
+              (item) =>
+                Boolean(item) &&
+                typeof item === 'object' &&
+                !Array.isArray(item),
+            )
+          : [];
+
+      commercialSession =
+        await this.agentSessionRuntimeService.updateSession(
+          commercialSession.id,
+          {
+            context: {
+              ...commercialSession.context,
+              multimodal_last_intent: {
+                image_type: imageType,
+                primary_intent: primaryIntent,
+                has_payment_intent: hasPaymentIntent,
+                has_product_intent: hasProductIntent,
+                confidence,
+                reason,
+                received_at: now,
+              },
+              last_visual_reference:
+                visualReference,
+              commercial_visual_references: [
+                ...previousReferences,
+                visualReference,
+              ].slice(-20),
+              commercial_last_customer_message_at:
+                now,
+            },
+          },
+        );
+
+      agentMessage = [
+        '[REFERENCIA_VISUAL]',
+        input.caption?.trim()
+          ? `Mensaje real actual del cliente: ${input.caption.trim()}`
+          : 'El cliente envió una imagen relacionada con la conversación actual.',
+        `Descripción visual: ${summary}`,
+        `Categoría aproximada: ${category}`,
+        productName
+          ? `Nombre comercial leído: ${productName}`
+          : '',
+        reference
+          ? `Referencia o código leído: ${reference}`
+          : '',
+        visiblePrice
+          ? `Precio visible leído: ${visiblePrice}`
+          : '',
+        colors.length
+          ? `Colores observados: ${colors.join(', ')}`
+          : '',
+        visibleText
+          ? `Texto visible en la imagen: ${visibleText}`
+          : '',
+        `Validación contra catálogo real: ${visualMatch.matchType}. Confianza: ${visualMatch.confidence}.`,
+        visualMatch.matchedProduct
+          ? `Producto real validado: ${visualMatch.matchedProduct.title}. URL: ${visualMatch.matchedProduct.url}. Precio del catálogo: ${visualMatch.matchedProduct.priceFromCop || 'consultar producto seleccionado'}.`
+          : '',
+        visualMatch.candidates.length
+          ? `Posibles coincidencias reales, todavía sin confirmar: ${visualMatch.candidates
+              .slice(0, 3)
+              .map(
+                (candidate, index) =>
+                  `${index + 1}. ${candidate.title} — ${candidate.url}`,
+              )
+              .join(' | ')}`
+          : '',
+        hasProductIntent
+          ? 'Existe intención comercial relacionada con este producto. Continúa desde el contexto real de la venta.'
+          : 'La imagen contiene un producto, pero la intención actual no es suficientemente clara. Haz una sola pregunta breve para aclarar qué necesita.',
+        'Si existe coincidencia exacta, usa las herramientas comerciales reales para consultar producto, variantes, precio y disponibilidad.',
+        'No uses el precio visible de la captura como precio vigente si el catálogo real devuelve otro valor.',
+        'No vuelvas a pedir el enlace o el nombre si la referencia ya quedó identificada de forma exacta.',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    } else {
+      commercialSession =
+        await this.agentSessionRuntimeService.updateSession(
+          commercialSession.id,
+          {
+            context: {
+              ...commercialSession.context,
+              multimodal_last_intent: {
+                image_type: imageType,
+                primary_intent: primaryIntent,
+                has_payment_intent: hasPaymentIntent,
+                has_product_intent: hasProductIntent,
+                confidence,
+                reason,
+                received_at: now,
+              },
+            },
+          },
+        );
+
+      agentMessage = [
+        '[IMAGEN_NO_PRODUCTO]',
+        input.caption?.trim()
+          ? `Texto actual del cliente: ${input.caption.trim()}`
+          : 'La imagen llegó sin texto adicional.',
+        `Tipo interpretado: ${imageType}.`,
+        `Intención principal: ${primaryIntent}.`,
+        `Contexto interpretado: ${advisorSummary}.`,
+        `Motivo: ${reason}.`,
+        'Responde usando el historial reciente y las reglas reales de la empresa.',
+        'No busques esta imagen en el catálogo ni inventes productos.',
+        imageType === 'ambiguous'
+          ? 'Si hace falta, formula una sola pregunta breve para saber qué necesita.'
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    const reply = (
+      await this.chatAgentService.reply(
+        profile,
+        commercialSession,
+        agentMessage,
+      )
+    ).trim();
+
+    if (
+      reply ===
+      '__CHATPRO_INTERNAL_SUPPRESS_EXTERNAL_AUTOMATION_7F4D__'
+    ) {
+      console.log(
+        `[ChatPro][Instagram][vision] respuesta externa suprimida session=${input.sessionId}`,
+      );
+      return;
+    }
+
+    if (!reply) {
+      throw new Error(
+        'El motor comercial no devolvió respuesta para la imagen de Instagram.',
+      );
+    }
+
+    const providerMessageId =
+      await this.sendInstagramText({
+        instagramId: input.instagramId,
+        recipientId: input.recipientId,
+        text: reply,
+        credentialsEncrypted:
+          input.credentialsEncrypted,
+        setupSource: input.setupSource,
+        apiVersion: input.apiVersion,
+      });
+
+    const sentAt = new Date().toISOString();
+
+    const { error: saveError } =
+      await client
+        .from('social_conversations')
+        .insert({
+          company_id: input.companyId,
+          session_id: input.sessionId,
+          channel: 'instagram',
+          external_customer_id:
+            input.recipientId,
+          provider_message_id:
+            providerMessageId,
+          sender: 'assistant',
+          author_type: 'assistant',
+          message_type: 'text',
+          message: reply,
+          media_url: null,
+          created_at: sentAt,
+        });
+
+    if (saveError) {
+      throw new Error(
+        `Instagram respondió a la imagen, pero no pudo guardar la respuesta: ${saveError.message}`,
+      );
+    }
+
+    const { error: updateError } =
+      await client
+        .from('social_conversation_sessions')
+        .update({
+          last_message_at: sentAt,
+          updated_at: sentAt,
+        })
+        .eq('id', input.sessionId)
+        .eq('company_id', input.companyId);
+
+    if (updateError) {
+      throw new Error(
+        `No se pudo actualizar la sesión de Instagram después de la imagen: ${updateError.message}`,
+      );
+    }
+
+    console.log(
+      `[ChatPro][Instagram][vision] imagen procesada con cerebro comercial session=${input.sessionId}`,
+    );
+  }
+
+
   private async sendInstagramText(input: {
     instagramId: string;
     recipientId: string;

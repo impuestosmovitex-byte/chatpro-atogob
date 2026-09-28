@@ -354,6 +354,39 @@ export class MetaSocialMessageService {
             );
           }
         }
+
+        if (
+          savedSessionId &&
+          messageType === 'image' &&
+          mediaUrl
+        ) {
+          try {
+            await this.socialAiService.replyToInstagramImage({
+              companyId: integration.companyId,
+              instagramId,
+              sessionId: savedSessionId,
+              recipientId: senderId,
+              mediaUrl,
+              caption:
+                this.text(message.text) || undefined,
+              credentialsEncrypted:
+                integration.credentialsEncrypted,
+              setupSource:
+                typeof integration.config.setup_source === 'string'
+                  ? integration.config.setup_source
+                  : '',
+              apiVersion:
+                typeof integration.config.api_version === 'string'
+                  ? integration.config.api_version
+                  : '',
+            });
+          } catch (error) {
+            console.error(
+              '[ChatPro][Instagram] no se pudo procesar imagen con IA:',
+              error,
+            );
+          }
+        }
       }
     }
   }
