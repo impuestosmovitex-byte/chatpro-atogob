@@ -1273,6 +1273,34 @@ export default function Home() {
   const autoScrollSessionRef = useRef("");
 
   useEffect(() => {
+    if (!canTestAgent) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("testAgent") !== "1") {
+      return;
+    }
+
+    /*
+     * Quitamos el parámetro antes de iniciar para que un re-render
+     * nunca pueda crear una segunda prueba accidentalmente.
+     */
+    params.delete("testAgent");
+
+    const query = params.toString();
+    const cleanUrl =
+      window.location.pathname +
+      (query ? `?${query}` : "") +
+      window.location.hash;
+
+    window.history.replaceState(null, "", cleanUrl);
+
+    void startInternalTest();
+  }, [canTestAgent]);
+
+  useEffect(() => {
     let alive = true;
 
     async function loadConnectedChannels() {

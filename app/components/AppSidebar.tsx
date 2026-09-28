@@ -56,7 +56,7 @@ const baseNavigation: Array<{
     capability: 'clients',
   },
   {
-    href: '/configuracion/ia',
+    href: '/ia',
     label: 'IA',
     icon: '✦',
     capability: 'configuration',

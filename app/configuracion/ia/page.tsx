@@ -644,21 +644,21 @@ export default function ConfiguracionPage() {
       <section className={styles.workspace}>
         <header className={styles.header}>
           <div>
-            <p className={styles.eyebrow}>CONFIGURACIÓN COMERCIAL</p>
-            <h1>Asistente y ventas · {companyName}</h1>
-            <p>Define cómo atiende, vende y responde sobre políticas el asistente de esta empresa.</p>
+            <p className={styles.eyebrow}>IA · CONFIGURACIÓN</p>
+            <h1>Asistente principal · {companyName}</h1>
+            <p>Configura la identidad, capacidades y conocimiento del asistente principal de esta empresa.</p>
           </div>
           <button
             type="button"
             className={styles.back}
-            onClick={() => window.location.assign('/configuracion')}
+            onClick={() => window.location.assign('/ia')}
           >
-            ← Volver
+            ← Volver a IA
           </button>
         </header>
 
         <form className={styles.form} onSubmit={save}>
-          <section className={styles.card}>
+          <section id="asistente" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
                 <p>1. IDENTIDAD DEL ASISTENTE</p>
@@ -750,7 +750,7 @@ export default function ConfiguracionPage() {
             </label>
           </section>
 
-          <section className={styles.card}>
+          <section id="ventas-servicio" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
                 <p>2. VENTAS Y SERVICIO AL CLIENTE</p>
@@ -950,7 +950,7 @@ export default function ConfiguracionPage() {
             </label>
           </section>
 
-          <section className={styles.card}>
+          <section id="recuperacion" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
                 <p>3. RECUPERACIÓN DE CARRITOS</p>
@@ -972,7 +972,7 @@ export default function ConfiguracionPage() {
               />
               <small>
                 Usa {'{checkout_url}'} donde debe ir el enlace real. Si no lo
-                usas, Chat Pro agregará el enlace al final.
+                usas, MW1 agregará el enlace al final.
               </small>
             </label>
 
@@ -1048,7 +1048,7 @@ export default function ConfiguracionPage() {
             </label>
           </section>
 
-            <section className={styles.card}>
+            <section id="seguimiento" className={styles.card}>
               <div className={styles.sectionHeading}>
                 <div>
                   <p>4. TRANSPORTADORAS Y SEGUIMIENTO</p>
@@ -1185,7 +1185,7 @@ export default function ConfiguracionPage() {
               ))}
             </section>
 
-                    <section className={styles.card}>
+                    <section id="ofertas-cierre" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
                 <p>5. OFERTAS DE CIERRE Y DESCUENTOS</p>
@@ -1530,7 +1530,7 @@ export default function ConfiguracionPage() {
             ))}
           </section>
 
-<section className={styles.card}>
+<section id="base-conocimiento" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
                 <p>6. BASE DE CONOCIMIENTO</p>
@@ -1612,7 +1612,7 @@ export default function ConfiguracionPage() {
             </label>
           </section>
 
-          <section className={styles.card}>
+          <section id="instrucciones-adicionales" className={styles.card}>
             <div className={styles.sectionHeading}>
               <div>
                 <p>7. INSTRUCCIONES ADICIONALES</p>
