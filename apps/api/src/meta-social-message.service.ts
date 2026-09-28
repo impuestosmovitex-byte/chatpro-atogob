@@ -8,12 +8,176 @@ type JsonObject = Record<string, unknown>;
 
 @Injectable()
 export class MetaSocialMessageService {
+  private readonly socialConversationQueues =
+    new Map<string, Promise<void>>();
+
+  private readonly latestSocialInbound =
+    new Map<
+      string,
+      {
+        token: string;
+        receivedAt: number;
+      }
+    >();
+
+  private readonly pendingSocialTexts =
+    new Map<string, string[]>();
+
+  private readonly pendingInstagramImages =
+    new Map<
+      string,
+      {
+        companyId: string;
+        instagramId: string;
+        sessionId: string;
+        recipientId: string;
+        mediaUrl: string;
+        credentialsEncrypted: string | null;
+        setupSource?: string;
+        apiVersion?: string;
+        receivedAt: number;
+      }
+    >();
+
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly companyIntegrationService: CompanyIntegrationService,
     private readonly credentialsService: IntegrationCredentialsService,
     private readonly socialAiService: MetaSocialAiService,
   ) {}
+
+  private markSocialInbound(
+    conversationKey: string,
+    token: string,
+  ): void {
+    this.latestSocialInbound.set(
+      conversationKey,
+      {
+        token,
+        receivedAt: Date.now(),
+      },
+    );
+  }
+
+  private appendPendingSocialText(
+    conversationKey: string,
+    text: string,
+  ): void {
+    const clean = text.trim();
+
+    if (!clean) {
+      return;
+    }
+
+    const current =
+      this.pendingSocialTexts.get(conversationKey) ?? [];
+
+    current.push(clean);
+
+    this.pendingSocialTexts.set(
+      conversationKey,
+      current.slice(-8),
+    );
+  }
+
+  private consumePendingSocialText(
+    conversationKey: string,
+    fallback: string,
+  ): string {
+    const pending =
+      this.pendingSocialTexts.get(conversationKey) ?? [];
+
+    this.pendingSocialTexts.delete(conversationKey);
+
+    const combined =
+      pending
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join('\n');
+
+    return combined || fallback.trim();
+  }
+
+  private isCurrentSocialInbound(
+    conversationKey: string,
+    token: string,
+  ): boolean {
+    return (
+      this.latestSocialInbound.get(conversationKey)?.token ===
+      token
+    );
+  }
+
+  private async waitForSocialQuietWindow(
+    conversationKey: string,
+    token: string,
+    waitMs = 3500,
+  ): Promise<boolean> {
+    const latest =
+      this.latestSocialInbound.get(conversationKey);
+
+    if (!latest || latest.token !== token) {
+      return false;
+    }
+
+    const remainingMs = Math.max(
+      0,
+      waitMs - (Date.now() - latest.receivedAt),
+    );
+
+    if (remainingMs > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, remainingMs);
+      });
+    }
+
+    return this.isCurrentSocialInbound(
+      conversationKey,
+      token,
+    );
+  }
+
+  private enqueueSocialConversation(
+    conversationKey: string,
+    task: () => Promise<void>,
+  ): void {
+    const previous =
+      this.socialConversationQueues.get(conversationKey) ??
+      Promise.resolve();
+
+    const next = previous
+      .catch((error) => {
+        console.error(
+          `[ChatPro][social-queue] tarea anterior falló key=${conversationKey}`,
+          error,
+        );
+      })
+      .then(task);
+
+    this.socialConversationQueues.set(
+      conversationKey,
+      next,
+    );
+
+    void next
+      .catch((error) => {
+        console.error(
+          `[ChatPro][social-queue] tarea falló key=${conversationKey}`,
+          error,
+        );
+      })
+      .finally(() => {
+        if (
+          this.socialConversationQueues.get(
+            conversationKey,
+          ) === next
+        ) {
+          this.socialConversationQueues.delete(
+            conversationKey,
+          );
+        }
+      });
+  }
 
   async processMessengerWebhook(bodyInput: unknown): Promise<void> {
     const body = this.record(bodyInput);
@@ -117,15 +281,54 @@ export class MetaSocialMessageService {
           (messageType === 'text' || messageType === 'postback')
         ) {
           try {
-            await this.socialAiService.replyToMessenger({
+            const socialConversationKey =
+              `messenger:${pageId}:${senderId}`;
+
+            const socialInboundToken =
+              providerMessageId ||
+              `messenger:${Date.now()}:${Math.random()}`;
+
+            this.markSocialInbound(
+              socialConversationKey,
+              socialInboundToken,
+            );
+
+            this.appendPendingSocialText(
+              socialConversationKey,
+              text,
+            );
+
+            this.enqueueSocialConversation(
+              socialConversationKey,
+              async () => {
+                const canReply =
+                  await this.waitForSocialQuietWindow(
+                    socialConversationKey,
+                    socialInboundToken,
+                  );
+
+                if (!canReply) {
+                  return;
+                }
+
+                const groupedCustomerMessage =
+                  this.consumePendingSocialText(
+                    socialConversationKey,
+                    text,
+                  );
+
+                await this.socialAiService.replyToMessenger({
               companyId: integration.companyId,
               pageId,
               sessionId: savedSessionId,
               recipientId: senderId,
-              customerMessage: text,
               credentialsEncrypted:
                 integration.credentialsEncrypted,
-            });
+                  customerMessage:
+                    groupedCustomerMessage,
+                });
+              },
+            );
           } catch (error) {
             console.error(
               '[ChatPro][Messenger] Sofia no pudo responder:',
@@ -330,12 +533,76 @@ export class MetaSocialMessageService {
           )
         ) {
           try {
-            await this.socialAiService.replyToInstagram({
+            const socialConversationKey =
+              `instagram:${instagramId}:${senderId}`;
+
+            const socialInboundToken =
+              providerMessageId ||
+              `instagram:${Date.now()}:${Math.random()}`;
+
+            this.markSocialInbound(
+              socialConversationKey,
+              socialInboundToken,
+            );
+
+            this.appendPendingSocialText(
+              socialConversationKey,
+              text,
+            );
+
+            this.enqueueSocialConversation(
+              socialConversationKey,
+              async () => {
+                const canReply =
+                  await this.waitForSocialQuietWindow(
+                    socialConversationKey,
+                    socialInboundToken,
+                  );
+
+                if (!canReply) {
+                  return;
+                }
+
+                const groupedCustomerMessage =
+                  this.consumePendingSocialText(
+                    socialConversationKey,
+                    text,
+                  );
+
+                const pendingImage =
+                  this.pendingInstagramImages.get(
+                    socialConversationKey,
+                  );
+
+                if (
+                  pendingImage &&
+                  Date.now() - pendingImage.receivedAt <= 15000
+                ) {
+                  this.pendingInstagramImages.delete(
+                    socialConversationKey,
+                  );
+
+                  await this.socialAiService.replyToInstagramImage({
+                    companyId: pendingImage.companyId,
+                    instagramId: pendingImage.instagramId,
+                    sessionId: pendingImage.sessionId,
+                    recipientId: pendingImage.recipientId,
+                    mediaUrl: pendingImage.mediaUrl,
+                    caption: groupedCustomerMessage,
+                    credentialsEncrypted:
+                      pendingImage.credentialsEncrypted,
+                    setupSource: pendingImage.setupSource,
+                    apiVersion: pendingImage.apiVersion,
+                  });
+
+                  return;
+                }
+
+                await this.socialAiService.replyToInstagram({
               companyId: integration.companyId,
               instagramId,
               sessionId: savedSessionId,
               recipientId: senderId,
-              customerMessage: text,
               credentialsEncrypted:
                 integration.credentialsEncrypted,
               setupSource:
@@ -346,7 +613,11 @@ export class MetaSocialMessageService {
                 typeof integration.config.api_version === 'string'
                   ? integration.config.api_version
                   : '',
-            });
+                  customerMessage:
+                    groupedCustomerMessage,
+                });
+              },
+            );
           } catch (error) {
             console.error(
               '[ChatPro][Instagram] Sofia no pudo responder:',
@@ -361,25 +632,87 @@ export class MetaSocialMessageService {
           mediaUrl
         ) {
           try {
-            await this.socialAiService.replyToInstagramImage({
-              companyId: integration.companyId,
-              instagramId,
-              sessionId: savedSessionId,
-              recipientId: senderId,
-              mediaUrl,
-              caption:
-                this.text(message.text) || undefined,
-              credentialsEncrypted:
-                integration.credentialsEncrypted,
-              setupSource:
-                typeof integration.config.setup_source === 'string'
-                  ? integration.config.setup_source
-                  : '',
-              apiVersion:
-                typeof integration.config.api_version === 'string'
-                  ? integration.config.api_version
-                  : '',
-            });
+            const socialConversationKey =
+              `instagram:${instagramId}:${senderId}`;
+
+            const socialInboundToken =
+              providerMessageId ||
+              `instagram-image:${Date.now()}:${Math.random()}`;
+
+            this.markSocialInbound(
+              socialConversationKey,
+              socialInboundToken,
+            );
+
+            this.pendingInstagramImages.set(
+              socialConversationKey,
+              {
+                companyId: integration.companyId,
+                instagramId,
+                sessionId: savedSessionId,
+                recipientId: senderId,
+                mediaUrl,
+                credentialsEncrypted:
+                  integration.credentialsEncrypted,
+                setupSource:
+                  typeof integration.config.setup_source === 'string'
+                    ? integration.config.setup_source
+                    : '',
+                apiVersion:
+                  typeof integration.config.api_version === 'string'
+                    ? integration.config.api_version
+                    : '',
+                receivedAt: Date.now(),
+              },
+            );
+
+            this.enqueueSocialConversation(
+              socialConversationKey,
+              async () => {
+                const canReply =
+                  await this.waitForSocialQuietWindow(
+                    socialConversationKey,
+                    socialInboundToken,
+                  );
+
+                if (!canReply) {
+                  return;
+                }
+
+                const pendingImage =
+                  this.pendingInstagramImages.get(
+                    socialConversationKey,
+                  );
+
+                if (!pendingImage) {
+                  return;
+                }
+
+                this.pendingInstagramImages.delete(
+                  socialConversationKey,
+                );
+
+                const groupedCustomerMessage =
+                  this.consumePendingSocialText(
+                    socialConversationKey,
+                    '',
+                  );
+
+                await this.socialAiService.replyToInstagramImage({
+                  companyId: pendingImage.companyId,
+                  instagramId: pendingImage.instagramId,
+                  sessionId: pendingImage.sessionId,
+                  recipientId: pendingImage.recipientId,
+                  mediaUrl: pendingImage.mediaUrl,
+                  caption:
+                    groupedCustomerMessage || undefined,
+                  credentialsEncrypted:
+                    pendingImage.credentialsEncrypted,
+                  setupSource: pendingImage.setupSource,
+                  apiVersion: pendingImage.apiVersion,
+                });
+              },
+            );
           } catch (error) {
             console.error(
               '[ChatPro][Instagram] no se pudo procesar imagen con IA:',

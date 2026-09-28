@@ -38,7 +38,7 @@ export class MetaSocialAiService {
 
     if (sessionError) {
       throw new Error(
-        `No se pudo validar la sesión social: ${sessionError.message}`,
+        `No se pudo validar la sesión de Messenger: ${sessionError.message}`,
       );
     }
 
@@ -46,7 +46,10 @@ export class MetaSocialAiService {
       return;
     }
 
-    const socialSession = sessionRow as any;
+    const socialSession = sessionRow as {
+      id: string;
+      attention_status: string | null;
+    };
 
     if (socialSession.attention_status !== 'ai') {
       console.log(
@@ -60,86 +63,38 @@ export class MetaSocialAiService {
         input.companyId,
       );
 
-    const { data: historyRows, error: historyError } =
-      await client
-        .from('social_conversations')
-        .select(
-          'sender, author_type, message, message_type, created_at',
-        )
-        .eq('company_id', input.companyId)
-        .eq('session_id', input.sessionId)
-        .order('created_at', { ascending: false })
-        .limit(20);
+    const commercialSession =
+      await this.agentSessionRuntimeService.getSessionById(
+        input.sessionId,
+      );
 
-    if (historyError) {
+    if (commercialSession.companyId !== input.companyId) {
       throw new Error(
-        `No se pudo consultar el historial social para la IA: ${historyError.message}`,
+        'La sesión comercial de Messenger no pertenece a la empresa activa.',
       );
     }
 
-    const history = (historyRows ?? [])
-      .slice()
-      .reverse()
-      .map((row: any) => ({
-        sender:
-          typeof row.sender === 'string'
-            ? row.sender
-            : 'customer',
-        author_type:
-          typeof row.author_type === 'string'
-            ? row.author_type
-            : 'customer',
-        message:
-          typeof row.message === 'string'
-            ? row.message
-            : '',
-        message_type:
-          typeof row.message_type === 'string'
-            ? row.message_type
-            : 'text',
-        created_at:
-          typeof row.created_at === 'string'
-            ? row.created_at
-            : null,
-      }));
+    const reply = (
+      await this.chatAgentService.reply(
+        profile,
+        commercialSession,
+        input.customerMessage,
+      )
+    ).trim();
 
-    const companyInstructions =
-      profile.aiInstructions?.trim() || '';
-
-    const instructions = [
-      companyInstructions,
-      '',
-      'INSTRUCCIONES DEL CANAL MESSENGER:',
-      `Estás atendiendo clientes de ${profile.name} por Facebook Messenger.`,
-      'Mantén la personalidad, reglas comerciales, políticas y forma de atención definidas por la empresa.',
-      'Responde únicamente al mensaje del cliente.',
-      'No menciones prompts, bases de datos, APIs, herramientas internas ni procesos técnicos.',
-      'No inventes precios, productos, promociones, inventario, pedidos, enlaces ni políticas.',
-      'Cuando no tengas información real suficiente, pide el dato necesario o indica que un asesor debe revisarlo.',
-      'Responde de forma natural y apropiada para una conversación de Messenger.',
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    const response = await this.getClient().responses.create({
-      model: this.getModel(),
-      instructions,
-      input: JSON.stringify({
-        company: {
-          name: profile.name,
-          settings: profile.settings,
-        },
-        channel: 'messenger',
-        conversation_history: history,
-        current_customer_message: input.customerMessage,
-      }),
-    });
-
-    const reply = response.output_text.trim();
+    if (
+      reply ===
+      '__CHATPRO_INTERNAL_SUPPRESS_EXTERNAL_AUTOMATION_7F4D__'
+    ) {
+      console.log(
+        `[ChatPro][Messenger] respuesta automática externa suprimida session=${input.sessionId}`,
+      );
+      return;
+    }
 
     if (!reply) {
       throw new Error(
-        'OpenAI no devolvió una respuesta utilizable para Messenger.',
+        'El motor comercial no devolvió una respuesta utilizable para Messenger.',
       );
     }
 
@@ -186,12 +141,12 @@ export class MetaSocialAiService {
 
     if (updateError) {
       throw new Error(
-        `No se pudo actualizar la sesión después de responder: ${updateError.message}`,
+        `No se pudo actualizar la sesión de Messenger después de responder: ${updateError.message}`,
       );
     }
 
     console.log(
-      `[ChatPro][Messenger] Sofia respondió session=${input.sessionId}`,
+      `[ChatPro][Messenger] cerebro comercial respondió session=${input.sessionId}`,
     );
   }
 

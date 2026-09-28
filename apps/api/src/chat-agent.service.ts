@@ -2076,6 +2076,95 @@ export class ChatAgentService {
     }
   }
 
+  private normalizePaymentMethodForContext(value: string): string {
+    const clean =
+      value
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 120);
+
+    if (!clean) {
+      return '';
+    }
+
+    const normalized = this.normalizeText(clean)
+      .replace(/[._]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (
+      normalized === 'transferencia' ||
+      normalized === 'transferencia bancaria' ||
+      normalized === 'transferencia bancolombia'
+    ) {
+      return 'Transferencia bancaria';
+    }
+
+    if (
+      normalized === 'bre b' ||
+      normalized === 'bre-b' ||
+      normalized === 'breb' ||
+      normalized === 'llave bre b' ||
+      normalized === 'llave bre-b' ||
+      normalized === 'llave'
+    ) {
+      return 'Llave Bre-B';
+    }
+
+    if (normalized === 'nequi') {
+      return 'Nequi';
+    }
+
+    if (normalized === 'daviplata') {
+      return 'Daviplata';
+    }
+
+    if (normalized === 'addi') {
+      return 'Addi';
+    }
+
+    if (
+      normalized === 'sistecredito' ||
+      normalized === 'siste credito'
+    ) {
+      return 'Sistecrédito';
+    }
+
+    if (
+      normalized === 'sumas' ||
+      normalized === 'sumas pay' ||
+      normalized === 'sumaspay' ||
+      normalized === 'su+pay' ||
+      normalized === 'supay'
+    ) {
+      return 'Sumas';
+    }
+
+    if (normalized === 'bold') {
+      return 'Bold';
+    }
+
+    if (
+      normalized === 'tarjeta' ||
+      normalized === 'tarjeta credito' ||
+      normalized === 'tarjeta de credito' ||
+      normalized === 'tarjeta debito' ||
+      normalized === 'tarjeta de debito'
+    ) {
+      return 'Tarjeta';
+    }
+
+    if (
+      normalized === 'contraentrega' ||
+      normalized === 'contra entrega' ||
+      normalized === 'pago en casa'
+    ) {
+      return 'Contraentrega';
+    }
+
+    return clean;
+  }
+
   private async rememberSaleContext(
     session: ConversationSession,
     args: JsonObject,
@@ -2093,12 +2182,16 @@ export class ChatAgentService {
 
     const paymentInterest =
       typeof args.payment_interest === 'string'
-        ? args.payment_interest.trim().slice(0, 120)
+        ? this.normalizePaymentMethodForContext(
+            args.payment_interest,
+          )
         : '';
 
     const paymentMethod =
       typeof args.payment_method === 'string'
-        ? args.payment_method.trim().slice(0, 120)
+        ? this.normalizePaymentMethodForContext(
+            args.payment_method,
+          )
         : '';
 
     const rawDeliveryMethod =
@@ -2610,6 +2703,14 @@ export class ChatAgentService {
       '- Después de remember_sale_context, usa sale_context.shipping_resolution_status. Si es resolved, comunica el shipping_cost_cop real y continúa la venta sin transferir. Si es needs_payment, pregunta únicamente el medio de pago. Si es needs_city, pregunta únicamente la ciudad. Si es needs_delivery_method, pregunta únicamente el método de entrega. Si es defer_to_checkout, sigue el flujo configurado de checkout. Solo considera intervención humana cuando la resolución real termine en not_configured, ambiguous o unavailable y la información sea necesaria para continuar.',
       '- Si una herramienta falla, no afirmes que la acción se realizó. Usa el resultado real para pedir únicamente el dato faltante o escalar cuando corresponda.',
       '- Consulta productos, colecciones, variantes y carrito con las herramientas antes de dar datos definitivos.',
+      '- INFORMACIÓN GENERAL DE PRODUCTO: cuando el producto exacto ya esté identificado y la persona pida “información”, “info”, “detalles”, “características”, “qué tallas hay”, “qué colores hay” o una consulta general equivalente, usa get_selected_product antes de responder. En una sola respuesta breve entrega los datos reales útiles disponibles para esa consulta: nombre del producto, precio real vigente y las opciones reales disponibles relevantes como tallas, colores o medidas. No preguntes primero qué talla quiere si todavía no le has mostrado cuáles tallas reales existen.',
+      '- Si la persona pregunta únicamente por UN dato concreto de un producto identificado, por ejemplo solo precio o solo talla, responde ese dato y no descargues información innecesaria.',
+      '- Cuando un producto identificado tenga una sola variante vendible o una opción única, no inventes una elección ni preguntes por una variante que no existe.',
+      '- Cuando ciudad, carrito y medio de pago seleccionado ya estén disponibles, no vuelvas a preguntar ninguno. Usa remember_sale_context si el último mensaje aportó o corrigió ciudad, medio de pago o entrega; después consulta get_cart para obtener subtotal, envío validado y grand_total_cop cuando existan.',
+      '- Si get_cart devuelve products_subtotal_cop, shipping_cost_cop y grand_total_cop, utiliza esos valores reales juntos al cerrar la compra. No omitas el total cuando ya existe y no reconstruyas la suma manualmente desde mensajes anteriores.',
+      '- Si la persona selecciona transferencia, Nequi, Daviplata, Llave Bre-B, tarjeta, crédito u otro medio real configurado, interpreta sinónimos razonables pero conserva el medio realmente elegido. Un sinónimo no habilita un medio que la empresa no tenga configurado.',
+      '- Una pregunta de costo de envío después de que la persona acaba de indicar ciudad o medio de pago debe resolverse primero con remember_sale_context y get_cart. Está prohibido transferir a un asesor por esa pregunta cuando shipping_resolution_status sea resolved o cuando falte únicamente ciudad, medio de pago o método de entrega.',
+      '- Cuando recibas [COMPROBANTE_DE_PAGO_RECIBIDO], el producto, variante, carrito, ciudad, envío, total y medio previamente confirmados siguen vigentes. No regreses a preguntas de producto, talla o color salvo que la persona los cambie expresamente.',
       '- Si preguntan por términos, cambios, devoluciones, garantías, pagos, envíos o políticas, responde usando la BASE DE CONOCIMIENTO APROBADA y las instrucciones de la empresa. Si falta una regla específica, dilo con claridad y escala si es necesario.',
         '- No ofrezcas cancelación, devolución, garantía, cambio especial, descuento, envío gratis ni excepción operativa si no está permitido explícitamente en la configuración de la empresa. Si no está configurado, no lo prometas: responde con lo que sí esté configurado y escala únicamente cuando las instrucciones específicas de la empresa o las reglas reales de handoff lo requieran.',
         '- La sola solicitud de un descuento, precio especial, envío gratis o excepción no obliga por sí misma a transferir a un asesor. No inventes ni negocies beneficios. Sigue exclusivamente la configuración de la empresa para responder, aplicar un beneficio permitido o escalar.',
@@ -4482,6 +4583,112 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       }
 
       if (name === 'request_human_attention') {
+        const handoffSession =
+          await this.agentSessionRuntimeService.getSessionById(
+            session.id,
+          );
+
+        const handoffContext =
+          handoffSession.context &&
+          typeof handoffSession.context === 'object' &&
+          !Array.isArray(handoffSession.context)
+            ? handoffSession.context as JsonObject
+            : {};
+
+        const handoffCategory =
+          typeof handoffContext.conversation_category === 'string'
+            ? handoffContext.conversation_category
+            : '';
+
+        const handoffSaleContext =
+          this.readSaleContext(handoffContext);
+
+        const shippingStatus =
+          typeof handoffSaleContext.shipping_resolution_status === 'string'
+            ? handoffSaleContext.shipping_resolution_status
+            : '';
+
+        const reasonText = [
+          this.readString(args, 'reason'),
+          this.readString(args, 'summary'),
+        ]
+          .join(' ')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '');
+
+        const explicitHumanRequest =
+          /\b(asesor|humano|persona real|agente humano)\b/.test(
+            reasonText,
+          );
+
+        const looksLikeResolvableCommercialHandoff =
+          /\b(envio|tarifa|costo|medio de pago|pago|transferencia|nequi|daviplata|contraentrega|checkout|total)\b/.test(
+            reasonText,
+          );
+
+        if (
+          handoffCategory !== 'service' &&
+          !explicitHumanRequest &&
+          looksLikeResolvableCommercialHandoff &&
+          (
+            shippingStatus === 'resolved' ||
+            shippingStatus === 'needs_city' ||
+            shippingStatus === 'needs_payment' ||
+            shippingStatus === 'needs_delivery_method' ||
+            shippingStatus === 'defer_to_checkout'
+          )
+        ) {
+          return {
+            ok: false,
+            blocked: true,
+            next_action:
+              shippingStatus === 'needs_city'
+                ? 'ask_city'
+                : shippingStatus === 'needs_payment'
+                  ? 'ask_payment_method'
+                  : shippingStatus === 'needs_delivery_method'
+                    ? 'ask_delivery_method'
+                    : shippingStatus === 'resolved'
+                      ? 'continue_sale_with_resolved_shipping'
+                      : 'continue_checkout_flow',
+            error:
+              'No se permite transferir este caso todavía porque el flujo comercial puede continuar con la configuración y herramientas disponibles.',
+            sale_context: handoffSaleContext,
+          };
+        }
+
+        const paymentEvidence =
+          handoffContext.last_payment_evidence &&
+          typeof handoffContext.last_payment_evidence === 'object' &&
+          !Array.isArray(handoffContext.last_payment_evidence)
+            ? handoffContext.last_payment_evidence as JsonObject
+            : null;
+
+        const checkoutAlreadySent =
+          handoffSaleContext.checkout_instructions_sent === true;
+
+        if (
+          handoffCategory !== 'service' &&
+          !explicitHumanRequest &&
+          paymentEvidence &&
+          paymentEvidence.received === true &&
+          !checkoutAlreadySent &&
+          /\b(comprobante|pago|transferencia|nequi|daviplata|bold)\b/.test(
+            reasonText,
+          )
+        ) {
+          return {
+            ok: false,
+            blocked: true,
+            next_action: 'continue_post_payment_checkout',
+            error:
+              'El comprobante ya fue recibido. Continúa primero con los pasos automáticos configurados posteriores al pago antes de transferir.',
+            sale_context: handoffSaleContext,
+            payment_evidence: paymentEvidence,
+          };
+        }
+
         const updatedSession =
           await this.agentSessionRuntimeService.requestHumanAttention(
             session.id,
