@@ -12,6 +12,8 @@ import {
 import { AgentSessionRuntimeService } from './agent-session-runtime.service';
 import { ShopifyService } from './shopify.service';
 import { SupabaseService } from './supabase.service';
+import { MetaSocialMessagingService } from './meta-social-messaging.service';
+import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -77,6 +79,8 @@ export class ChatAgentService {
     private readonly supabaseService: SupabaseService,
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly agentSessionRuntimeService: AgentSessionRuntimeService,
+    private readonly metaSocialMessagingService: MetaSocialMessagingService,
+    private readonly whatsappMessagingService: WhatsappMessagingService,
   ) {}
 
   private readConversationCategory(
@@ -2703,6 +2707,7 @@ export class ChatAgentService {
       '- Después de remember_sale_context, usa sale_context.shipping_resolution_status. Si es resolved, comunica el shipping_cost_cop real y continúa la venta sin transferir. Si es needs_payment, pregunta únicamente el medio de pago. Si es needs_city, pregunta únicamente la ciudad. Si es needs_delivery_method, pregunta únicamente el método de entrega. Si es defer_to_checkout, sigue el flujo configurado de checkout. Solo considera intervención humana cuando la resolución real termine en not_configured, ambiguous o unavailable y la información sea necesaria para continuar.',
       '- Si una herramienta falla, no afirmes que la acción se realizó. Usa el resultado real para pedir únicamente el dato faltante o escalar cuando corresponda.',
       '- Consulta productos, colecciones, variantes y carrito con las herramientas antes de dar datos definitivos.',
+      '- FOTO REAL DE PRODUCTO: cuando la persona pida explícitamente “mándame foto”, “envíame una imagen”, “quiero ver el producto”, “muéstrame la foto” o una solicitud equivalente y el producto exacto ya esté seleccionado, usa send_product_image. Esta herramienta envía realmente una imagen del catálogo usando image_url/image_urls. No sustituyas el envío real por un enlace cuando exista una imagen utilizable. Solo afirmes que la imagen fue enviada cuando send_product_image devuelva ok=true. Si no existe una imagen real utilizable, dilo claramente y no inventes ni prometas un envío posterior.',
       '- INFORMACIÓN GENERAL DE PRODUCTO: cuando el producto exacto ya esté identificado y la persona pida “información”, “info”, “detalles”, “características”, “qué tallas hay”, “qué colores hay” o una consulta general equivalente, usa get_selected_product antes de responder. En una sola respuesta breve entrega los datos reales útiles disponibles para esa consulta: nombre del producto, precio real vigente y las opciones reales disponibles relevantes como tallas, colores o medidas. No preguntes primero qué talla quiere si todavía no le has mostrado cuáles tallas reales existen.',
       '- Si la persona pregunta únicamente por UN dato concreto de un producto identificado, por ejemplo solo precio o solo talla, responde ese dato y no descargues información innecesaria.',
       '- Cuando un producto identificado tenga una sola variante vendible o una opción única, no inventes una elección ni preguntes por una variante que no existe.',
@@ -3885,6 +3890,19 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       },
       {
         type: 'function',
+        name: 'send_product_image',
+        description:
+          'Envía realmente al cliente una imagen real del producto actualmente seleccionado usando la foto disponible en el catálogo. Úsala cuando la persona pida ver o recibir una foto del producto.',
+        strict: true,
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        type: 'function',
         name: 'select_variant',
         description:
           'Valida una o varias variantes reales del producto actual. Úsala cuando la persona indique color, talla, medida y cantidad. Ejemplo: “uno talla S y uno talla M” son dos selecciones distintas.',
@@ -4237,6 +4255,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         'select_product_by_url',
         'select_product_by_name',
         'get_selected_product',
+        'send_product_image',
         'select_variant',
         'add_selected_variant_to_cart',
         'add_visual_products_to_cart',
@@ -4297,6 +4316,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (name === 'get_selected_product') {
         return this.getSelectedProduct(session);
+      }
+
+      if (name === 'send_product_image') {
+        return this.sendSelectedProductImage(session);
       }
 
       if (name === 'select_variant') {
@@ -5452,6 +5475,275 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     return {
       ok: true,
       selected_product: this.productSnapshot(product),
+    };
+  }
+
+  private async sendSelectedProductImage(
+    session: ConversationSession,
+  ): Promise<unknown> {
+    const currentSession =
+      await this.agentSessionRuntimeService.getSessionById(session.id);
+
+    if (currentSession.attentionStatus !== 'ai') {
+      return {
+        ok: false,
+        error:
+          'La conversación ya no está siendo atendida por la IA.',
+      };
+    }
+
+    const selectedResult =
+      await this.getSelectedProduct(currentSession);
+
+    if (
+      !selectedResult ||
+      typeof selectedResult !== 'object' ||
+      Array.isArray(selectedResult)
+    ) {
+      return {
+        ok: false,
+        error: 'No se pudo consultar el producto seleccionado.',
+      };
+    }
+
+    const selectedRecord =
+      selectedResult as JsonObject;
+
+    if (selectedRecord.ok !== true) {
+      return selectedResult;
+    }
+
+    const selectedProduct =
+      selectedRecord.selected_product &&
+      typeof selectedRecord.selected_product === 'object' &&
+      !Array.isArray(selectedRecord.selected_product)
+        ? selectedRecord.selected_product as JsonObject
+        : null;
+
+    if (!selectedProduct) {
+      return {
+        ok: false,
+        error: 'El producto seleccionado no devolvió información utilizable.',
+      };
+    }
+
+    const imageUrls = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(selectedProduct.image_urls)
+            ? selectedProduct.image_urls
+                .filter(
+                  (value): value is string =>
+                    typeof value === 'string',
+                )
+            : []),
+          typeof selectedProduct.image_url === 'string'
+            ? selectedProduct.image_url
+            : '',
+        ]
+          .map((value) => value.trim())
+          .filter((value) => /^https?:\/\//i.test(value)),
+      ),
+    );
+
+    const imageUrl = imageUrls[0] ?? '';
+
+    if (!imageUrl) {
+      return {
+        ok: false,
+        error:
+          'El producto seleccionado no tiene una imagen real disponible en el catálogo.',
+      };
+    }
+
+    const productTitle =
+      typeof selectedProduct.title === 'string' &&
+      selectedProduct.title.trim()
+        ? selectedProduct.title.trim().slice(0, 180)
+        : 'Producto';
+
+    let response: Response;
+
+    try {
+      response = await fetch(imageUrl, {
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error
+            ? `No se pudo descargar la imagen real del producto: ${error.message}`
+            : 'No se pudo descargar la imagen real del producto.',
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error:
+          `La imagen real del producto no pudo descargarse (HTTP ${response.status}).`,
+      };
+    }
+
+    const declaredSize =
+      Number(response.headers.get('content-length') || 0);
+
+    if (
+      Number.isFinite(declaredSize) &&
+      declaredSize > 8 * 1024 * 1024
+    ) {
+      return {
+        ok: false,
+        error:
+          'La imagen real del producto supera el límite permitido de 8 MB.',
+      };
+    }
+
+    const mimeType =
+      (
+        response.headers.get('content-type') ||
+        'image/jpeg'
+      )
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+
+    const allowedMimeTypes = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+    ]);
+
+    if (!allowedMimeTypes.has(mimeType)) {
+      return {
+        ok: false,
+        error:
+          `La imagen real del producto tiene un formato no compatible (${mimeType || 'desconocido'}).`,
+      };
+    }
+
+    const buffer =
+      Buffer.from(await response.arrayBuffer());
+
+    if (!buffer.length) {
+      return {
+        ok: false,
+        error: 'La imagen real del producto está vacía.',
+      };
+    }
+
+    if (buffer.length > 8 * 1024 * 1024) {
+      return {
+        ok: false,
+        error:
+          'La imagen real del producto supera el límite permitido de 8 MB.',
+      };
+    }
+
+    const extension =
+      mimeType === 'image/png'
+        ? 'png'
+        : mimeType === 'image/webp'
+          ? 'webp'
+          : 'jpg';
+
+    const filename =
+      `producto-${Date.now()}.${extension}`;
+
+    const channel =
+      currentSession.context.channel === 'instagram' ||
+      currentSession.context.channel === 'messenger'
+        ? currentSession.context.channel
+        : 'whatsapp';
+
+    if (
+      channel === 'instagram' ||
+      channel === 'messenger'
+    ) {
+      const sent =
+        await this.metaSocialMessagingService.sendAiMedia({
+          companyId: currentSession.companyId,
+          sessionId: currentSession.id,
+          buffer,
+          mimeType,
+          filename,
+          mediaType: 'image',
+        });
+
+      return {
+        ok: true,
+        sent: true,
+        channel,
+        product_title: productTitle,
+        image_url: imageUrl,
+        message_id: sent.messageId,
+      };
+    }
+
+    const recipient =
+      currentSession.customerPhone.trim();
+
+    if (!recipient) {
+      return {
+        ok: false,
+        error:
+          'La sesión de WhatsApp no tiene un destinatario utilizable.',
+      };
+    }
+
+    const sent =
+      await this.whatsappMessagingService.sendImage(
+        currentSession.companyId,
+        recipient,
+        {
+          buffer,
+          mimeType,
+          filename,
+        },
+      );
+
+    const messageText =
+      `📷 Imagen enviada: ${productTitle}`;
+
+    await this.conversationMemoryService.saveMessage({
+      companyId: currentSession.companyId,
+      sessionId: currentSession.id,
+      customerPhone: recipient,
+      message: messageText,
+      sender: 'assistant',
+      authorType: 'ai',
+      aiResponse: null,
+      providerMessageId: sent.messageId,
+      messageType: 'image',
+      mediaId: sent.mediaId,
+      mediaMimeType: sent.mimeType,
+      mediaFilename: filename,
+      mediaVoice: false,
+    });
+
+    await this.conversationMemoryService.persistIncomingMedia({
+      companyId: currentSession.companyId,
+      sessionId: currentSession.id,
+      mediaId: sent.mediaId,
+      providerMessageId: sent.messageId,
+      buffer,
+      mimeType: sent.mimeType,
+      filename,
+    });
+
+    await this.conversationMemoryService.touchSession(
+      currentSession.id,
+    );
+
+    return {
+      ok: true,
+      sent: true,
+      channel: 'whatsapp',
+      product_title: productTitle,
+      image_url: imageUrl,
+      message_id: sent.messageId,
     };
   }
 

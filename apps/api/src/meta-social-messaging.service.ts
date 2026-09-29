@@ -290,6 +290,22 @@ export class MetaSocialMessagingService {
     };
   }
 
+  async sendAiMedia(input: {
+    companyId: string;
+    sessionId: string;
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+    mediaType: 'image' | 'audio' | 'video' | 'document';
+    caption?: string;
+  }): Promise<{ messageId: string | null }> {
+    return this.sendAdvisorMedia({
+      ...input,
+      advisorName: 'IA',
+      actorType: 'ai',
+    });
+  }
+
   async sendAdvisorMedia(input: {
     companyId: string;
     sessionId: string;
@@ -299,6 +315,7 @@ export class MetaSocialMessagingService {
     mediaType: 'image' | 'audio' | 'video' | 'document';
     caption?: string;
     advisorName: string;
+    actorType?: 'advisor' | 'ai';
   }): Promise<{ messageId: string | null }> {
     const client = this.supabaseService.getClient();
 
@@ -328,9 +345,24 @@ export class MetaSocialMessagingService {
 
     const session = sessionRow as any;
 
-    if (session.attention_status !== 'human') {
+    const actorType =
+      input.actorType === 'ai' ? 'ai' : 'advisor';
+
+    if (
+      actorType === 'advisor' &&
+      session.attention_status !== 'human'
+    ) {
       throw new Error(
         'La conversación debe estar tomada por un asesor.',
+      );
+    }
+
+    if (
+      actorType === 'ai' &&
+      session.attention_status !== 'ai'
+    ) {
+      throw new Error(
+        'La conversación ya no está disponible para envío automático de IA.',
       );
     }
 
@@ -658,7 +690,7 @@ export class MetaSocialMessagingService {
           external_customer_id: recipientId,
           provider_message_id: messageId,
           sender: 'assistant',
-          author_type: 'advisor',
+          author_type: actorType,
           message_type:
             input.mediaType === 'document'
               ? 'attachment'
@@ -698,7 +730,7 @@ export class MetaSocialMessagingService {
             external_customer_id: recipientId,
             provider_message_id: captionId,
             sender: 'assistant',
-            author_type: 'advisor',
+            author_type: actorType,
             message_type: 'text',
             message: caption,
             media_url: null,
@@ -728,7 +760,7 @@ export class MetaSocialMessagingService {
       .eq('company_id', input.companyId);
 
     console.log(
-      `[ChatPro][${channel === 'instagram' ? 'Instagram' : 'Messenger'}] asesor envió ${input.mediaType} session=${input.sessionId} advisor="${input.advisorName}"`,
+      `[ChatPro][${channel === 'instagram' ? 'Instagram' : 'Messenger'}] ${actorType === 'ai' ? 'IA' : 'asesor'} envió ${input.mediaType} session=${input.sessionId} actor="${input.advisorName}"`,
     );
 
     return {
