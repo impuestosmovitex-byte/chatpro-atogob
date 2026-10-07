@@ -225,7 +225,7 @@ export async function GET(request: NextRequest) {
       try {
         const normalizedAudio = await transcodeAudioToMp3(originalBody);
 
-        return new NextResponse(normalizedAudio, {
+        return new NextResponse(new Uint8Array(normalizedAudio), {
           status: 200,
           headers: {
             'content-type': 'audio/mpeg',
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return new NextResponse(originalBody, {
+    return new NextResponse(new Uint8Array(originalBody), {
       status: 200,
       headers: {
         'content-type':
