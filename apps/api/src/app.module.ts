@@ -38,6 +38,7 @@ import { MetaInstagramService } from './meta-instagram.service';
 import { MetaMessengerWebhookController } from './meta-messenger-webhook.controller';
 import { MetaMessengerService } from './meta-messenger.service';
 import { MetaSocialMessageService } from './meta-social-message.service';
+import { MetaSocialBatchMessageService } from './meta-social-batch-message.service';
 import { MetaSocialAiService } from './meta-social-ai.service';
 import { MetaSocialMessagingService } from './meta-social-messaging.service';
 import { MetaSocialInboxService } from './meta-social-inbox.service';
@@ -123,7 +124,10 @@ import { ContactTagsController } from './contact-tags.controller';
     MetaMessengerService,
     MetaInstagramService,
     MetaInstagramMediaAiService,
-    MetaSocialMessageService,
+    {
+      provide: MetaSocialMessageService,
+      useClass: MetaSocialBatchMessageService,
+    },
     MetaSocialAiService,
     MetaSocialMessagingService,
     MetaSocialInboxService,
