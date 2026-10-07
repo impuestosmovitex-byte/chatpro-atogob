@@ -65,6 +65,7 @@ import { ShopifyOrderDetailDiagnosticsController } from './shopify-order-detail-
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { PlatformHealthController } from './platform-health.controller';
 import { PlatformHealthService } from './platform-health.service';
+import { PlatformAdminController } from './platform-admin.controller';
 import { WhatsappTemplateController } from './whatsapp-template.controller';
 import { WhatsappTemplateService } from './whatsapp-template.service';
 import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
@@ -108,6 +109,7 @@ import { ContactTagsController } from './contact-tags.controller';
     AdvisorPresenceController,
     ServiceAreasController,
     PlatformHealthController,
+    PlatformAdminController,
     WhatsappTemplateController,
     PushNotificationController,
   ],
