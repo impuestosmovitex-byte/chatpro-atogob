@@ -16,6 +16,8 @@ import {
   MetaSocialMessageService,
 } from './meta-social-message.service';
 
+type JsonObject = Record<string, unknown>;
+
 @Controller('webhook/instagram')
 export class MetaInstagramWebhookController {
   constructor(
@@ -69,8 +71,11 @@ export class MetaInstagramWebhookController {
     body: unknown,
   ) {
     try {
+      const normalizedBody =
+        this.normalizeInstagramAttachments(body);
+
       await this.socialMessageService
-        .processInstagramWebhook(body);
+        .processInstagramWebhook(normalizedBody);
     } catch (error) {
       console.error(
         '[ChatPro][Instagram] Error procesando webhook:',
@@ -79,5 +84,193 @@ export class MetaInstagramWebhookController {
     }
 
     return 'EVENT_RECEIVED';
+  }
+
+  /**
+   * Meta puede agrupar varias fotos/archivos dentro de message.attachments[].
+   * El runtime social procesa un mensaje por evento, por lo que expandimos
+   * cada adjunto a un evento independiente antes de entregarlo al servicio.
+   *
+   * También normalizamos "file"/"document" a "attachment" para que la
+   * bandeja los muestre como archivos descargables en lugar de texto plano.
+   */
+  private normalizeInstagramAttachments(
+    bodyInput: unknown,
+  ): unknown {
+    const body = this.record(bodyInput);
+
+    if (!Array.isArray(body.entry)) {
+      return bodyInput;
+    }
+
+    let expandedAttachments = 0;
+
+    const entries = body.entry.map((rawEntry) => {
+      const entry = this.record(rawEntry);
+      const nextEntry: JsonObject = {
+        ...entry,
+      };
+
+      if (Array.isArray(entry.messaging)) {
+        const messaging: JsonObject[] = [];
+
+        for (const rawEvent of entry.messaging) {
+          const expanded =
+            this.expandMessageEvent(rawEvent);
+
+          expandedAttachments += Math.max(
+            0,
+            expanded.length - 1,
+          );
+
+          messaging.push(...expanded);
+        }
+
+        nextEntry.messaging = messaging;
+      }
+
+      if (Array.isArray(entry.changes)) {
+        const changes: JsonObject[] = [];
+
+        for (const rawChange of entry.changes) {
+          const change = this.record(rawChange);
+
+          if (
+            this.text(change.field) !== 'messages'
+          ) {
+            changes.push(change);
+            continue;
+          }
+
+          const expandedValues =
+            this.expandMessageEvent(change.value);
+
+          expandedAttachments += Math.max(
+            0,
+            expandedValues.length - 1,
+          );
+
+          for (const value of expandedValues) {
+            changes.push({
+              ...change,
+              value,
+            });
+          }
+        }
+
+        nextEntry.changes = changes;
+      }
+
+      return nextEntry;
+    });
+
+    if (expandedAttachments > 0) {
+      console.log(
+        `[ChatPro][Instagram] adjuntos múltiples expandidos=${expandedAttachments}`,
+      );
+    }
+
+    return {
+      ...body,
+      entry: entries,
+    };
+  }
+
+  private expandMessageEvent(
+    eventInput: unknown,
+  ): JsonObject[] {
+    const event = this.record(eventInput);
+    const message = this.record(event.message);
+
+    if (!Array.isArray(message.attachments)) {
+      return [event];
+    }
+
+    const attachments = message.attachments
+      .map((item) => this.normalizeAttachment(item))
+      .filter((item) => Object.keys(item).length > 0);
+
+    if (!attachments.length) {
+      return [event];
+    }
+
+    const baseMid = this.text(message.mid);
+    const text = this.text(message.text);
+    const expanded: JsonObject[] = [];
+
+    // Si el evento trae texto + adjuntos, conservamos el texto como mensaje
+    // independiente para no perder la intención/caption del cliente.
+    if (text) {
+      const textMessage: JsonObject = {
+        ...message,
+      };
+
+      delete textMessage.attachments;
+
+      expanded.push({
+        ...event,
+        message: textMessage,
+      });
+    }
+
+    attachments.forEach((attachment, index) => {
+      const attachmentMessage: JsonObject = {
+        ...message,
+        text: undefined,
+        attachments: [attachment],
+      };
+
+      // Mantener el MID original en el primer adjunto cuando no existe texto
+      // conserva la deduplicación histórica. Los adjuntos adicionales usan
+      // IDs determinísticos para poder guardarse por separado sin colisionar.
+      if (baseMid) {
+        attachmentMessage.mid =
+          !text && index === 0
+            ? baseMid
+            : `${baseMid}:attachment:${index}`;
+      }
+
+      expanded.push({
+        ...event,
+        message: attachmentMessage,
+      });
+    });
+
+    return expanded.length
+      ? expanded
+      : [event];
+  }
+
+  private normalizeAttachment(
+    value: unknown,
+  ): JsonObject {
+    const attachment = this.record(value);
+    const type = this.text(attachment.type).toLowerCase();
+
+    if (
+      type === 'file' ||
+      type === 'document'
+    ) {
+      return {
+        ...attachment,
+        type: 'attachment',
+      };
+    }
+
+    return attachment;
+  }
+
+  private record(value: unknown): JsonObject {
+    return value &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+      ? value as JsonObject
+      : {};
+  }
+
+  private text(value: unknown): string {
+    return typeof value === 'string'
+      ? value.trim()
+      : '';
   }
 }
