@@ -61,37 +61,32 @@ type BatchAnalysis = {
  * resolución parte del companyId encontrado en la integración activa.
  */
 @Injectable()
-export class MetaSocialBatchMessageService extends MetaSocialMessageService {
+export class MetaSocialBatchMessageService {
   private readonly pendingBatches = new Map<string, PendingBatch>();
   private openAiClient: OpenAI | null = null;
+  private readonly legacy: MetaSocialMessageService;
 
   constructor(
-    supabaseService: SupabaseService,
-    companyIntegrationService: CompanyIntegrationService,
+    private readonly batchSupabaseService: SupabaseService,
+    private readonly batchCompanyIntegrationService: CompanyIntegrationService,
     credentialsService: IntegrationCredentialsService,
     private readonly batchSocialAiService: MetaSocialAiService,
     private readonly batchConversationMemoryService: ConversationMemoryService,
     private readonly batchAgentSessionRuntimeService: AgentSessionRuntimeService,
   ) {
-    super(
-      supabaseService,
-      companyIntegrationService,
+    this.legacy = new MetaSocialMessageService(
+      batchSupabaseService,
+      batchCompanyIntegrationService,
       credentialsService,
       batchSocialAiService,
     );
-
-    this.batchSupabaseService = supabaseService;
-    this.batchCompanyIntegrationService = companyIntegrationService;
   }
 
-  private readonly batchSupabaseService: SupabaseService;
-  private readonly batchCompanyIntegrationService: CompanyIntegrationService;
-
-  override async processInstagramWebhook(bodyInput: unknown): Promise<void> {
+  async processInstagramWebhook(bodyInput: unknown): Promise<void> {
     // Audio, video y archivos siguen pasando por el flujo existente y por el
     // servicio multimedia de Instagram. Texto/postback/imágenes se agrupan aquí.
     const residualBody = this.buildResidualBody(bodyInput, 'instagram');
-    await super.processInstagramWebhook(residualBody);
+    await this.legacy.processInstagramWebhook(residualBody);
 
     const body = this.record(bodyInput);
 
@@ -140,9 +135,9 @@ export class MetaSocialBatchMessageService extends MetaSocialMessageService {
     }
   }
 
-  override async processMessengerWebhook(bodyInput: unknown): Promise<void> {
+  async processMessengerWebhook(bodyInput: unknown): Promise<void> {
     const residualBody = this.buildResidualBody(bodyInput, 'messenger');
-    await super.processMessengerWebhook(residualBody);
+    await this.legacy.processMessengerWebhook(residualBody);
 
     const body = this.record(bodyInput);
 
@@ -352,7 +347,7 @@ export class MetaSocialBatchMessageService extends MetaSocialMessageService {
   }): Promise<string | null> {
     if (input.channel === 'instagram') {
       const fn = (
-        this as unknown as {
+        this.legacy as unknown as {
           saveIncomingInstagramMessage: (value: {
             companyId: string;
             instagramId: string;
@@ -368,7 +363,7 @@ export class MetaSocialBatchMessageService extends MetaSocialMessageService {
         }
       ).saveIncomingInstagramMessage;
 
-      return fn.call(this, {
+      return fn.call(this.legacy, {
         companyId: input.companyId,
         instagramId: input.accountId,
         senderId: input.senderId,
@@ -383,7 +378,7 @@ export class MetaSocialBatchMessageService extends MetaSocialMessageService {
     }
 
     const fn = (
-      this as unknown as {
+      this.legacy as unknown as {
         saveIncomingMessengerMessage: (value: {
           companyId: string;
           pageId: string;
@@ -397,7 +392,7 @@ export class MetaSocialBatchMessageService extends MetaSocialMessageService {
       }
     ).saveIncomingMessengerMessage;
 
-    return fn.call(this, {
+    return fn.call(this.legacy, {
       companyId: input.companyId,
       pageId: input.accountId,
       senderId: input.senderId,
@@ -421,8 +416,7 @@ export class MetaSocialBatchMessageService extends MetaSocialMessageService {
     text?: string;
     image?: PendingImage;
   }): void {
-    const key =
-      `${input.channel}:${input.accountId}:${input.recipientId}`;
+    const key = `${input.channel}:${input.accountId}:${input.recipientId}`;
     const current = this.pendingBatches.get(key);
 
     const next: PendingBatch = current
@@ -439,8 +433,7 @@ export class MetaSocialBatchMessageService extends MetaSocialMessageService {
           updatedAt: Date.now(),
         }
       : {
-          batchId:
-            `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+          batchId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
           channel: input.channel,
           companyId: input.companyId,
           accountId: input.accountId,
@@ -618,8 +611,7 @@ export class MetaSocialBatchMessageService extends MetaSocialMessageService {
 
             return {
               index: index + 1,
-              dataUrl:
-                `data:${mimeType};base64,${buffer.toString('base64')}`,
+              dataUrl: `data:${mimeType};base64,${buffer.toString('base64')}`,
             };
           } catch {
             return null;
@@ -680,9 +672,7 @@ export class MetaSocialBatchMessageService extends MetaSocialMessageService {
     }
 
     const response = await this.getOpenAiClient().responses.create({
-      model:
-        process.env.OPENAI_MODEL?.trim() ||
-        'gpt-5-mini',
+      model: process.env.OPENAI_MODEL?.trim() || 'gpt-5-mini',
       instructions: [
         'Eres el analizador visual omnicanal de una plataforma comercial multiempresa.',
         'Tu análisis nunca está atado a una empresa fija.',
