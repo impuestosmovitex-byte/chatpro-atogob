@@ -15,6 +15,9 @@ import type {
 import {
   MetaSocialMessageService,
 } from './meta-social-message.service';
+import {
+  MetaInstagramMediaAiService,
+} from './meta-instagram-media-ai.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -23,6 +26,8 @@ export class MetaInstagramWebhookController {
   constructor(
     private readonly socialMessageService:
       MetaSocialMessageService,
+    private readonly mediaAiService:
+      MetaInstagramMediaAiService,
   ) {}
 
   @Get()
@@ -76,6 +81,9 @@ export class MetaInstagramWebhookController {
 
       await this.socialMessageService
         .processInstagramWebhook(normalizedBody);
+
+      await this.mediaAiService
+        .processWebhook(normalizedBody);
     } catch (error) {
       console.error(
         '[ChatPro][Instagram] Error procesando webhook:',
