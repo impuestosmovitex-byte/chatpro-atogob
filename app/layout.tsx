@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { PushNotificationManager } from './components/PushNotificationManager';
 import { MessageLinkifier } from './components/MessageLinkifier';
+import { ComposerEnhancer } from './components/ComposerEnhancer';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -76,6 +77,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         {children}
         <MessageLinkifier />
+        <ComposerEnhancer />
         <PushNotificationManager />
       </body>
     </html>
