@@ -59,7 +59,7 @@ import { SupportSettingsController } from './support-settings.controller';
 import { AdvisorPresenceController } from './advisor-presence.controller';
 import { ServiceAreasController } from './service-areas.controller';
 import { UsersController } from './users.controller';
-import { WhatsappWebhookController } from './whatsapp-webhook.controller';
+import { WhatsappMultiMessageController } from './whatsapp-multi-message.controller';
 import { InternalDiagnosticsController } from './internal-diagnostics.controller';
 import { ShopifyOrderDetailDiagnosticsController } from './shopify-order-detail-diagnostics.controller';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
@@ -81,7 +81,7 @@ import { ContactTagsController } from './contact-tags.controller';
     AppController,
     AutomationsController,
     AutomationMessageConfigController,
-    WhatsappWebhookController,
+    WhatsappMultiMessageController,
     InboxController,
     IntegrationsController,
     MetaMessengerController,
