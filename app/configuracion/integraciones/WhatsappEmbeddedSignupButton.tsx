@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import styles from './page.module.css';
 
 type EmbeddedConfig = {
@@ -33,6 +33,7 @@ type FacebookSdk = {
     version: string;
     autoLogAppEvents?: boolean;
   }): void;
+  getLoginStatus(callback: (response: FacebookLoginResponse) => void): void;
   login(
     callback: (response: FacebookLoginResponse) => void,
     options: Record<string, unknown>,
@@ -60,12 +61,30 @@ function initializeFacebookSdk(
   });
 }
 
+function verifyFacebookSdk(
+  sdk: FacebookSdk,
+  appId: string,
+  apiVersion: string,
+): Promise<FacebookSdk> {
+  return new Promise((resolve, reject) => {
+    try {
+      initializeFacebookSdk(sdk, appId, apiVersion);
+      sdk.getLoginStatus(() => resolve(sdk));
+    } catch (error) {
+      reject(
+        error instanceof Error
+          ? error
+          : new Error('Meta no pudo inicializar el SDK.'),
+      );
+    }
+  });
+}
+
 function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk> {
   const target = window as FacebookWindow;
 
   if (target.FB) {
-    initializeFacebookSdk(target.FB, appId, apiVersion);
-    return Promise.resolve(target.FB);
+    return verifyFacebookSdk(target.FB, appId, apiVersion);
   }
 
   if (facebookSdkPromise) return facebookSdkPromise;
@@ -73,25 +92,36 @@ function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk
   facebookSdkPromise = new Promise((resolve, reject) => {
     let settled = false;
 
-    const finish = () => {
-      if (settled) return;
-      if (!target.FB) return;
-
-      settled = true;
-      window.clearTimeout(timeout);
-      initializeFacebookSdk(target.FB, appId, apiVersion);
-      resolve(target.FB);
-    };
-
-    const fail = () => {
+    const fail = (error?: Error) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timeout);
       facebookSdkPromise = null;
-      reject(new Error('No se pudo cargar el SDK oficial de Meta.'));
+      reject(error || new Error('No se pudo cargar el SDK oficial de Meta.'));
     };
 
-    const timeout = window.setTimeout(fail, 15000);
+    const finish = () => {
+      if (settled || !target.FB) return;
+
+      void verifyFacebookSdk(target.FB, appId, apiVersion)
+        .then((sdk) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          resolve(sdk);
+        })
+        .catch((error) => {
+          fail(
+            error instanceof Error
+              ? error
+              : new Error('Meta no pudo inicializar el SDK.'),
+          );
+        });
+    };
+
+    const timeout = window.setTimeout(() => {
+      fail(new Error('Meta tardó demasiado en preparar el SDK.'));
+    }, 15000);
 
     const previousAsyncInit = target.fbAsyncInit;
     target.fbAsyncInit = () => {
@@ -106,7 +136,7 @@ function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk
         return;
       }
       existing.addEventListener('load', finish, { once: true });
-      existing.addEventListener('error', fail, { once: true });
+      existing.addEventListener('error', () => fail(), { once: true });
       return;
     }
 
@@ -117,7 +147,7 @@ function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk
     script.crossOrigin = 'anonymous';
     script.src = 'https://connect.facebook.net/es_LA/sdk.js';
     script.addEventListener('load', finish, { once: true });
-    script.addEventListener('error', fail, { once: true });
+    script.addEventListener('error', () => fail(), { once: true });
     document.body.appendChild(script);
   });
 
@@ -143,6 +173,7 @@ export function WhatsappEmbeddedSignupButton() {
   const [sdkReady, setSdkReady] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState('');
+  const sdkRef = useRef<FacebookSdk | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -176,6 +207,7 @@ export function WhatsappEmbeddedSignupButton() {
     let active = true;
 
     if (!config?.ready || !config.appId || !config.apiVersion) {
+      sdkRef.current = null;
       setSdkReady(false);
       return () => {
         active = false;
@@ -184,13 +216,15 @@ export function WhatsappEmbeddedSignupButton() {
 
     setMessage('Preparando conexión segura con Meta…');
     void loadFacebookSdk(config.appId, config.apiVersion)
-      .then(() => {
+      .then((sdk) => {
         if (!active) return;
+        sdkRef.current = sdk;
         setSdkReady(true);
         setMessage('');
       })
       .catch((error) => {
         if (!active) return;
+        sdkRef.current = null;
         setSdkReady(false);
         setMessage(
           error instanceof Error
@@ -241,23 +275,9 @@ export function WhatsappEmbeddedSignupButton() {
       return;
     }
 
-    const sdk = (window as FacebookWindow).FB;
+    const sdk = sdkRef.current;
     if (!sdk || !sdkReady) {
       setMessage('Meta todavía está cargando. Espera unos segundos y vuelve a intentar.');
-      return;
-    }
-
-    // El SDK de Meta puede reemplazar el objeto FB durante la carga de la página.
-    // Inicializarlo nuevamente dentro del gesto del usuario garantiza que FB.login
-    // nunca se ejecute antes de FB.init.
-    try {
-      initializeFacebookSdk(sdk, config.appId, config.apiVersion);
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Meta no pudo inicializar la conexión.',
-      );
       return;
     }
 
@@ -422,8 +442,8 @@ export function WhatsappEmbeddedSignupButton() {
       <small>
         {config?.ready
           ? sdkReady
-            ? 'Meta abrirá una ventana segura para seleccionar la cuenta y el número.'
-            : 'Preparando el SDK oficial de Meta…'
+            ? 'Meta está inicializado y abrirá una ventana segura para seleccionar la cuenta y el número.'
+            : 'Preparando y verificando el SDK oficial de Meta…'
           : config?.message || 'Embedded Signup todavía no está configurado.'}
       </small>
       {message ? <p>{message}</p> : null}
