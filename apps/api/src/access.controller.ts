@@ -90,6 +90,33 @@ export class AccessController {
       throw new BadRequestException('Falta el usuario.');
     }
 
+    if (await this.isPlatformAdmin(userId)) {
+      const { data: companyData, error: companyError } =
+        await this.supabaseService
+          .getClient()
+          .from('companies')
+          .select('id, slug, name, status')
+          .eq('status', 'active')
+          .order('name', { ascending: true });
+
+      if (companyError) {
+        throw new BadRequestException(
+          `No se pudieron cargar las empresas: ${companyError.message}`,
+        );
+      }
+
+      return {
+        ok: true,
+        companies: (companyData ?? []).map((company: any) => ({
+          id: company.id as string,
+          slug: company.slug as string,
+          name: company.name as string,
+          roleKey: 'owner',
+          roleName: 'Super Admin MW1',
+        })),
+      };
+    }
+
     const { data: membershipData, error: membershipError } =
       await this.supabaseService
         .getClient()
@@ -117,20 +144,22 @@ export class AccessController {
     const companyIds = [...new Set(memberships.map((item) => item.company_id))];
     const roleIds = [...new Set(memberships.map((item) => item.role_id))];
 
-    const [{ data: companyData, error: companyError }, { data: roleData, error: roleError }] =
-      await Promise.all([
-        this.supabaseService
-          .getClient()
-          .from('companies')
-          .select('id, slug, name, status')
-          .in('id', companyIds)
-          .eq('status', 'active'),
-        this.supabaseService
-          .getClient()
-          .from('app_roles')
-          .select('id, key, name, company_id')
-          .in('id', roleIds),
-      ]);
+    const [
+      { data: companyData, error: companyError },
+      { data: roleData, error: roleError },
+    ] = await Promise.all([
+      this.supabaseService
+        .getClient()
+        .from('companies')
+        .select('id, slug, name, status')
+        .in('id', companyIds)
+        .eq('status', 'active'),
+      this.supabaseService
+        .getClient()
+        .from('app_roles')
+        .select('id, key, name, company_id')
+        .in('id', roleIds),
+    ]);
 
     if (companyError || roleError) {
       throw new BadRequestException(
@@ -202,6 +231,22 @@ export class AccessController {
       );
     }
 
+    if (await this.isPlatformAdmin(userId)) {
+      return {
+        ok: true,
+        session: {
+          type: 'user',
+          userId,
+          companyId: company.id,
+          companySlug: company.slug,
+          companyName: company.name,
+          fullName: profileData.full_name || 'Super Admin',
+          roleKey: 'owner',
+          roleName: 'Super Admin MW1',
+        },
+      };
+    }
+
     const { data: membershipData, error: membershipError } =
       await this.supabaseService
         .getClient()
@@ -270,7 +315,7 @@ export class AccessController {
   ) {
     this.assertInternalKey(providedKey);
 
-    let company = await this.getCompany(companySlug);
+    const company = await this.getCompany(companySlug);
     const identifier = this.normalizeIdentifier(body.identifier);
     const password = this.requiredText(body.password, 'Escribe la contraseña.');
 
@@ -298,7 +343,7 @@ export class AccessController {
       );
     }
 
-    let { data: membershipData, error: membershipError } =
+    const { data: membershipData, error: membershipError } =
       await this.supabaseService
         .getClient()
         .from('company_memberships')
@@ -313,42 +358,7 @@ export class AccessController {
       );
     }
 
-    let membership = membershipData as MembershipRow | null;
-
-    // Compatibilidad SaaS: el login público actual no envía empresa.
-    // Si el usuario no pertenece a la empresa por defecto pero sí tiene una
-    // única empresa activa, resolvemos automáticamente esa empresa.
-    if (!membership?.active) {
-      const { data: activeMemberships, error: activeMembershipsError } =
-        await this.supabaseService
-          .getClient()
-          .from('company_memberships')
-          .select('company_id, user_id, role_id, active')
-          .eq('user_id', profile.user_id)
-          .eq('active', true);
-
-      if (activeMembershipsError) {
-        throw new BadRequestException(
-          `No se pudieron validar las empresas del usuario: ${activeMembershipsError.message}`,
-        );
-      }
-
-      if ((activeMemberships ?? []).length === 1) {
-        const onlyMembership = (activeMemberships ?? [])[0] as {
-          company_id: string;
-          user_id: string;
-          role_id: string;
-          active: boolean;
-        };
-
-        company = await this.getCompanyById(onlyMembership.company_id);
-        membership = {
-          user_id: onlyMembership.user_id,
-          role_id: onlyMembership.role_id,
-          active: onlyMembership.active,
-        };
-      }
-    }
+    const membership = membershipData as MembershipRow | null;
 
     if (!membership?.active) {
       throw new UnauthorizedException(
@@ -392,6 +402,23 @@ export class AccessController {
     };
   }
 
+  private async isPlatformAdmin(userId: string): Promise<boolean> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('platform_admins')
+      .select('user_id, active')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        `No se pudo validar el Super Admin: ${error.message}`,
+      );
+    }
+
+    return data?.active === true;
+  }
+
   private assertInternalKey(providedKey: string): void {
     const expectedKey = process.env.CHATPRO_INBOX_KEY?.trim();
 
@@ -412,28 +439,6 @@ export class AccessController {
       .from('companies')
       .select('id, name, slug')
       .eq('slug', slug)
-      .eq('status', 'active')
-      .maybeSingle();
-
-    if (error) {
-      throw new BadRequestException(
-        `No se pudo consultar la empresa: ${error.message}`,
-      );
-    }
-
-    if (!data) {
-      throw new BadRequestException('Empresa no encontrada.');
-    }
-
-    return data as CompanyRow;
-  }
-
-  private async getCompanyById(companyId: string): Promise<CompanyRow> {
-    const { data, error } = await this.supabaseService
-      .getClient()
-      .from('companies')
-      .select('id, name, slug')
-      .eq('id', companyId)
       .eq('status', 'active')
       .maybeSingle();
 
