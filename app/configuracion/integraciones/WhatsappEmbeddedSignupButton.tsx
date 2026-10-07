@@ -46,17 +46,25 @@ type FacebookWindow = Window & {
 
 let facebookSdkPromise: Promise<FacebookSdk> | null = null;
 
+function initializeFacebookSdk(
+  sdk: FacebookSdk,
+  appId: string,
+  apiVersion: string,
+) {
+  sdk.init({
+    appId,
+    cookie: true,
+    xfbml: true,
+    autoLogAppEvents: true,
+    version: apiVersion,
+  });
+}
+
 function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk> {
   const target = window as FacebookWindow;
 
   if (target.FB) {
-    target.FB.init({
-      appId,
-      cookie: true,
-      xfbml: true,
-      autoLogAppEvents: true,
-      version: apiVersion,
-    });
+    initializeFacebookSdk(target.FB, appId, apiVersion);
     return Promise.resolve(target.FB);
   }
 
@@ -71,13 +79,7 @@ function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk
 
       settled = true;
       window.clearTimeout(timeout);
-      target.FB.init({
-        appId,
-        cookie: true,
-        xfbml: true,
-        autoLogAppEvents: true,
-        version: apiVersion,
-      });
+      initializeFacebookSdk(target.FB, appId, apiVersion);
       resolve(target.FB);
     };
 
@@ -245,6 +247,20 @@ export function WhatsappEmbeddedSignupButton() {
       return;
     }
 
+    // El SDK de Meta puede reemplazar el objeto FB durante la carga de la página.
+    // Inicializarlo nuevamente dentro del gesto del usuario garantiza que FB.login
+    // nunca se ejecute antes de FB.init.
+    try {
+      initializeFacebookSdk(sdk, config.appId, config.apiVersion);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Meta no pudo inicializar la conexión.',
+      );
+      return;
+    }
+
     setMessage('Abriendo Meta…');
     setConnecting(true);
 
@@ -341,8 +357,6 @@ export function WhatsappEmbeddedSignupButton() {
       window.addEventListener('message', listener);
 
       try {
-        // Configuración actual de Embedded Signup (v4): el config_id define
-        // el flujo y extras no debe forzar v2/v3 ni el modo de coexistencia.
         sdk.login(
           (response) => {
             authCode = text(response.authResponse?.code);
