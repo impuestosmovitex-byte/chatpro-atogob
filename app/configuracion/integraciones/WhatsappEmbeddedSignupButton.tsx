@@ -9,9 +9,6 @@ type EmbeddedConfig = {
   appId?: string | null;
   configurationId?: string | null;
   apiVersion?: string;
-  sessionInfoVersion?: string;
-  flowVersion?: string;
-  featureType?: string;
   missing?: string[];
   message?: string;
   error?: string;
@@ -25,6 +22,7 @@ type SignupSession = {
 
 type FacebookLoginResponse = {
   authResponse?: { code?: string };
+  status?: string;
 };
 
 type FacebookSdk = {
@@ -33,6 +31,7 @@ type FacebookSdk = {
     cookie: boolean;
     xfbml: boolean;
     version: string;
+    autoLogAppEvents?: boolean;
   }): void;
   login(
     callback: (response: FacebookLoginResponse) => void,
@@ -48,24 +47,37 @@ type FacebookWindow = Window & {
 let facebookSdkPromise: Promise<FacebookSdk> | null = null;
 
 function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk> {
+  const target = window as FacebookWindow;
+
+  if (target.FB) {
+    target.FB.init({
+      appId,
+      cookie: true,
+      xfbml: true,
+      autoLogAppEvents: true,
+      version: apiVersion,
+    });
+    return Promise.resolve(target.FB);
+  }
+
   if (facebookSdkPromise) return facebookSdkPromise;
 
   facebookSdkPromise = new Promise((resolve, reject) => {
-    const target = window as FacebookWindow;
     let settled = false;
 
     const finish = () => {
       if (settled) return;
-      if (!target.FB) {
-        settled = true;
-        facebookSdkPromise = null;
-        reject(new Error('Meta no cargó su componente de conexión.'));
-        return;
-      }
+      if (!target.FB) return;
 
       settled = true;
       window.clearTimeout(timeout);
-      target.FB.init({ appId, cookie: true, xfbml: false, version: apiVersion });
+      target.FB.init({
+        appId,
+        cookie: true,
+        xfbml: true,
+        autoLogAppEvents: true,
+        version: apiVersion,
+      });
       resolve(target.FB);
     };
 
@@ -74,17 +86,10 @@ function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk
       settled = true;
       window.clearTimeout(timeout);
       facebookSdkPromise = null;
-      reject(new Error('No se pudo cargar la conexión de Meta.'));
+      reject(new Error('No se pudo cargar el SDK oficial de Meta.'));
     };
 
-    const timeout = window.setTimeout(() => {
-      fail();
-    }, 15000);
-
-    if (target.FB) {
-      finish();
-      return;
-    }
+    const timeout = window.setTimeout(fail, 15000);
 
     const previousAsyncInit = target.fbAsyncInit;
     target.fbAsyncInit = () => {
@@ -93,8 +98,11 @@ function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk
     };
 
     const existing = document.getElementById('facebook-jssdk') as HTMLScriptElement | null;
-
     if (existing) {
+      if (target.FB) {
+        finish();
+        return;
+      }
       existing.addEventListener('load', finish, { once: true });
       existing.addEventListener('error', fail, { once: true });
       return;
@@ -118,9 +126,19 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function isMetaOrigin(origin: string): boolean {
+  try {
+    const hostname = new URL(origin).hostname.toLowerCase();
+    return hostname === 'facebook.com' || hostname.endsWith('.facebook.com');
+  } catch {
+    return false;
+  }
+}
+
 export function WhatsappEmbeddedSignupButton() {
   const [config, setConfig] = useState<EmbeddedConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sdkReady, setSdkReady] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -153,13 +171,35 @@ export function WhatsappEmbeddedSignupButton() {
   }, []);
 
   useEffect(() => {
-    if (!config?.ready || !config.appId || !config.apiVersion) return;
+    let active = true;
 
-    // Precarga el SDK antes del clic para que Meta pueda abrir su ventana
-    // dentro del gesto del usuario y no quede bloqueada por el navegador.
-    void loadFacebookSdk(config.appId, config.apiVersion).catch(() => {
-      // El botón volverá a intentarlo y mostrará el error si persiste.
-    });
+    if (!config?.ready || !config.appId || !config.apiVersion) {
+      setSdkReady(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setMessage('Preparando conexión segura con Meta…');
+    void loadFacebookSdk(config.appId, config.apiVersion)
+      .then(() => {
+        if (!active) return;
+        setSdkReady(true);
+        setMessage('');
+      })
+      .catch((error) => {
+        if (!active) return;
+        setSdkReady(false);
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : 'No se pudo preparar la conexión con Meta.',
+        );
+      });
+
+    return () => {
+      active = false;
+    };
   }, [config?.ready, config?.appId, config?.apiVersion]);
 
   async function completeSignup(code: string, session: SignupSession) {
@@ -173,6 +213,7 @@ export function WhatsappEmbeddedSignupButton() {
         businessId: session.businessId || '',
       }),
     });
+
     const data = (await response.json()) as {
       ok?: boolean;
       message?: string;
@@ -187,7 +228,7 @@ export function WhatsappEmbeddedSignupButton() {
     window.setTimeout(() => window.location.reload(), 1000);
   }
 
-  async function connect() {
+  function connect() {
     if (
       !config?.ready ||
       !config.appId ||
@@ -198,111 +239,110 @@ export function WhatsappEmbeddedSignupButton() {
       return;
     }
 
-    setMessage('');
+    const sdk = (window as FacebookWindow).FB;
+    if (!sdk || !sdkReady) {
+      setMessage('Meta todavía está cargando. Espera unos segundos y vuelve a intentar.');
+      return;
+    }
+
+    setMessage('Abriendo Meta…');
     setConnecting(true);
 
-    try {
-      const sdk = await loadFacebookSdk(config.appId, config.apiVersion);
+    void new Promise<void>((resolve, reject) => {
+      let authCode = '';
+      let session: SignupSession | null = null;
+      let completing = false;
+      let settled = false;
 
-      await new Promise<void>((resolve, reject) => {
-        let authCode = '';
-        let session: SignupSession | null = null;
-        let completing = false;
-        let settled = false;
+      const cleanup = () => {
+        window.removeEventListener('message', listener);
+        window.clearTimeout(timeout);
+      };
 
-        const cleanup = () => {
-          window.removeEventListener('message', listener);
-          window.clearTimeout(timeout);
-        };
+      const fail = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
 
-        const fail = (error: Error) => {
-          if (settled) return;
+      const maybeComplete = async () => {
+        if (!authCode || !session?.wabaId || completing || settled) return;
+        completing = true;
+
+        try {
+          await completeSignup(authCode, session);
           settled = true;
           cleanup();
-          reject(error);
-        };
+          resolve();
+        } catch (error) {
+          fail(
+            error instanceof Error
+              ? error
+              : new Error('No se pudo terminar la conexión de WhatsApp.'),
+          );
+        }
+      };
 
-        const maybeComplete = async () => {
-          if (!authCode || !session?.wabaId || completing || settled) return;
-          completing = true;
+      const listener = (event: MessageEvent) => {
+        if (!isMetaOrigin(event.origin)) return;
+        if (typeof event.data !== 'string' || !event.data.trim().startsWith('{')) {
+          return;
+        }
 
-          try {
-            await completeSignup(authCode, session);
-            settled = true;
-            cleanup();
-            resolve();
-          } catch (error) {
+        try {
+          const payload = JSON.parse(event.data) as {
+            type?: string;
+            event?: string;
+            data?: Record<string, unknown>;
+          };
+
+          if (payload.type !== 'WA_EMBEDDED_SIGNUP') return;
+
+          if (payload.event === 'ERROR') {
             fail(
-              error instanceof Error
-                ? error
-                : new Error('No se pudo terminar la conexión de WhatsApp.'),
+              new Error(
+                text(payload.data?.error_message) ||
+                  'Meta reportó un error durante la conexión.',
+              ),
             );
+            return;
           }
-        };
 
-        const listener = (event: MessageEvent) => {
           if (
-            event.origin !== 'https://www.facebook.com' &&
-            event.origin !== 'https://web.facebook.com'
+            payload.event === 'FINISH' ||
+            payload.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'
           ) {
-            return;
-          }
-
-          if (typeof event.data !== 'string' || !event.data.trim().startsWith('{')) {
-            return;
-          }
-
-          try {
-            const payload = JSON.parse(event.data) as {
-              type?: string;
-              event?: string;
-              data?: Record<string, unknown>;
-            };
-
-            if (payload.type !== 'WA_EMBEDDED_SIGNUP') return;
-
-            if (payload.event === 'ERROR') {
-              fail(
-                new Error(
-                  text(payload.data?.error_message) ||
-                    'Meta reportó un error durante la conexión.',
-                ),
-              );
+            const wabaId = text(payload.data?.waba_id);
+            if (!wabaId) {
+              fail(new Error('Meta terminó el proceso sin devolver la cuenta de WhatsApp.'));
               return;
             }
 
-            if (
-              payload.event === 'FINISH' ||
-              payload.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'
-            ) {
-              const wabaId = text(payload.data?.waba_id);
-
-              if (!wabaId) {
-                fail(new Error('Meta terminó el proceso sin devolver la cuenta de WhatsApp.'));
-                return;
-              }
-
-              session = {
-                wabaId,
-                phoneNumberId: text(payload.data?.phone_number_id) || undefined,
-                businessId:
-                  text(payload.data?.business_id) ||
-                  text(payload.data?.businessId) ||
-                  undefined,
-              };
-              void maybeComplete();
-            }
-          } catch {
-            // Meta también envía mensajes internos que no son JSON de sesión.
+            session = {
+              wabaId,
+              phoneNumberId: text(payload.data?.phone_number_id) || undefined,
+              businessId:
+                text(payload.data?.business_id) ||
+                text(payload.data?.businessId) ||
+                undefined,
+            };
+            void maybeComplete();
           }
-        };
+        } catch {
+          // Meta también envía mensajes internos que no son JSON de sesión.
+        }
+      };
 
-        const timeout = window.setTimeout(() => {
-          fail(new Error('Meta no terminó la conexión dentro del tiempo esperado.'));
-        }, 10 * 60 * 1000);
+      const timeout = window.setTimeout(() => {
+        fail(new Error('Meta no terminó la conexión dentro del tiempo esperado.'));
+      }, 10 * 60 * 1000);
 
-        window.addEventListener('message', listener);
+      window.addEventListener('message', listener);
 
+      try {
+        // Configuración actual de Embedded Signup (v4): el config_id define
+        // el flujo y extras no debe forzar v2/v3 ni el modo de coexistencia.
         sdk.login(
           (response) => {
             authCode = text(response.authResponse?.code);
@@ -316,27 +356,32 @@ export function WhatsappEmbeddedSignupButton() {
           },
           {
             config_id: config.configurationId,
+            auth_type: 'rerequest',
             response_type: 'code',
             override_default_response_type: true,
             extras: {
               setup: {},
-              featureType:
-                config.featureType || 'whatsapp_business_app_onboarding',
-              sessionInfoVersion: config.sessionInfoVersion || '3',
-              version: config.flowVersion || 'v3',
             },
           },
         );
+      } catch (error) {
+        fail(
+          error instanceof Error
+            ? error
+            : new Error('Meta no pudo abrir la ventana de conexión.'),
+        );
+      }
+    })
+      .catch((error) => {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : 'No se pudo abrir la conexión oficial de Meta.',
+        );
+      })
+      .finally(() => {
+        setConnecting(false);
       });
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'No se pudo abrir la conexión oficial de Meta.',
-      );
-    } finally {
-      setConnecting(false);
-    }
   }
 
   return (
@@ -349,18 +394,22 @@ export function WhatsappEmbeddedSignupButton() {
       <button
         type="button"
         className={styles.connectButton}
-        onClick={() => void connect()}
-        disabled={loading || connecting || !config?.ready}
+        onClick={connect}
+        disabled={loading || connecting || !config?.ready || !sdkReady}
       >
         {loading
           ? 'Revisando configuración…'
-          : connecting
-            ? 'Conectando con Meta…'
-            : 'Conectar WhatsApp con Meta'}
+          : !sdkReady && config?.ready
+            ? 'Preparando Meta…'
+            : connecting
+              ? 'Conectando con Meta…'
+              : 'Conectar WhatsApp con Meta'}
       </button>
       <small>
         {config?.ready
-          ? 'Meta abrirá una ventana segura para seleccionar la cuenta y el número.'
+          ? sdkReady
+            ? 'Meta abrirá una ventana segura para seleccionar la cuenta y el número.'
+            : 'Preparando el SDK oficial de Meta…'
           : config?.message || 'Embedded Signup todavía no está configurado.'}
       </small>
       {message ? <p>{message}</p> : null}
