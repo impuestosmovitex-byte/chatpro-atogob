@@ -45,28 +45,60 @@ type FacebookWindow = Window & {
   fbAsyncInit?: () => void;
 };
 
+let facebookSdkPromise: Promise<FacebookSdk> | null = null;
+
 function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk> {
-  return new Promise((resolve, reject) => {
+  if (facebookSdkPromise) return facebookSdkPromise;
+
+  facebookSdkPromise = new Promise((resolve, reject) => {
     const target = window as FacebookWindow;
+    let settled = false;
+
     const finish = () => {
+      if (settled) return;
       if (!target.FB) {
+        settled = true;
+        facebookSdkPromise = null;
         reject(new Error('Meta no cargó su componente de conexión.'));
         return;
       }
 
+      settled = true;
+      window.clearTimeout(timeout);
       target.FB.init({ appId, cookie: true, xfbml: false, version: apiVersion });
       resolve(target.FB);
     };
+
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      facebookSdkPromise = null;
+      reject(new Error('No se pudo cargar la conexión de Meta.'));
+    };
+
+    const timeout = window.setTimeout(() => {
+      fail();
+    }, 15000);
 
     if (target.FB) {
       finish();
       return;
     }
 
-    target.fbAsyncInit = finish;
-    const existing = document.getElementById('facebook-jssdk');
+    const previousAsyncInit = target.fbAsyncInit;
+    target.fbAsyncInit = () => {
+      previousAsyncInit?.();
+      finish();
+    };
 
-    if (existing) return;
+    const existing = document.getElementById('facebook-jssdk') as HTMLScriptElement | null;
+
+    if (existing) {
+      existing.addEventListener('load', finish, { once: true });
+      existing.addEventListener('error', fail, { once: true });
+      return;
+    }
 
     const script = document.createElement('script');
     script.id = 'facebook-jssdk';
@@ -74,9 +106,12 @@ function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk
     script.defer = true;
     script.crossOrigin = 'anonymous';
     script.src = 'https://connect.facebook.net/es_LA/sdk.js';
-    script.onerror = () => reject(new Error('No se pudo cargar la conexión de Meta.'));
+    script.addEventListener('load', finish, { once: true });
+    script.addEventListener('error', fail, { once: true });
     document.body.appendChild(script);
   });
+
+  return facebookSdkPromise;
 }
 
 function text(value: unknown): string {
@@ -116,6 +151,16 @@ export function WhatsappEmbeddedSignupButton() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!config?.ready || !config.appId || !config.apiVersion) return;
+
+    // Precarga el SDK antes del clic para que Meta pueda abrir su ventana
+    // dentro del gesto del usuario y no quede bloqueada por el navegador.
+    void loadFacebookSdk(config.appId, config.apiVersion).catch(() => {
+      // El botón volverá a intentarlo y mostrará el error si persiste.
+    });
+  }, [config?.ready, config?.appId, config?.apiVersion]);
 
   async function completeSignup(code: string, session: SignupSession) {
     const response = await fetch('/api/integrations/whatsapp/embedded/complete', {
