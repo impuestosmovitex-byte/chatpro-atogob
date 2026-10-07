@@ -270,7 +270,7 @@ export class AccessController {
   ) {
     this.assertInternalKey(providedKey);
 
-    const company = await this.getCompany(companySlug);
+    let company = await this.getCompany(companySlug);
     const identifier = this.normalizeIdentifier(body.identifier);
     const password = this.requiredText(body.password, 'Escribe la contraseña.');
 
@@ -298,7 +298,7 @@ export class AccessController {
       );
     }
 
-    const { data: membershipData, error: membershipError } =
+    let { data: membershipData, error: membershipError } =
       await this.supabaseService
         .getClient()
         .from('company_memberships')
@@ -313,7 +313,42 @@ export class AccessController {
       );
     }
 
-    const membership = membershipData as MembershipRow | null;
+    let membership = membershipData as MembershipRow | null;
+
+    // Compatibilidad SaaS: el login público actual no envía empresa.
+    // Si el usuario no pertenece a la empresa por defecto pero sí tiene una
+    // única empresa activa, resolvemos automáticamente esa empresa.
+    if (!membership?.active) {
+      const { data: activeMemberships, error: activeMembershipsError } =
+        await this.supabaseService
+          .getClient()
+          .from('company_memberships')
+          .select('company_id, user_id, role_id, active')
+          .eq('user_id', profile.user_id)
+          .eq('active', true);
+
+      if (activeMembershipsError) {
+        throw new BadRequestException(
+          `No se pudieron validar las empresas del usuario: ${activeMembershipsError.message}`,
+        );
+      }
+
+      if ((activeMemberships ?? []).length === 1) {
+        const onlyMembership = (activeMemberships ?? [])[0] as {
+          company_id: string;
+          user_id: string;
+          role_id: string;
+          active: boolean;
+        };
+
+        company = await this.getCompanyById(onlyMembership.company_id);
+        membership = {
+          user_id: onlyMembership.user_id,
+          role_id: onlyMembership.role_id,
+          active: onlyMembership.active,
+        };
+      }
+    }
 
     if (!membership?.active) {
       throw new UnauthorizedException(
@@ -377,6 +412,28 @@ export class AccessController {
       .from('companies')
       .select('id, name, slug')
       .eq('slug', slug)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        `No se pudo consultar la empresa: ${error.message}`,
+      );
+    }
+
+    if (!data) {
+      throw new BadRequestException('Empresa no encontrada.');
+    }
+
+    return data as CompanyRow;
+  }
+
+  private async getCompanyById(companyId: string): Promise<CompanyRow> {
+    const { data, error } = await this.supabaseService
+      .getClient()
+      .from('companies')
+      .select('id, name, slug')
+      .eq('id', companyId)
       .eq('status', 'active')
       .maybeSingle();
 
