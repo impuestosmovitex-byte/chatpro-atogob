@@ -1,0 +1,21 @@
+.shell > div {
+  min-height: 100vh;
+  display: grid !important;
+  grid-template-columns: 238px minmax(0, 1fr);
+  align-items: start;
+}
+
+.shell > div > main {
+  min-width: 0;
+  margin-left: 0 !important;
+}
+
+@media (max-width: 1040px) {
+  .shell > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell > div > main {
+    padding: 24px 20px 90px !important;
+  }
+}
