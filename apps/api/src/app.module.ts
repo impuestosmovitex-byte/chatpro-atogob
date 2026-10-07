@@ -33,6 +33,7 @@ import { IntegrationsController } from './integrations.controller';
 import { MetaMessengerController } from './meta-messenger.controller';
 import { MetaInstagramController } from './meta-instagram.controller';
 import { MetaInstagramWebhookController } from './meta-instagram-webhook.controller';
+import { MetaInstagramMediaAiService } from './meta-instagram-media-ai.service';
 import { MetaInstagramService } from './meta-instagram.service';
 import { MetaMessengerWebhookController } from './meta-messenger-webhook.controller';
 import { MetaMessengerService } from './meta-messenger.service';
@@ -121,6 +122,7 @@ import { ContactTagsController } from './contact-tags.controller';
     IntegrationCredentialsService,
     MetaMessengerService,
     MetaInstagramService,
+    MetaInstagramMediaAiService,
     MetaSocialMessageService,
     MetaSocialAiService,
     MetaSocialMessagingService,
