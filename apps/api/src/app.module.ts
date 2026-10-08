@@ -76,6 +76,7 @@ import { PushNotificationService } from './push-notification.service';
 import { AiConversationArchiveService } from './ai-conversation-archive.service';
 import { ContactTagsController } from './contact-tags.controller';
 import { PublicLeadsController } from './public-leads.controller';
+import { LeadRegistryController } from './lead-registry.controller';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -99,6 +100,7 @@ import { PublicLeadsController } from './public-leads.controller';
     ClientsController,
     ContactTagsController,
     PublicLeadsController,
+    LeadRegistryController,
     CompanySettingsController,
     CompanyProfileController,
     CompanyProductsController,
