@@ -264,13 +264,12 @@
 
 .leadActions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) 150px;
   gap: 10px;
   margin-bottom: 10px;
 }
 
 .startConversationButton {
-  grid-column: 1 / -1;
   min-height: 48px;
   padding: 0 16px;
   border-radius: 12px;
@@ -279,9 +278,8 @@
   font-weight: 850;
 }
 
-.whatsappLink,
 .callLink {
-  min-height: 42px;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -392,9 +390,5 @@
 
   .leadActions {
     grid-template-columns: 1fr;
-  }
-
-  .startConversationButton {
-    grid-column: auto;
   }
 }
