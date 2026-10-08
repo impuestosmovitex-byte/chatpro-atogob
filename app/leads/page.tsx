@@ -29,6 +29,12 @@ type ClientsResponse = {
   clients?: ClientSummary[];
 };
 
+type StartConversationResponse = {
+  ok: boolean;
+  error?: string;
+  session?: { id: string };
+};
+
 type Lead = {
   phone: string;
   name: string;
@@ -110,6 +116,7 @@ export default function LeadsPage() {
   const [search, setSearch] = useState('');
   const [objective, setObjective] = useState('');
   const [selected, setSelected] = useState<Lead | null>(null);
+  const [startingPhone, setStartingPhone] = useState('');
 
   async function loadLeads() {
     setLoading(true);
@@ -135,6 +142,43 @@ export default function LeadsPage() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function startConversation(lead: Lead) {
+    if (startingPhone) return;
+
+    setStartingPhone(lead.phone);
+    setError('');
+
+    try {
+      const response = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'start-conversation',
+          phone: lead.phone,
+        }),
+      });
+      const data = (await response.json()) as StartConversationResponse;
+
+      if (!response.ok || !data.ok || !data.session?.id) {
+        throw new Error(
+          data.error || 'No se pudo iniciar la conversación con este lead.',
+        );
+      }
+
+      window.location.assign(
+        `/?session=${encodeURIComponent(data.session.id)}`,
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'No se pudo iniciar la conversación con este lead.',
+      );
+    } finally {
+      setStartingPhone('');
     }
   }
 
@@ -311,6 +355,37 @@ export default function LeadsPage() {
                   ×
                 </button>
               </div>
+
+              <div className={styles.leadActions}>
+                <button
+                  type="button"
+                  className={styles.startConversationButton}
+                  onClick={() => void startConversation(selected)}
+                  disabled={Boolean(startingPhone)}
+                >
+                  {startingPhone === selected.phone
+                    ? 'Abriendo conversación…'
+                    : '💬 Iniciar conversación en MW1'}
+                </button>
+                <a
+                  className={styles.whatsappLink}
+                  href={`https://wa.me/${selected.phone.replace(/\D+/g, '')}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Abrir WhatsApp ↗
+                </a>
+                <a
+                  className={styles.callLink}
+                  href={`tel:+${selected.phone.replace(/\D+/g, '')}`}
+                >
+                  Llamar
+                </a>
+              </div>
+
+              <p className={styles.actionNote}>
+                Si el lead aún no te ha escrito por WhatsApp, el primer mensaje desde MW1 debe enviarse con una plantilla aprobada.
+              </p>
 
               <div className={styles.detailGrid}>
                 <div><span>WhatsApp</span><strong>{selected.phone}</strong></div>
