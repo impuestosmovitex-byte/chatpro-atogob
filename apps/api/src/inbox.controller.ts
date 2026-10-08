@@ -94,20 +94,6 @@ export class InboxController {
         offset: Number(offset),
         search,
         advisorUserId: advisor,
-        visibility: {
-          isFullAccess: actor.isFullAccess,
-          userId: actor.userId,
-          canViewOwn: actor.permissions.has('inbox.view_own'),
-          canViewAi: actor.permissions.has('inbox.view_ai'),
-          canViewWaiting: actor.permissions.has('inbox.view_waiting'),
-          canViewTeam: actor.permissions.has('inbox.view_team'),
-          canTakeAi: actor.permissions.has('inbox.take_ai'),
-          canTakeWaiting: actor.permissions.has('inbox.take_waiting'),
-          canTakeAll: actor.permissions.has('inbox.take_all'),
-          canTakeLegacy: actor.permissions.has('inbox.take'),
-          advisorsCanTakeAi: settings.advisorsCanTakeAi,
-          aiTakeAfterMinutes: settings.aiTakeAfterMinutes,
-        },
       },
     );
 
@@ -2832,31 +2818,12 @@ export class InboxController {
     return session.customerPhone === INTERNAL_TEST_PHONE;
   }
   private canView(
-    actor: Actor,
-    session: ConversationSession | InboxSessionSummary,
+    _actor: Actor,
+    _session: ConversationSession | InboxSessionSummary,
   ) {
-    if (actor.isFullAccess) return true;
-    if (
-      actor.permissions.has('inbox.view_own') &&
-      session.assignedToUserId === actor.userId
-    )
-      return true;
-    if (
-      actor.permissions.has('inbox.view_ai') &&
-      session.attentionStatus === 'ai'
-    )
-      return true;
-    if (
-      actor.permissions.has('inbox.view_waiting') &&
-      session.attentionStatus === 'waiting'
-    )
-      return true;
-    if (
-      actor.permissions.has('inbox.view_team') &&
-      session.attentionStatus === 'human'
-    )
-      return true;
-    return false;
+    // actor() ya validó empresa, membresía activa e inbox.view.
+    // La asignación controla quién gestiona/responde, no quién puede ver.
+    return true;
   }
   private assertView(actor: Actor, session: ConversationSession) {
     if (!this.canView(actor, session))
