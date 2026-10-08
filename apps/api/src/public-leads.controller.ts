@@ -34,7 +34,7 @@ type LeadBody = {
 };
 
 const COMPANY_SLUG = 'emprende-con-maogo';
-const EVENT_TAG = 'EFIX-2026';
+const EVENT_TAG = 'EFFIX-2026';
 const ALLOWED_ORIGINS = new Set([
   'https://emprendeconmaogo.com',
   'https://www.emprendeconmaogo.com',
@@ -46,7 +46,7 @@ export class PublicLeadsController {
     private readonly conversationMemoryService: ConversationMemoryService,
   ) {}
 
-  @Options('efix')
+  @Options('effix')
   options(
     @Headers('origin') origin = '',
     @Res() response: Response,
@@ -55,9 +55,9 @@ export class PublicLeadsController {
     return response.sendStatus(204);
   }
 
-  @Post('efix')
+  @Post('effix')
   @HttpCode(200)
-  async captureEfixLead(
+  async captureEffixLead(
     @Headers('origin') origin = '',
     @Res({ passthrough: true }) response: Response,
     @Body() body: LeadBody = {},
@@ -117,7 +117,7 @@ export class PublicLeadsController {
 
     const registeredAt = new Date().toISOString();
     const notes = [
-      'LEAD EFIX 2026',
+      'LEAD EFFIX 2026',
       `Correo: ${email}`,
       `Objetivo: ${objective}`,
       `Pregunta 1: ${question1 || 'Sin respuesta'}`,
@@ -125,7 +125,7 @@ export class PublicLeadsController {
       `Pregunta 3: ${question3 || 'Sin respuesta'}`,
       'Fuente: Feria',
       'Origen: QR Stand',
-      'Evento: EFIX 2026',
+      'Evento: EFFIX 2026',
       'Estado lead: Lead nuevo',
       `Consentimiento contacto: Sí (${registeredAt})`,
     ].join('\n');
@@ -149,7 +149,7 @@ export class PublicLeadsController {
         correo: email,
         objetivo: objective,
         etiquetas: tags,
-        evento: 'EFIX 2026',
+        evento: 'EFFIX 2026',
         estado_lead: 'Lead nuevo',
         contactId: saved.contact.id,
       },
