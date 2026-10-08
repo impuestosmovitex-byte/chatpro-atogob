@@ -1,10 +1,12 @@
 .shell {
   min-height: 100vh;
+  display: grid;
+  grid-template-columns: 238px minmax(0, 1fr);
   background: #f7f8fb;
 }
 
 .workspace {
-  margin-left: 220px;
+  min-width: 0;
   min-height: 100vh;
   padding: 34px 34px 80px;
 }
@@ -305,9 +307,18 @@
   font-weight: 800;
 }
 
+@media (max-width: 1040px) {
+  .shell {
+    display: block;
+  }
+
+  .workspace {
+    padding: 24px 20px 80px;
+  }
+}
+
 @media (max-width: 900px) {
   .workspace {
-    margin-left: 0;
     padding: 22px 16px 100px;
   }
 
