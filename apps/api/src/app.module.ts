@@ -75,6 +75,7 @@ import { PushNotificationController } from './push-notification.controller';
 import { PushNotificationService } from './push-notification.service';
 import { AiConversationArchiveService } from './ai-conversation-archive.service';
 import { ContactTagsController } from './contact-tags.controller';
+import { PublicLeadsController } from './public-leads.controller';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -97,6 +98,7 @@ import { ContactTagsController } from './contact-tags.controller';
     ShopifyCatalogPreviewController,
     ClientsController,
     ContactTagsController,
+    PublicLeadsController,
     CompanySettingsController,
     CompanyProfileController,
     CompanyProductsController,
