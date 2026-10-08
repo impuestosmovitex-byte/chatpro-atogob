@@ -70,6 +70,16 @@ function availableFromHost(host: HTMLElement | null): ChannelOption[] {
   return result;
 }
 
+function sameAvailableChannels(left: ChannelOption[], right: ChannelOption[]) {
+  return (
+    left.length === right.length &&
+    left.every(
+      (item, index) =>
+        item.channel === right[index]?.channel && item.label === right[index]?.label,
+    )
+  );
+}
+
 function inferSessionChannel(session: any): Channel {
   const contextChannel = channelFromValue(session?.context?.channel);
   if (contextChannel) return contextChannel;
@@ -139,7 +149,9 @@ export function UnifiedChannelInbox() {
 
       if (nextHost) {
         const nextAvailable = availableFromHost(nextHost);
-        setAvailable(nextAvailable);
+        setAvailable((current) =>
+          sameAvailableChannels(current, nextAvailable) ? current : nextAvailable,
+        );
 
         const active = nativeChannelButtons(nextHost).find((button) =>
           button.classList.contains("active"),
@@ -248,20 +260,40 @@ export function UnifiedChannelInbox() {
       );
 
       for (const row of rows) {
-        row.querySelectorAll(".mw1-channel-source-badge").forEach((node) => node.remove());
-
-        if (!allModeRef.current) continue;
-
         const preview = row.querySelector<HTMLElement>(".conversation-preview");
         const avatar = row.querySelector<HTMLElement>(".avatar");
-        if (!preview || !avatar) continue;
+        if (!avatar) continue;
+
+        const existing = avatar.querySelector<HTMLElement>(
+          ".mw1-channel-source-badge",
+        );
+
+        if (!allModeRef.current) {
+          existing?.remove();
+          continue;
+        }
+
+        if (!preview) {
+          existing?.remove();
+          continue;
+        }
 
         const channel = readMarker(preview.textContent ?? "");
-        if (!channel) continue;
+        if (!channel) {
+          existing?.remove();
+          continue;
+        }
 
+        if (existing?.dataset.channel === channel) {
+          continue;
+        }
+
+        existing?.remove();
         avatar.style.position = "relative";
+
         const badge = document.createElement("span");
         badge.className = `mw1-channel-source-badge mw1-channel-${channel}`;
+        badge.dataset.channel = channel;
         badge.textContent = CHANNELS[channel].short;
         badge.title = `Conversación de ${CHANNELS[channel].label}`;
         badge.setAttribute("aria-label", `Canal ${CHANNELS[channel].label}`);
