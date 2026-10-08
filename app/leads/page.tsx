@@ -368,18 +368,10 @@ export default function LeadsPage() {
                     : '💬 Iniciar conversación en MW1'}
                 </button>
                 <a
-                  className={styles.whatsappLink}
-                  href={`https://wa.me/${selected.phone.replace(/\D+/g, '')}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Abrir WhatsApp ↗
-                </a>
-                <a
                   className={styles.callLink}
                   href={`tel:+${selected.phone.replace(/\D+/g, '')}`}
                 >
-                  Llamar
+                  📞 Llamar
                 </a>
               </div>
 
