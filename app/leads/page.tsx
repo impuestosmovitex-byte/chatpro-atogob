@@ -39,7 +39,6 @@ type Lead = {
   phone: string;
   name: string;
   email: string;
-  age: string;
   ageRange: string;
   objective: string;
   question1: string;
@@ -82,7 +81,6 @@ function toLead(client: ClientSummary): Lead {
     phone: contact?.phone || client.customerPhone,
     name: contact?.displayName || 'Lead sin nombre',
     email: noteValue(notes, 'Correo'),
-    age: noteValue(notes, 'Edad'),
     ageRange: noteValue(notes, 'Rango de edad'),
     objective: noteValue(notes, 'Objetivo'),
     question1: noteValue(notes, 'Pregunta 1'),
@@ -220,7 +218,6 @@ export default function LeadsPage() {
           lead.name,
           lead.phone,
           lead.email,
-          lead.age,
           lead.ageRange,
           lead.objective,
           ...lead.tags,
@@ -286,7 +283,7 @@ export default function LeadsPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por nombre, WhatsApp, correo, edad o etiqueta"
+            placeholder="Buscar por nombre, WhatsApp, correo, rango de edad o etiqueta"
             aria-label="Buscar leads"
           />
 
@@ -311,7 +308,7 @@ export default function LeadsPage() {
             <option value="">Todas las edades</option>
             {ageRanges.map((item) => (
               <option value={item} key={item}>
-                {item} años
+                {item}
               </option>
             ))}
           </select>
@@ -333,7 +330,7 @@ export default function LeadsPage() {
                 <thead>
                   <tr>
                     <th>Nombre</th>
-                    <th>Edad</th>
+                    <th>Rango de edad</th>
                     <th>WhatsApp</th>
                     <th>Correo</th>
                     <th>Objetivo</th>
@@ -349,10 +346,7 @@ export default function LeadsPage() {
                         <strong>{lead.name}</strong>
                         <small>{lead.event}</small>
                       </td>
-                      <td>
-                        <strong>{lead.age || '—'}</strong>
-                        <small>{lead.ageRange ? `${lead.ageRange} años` : 'Sin edad'}</small>
-                      </td>
+                      <td>{lead.ageRange || '—'}</td>
                       <td>{lead.phone}</td>
                       <td>{lead.email || '—'}</td>
                       <td>{lead.objective || '—'}</td>
@@ -420,8 +414,7 @@ export default function LeadsPage() {
               <div className={styles.detailGrid}>
                 <div><span>WhatsApp</span><strong>{selected.phone}</strong></div>
                 <div><span>Correo</span><strong>{selected.email || '—'}</strong></div>
-                <div><span>Edad</span><strong>{selected.age ? `${selected.age} años` : '—'}</strong></div>
-                <div><span>Rango de edad</span><strong>{selected.ageRange ? `${selected.ageRange} años` : '—'}</strong></div>
+                <div><span>Rango de edad</span><strong>{selected.ageRange || '—'}</strong></div>
                 <div><span>Objetivo</span><strong>{selected.objective || '—'}</strong></div>
                 <div><span>Capacitación actual</span><strong>{selected.training || '—'}</strong></div>
                 <div><span>Pregunta 1</span><strong>{selected.question1 || '—'}</strong></div>
