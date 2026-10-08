@@ -106,6 +106,12 @@ export class PublicLeadsController {
       );
     }
 
+    if (!/^573\d{9}$/.test(phone)) {
+      throw new BadRequestException(
+        'Escribe un WhatsApp colombiano válido de 10 dígitos.',
+      );
+    }
+
     if (!this.validEmail(email)) {
       throw new BadRequestException('Correo no válido.');
     }
