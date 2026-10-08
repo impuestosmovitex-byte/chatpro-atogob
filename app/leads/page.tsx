@@ -39,6 +39,8 @@ type Lead = {
   phone: string;
   name: string;
   email: string;
+  age: string;
+  ageRange: string;
   objective: string;
   question1: string;
   training: string;
@@ -80,6 +82,8 @@ function toLead(client: ClientSummary): Lead {
     phone: contact?.phone || client.customerPhone,
     name: contact?.displayName || 'Lead sin nombre',
     email: noteValue(notes, 'Correo'),
+    age: noteValue(notes, 'Edad'),
+    ageRange: noteValue(notes, 'Rango de edad'),
     objective: noteValue(notes, 'Objetivo'),
     question1: noteValue(notes, 'Pregunta 1'),
     training: noteValue(notes, 'Capacitación actual'),
@@ -115,6 +119,7 @@ export default function LeadsPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [objective, setObjective] = useState('');
+  const [ageRange, setAgeRange] = useState('');
   const [selected, setSelected] = useState<Lead | null>(null);
   const [startingPhone, setStartingPhone] = useState('');
 
@@ -197,21 +202,36 @@ export default function LeadsPage() {
     ).sort((a, b) => a.localeCompare(b, 'es'));
   }, [leads]);
 
+  const ageRanges = useMemo(() => {
+    return Array.from(
+      new Set(leads.map((lead) => lead.ageRange).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [leads]);
+
   const visibleLeads = useMemo(() => {
     const term = search.trim().toLowerCase();
 
     return leads.filter((lead) => {
       const matchesObjective = !objective || lead.objective === objective;
+      const matchesAgeRange = !ageRange || lead.ageRange === ageRange;
       const matchesSearch =
         !term ||
-        [lead.name, lead.phone, lead.email, lead.objective, ...lead.tags]
+        [
+          lead.name,
+          lead.phone,
+          lead.email,
+          lead.age,
+          lead.ageRange,
+          lead.objective,
+          ...lead.tags,
+        ]
           .join(' ')
           .toLowerCase()
           .includes(term);
 
-      return matchesObjective && matchesSearch;
+      return matchesObjective && matchesAgeRange && matchesSearch;
     });
-  }, [leads, objective, search]);
+  }, [leads, objective, ageRange, search]);
 
   const wantsTraining = leads.filter((lead) =>
     lead.tags.includes('QUIERE-CAPACITARSE'),
@@ -266,7 +286,7 @@ export default function LeadsPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por nombre, WhatsApp, correo o etiqueta"
+            placeholder="Buscar por nombre, WhatsApp, correo, edad o etiqueta"
             aria-label="Buscar leads"
           />
 
@@ -282,6 +302,19 @@ export default function LeadsPage() {
               </option>
             ))}
           </select>
+
+          <select
+            value={ageRange}
+            onChange={(event) => setAgeRange(event.target.value)}
+            aria-label="Filtrar por rango de edad"
+          >
+            <option value="">Todas las edades</option>
+            {ageRanges.map((item) => (
+              <option value={item} key={item}>
+                {item} años
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className={styles.tableCard}>
@@ -289,7 +322,7 @@ export default function LeadsPage() {
             <div className={styles.empty}>Cargando leads…</div>
           ) : visibleLeads.length === 0 ? (
             <div className={styles.empty}>
-              <strong>Aún no hay leads EFFIX.</strong>
+              <strong>Aún no hay leads EFFIX con estos filtros.</strong>
               <span>
                 Cuando alguien termine el formulario del QR aparecerá aquí automáticamente.
               </span>
@@ -300,6 +333,7 @@ export default function LeadsPage() {
                 <thead>
                   <tr>
                     <th>Nombre</th>
+                    <th>Edad</th>
                     <th>WhatsApp</th>
                     <th>Correo</th>
                     <th>Objetivo</th>
@@ -314,6 +348,10 @@ export default function LeadsPage() {
                       <td>
                         <strong>{lead.name}</strong>
                         <small>{lead.event}</small>
+                      </td>
+                      <td>
+                        <strong>{lead.age || '—'}</strong>
+                        <small>{lead.ageRange ? `${lead.ageRange} años` : 'Sin edad'}</small>
                       </td>
                       <td>{lead.phone}</td>
                       <td>{lead.email || '—'}</td>
@@ -382,6 +420,8 @@ export default function LeadsPage() {
               <div className={styles.detailGrid}>
                 <div><span>WhatsApp</span><strong>{selected.phone}</strong></div>
                 <div><span>Correo</span><strong>{selected.email || '—'}</strong></div>
+                <div><span>Edad</span><strong>{selected.age ? `${selected.age} años` : '—'}</strong></div>
+                <div><span>Rango de edad</span><strong>{selected.ageRange ? `${selected.ageRange} años` : '—'}</strong></div>
                 <div><span>Objetivo</span><strong>{selected.objective || '—'}</strong></div>
                 <div><span>Capacitación actual</span><strong>{selected.training || '—'}</strong></div>
                 <div><span>Pregunta 1</span><strong>{selected.question1 || '—'}</strong></div>
