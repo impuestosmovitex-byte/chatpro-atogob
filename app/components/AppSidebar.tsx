@@ -56,6 +56,12 @@ const baseNavigation: Array<{
     capability: 'clients',
   },
   {
+    href: '/leads',
+    label: 'Leads',
+    icon: '◎',
+    capability: 'clients',
+  },
+  {
     href: '/ia',
     label: 'IA',
     icon: '✦',
@@ -79,7 +85,6 @@ function isActive(pathname: string, href: string, exact?: boolean): boolean {
   if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
-
 
 export function AppSidebar({
   companyName = 'Empresa',
@@ -189,6 +194,8 @@ export function AppSidebar({
     health: fullAccess,
   };
 
+  const isServiceTenant = activeSlug === 'emprende-con-maogo';
+
   const navigation: Array<{
     href: string;
     label: string;
@@ -196,7 +203,9 @@ export function AppSidebar({
     exact?: boolean;
   }> = [
     ...baseNavigation.filter(
-      (item) => effectiveCapabilities[item.capability],
+      (item) =>
+        effectiveCapabilities[item.capability] &&
+        (item.href !== '/leads' || isServiceTenant),
     ),
     ...(effectiveCapabilities.configuration
       ? [
@@ -253,77 +262,64 @@ export function AppSidebar({
   return (
     <>
       <aside className={styles.sidebar}>
-      <div className={styles.brand}>
-        <span className={styles.brandWord}>MW<span>1</span></span>
-      </div>
+        <div className={styles.brand}>
+          <span className={styles.brandWord}>MW<span>1</span></span>
+        </div>
 
-      <nav className={styles.nav} aria-label="Navegación principal">
-        {navigation.map((item) => {
-          const active = isActive(pathname, item.href, item.exact);
+        <nav className={styles.nav} aria-label="Navegación principal">
+          {navigation.map((item) => {
+            const active = isActive(pathname, item.href, item.exact);
 
-          if ('disabled' in item && item.disabled) {
             return (
-              <span
-                className={`${styles.item} ${styles.disabled}`}
-                key={item.label}
-                aria-disabled="true"
+              <Link
+                className={`${styles.item} ${active ? styles.active : ''}`}
+                href={item.href}
+                key={item.href}
               >
                 <span>{item.icon}</span>
                 {item.label}
-              </span>
+              </Link>
             );
-          }
+          })}
+        </nav>
 
-          return (
-            <Link
-              className={`${styles.item} ${active ? styles.active : ''}`}
-              href={item.href}
-              key={item.href}
+        <div className={styles.footer}>
+          <span className={styles.footerAvatar}>
+            {activeCompany.trim().slice(0, 1).toUpperCase() || 'E'}
+          </span>
+          <span className={styles.companyBlock}>
+            <strong>{activeCompany}</strong>
+            <small>{canSwitch ? 'Empresa activa' : 'Empresa'}</small>
+          </span>
+        </div>
+
+        {canSwitch ? (
+          <label className={styles.companyPicker}>
+            <span>Cambiar empresa</span>
+            <select
+              value={activeSlug}
+              onChange={(event) => void changeCompany(event.target.value)}
+              disabled={changingCompany}
             >
-              <span>{item.icon}</span>
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+              {companies.map((company) => (
+                <option key={company.id} value={company.slug}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
-      <div className={styles.footer}>
-        <span className={styles.footerAvatar}>
-          {activeCompany.trim().slice(0, 1).toUpperCase() || 'E'}
-        </span>
-        <span className={styles.companyBlock}>
-          <strong>{activeCompany}</strong>
-          <small>{canSwitch ? 'Empresa activa' : 'Empresa'}</small>
-        </span>
-      </div>
+        {message ? <p className={styles.companyError}>{message}</p> : null}
 
-      {canSwitch ? (
-        <label className={styles.companyPicker}>
-          <span>Cambiar empresa</span>
-          <select
-            value={activeSlug}
-            onChange={(event) => void changeCompany(event.target.value)}
-            disabled={changingCompany}
-          >
-            {companies.map((company) => (
-              <option key={company.id} value={company.slug}>
-                {company.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-
-      {message ? <p className={styles.companyError}>{message}</p> : null}
-
-      <button
-        type="button"
-        onClick={() => void logout()}
-        disabled={loggingOut}
-        className={styles.logout}
-      >
-        {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
-      </button>
+        <button
+          type="button"
+          onClick={() => void logout()}
+          disabled={loggingOut}
+          className={styles.logout}
+        >
+          {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
+        </button>
       </aside>
 
       <nav
@@ -357,19 +353,31 @@ export function AppSidebar({
           </Link>
         ) : null}
 
-        {effectiveCapabilities.statistics ? (
-      <Link
-        className={`${styles.mobileNavItem} ${
-          isActive(pathname, '/estadisticas') ? styles.mobileNavActive : ''
-        }`}
-        href="/estadisticas"
-      >
-        <span aria-hidden="true">▥</span>
-        <small>Estadísticas</small>
-      </Link>
-    ) : null}
+        {effectiveCapabilities.clients && isServiceTenant ? (
+          <Link
+            className={`${styles.mobileNavItem} ${
+              isActive(pathname, '/leads') ? styles.mobileNavActive : ''
+            }`}
+            href="/leads"
+          >
+            <span aria-hidden="true">◌</span>
+            <small>Leads</small>
+          </Link>
+        ) : null}
 
-    <button
+        {effectiveCapabilities.statistics ? (
+          <Link
+            className={`${styles.mobileNavItem} ${
+              isActive(pathname, '/estadisticas') ? styles.mobileNavActive : ''
+            }`}
+            href="/estadisticas"
+          >
+            <span aria-hidden="true">▥</span>
+            <small>Estadísticas</small>
+          </Link>
+        ) : null}
+
+        <button
           type="button"
           className={styles.mobileNavItem}
           onClick={() => void logout()}
