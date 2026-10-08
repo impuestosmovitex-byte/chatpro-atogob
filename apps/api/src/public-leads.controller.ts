@@ -20,8 +20,8 @@ type LeadBody = {
   phone?: unknown;
   correo?: unknown;
   email?: unknown;
-  edad?: unknown;
-  age?: unknown;
+  rango_edad?: unknown;
+  ageRange?: unknown;
   objetivo?: unknown;
   objective?: unknown;
   respuesta_pregunta_1?: unknown;
@@ -40,6 +40,12 @@ const EVENT_TAG = 'EFFIX-2026';
 const ALLOWED_ORIGINS = new Set([
   'https://emprendeconmaogo.com',
   'https://www.emprendeconmaogo.com',
+]);
+const AGE_RANGES = new Set([
+  '18 a 24 años',
+  '25 a 30 años',
+  '31 a 38 años',
+  '39 años o más',
 ]);
 
 @Controller('public/leads')
@@ -67,7 +73,6 @@ export class PublicLeadsController {
     this.assertOrigin(origin);
     this.applyCors(origin, response);
 
-    // Honeypot opcional para bots.
     if (this.clean(body.website, 200)) {
       return { ok: true };
     }
@@ -77,7 +82,7 @@ export class PublicLeadsController {
       body.telefono_whatsapp ?? body.whatsapp ?? body.phone,
     );
     const email = this.clean(body.correo ?? body.email, 180).toLowerCase();
-    const age = this.readAge(body.edad ?? body.age);
+    const ageRange = this.clean(body.rango_edad ?? body.ageRange, 80);
     const objective = this.clean(body.objetivo ?? body.objective, 260);
     const question1 = this.clean(
       body.respuesta_pregunta_1 ?? body.question1,
@@ -95,20 +100,18 @@ export class PublicLeadsController {
       body.consentimiento_contacto ?? body.consent,
     );
 
-    if (!fullName || !phone || !email || !objective) {
+    if (!fullName || !phone || !email || !ageRange || !objective) {
       throw new BadRequestException(
-        'Completa nombre, WhatsApp, correo y objetivo.',
-      );
-    }
-
-    if (age === null) {
-      throw new BadRequestException(
-        'Ingresa una edad válida entre 18 y 99 años.',
+        'Completa nombre, WhatsApp, correo, rango de edad y objetivo.',
       );
     }
 
     if (!this.validEmail(email)) {
       throw new BadRequestException('Correo no válido.');
+    }
+
+    if (!AGE_RANGES.has(ageRange)) {
+      throw new BadRequestException('Selecciona un rango de edad válido.');
     }
 
     if (!consent) {
@@ -117,21 +120,20 @@ export class PublicLeadsController {
       );
     }
 
-    const ageSegment = this.ageSegment(age);
     const tags = [EVENT_TAG];
     const objectiveTag = this.objectiveTag(objective);
     const trainingTag = this.trainingTag(training);
+    const ageTag = this.ageRangeTag(ageRange);
 
     if (objectiveTag) tags.push(objectiveTag);
     if (trainingTag) tags.push(trainingTag);
-    tags.push(ageSegment.tag);
+    if (ageTag) tags.push(ageTag);
 
     const registeredAt = new Date().toISOString();
     const notes = [
       'LEAD EFFIX 2026',
       `Correo: ${email}`,
-      `Edad: ${age}`,
-      `Rango de edad: ${ageSegment.label}`,
+      `Rango de edad: ${ageRange}`,
       `Objetivo: ${objective}`,
       `Pregunta 1: ${question1 || 'Sin respuesta'}`,
       `Capacitación actual: ${training || 'Sin respuesta'}`,
@@ -160,8 +162,7 @@ export class PublicLeadsController {
         nombre: fullName,
         telefono_whatsapp: phone,
         correo: email,
-        edad: age,
-        rango_edad: ageSegment.label,
+        rango_edad: ageRange,
         objetivo: objective,
         etiquetas: tags,
         evento: 'EFFIX 2026',
@@ -204,33 +205,6 @@ export class PublicLeadsController {
     return ['1', 'true', 'si', 'sí', 'yes', 'on'].includes(
       value.trim().toLowerCase(),
     );
-  }
-
-  private readAge(value: unknown): number | null {
-    const numeric =
-      typeof value === 'number'
-        ? value
-        : Number(this.clean(value, 3));
-
-    if (!Number.isInteger(numeric) || numeric < 18 || numeric > 99) {
-      return null;
-    }
-
-    return numeric;
-  }
-
-  private ageSegment(age: number): { label: string; tag: string } {
-    if (age <= 24) {
-      return { label: '18 a 24', tag: 'EDAD-18-24' };
-    }
-    if (age <= 30) {
-      return { label: '25 a 30', tag: 'EDAD-25-30' };
-    }
-    if (age <= 38) {
-      return { label: '31 a 38', tag: 'EDAD-31-38' };
-    }
-
-    return { label: '39 o más', tag: 'EDAD-39-MAS' };
   }
 
   private normalizePhone(value: unknown): string {
@@ -290,6 +264,14 @@ export class PublicLeadsController {
       return 'NO-SE-CAPACITA';
     }
 
+    return null;
+  }
+
+  private ageRangeTag(value: string): string | null {
+    if (value === '18 a 24 años') return 'EDAD-18-24';
+    if (value === '25 a 30 años') return 'EDAD-25-30';
+    if (value === '31 a 38 años') return 'EDAD-31-38';
+    if (value === '39 años o más') return 'EDAD-39-MAS';
     return null;
   }
 }
