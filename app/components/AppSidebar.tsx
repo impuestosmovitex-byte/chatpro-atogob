@@ -97,6 +97,7 @@ export function AppSidebar({
   const [activeSlug, setActiveSlug] = useState('');
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [changingCompany, setChangingCompany] = useState(false);
+  const [mobileCompanyOpen, setMobileCompanyOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -183,6 +184,10 @@ export function AppSidebar({
     };
   }, [companyName]);
 
+  useEffect(() => {
+    setMobileCompanyOpen(false);
+  }, [pathname, hideMobileNavigation]);
+
   const fullAccess = roleKey === 'owner' || roleKey === 'admin';
   const effectiveCapabilities: Capabilities = capabilities ?? {
     inbox: true,
@@ -219,7 +224,10 @@ export function AppSidebar({
   ];
 
   async function changeCompany(companySlug: string) {
-    if (!companySlug || companySlug === activeSlug || changingCompany) return;
+    if (!companySlug || companySlug === activeSlug || changingCompany) {
+      if (companySlug === activeSlug) setMobileCompanyOpen(false);
+      return;
+    }
 
     setMessage('');
     setChangingCompany(true);
@@ -377,6 +385,22 @@ export function AppSidebar({
           </Link>
         ) : null}
 
+        {canSwitch ? (
+          <button
+            type="button"
+            className={`${styles.mobileNavItem} ${
+              mobileCompanyOpen ? styles.mobileNavActive : ''
+            }`}
+            onClick={() => setMobileCompanyOpen((current) => !current)}
+            disabled={changingCompany}
+            aria-expanded={mobileCompanyOpen}
+            aria-haspopup="dialog"
+          >
+            <span aria-hidden="true">⇄</span>
+            <small>Empresa</small>
+          </button>
+        ) : null}
+
         <button
           type="button"
           className={styles.mobileNavItem}
@@ -387,6 +411,65 @@ export function AppSidebar({
           <small>{loggingOut ? 'Saliendo…' : 'Salir'}</small>
         </button>
       </nav>
+
+      {mobileCompanyOpen && canSwitch && !hideMobileNavigation ? (
+        <>
+          <button
+            type="button"
+            className={styles.mobileCompanyBackdrop}
+            aria-label="Cerrar selector de empresa"
+            onClick={() => setMobileCompanyOpen(false)}
+          />
+          <section
+            className={styles.mobileCompanySheet}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cambiar empresa"
+          >
+            <header className={styles.mobileCompanyHeader}>
+              <div>
+                <small>Empresa activa</small>
+                <strong>{activeCompany}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileCompanyOpen(false)}
+                aria-label="Cerrar"
+              >
+                ×
+              </button>
+            </header>
+
+            <div className={styles.mobileCompanyList}>
+              {companies.map((company) => {
+                const active = company.slug === activeSlug;
+                return (
+                  <button
+                    key={company.id}
+                    type="button"
+                    className={active ? styles.mobileCompanyActive : ''}
+                    onClick={() => void changeCompany(company.slug)}
+                    disabled={changingCompany}
+                  >
+                    <span className={styles.mobileCompanyAvatar}>
+                      {company.name.trim().slice(0, 1).toUpperCase() || 'E'}
+                    </span>
+                    <span className={styles.mobileCompanyCopy}>
+                      <strong>{company.name}</strong>
+                      <small>{active ? 'Empresa activa' : company.roleName}</small>
+                    </span>
+                    <span className={styles.mobileCompanyCheck} aria-hidden="true">
+                      {active ? '✓' : '›'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {message ? <p className={styles.mobileCompanyError}>{message}</p> : null}
+          </section>
+        </>
+      ) : null}
     </>
   );
 }
