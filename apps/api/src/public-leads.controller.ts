@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ConversationMemoryService } from './conversation-memory.service';
+import { SupabaseService } from './supabase.service';
+import { WhatsappMessagingService } from './whatsapp-messaging.service';
 
 type LeadBody = {
   nombre?: unknown;
@@ -37,6 +39,9 @@ type LeadBody = {
 
 const COMPANY_SLUG = 'emprende-con-maogo';
 const EVENT_TAG = 'EFFIX-2026';
+const WELCOME_SENT_TAG = 'EFFIX-WELCOME-SENT';
+const WELCOME_TEMPLATE = 'registro_effix_2026';
+const WELCOME_TEMPLATE_LANGUAGE = 'es_CO';
 const ALLOWED_ORIGINS = new Set([
   'https://emprendeconmaogo.com',
   'https://www.emprendeconmaogo.com',
@@ -52,6 +57,8 @@ const AGE_RANGES = new Set([
 export class PublicLeadsController {
   constructor(
     private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly supabaseService: SupabaseService,
+    private readonly whatsappMessagingService: WhatsappMessagingService,
   ) {}
 
   @Options('effix')
@@ -126,7 +133,31 @@ export class PublicLeadsController {
       );
     }
 
-    const tags = [EVENT_TAG];
+    const profile =
+      await this.conversationMemoryService.getCompanyProfile(COMPANY_SLUG);
+
+    const { data: existingContact, error: existingContactError } =
+      await this.supabaseService
+        .getClient()
+        .from('contacts')
+        .select('tags')
+        .eq('company_id', profile.id)
+        .eq('phone', phone)
+        .maybeSingle();
+
+    if (existingContactError) {
+      throw new BadRequestException(
+        `No se pudo validar el lead existente: ${existingContactError.message}`,
+      );
+    }
+
+    const existingTags = Array.isArray(existingContact?.tags)
+      ? existingContact.tags.filter(
+          (item: unknown): item is string => typeof item === 'string',
+        )
+      : [];
+
+    const tags = [...existingTags, EVENT_TAG];
     const objectiveTag = this.objectiveTag(objective);
     const trainingTag = this.trainingTag(training);
     const ageTag = this.ageRangeTag(ageRange);
@@ -134,6 +165,9 @@ export class PublicLeadsController {
     if (objectiveTag) tags.push(objectiveTag);
     if (trainingTag) tags.push(trainingTag);
     if (ageTag) tags.push(ageTag);
+
+    const uniqueTags = Array.from(new Set(tags));
+    const welcomeAlreadySent = uniqueTags.includes(WELCOME_SENT_TAG);
 
     const registeredAt = new Date().toISOString();
     const notes = [
@@ -156,10 +190,80 @@ export class PublicLeadsController {
       {
         phone,
         displayName: fullName,
-        tags,
+        tags: uniqueTags,
         notes,
       },
     );
+
+    let whatsappStatus = welcomeAlreadySent
+      ? 'already_sent'
+      : 'pending';
+    let whatsappError: string | null = null;
+
+    if (!welcomeAlreadySent) {
+      try {
+        const firstName =
+          fullName.split(/\s+/).filter(Boolean)[0] || fullName;
+
+        const sent = await this.whatsappMessagingService.sendTemplate(
+          saved.company.id,
+          phone,
+          WELCOME_TEMPLATE,
+          WELCOME_TEMPLATE_LANGUAGE,
+          [firstName],
+        );
+
+        const savedMessage = [
+          `Hola ${firstName} 👋`,
+          '',
+          'Gracias por registrarte con Emprende con Maogo en EFFIX 2026.',
+          '',
+          'Tu participación quedó registrada correctamente 🎓',
+          '',
+          'Durante la feria tienes acceso a beneficios especiales de formación.',
+          '',
+          'Guarda nuestro número y disfruta el evento 🚀',
+          '',
+          'Si quieres conocer las opciones que pueden ayudarte según tus objetivos, toca el botón de abajo.',
+        ].join('\n');
+
+        await this.conversationMemoryService.saveMessage({
+          companyId: saved.company.id,
+          sessionId: saved.session.id,
+          customerPhone: phone,
+          message: savedMessage,
+          sender: 'assistant',
+          authorType: 'ai',
+          providerMessageId: sent.messageId,
+          messageSource: 'automation',
+          sourceName: 'Registro EFFIX 2026',
+        });
+
+        await this.conversationMemoryService.touchSession(saved.session.id);
+
+        await this.conversationMemoryService.updateContact(
+          COMPANY_SLUG,
+          phone,
+          {
+            tags: Array.from(
+              new Set([...uniqueTags, WELCOME_SENT_TAG]),
+            ),
+          },
+        );
+
+        whatsappStatus = 'sent';
+      } catch (error) {
+        whatsappError =
+          error instanceof Error
+            ? error.message
+            : 'No se pudo enviar la plantilla de WhatsApp.';
+
+        console.error(
+          `[EFFIX] Lead ${phone} guardado, pero falló el WhatsApp automático:`,
+          error,
+        );
+      }
+    }
 
     return {
       ok: true,
@@ -170,10 +274,14 @@ export class PublicLeadsController {
         correo: email,
         rango_edad: ageRange,
         objetivo: objective,
-        etiquetas: tags,
+        etiquetas: uniqueTags,
         evento: 'EFFIX 2026',
         estado_lead: 'Lead nuevo',
         contactId: saved.contact.id,
+      },
+      whatsapp: {
+        status: whatsappStatus,
+        error: whatsappError,
       },
     };
   }
