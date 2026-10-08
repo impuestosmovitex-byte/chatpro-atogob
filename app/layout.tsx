@@ -4,6 +4,7 @@ import './globals.css';
 import { PushNotificationManager } from './components/PushNotificationManager';
 import { MessageLinkifier } from './components/MessageLinkifier';
 import { ComposerEnhancer } from './components/ComposerEnhancer';
+import { UnifiedChannelInbox } from './components/UnifiedChannelInbox';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -78,6 +79,7 @@ export default function RootLayout({
         {children}
         <MessageLinkifier />
         <ComposerEnhancer />
+        <UnifiedChannelInbox />
         <PushNotificationManager />
       </body>
     </html>
