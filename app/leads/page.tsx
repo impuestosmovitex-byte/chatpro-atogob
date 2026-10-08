@@ -126,7 +126,7 @@ export default function LeadsPage() {
     setError('');
 
     try {
-      const response = await fetch('/api/clients?limit=200', {
+      const response = await fetch('/api/leads?limit=5000', {
         cache: 'no-store',
       });
       const data = (await response.json()) as ClientsResponse;
