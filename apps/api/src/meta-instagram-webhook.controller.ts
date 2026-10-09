@@ -18,6 +18,7 @@ import {
 import {
   MetaInstagramMediaAiService,
 } from './meta-instagram-media-ai.service';
+import { MetaAdsLeadService } from './meta-ads-lead.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -28,6 +29,8 @@ export class MetaInstagramWebhookController {
       MetaSocialMessageService,
     private readonly mediaAiService:
       MetaInstagramMediaAiService,
+    private readonly metaAdsLeadService:
+      MetaAdsLeadService,
   ) {}
 
   @Get()
@@ -80,6 +83,9 @@ export class MetaInstagramWebhookController {
         this.normalizeInstagramAttachments(body);
 
       await this.socialMessageService
+        .processInstagramWebhook(normalizedBody);
+
+      await this.metaAdsLeadService
         .processInstagramWebhook(normalizedBody);
 
       await this.mediaAiService
