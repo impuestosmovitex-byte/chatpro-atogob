@@ -195,6 +195,35 @@ export class PublicLeadsController {
       },
     );
 
+    await this.conversationMemoryService.updateSession(
+      saved.session.id,
+      {
+        stage: 'sales',
+        context: {
+          ...saved.session.context,
+          conversation_category: 'sales',
+          lead_source: 'effix_qr',
+          lead_event: 'EFFIX 2026',
+          lead_context_updated_at: registeredAt,
+          lead_context: {
+            full_name: fullName,
+            first_name: fullName.split(/\s+/).filter(Boolean)[0] || fullName,
+            email,
+            age_range: ageRange,
+            objective,
+            question_1: question1 || null,
+            training_status: training || null,
+            question_3: question3 || null,
+            source: 'Feria',
+            origin: 'QR Stand',
+            event: 'EFFIX 2026',
+            lead_status: 'Lead nuevo',
+            consent_contact: true,
+          },
+        },
+      },
+    );
+
     let whatsappStatus = welcomeAlreadySent
       ? 'already_sent'
       : 'pending';
