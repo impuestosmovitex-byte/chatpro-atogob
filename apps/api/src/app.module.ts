@@ -1,4 +1,9 @@
-import { Module } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AccessAuthService } from './access-auth.service';
 import { AccessController } from './access.controller';
@@ -42,6 +47,9 @@ import { MetaSocialBatchMessageService } from './meta-social-batch-message.servi
 import { MetaSocialAiService } from './meta-social-ai.service';
 import { MetaSocialMessagingService } from './meta-social-messaging.service';
 import { MetaSocialInboxService } from './meta-social-inbox.service';
+import { MetaAdsLeadService } from './meta-ads-lead.service';
+import { MetaAdsLeadsController } from './meta-ads-leads.controller';
+import { MetaAdsWhatsappMiddleware } from './meta-ads-whatsapp.middleware';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
@@ -80,7 +88,8 @@ import { LeadRegistryController } from './lead-registry.controller';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
-  controllers: [InternalDiagnosticsController,
+  controllers: [
+    InternalDiagnosticsController,
     ShopifyOrderDetailDiagnosticsController,
     AppController,
     AutomationsController,
@@ -92,6 +101,7 @@ import { LeadRegistryController } from './lead-registry.controller';
     MetaInstagramController,
     MetaInstagramWebhookController,
     MetaMessengerWebhookController,
+    MetaAdsLeadsController,
     ShopifyOauthController,
     ShopifyIntegrationTestController,
     ShopifyWebhookController,
@@ -128,6 +138,8 @@ import { LeadRegistryController } from './lead-registry.controller';
     MetaMessengerService,
     MetaInstagramService,
     MetaInstagramMediaAiService,
+    MetaAdsLeadService,
+    MetaAdsWhatsappMiddleware,
     {
       provide: MetaSocialMessageService,
       useClass: MetaSocialBatchMessageService,
@@ -163,4 +175,13 @@ import { LeadRegistryController } from './lead-registry.controller';
     AiConversationArchiveService,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(MetaAdsWhatsappMiddleware)
+      .forRoutes({
+        path: 'webhook/whatsapp',
+        method: RequestMethod.POST,
+      });
+  }
+}
