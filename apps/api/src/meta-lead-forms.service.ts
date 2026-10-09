@@ -89,13 +89,13 @@ export class MetaLeadFormsService {
     const integration =
       await this.companyIntegrationService.findActiveIntegrationByExternalId(
         'meta',
-        'messenger',
+        'ads',
         input.pageId,
       );
 
     if (!integration) {
       console.warn(
-        `[ChatPro][MetaLeadForms] Página no conectada pageId=${input.pageId}`,
+        `[ChatPro][MetaLeadForms] Página sin integración Meta Lead Ads pageId=${input.pageId}`,
       );
       return;
     }
@@ -105,7 +105,9 @@ export class MetaLeadFormsService {
     }
 
     if (!integration.credentialsEncrypted) {
-      throw new Error('La Página no tiene credenciales activas para recuperar leads.');
+      throw new Error(
+        'La Página no tiene credenciales activas de Meta Lead Ads para recuperar leads.',
+      );
     }
 
     const credentials = this.credentialsService.decrypt(
@@ -177,15 +179,18 @@ export class MetaLeadFormsService {
       );
     }
 
-    const existingLeadId = this.noteValue(
-      typeof existingContact?.notes === 'string' ? existingContact.notes : '',
-      'ID lead Meta',
-    );
+    const existingNotes =
+      typeof existingContact?.notes === 'string'
+        ? existingContact.notes
+        : '';
+    const existingLeadId = this.noteValue(existingNotes, 'ID lead Meta');
 
     if (existingLeadId === input.leadgenId) {
       return;
     }
 
+    const existingStatus =
+      this.noteValue(existingNotes, 'Estado lead') || 'Lead nuevo';
     const existingTags = Array.isArray(existingContact?.tags)
       ? existingContact.tags.filter(
           (item: unknown): item is string => typeof item === 'string',
@@ -193,20 +198,20 @@ export class MetaLeadFormsService {
       : [];
 
     const tags = Array.from(
-      new Set([...existingTags, META_ADS_TAG, META_FORM_TAG, LEAD_NEW_TAG]),
+      new Set([
+        ...existingTags,
+        META_ADS_TAG,
+        META_FORM_TAG,
+        ...(existingStatus === 'Lead nuevo' ? [LEAD_NEW_TAG] : []),
+      ]),
     ).slice(0, 20);
 
     const createdAt =
       this.text(lead.created_time) || new Date().toISOString();
-    const formId =
-      this.digits(lead.form_id) || input.formId;
-    const adId =
-      this.digits(lead.ad_id) || input.adId;
+    const formId = this.digits(lead.form_id) || input.formId;
+    const adId = this.digits(lead.ad_id) || input.adId;
 
-    let notes =
-      typeof existingContact?.notes === 'string'
-        ? existingContact.notes.trim()
-        : '';
+    let notes = existingNotes.trim();
 
     if (!notes.toUpperCase().includes('LEAD META ADS')) {
       notes = `${notes}${notes ? '\n' : ''}LEAD META ADS`;
@@ -215,7 +220,7 @@ export class MetaLeadFormsService {
     notes = this.setNoteValue(notes, 'Fuente', 'Meta Ads');
     notes = this.setNoteValue(notes, 'Origen', 'Formulario instantáneo Meta');
     notes = this.setNoteValue(notes, 'Canal', 'WhatsApp');
-    notes = this.setNoteValue(notes, 'Estado lead', 'Lead nuevo');
+    notes = this.setNoteValue(notes, 'Estado lead', existingStatus);
     notes = this.setNoteValue(notes, 'ID lead Meta', input.leadgenId);
     notes = this.setNoteValue(notes, 'Fecha lead Meta', createdAt);
 
@@ -232,7 +237,11 @@ export class MetaLeadFormsService {
     }
 
     if (input.adGroupId) {
-      notes = this.setNoteValue(notes, 'ID conjunto/anuncio Meta', input.adGroupId);
+      notes = this.setNoteValue(
+        notes,
+        'ID conjunto/anuncio Meta',
+        input.adGroupId,
+      );
     }
 
     for (const [fieldName, fieldValue] of Object.entries(fields.flattened)) {
@@ -311,7 +320,7 @@ export class MetaLeadFormsService {
           source: 'Meta Ads',
           origin: 'Formulario instantáneo Meta',
           channel: 'whatsapp',
-          lead_status: 'Lead nuevo',
+          lead_status: existingStatus,
           meta_lead_id: input.leadgenId,
           meta_form_id: formId || null,
           ad_id: adId || null,
@@ -382,9 +391,7 @@ export class MetaLeadFormsService {
       if (!name) continue;
 
       const fieldValues = Array.isArray(field.values)
-        ? field.values
-            .map((item) => this.text(item))
-            .filter(Boolean)
+        ? field.values.map((item) => this.text(item)).filter(Boolean)
         : [];
 
       values[name] = fieldValues;
