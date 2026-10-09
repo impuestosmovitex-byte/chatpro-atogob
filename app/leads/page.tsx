@@ -51,8 +51,12 @@ type StatusResponse = {
   status?: string;
 };
 
+type LeadSourceKind = 'effix' | 'meta_ads' | 'both';
+
 type Lead = {
+  contactId: string;
   phone: string;
+  channel: Contact['primaryChannel'];
   name: string;
   email: string;
   ageRange: string;
@@ -61,40 +65,73 @@ type Lead = {
   training: string;
   question3: string;
   source: string;
+  sourceKind: LeadSourceKind;
   origin: string;
   event: string;
   status: string;
   consent: string;
   tags: string[];
   registeredAt: string | null;
+  conversationSessionId: string;
+  adId: string;
+  adTitle: string;
+  postId: string;
 };
 
 function noteValue(notes: string, label: string): string {
   const line = notes
     .split(/\r?\n/)
-    .find((item) => item.toLowerCase().startsWith(`${label.toLowerCase()}:`));
+    .find((item) =>
+      item.trim().toLowerCase().startsWith(`${label.toLowerCase()}:`),
+    );
 
   if (!line) return '';
   return line.slice(line.indexOf(':') + 1).trim();
 }
 
-function isEffixLead(client: ClientSummary): boolean {
+function normalizedTags(contact: Contact | null): string[] {
+  return (contact?.tags ?? []).map((tag) => tag.trim().toUpperCase());
+}
+
+function isTrackedLead(client: ClientSummary): boolean {
   const contact = client.contact;
   if (!contact) return false;
 
-  const hasTag = (contact.tags ?? []).some(
-    (tag) => tag.trim().toUpperCase() === 'EFFIX-2026',
-  );
+  const tags = normalizedTags(contact);
+  const notes = contact.notes.toUpperCase();
 
-  return hasTag || contact.notes.toUpperCase().includes('LEAD EFFIX 2026');
+  return (
+    tags.includes('EFFIX-2026') ||
+    tags.includes('META-ADS') ||
+    notes.includes('LEAD EFFIX 2026') ||
+    notes.includes('LEAD META ADS')
+  );
+}
+
+function sourceKind(contact: Contact | null): LeadSourceKind {
+  const tags = normalizedTags(contact);
+  const notes = contact?.notes.toUpperCase() ?? '';
+  const effix =
+    tags.includes('EFFIX-2026') || notes.includes('LEAD EFFIX 2026');
+  const meta =
+    tags.includes('META-ADS') || notes.includes('LEAD META ADS');
+
+  if (effix && meta) return 'both';
+  return meta ? 'meta_ads' : 'effix';
 }
 
 function toLead(client: ClientSummary): Lead {
   const contact = client.contact;
   const notes = contact?.notes ?? '';
+  const kind = sourceKind(contact);
+  const channel = contact?.primaryChannel ?? 'whatsapp';
+  const meta = kind === 'meta_ads' || kind === 'both';
+  const effix = kind === 'effix' || kind === 'both';
 
   return {
+    contactId: contact?.id ?? '',
     phone: contact?.phone || client.customerPhone,
+    channel,
     name: contact?.displayName || 'Lead sin nombre',
     email: noteValue(notes, 'Correo'),
     ageRange: noteValue(notes, 'Rango de edad'),
@@ -102,13 +139,32 @@ function toLead(client: ClientSummary): Lead {
     question1: noteValue(notes, 'Pregunta 1'),
     training: noteValue(notes, 'Capacitación actual'),
     question3: noteValue(notes, 'Pregunta 3'),
-    source: noteValue(notes, 'Fuente') || 'Feria',
-    origin: noteValue(notes, 'Origen') || 'QR Stand',
-    event: noteValue(notes, 'Evento') || 'EFFIX 2026',
-    status: noteValue(notes, 'Estado lead') || 'Lead nuevo',
+    source:
+      kind === 'both'
+        ? 'EFFIX + Meta Ads'
+        : meta
+          ? 'Meta Ads'
+          : 'EFFIX 2026',
+    sourceKind: kind,
+    origin:
+      noteValue(notes, 'Origen') ||
+      (meta
+        ? channel === 'instagram'
+          ? 'Instagram Ads'
+          : channel === 'messenger'
+            ? 'Messenger Ads'
+            : 'WhatsApp Ads'
+        : 'QR Stand'),
+    event: noteValue(notes, 'Evento') || (effix ? 'EFFIX 2026' : 'Meta Ads'),
+    status:
+      noteValue(notes, 'Estado lead') || (meta ? 'Respondió' : 'Lead nuevo'),
     consent: noteValue(notes, 'Consentimiento contacto'),
     tags: contact?.tags ?? [],
     registeredAt: contact?.firstSeenAt || client.lastMessageAt || null,
+    conversationSessionId: noteValue(notes, 'Sesión social'),
+    adId: noteValue(notes, 'ID anuncio'),
+    adTitle: noteValue(notes, 'Título anuncio'),
+    postId: noteValue(notes, 'ID publicación'),
   };
 }
 
@@ -126,12 +182,36 @@ function formatDate(value: string | null): string {
   }).format(date);
 }
 
+function channelLabel(channel: Contact['primaryChannel']): string {
+  if (channel === 'instagram') return 'Instagram';
+  if (channel === 'messenger') return 'Messenger';
+  if (channel === 'manual') return 'Contacto';
+  return 'WhatsApp';
+}
+
+function displayContact(lead: Lead): string {
+  if (lead.channel === 'whatsapp') return lead.phone;
+  return channelLabel(lead.channel);
+}
+
+function matchesSource(lead: Lead, filter: string): boolean {
+  if (!filter) return true;
+  if (filter === 'effix') {
+    return lead.sourceKind === 'effix' || lead.sourceKind === 'both';
+  }
+  if (filter === 'meta_ads') {
+    return lead.sourceKind === 'meta_ads' || lead.sourceKind === 'both';
+  }
+  return true;
+}
+
 export default function LeadsPage() {
   const [clients, setClients] = useState<ClientSummary[]>([]);
   const [companyName, setCompanyName] = useState('Emprende con Maogo');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [objective, setObjective] = useState('');
   const [ageRange, setAgeRange] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -173,6 +253,19 @@ export default function LeadsPage() {
     setError('');
 
     try {
+      if (lead.conversationSessionId) {
+        window.location.assign(
+          `/?session=${encodeURIComponent(lead.conversationSessionId)}`,
+        );
+        return;
+      }
+
+      if (lead.channel !== 'whatsapp') {
+        throw new Error(
+          'La conversación social todavía no tiene una sesión disponible.',
+        );
+      }
+
       const response = await fetch('/api/clients', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -214,8 +307,13 @@ export default function LeadsPage() {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          contactId: lead.contactId,
           phone: lead.phone,
           status,
+          source:
+            lead.sourceKind === 'meta_ads' || lead.sourceKind === 'both'
+              ? 'meta_ads'
+              : 'effix',
         }),
       });
       const data = (await response.json()) as StatusResponse;
@@ -245,7 +343,7 @@ export default function LeadsPage() {
   }, []);
 
   const leads = useMemo(
-    () => clients.filter(isEffixLead).map(toLead),
+    () => clients.filter(isTrackedLead).map(toLead),
     [clients],
   );
 
@@ -265,6 +363,7 @@ export default function LeadsPage() {
     const term = search.trim().toLowerCase();
 
     return leads.filter((lead) => {
+      const matchesLeadSource = matchesSource(lead, sourceFilter);
       const matchesObjective = !objective || lead.objective === objective;
       const matchesAgeRange = !ageRange || lead.ageRange === ageRange;
       const matchesStatus = !statusFilter || lead.status === statusFilter;
@@ -277,6 +376,10 @@ export default function LeadsPage() {
           lead.ageRange,
           lead.objective,
           lead.status,
+          lead.source,
+          lead.origin,
+          lead.adId,
+          lead.adTitle,
           ...lead.tags,
         ]
           .join(' ')
@@ -284,20 +387,21 @@ export default function LeadsPage() {
           .includes(term);
 
       return (
+        matchesLeadSource &&
         matchesObjective &&
         matchesAgeRange &&
         matchesStatus &&
         matchesSearch
       );
     });
-  }, [leads, objective, ageRange, statusFilter, search]);
+  }, [leads, sourceFilter, objective, ageRange, statusFilter, search]);
 
-  const wantsTraining = leads.filter((lead) =>
-    lead.tags.includes('QUIERE-CAPACITARSE'),
+  const effixLeads = leads.filter(
+    (lead) => lead.sourceKind === 'effix' || lead.sourceKind === 'both',
   ).length;
 
-  const entrepreneurs = leads.filter((lead) =>
-    lead.tags.includes('QUIERE-EMPRENDER'),
+  const metaAdsLeads = leads.filter(
+    (lead) => lead.sourceKind === 'meta_ads' || lead.sourceKind === 'both',
   ).length;
 
   return (
@@ -310,7 +414,7 @@ export default function LeadsPage() {
             <p className={styles.eyebrow}>CRM DE SERVICIOS</p>
             <h1>Leads</h1>
             <p className={styles.subheading}>
-              Registros capturados desde el QR de Feria EFFIX 2026.
+              Leads de EFFIX y conversaciones originadas en campañas de Meta Ads.
             </p>
           </div>
 
@@ -332,12 +436,12 @@ export default function LeadsPage() {
             <strong>{leads.length}</strong>
           </article>
           <article>
-            <span>Quieren emprender</span>
-            <strong>{entrepreneurs}</strong>
+            <span>EFFIX</span>
+            <strong>{effixLeads}</strong>
           </article>
           <article>
-            <span>Quieren capacitarse</span>
-            <strong>{wantsTraining}</strong>
+            <span>Meta Ads</span>
+            <strong>{metaAdsLeads}</strong>
           </article>
         </div>
 
@@ -345,9 +449,19 @@ export default function LeadsPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por nombre, WhatsApp, correo, rango de edad, estado o etiqueta"
+            placeholder="Buscar por nombre, contacto, anuncio, objetivo, estado o etiqueta"
             aria-label="Buscar leads"
           />
+
+          <select
+            value={sourceFilter}
+            onChange={(event) => setSourceFilter(event.target.value)}
+            aria-label="Filtrar por origen"
+          >
+            <option value="">Todos los orígenes</option>
+            <option value="effix">EFFIX 2026</option>
+            <option value="meta_ads">Meta Ads</option>
+          </select>
 
           <select
             value={objective}
@@ -394,9 +508,9 @@ export default function LeadsPage() {
             <div className={styles.empty}>Cargando leads…</div>
           ) : visibleLeads.length === 0 ? (
             <div className={styles.empty}>
-              <strong>Aún no hay leads EFFIX con estos filtros.</strong>
+              <strong>Aún no hay leads con estos filtros.</strong>
               <span>
-                Cuando alguien termine el formulario del QR aparecerá aquí automáticamente.
+                Los registros del QR y los clientes que escriban desde anuncios de Meta aparecerán aquí automáticamente.
               </span>
             </div>
           ) : (
@@ -405,10 +519,10 @@ export default function LeadsPage() {
                 <thead>
                   <tr>
                     <th>Nombre</th>
-                    <th>Rango de edad</th>
-                    <th>WhatsApp</th>
-                    <th>Correo</th>
-                    <th>Objetivo</th>
+                    <th>Origen</th>
+                    <th>Canal</th>
+                    <th>Contacto</th>
+                    <th>Objetivo / anuncio</th>
                     <th>Estado</th>
                     <th>Fecha</th>
                     <th></th>
@@ -416,15 +530,15 @@ export default function LeadsPage() {
                 </thead>
                 <tbody>
                   {visibleLeads.map((lead) => (
-                    <tr key={`${lead.phone}-${lead.registeredAt ?? ''}`}>
+                    <tr key={`${lead.contactId || lead.phone}-${lead.registeredAt ?? ''}`}>
                       <td>
                         <strong>{lead.name}</strong>
                         <small>{lead.event}</small>
                       </td>
-                      <td>{lead.ageRange || '—'}</td>
-                      <td>{lead.phone}</td>
-                      <td>{lead.email || '—'}</td>
-                      <td>{lead.objective || '—'}</td>
+                      <td>{lead.source}</td>
+                      <td>{channelLabel(lead.channel)}</td>
+                      <td>{displayContact(lead)}</td>
+                      <td>{lead.objective || lead.adTitle || lead.adId || '—'}</td>
                       <td>
                         <span className={styles.status}>{lead.status}</span>
                       </td>
@@ -472,18 +586,25 @@ export default function LeadsPage() {
                 >
                   {startingPhone === selected.phone
                     ? 'Abriendo conversación…'
-                    : '💬 Iniciar conversación en MW1'}
+                    : '💬 Abrir conversación en MW1'}
                 </button>
-                <a
-                  className={styles.callLink}
-                  href={`tel:+${selected.phone.replace(/\D+/g, '')}`}
-                >
-                  📞 Llamar
-                </a>
+
+                {selected.channel === 'whatsapp' &&
+                /^\d{8,15}$/.test(selected.phone.replace(/\D+/g, '')) ? (
+                  <a
+                    className={styles.callLink}
+                    href={`tel:+${selected.phone.replace(/\D+/g, '')}`}
+                  >
+                    📞 Llamar
+                  </a>
+                ) : null}
               </div>
 
               <p className={styles.actionNote}>
-                Si el lead aún no te ha escrito por WhatsApp, el primer mensaje desde MW1 debe enviarse con una plantilla aprobada.
+                {selected.sourceKind === 'meta_ads' ||
+                selected.sourceKind === 'both'
+                  ? 'Este lead llegó desde una campaña de Meta. Si ya existe conversación, MW1 abre el mismo chat de Instagram, Messenger o WhatsApp.'
+                  : 'Si el lead aún no te ha escrito por WhatsApp, el primer mensaje desde MW1 debe enviarse con una plantilla aprobada.'}
               </p>
 
               <div className={styles.detailGrid}>
@@ -503,17 +624,35 @@ export default function LeadsPage() {
                     ))}
                   </select>
                 </div>
-                <div><span>WhatsApp</span><strong>{selected.phone}</strong></div>
+                <div><span>Fuente</span><strong>{selected.source}</strong></div>
+                <div><span>Origen</span><strong>{selected.origin}</strong></div>
+                <div><span>Canal</span><strong>{channelLabel(selected.channel)}</strong></div>
+                {selected.channel === 'whatsapp' ? (
+                  <div><span>WhatsApp</span><strong>{selected.phone}</strong></div>
+                ) : null}
                 <div><span>Correo</span><strong>{selected.email || '—'}</strong></div>
                 <div><span>Rango de edad</span><strong>{selected.ageRange || '—'}</strong></div>
                 <div><span>Objetivo</span><strong>{selected.objective || '—'}</strong></div>
                 <div><span>Capacitación actual</span><strong>{selected.training || '—'}</strong></div>
-                <div><span>Pregunta 1</span><strong>{selected.question1 || '—'}</strong></div>
-                <div><span>Pregunta 3</span><strong>{selected.question3 || '—'}</strong></div>
-                <div><span>Fuente</span><strong>{selected.source}</strong></div>
-                <div><span>Origen</span><strong>{selected.origin}</strong></div>
+                {selected.question1 ? (
+                  <div><span>Pregunta 1</span><strong>{selected.question1}</strong></div>
+                ) : null}
+                {selected.question3 ? (
+                  <div><span>Pregunta 3</span><strong>{selected.question3}</strong></div>
+                ) : null}
+                {selected.adId ? (
+                  <div><span>ID anuncio Meta</span><strong>{selected.adId}</strong></div>
+                ) : null}
+                {selected.adTitle ? (
+                  <div><span>Anuncio</span><strong>{selected.adTitle}</strong></div>
+                ) : null}
+                {selected.postId ? (
+                  <div><span>ID publicación</span><strong>{selected.postId}</strong></div>
+                ) : null}
                 <div><span>Evento</span><strong>{selected.event}</strong></div>
-                <div><span>Consentimiento</span><strong>{selected.consent || 'Sí'}</strong></div>
+                {selected.consent ? (
+                  <div><span>Consentimiento</span><strong>{selected.consent}</strong></div>
+                ) : null}
                 <div><span>Fecha de registro</span><strong>{formatDate(selected.registeredAt)}</strong></div>
               </div>
 
