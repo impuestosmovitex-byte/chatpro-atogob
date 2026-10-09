@@ -6,6 +6,25 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+type LeadClient = {
+  customerPhone?: string;
+  lastMessageAt?: string;
+  contact?: {
+    id?: string;
+    tags?: string[];
+    [key: string]: unknown;
+  } | null;
+  [key: string]: unknown;
+};
+
+type LeadRegistryResponse = {
+  ok?: boolean;
+  error?: string;
+  company?: { id?: string; slug?: string; name?: string };
+  clients?: LeadClient[];
+  leadStatuses?: string[];
+};
+
 function config() {
   const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
   const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
@@ -55,23 +74,91 @@ export async function GET(request: NextRequest) {
     const { apiBase, inboxKey } = config();
     const requestedLimit = request.nextUrl.searchParams.get('limit')?.trim();
     const limit = requestedLimit || '5000';
-    const target = new URL(`${apiBase}/lead-registry`);
 
-    target.searchParams.set('company', session.companySlug);
-    target.searchParams.set('tag', 'EFFIX-2026');
-    target.searchParams.set('limit', limit);
+    async function fetchTag(tag: string): Promise<LeadRegistryResponse> {
+      const target = new URL(`${apiBase}/lead-registry`);
+      target.searchParams.set('company', session.companySlug);
+      target.searchParams.set('tag', tag);
+      target.searchParams.set('limit', limit);
 
-    const response = await fetch(target, {
-      headers: trustedHeaders(inboxKey, session),
-      cache: 'no-store',
-    });
+      const response = await fetch(target, {
+        headers: trustedHeaders(inboxKey, session),
+        cache: 'no-store',
+      });
 
-    return new NextResponse(await response.text(), {
-      status: response.status,
-      headers: {
-        'content-type':
-          response.headers.get('content-type') ?? 'application/json',
-      },
+      const payload = (await response.json()) as LeadRegistryResponse;
+
+      if (!response.ok || payload.ok !== true) {
+        throw new Error(
+          payload.error || `No se pudieron consultar los leads ${tag}.`,
+        );
+      }
+
+      return payload;
+    }
+
+    const [effix, metaAds] = await Promise.all([
+      fetchTag('EFFIX-2026'),
+      fetchTag('META-ADS'),
+    ]);
+
+    const byContact = new Map<string, LeadClient>();
+
+    for (const client of [...(effix.clients ?? []), ...(metaAds.clients ?? [])]) {
+      const contactId = client.contact?.id?.trim() || '';
+      const phone =
+        typeof client.customerPhone === 'string'
+          ? client.customerPhone.trim()
+          : '';
+      const key = contactId || phone;
+
+      if (!key) continue;
+
+      const current = byContact.get(key);
+
+      if (!current) {
+        byContact.set(key, client);
+        continue;
+      }
+
+      const currentTags = Array.isArray(current.contact?.tags)
+        ? current.contact?.tags ?? []
+        : [];
+      const nextTags = Array.isArray(client.contact?.tags)
+        ? client.contact?.tags ?? []
+        : [];
+
+      byContact.set(key, {
+        ...current,
+        ...client,
+        contact: client.contact
+          ? {
+              ...(current.contact ?? {}),
+              ...client.contact,
+              tags: Array.from(new Set([...currentTags, ...nextTags])),
+            }
+          : current.contact,
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      company: effix.company ?? metaAds.company,
+      clients: Array.from(byContact.values()).sort((left, right) => {
+        const leftTime = Date.parse(
+          typeof left.lastMessageAt === 'string' ? left.lastMessageAt : '',
+        );
+        const rightTime = Date.parse(
+          typeof right.lastMessageAt === 'string' ? right.lastMessageAt : '',
+        );
+
+        return (Number.isFinite(rightTime) ? rightTime : 0) -
+          (Number.isFinite(leftTime) ? leftTime : 0);
+      }),
+      leadStatuses: Array.from(
+        new Set([...(effix.leadStatuses ?? []), ...(metaAds.leadStatuses ?? [])]),
+      ),
+      sources: ['EFFIX 2026', 'Meta Ads'],
     });
   } catch (error) {
     return NextResponse.json(
@@ -100,21 +187,38 @@ export async function PATCH(request: NextRequest) {
   try {
     const { apiBase, inboxKey } = config();
     const body = (await request.json()) as {
+      contactId?: unknown;
       phone?: unknown;
       status?: unknown;
+      source?: unknown;
     };
 
-    const response = await fetch(`${apiBase}/lead-registry/status`, {
+    const source =
+      typeof body.source === 'string' ? body.source.trim().toLowerCase() : '';
+    const isMetaAds = source === 'meta_ads';
+    const target = isMetaAds
+      ? `${apiBase}/meta-ads-leads/status`
+      : `${apiBase}/lead-registry/status`;
+
+    const response = await fetch(target, {
       method: 'PATCH',
       headers: {
         ...trustedHeaders(inboxKey, session),
         'content-type': 'application/json',
       },
-      body: JSON.stringify({
-        company: session.companySlug,
-        phone: body.phone,
-        status: body.status,
-      }),
+      body: JSON.stringify(
+        isMetaAds
+          ? {
+              company: session.companySlug,
+              contactId: body.contactId,
+              status: body.status,
+            }
+          : {
+              company: session.companySlug,
+              phone: body.phone,
+              status: body.status,
+            },
+      ),
       cache: 'no-store',
     });
 
