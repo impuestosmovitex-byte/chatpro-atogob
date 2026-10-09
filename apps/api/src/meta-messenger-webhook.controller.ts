@@ -28,7 +28,9 @@ export class MetaMessengerWebhookController {
     @Res() response: Response,
   ) {
     const expected =
-      process.env.META_MESSENGER_WEBHOOK_VERIFY_TOKEN?.trim() || '';
+      process.env.META_LEAD_ADS_WEBHOOK_VERIFY_TOKEN?.trim() ||
+      process.env.META_MESSENGER_WEBHOOK_VERIFY_TOKEN?.trim() ||
+      '';
 
     if (
       expected &&
