@@ -47,6 +47,7 @@ const ALLOWED_ORIGINS = new Set([
   'https://www.emprendeconmaogo.com',
 ]);
 const AGE_RANGES = new Set([
+  '12 a 17 años',
   '18 a 24 años',
   '25 a 30 años',
   '31 a 38 años',
@@ -418,6 +419,7 @@ export class PublicLeadsController {
   }
 
   private ageRangeTag(value: string): string | null {
+    if (value === '12 a 17 años') return 'EDAD-12-17';
     if (value === '18 a 24 años') return 'EDAD-18-24';
     if (value === '25 a 30 años') return 'EDAD-25-30';
     if (value === '31 a 38 años') return 'EDAD-31-38';
