@@ -33,6 +33,7 @@ export class MetaMessengerService {
         'pages_manage_metadata',
         'pages_read_engagement',
         'pages_messaging',
+        'leads_retrieval',
       ],
       missing,
     };
@@ -353,7 +354,7 @@ export class MetaMessengerService {
 
     url.searchParams.set(
       'subscribed_fields',
-      'messages,messaging_postbacks',
+      'messages,messaging_postbacks,leadgen',
     );
 
     const payload = await this.metaJson(
@@ -364,12 +365,12 @@ export class MetaMessengerService {
           Authorization: `Bearer ${pageAccessToken}`,
         },
       },
-      'Meta no permitió suscribir la Página a Messenger',
+      'Meta no permitió suscribir la Página a Messenger y Lead Ads',
     );
 
     if (payload.success !== true) {
       throw new BadRequestException(
-        'Meta no confirmó la suscripción de Messenger.',
+        'Meta no confirmó la suscripción de Messenger y Lead Ads.',
       );
     }
   }
