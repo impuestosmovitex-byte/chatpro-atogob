@@ -224,6 +224,13 @@ export class PublicLeadsController {
       },
     );
 
+    // Los contactos creados manualmente nacen en waiting. Para los leads EFFIX
+    // queremos que, al responder la plantilla, la IA continúe la conversación.
+    await this.conversationMemoryService.resumeAiConversation(
+      saved.session.id,
+      'system',
+    );
+
     let whatsappStatus = welcomeAlreadySent
       ? 'already_sent'
       : 'pending';
