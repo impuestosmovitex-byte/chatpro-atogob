@@ -50,6 +50,7 @@ import { MetaSocialInboxService } from './meta-social-inbox.service';
 import { MetaAdsLeadService } from './meta-ads-lead.service';
 import { MetaAdsLeadsController } from './meta-ads-leads.controller';
 import { MetaAdsWhatsappMiddleware } from './meta-ads-whatsapp.middleware';
+import { MetaAdsReferralSubscriptionService } from './meta-ads-referral-subscription.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
@@ -140,6 +141,7 @@ import { LeadRegistryController } from './lead-registry.controller';
     MetaInstagramMediaAiService,
     MetaAdsLeadService,
     MetaAdsWhatsappMiddleware,
+    MetaAdsReferralSubscriptionService,
     {
       provide: MetaSocialMessageService,
       useClass: MetaSocialBatchMessageService,
