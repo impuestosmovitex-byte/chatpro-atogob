@@ -8,12 +8,14 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { MetaAdsLeadService } from './meta-ads-lead.service';
 import { MetaSocialMessageService } from './meta-social-message.service';
 
 @Controller('webhook/messenger')
 export class MetaMessengerWebhookController {
   constructor(
     private readonly socialMessageService: MetaSocialMessageService,
+    private readonly metaAdsLeadService: MetaAdsLeadService,
   ) {}
 
   @Get()
@@ -43,6 +45,7 @@ export class MetaMessengerWebhookController {
   async receive(@Body() body: unknown) {
     try {
       await this.socialMessageService.processMessengerWebhook(body);
+      await this.metaAdsLeadService.processMessengerWebhook(body);
     } catch (error) {
       console.error(
         '[ChatPro][Messenger] Error procesando webhook:',
