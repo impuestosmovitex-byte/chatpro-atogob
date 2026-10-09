@@ -42,6 +42,8 @@ import { MetaInstagramMediaAiService } from './meta-instagram-media-ai.service';
 import { MetaInstagramService } from './meta-instagram.service';
 import { MetaMessengerWebhookController } from './meta-messenger-webhook.controller';
 import { MetaMessengerService } from './meta-messenger.service';
+import { MetaLeadAdsController } from './meta-lead-ads.controller';
+import { MetaLeadAdsService } from './meta-lead-ads.service';
 import { MetaSocialMessageService } from './meta-social-message.service';
 import { MetaSocialBatchMessageService } from './meta-social-batch-message.service';
 import { MetaSocialAiService } from './meta-social-ai.service';
@@ -103,6 +105,7 @@ import { LeadRegistryController } from './lead-registry.controller';
     MetaInstagramController,
     MetaInstagramWebhookController,
     MetaMessengerWebhookController,
+    MetaLeadAdsController,
     MetaAdsLeadsController,
     ShopifyOauthController,
     ShopifyIntegrationTestController,
@@ -140,6 +143,7 @@ import { LeadRegistryController } from './lead-registry.controller';
     MetaMessengerService,
     MetaInstagramService,
     MetaInstagramMediaAiService,
+    MetaLeadAdsService,
     MetaAdsLeadService,
     MetaAdsWhatsappMiddleware,
     MetaAdsReferralSubscriptionService,
