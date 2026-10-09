@@ -70,6 +70,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const activeSession = session;
+
   try {
     const { apiBase, inboxKey } = config();
     const requestedLimit = request.nextUrl.searchParams.get('limit')?.trim();
@@ -77,12 +79,12 @@ export async function GET(request: NextRequest) {
 
     async function fetchTag(tag: string): Promise<LeadRegistryResponse> {
       const target = new URL(`${apiBase}/lead-registry`);
-      target.searchParams.set('company', session.companySlug);
+      target.searchParams.set('company', activeSession.companySlug);
       target.searchParams.set('tag', tag);
       target.searchParams.set('limit', limit);
 
       const response = await fetch(target, {
-        headers: trustedHeaders(inboxKey, session),
+        headers: trustedHeaders(inboxKey, activeSession),
         cache: 'no-store',
       });
 
