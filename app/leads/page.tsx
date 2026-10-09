@@ -4,6 +4,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { AppSidebar } from '../components/AppSidebar';
 import styles from './page.module.css';
 
+const LEAD_STATUSES = [
+  'Lead nuevo',
+  'Respondió',
+  'Calificado',
+  'Interesado',
+  'Asesor/Cita',
+  'Venta',
+  'No interesado',
+] as const;
+
 type Contact = {
   id: string;
   companyId: string;
@@ -33,6 +43,12 @@ type StartConversationResponse = {
   ok: boolean;
   error?: string;
   session?: { id: string };
+};
+
+type StatusResponse = {
+  ok?: boolean;
+  error?: string;
+  status?: string;
 };
 
 type Lead = {
@@ -118,8 +134,10 @@ export default function LeadsPage() {
   const [search, setSearch] = useState('');
   const [objective, setObjective] = useState('');
   const [ageRange, setAgeRange] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<Lead | null>(null);
   const [startingPhone, setStartingPhone] = useState('');
+  const [savingStatus, setSavingStatus] = useState(false);
 
   async function loadLeads() {
     setLoading(true);
@@ -185,6 +203,43 @@ export default function LeadsPage() {
     }
   }
 
+  async function updateLeadStatus(lead: Lead, status: string) {
+    if (savingStatus || status === lead.status) return;
+
+    setSavingStatus(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/leads', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          phone: lead.phone,
+          status,
+        }),
+      });
+      const data = (await response.json()) as StatusResponse;
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error || 'No se pudo actualizar el estado del lead.',
+        );
+      }
+
+      const nextLead = { ...lead, status };
+      setSelected(nextLead);
+      await loadLeads();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'No se pudo actualizar el estado del lead.',
+      );
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
   useEffect(() => {
     void loadLeads();
   }, []);
@@ -212,6 +267,7 @@ export default function LeadsPage() {
     return leads.filter((lead) => {
       const matchesObjective = !objective || lead.objective === objective;
       const matchesAgeRange = !ageRange || lead.ageRange === ageRange;
+      const matchesStatus = !statusFilter || lead.status === statusFilter;
       const matchesSearch =
         !term ||
         [
@@ -220,15 +276,21 @@ export default function LeadsPage() {
           lead.email,
           lead.ageRange,
           lead.objective,
+          lead.status,
           ...lead.tags,
         ]
           .join(' ')
           .toLowerCase()
           .includes(term);
 
-      return matchesObjective && matchesAgeRange && matchesSearch;
+      return (
+        matchesObjective &&
+        matchesAgeRange &&
+        matchesStatus &&
+        matchesSearch
+      );
     });
-  }, [leads, objective, ageRange, search]);
+  }, [leads, objective, ageRange, statusFilter, search]);
 
   const wantsTraining = leads.filter((lead) =>
     lead.tags.includes('QUIERE-CAPACITARSE'),
@@ -283,7 +345,7 @@ export default function LeadsPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar por nombre, WhatsApp, correo, rango de edad o etiqueta"
+            placeholder="Buscar por nombre, WhatsApp, correo, rango de edad, estado o etiqueta"
             aria-label="Buscar leads"
           />
 
@@ -307,6 +369,19 @@ export default function LeadsPage() {
           >
             <option value="">Todas las edades</option>
             {ageRanges.map((item) => (
+              <option value={item} key={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            aria-label="Filtrar por estado del lead"
+          >
+            <option value="">Todos los estados</option>
+            {LEAD_STATUSES.map((item) => (
               <option value={item} key={item}>
                 {item}
               </option>
@@ -412,6 +487,22 @@ export default function LeadsPage() {
               </p>
 
               <div className={styles.detailGrid}>
+                <div>
+                  <span>Estado del lead</span>
+                  <select
+                    value={selected.status}
+                    disabled={savingStatus}
+                    onChange={(event) =>
+                      void updateLeadStatus(selected, event.target.value)
+                    }
+                  >
+                    {LEAD_STATUSES.map((item) => (
+                      <option value={item} key={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div><span>WhatsApp</span><strong>{selected.phone}</strong></div>
                 <div><span>Correo</span><strong>{selected.email || '—'}</strong></div>
                 <div><span>Rango de edad</span><strong>{selected.ageRange || '—'}</strong></div>
@@ -422,7 +513,6 @@ export default function LeadsPage() {
                 <div><span>Fuente</span><strong>{selected.source}</strong></div>
                 <div><span>Origen</span><strong>{selected.origin}</strong></div>
                 <div><span>Evento</span><strong>{selected.event}</strong></div>
-                <div><span>Estado</span><strong>{selected.status}</strong></div>
                 <div><span>Consentimiento</span><strong>{selected.consent || 'Sí'}</strong></div>
                 <div><span>Fecha de registro</span><strong>{formatDate(selected.registeredAt)}</strong></div>
               </div>
