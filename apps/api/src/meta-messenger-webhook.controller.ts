@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { MetaAdsLeadService } from './meta-ads-lead.service';
+import { MetaLeadFormsService } from './meta-lead-forms.service';
 import { MetaSocialMessageService } from './meta-social-message.service';
 
 @Controller('webhook/messenger')
@@ -16,6 +17,7 @@ export class MetaMessengerWebhookController {
   constructor(
     private readonly socialMessageService: MetaSocialMessageService,
     private readonly metaAdsLeadService: MetaAdsLeadService,
+    private readonly metaLeadFormsService: MetaLeadFormsService,
   ) {}
 
   @Get()
@@ -45,10 +47,27 @@ export class MetaMessengerWebhookController {
   async receive(@Body() body: unknown) {
     try {
       await this.socialMessageService.processMessengerWebhook(body);
+    } catch (error) {
+      console.error(
+        '[ChatPro][Messenger] Error procesando mensajes:',
+        error,
+      );
+    }
+
+    try {
       await this.metaAdsLeadService.processMessengerWebhook(body);
     } catch (error) {
       console.error(
-        '[ChatPro][Messenger] Error procesando webhook:',
+        '[ChatPro][MetaAds] Error procesando referrals de Messenger:',
+        error,
+      );
+    }
+
+    try {
+      await this.metaLeadFormsService.processWebhook(body);
+    } catch (error) {
+      console.error(
+        '[ChatPro][MetaLeadForms] Error procesando formulario instantáneo:',
         error,
       );
     }
