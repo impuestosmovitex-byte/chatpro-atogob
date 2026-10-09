@@ -91,6 +91,13 @@ export class LeadRegistryController {
       }
     }
 
+    const respondedPhones = await this.findRespondedPhones(
+      profile.id,
+      rows
+        .map((row) => (typeof row.phone === 'string' ? row.phone : ''))
+        .filter(Boolean),
+    );
+
     const clients = rows.map((row) => {
       const firstSeenAt =
         typeof row.first_seen_at === 'string' ? row.first_seen_at : null;
@@ -98,15 +105,23 @@ export class LeadRegistryController {
         typeof row.last_activity_at === 'string'
           ? row.last_activity_at
           : firstSeenAt;
+      const phone = typeof row.phone === 'string' ? row.phone : '';
+      const rawNotes = typeof row.notes === 'string' ? row.notes : '';
+      const storedStatus = this.noteValue(rawNotes, 'Estado lead');
+      const notes =
+        respondedPhones.has(phone) &&
+        (!storedStatus || storedStatus === 'Lead nuevo')
+          ? this.setNoteValue(rawNotes, 'Estado lead', 'Respondió')
+          : rawNotes;
 
       return {
-        customerPhone: typeof row.phone === 'string' ? row.phone : '',
+        customerPhone: phone,
         lastMessageAt: lastActivityAt ?? firstSeenAt ?? new Date(0).toISOString(),
         contact: {
           id: typeof row.id === 'string' ? row.id : '',
           companyId:
             typeof row.company_id === 'string' ? row.company_id : profile.id,
-          phone: typeof row.phone === 'string' ? row.phone : '',
+          phone,
           displayName:
             typeof row.display_name === 'string' && row.display_name.trim()
               ? row.display_name.trim()
@@ -120,7 +135,7 @@ export class LeadRegistryController {
           tags: Array.isArray(row.tags)
             ? row.tags.filter((item: unknown) => typeof item === 'string')
             : [],
-          notes: typeof row.notes === 'string' ? row.notes : '',
+          notes,
           firstSeenAt,
           lastActivityAt,
         },
@@ -262,6 +277,51 @@ export class LeadRegistryController {
       status,
       tag: LEAD_STATUS_TAGS[status],
     };
+  }
+
+  private async findRespondedPhones(
+    companyId: string,
+    phones: string[],
+  ): Promise<Set<string>> {
+    const uniquePhones = Array.from(new Set(phones.filter(Boolean)));
+    const responded = new Set<string>();
+    const client = this.supabaseService.getClient();
+    const chunkSize = 400;
+
+    for (let offset = 0; offset < uniquePhones.length; offset += chunkSize) {
+      const chunk = uniquePhones.slice(offset, offset + chunkSize);
+      const { data, error } = await client
+        .from('conversations')
+        .select('customer_phone')
+        .eq('company_id', companyId)
+        .eq('author_type', 'customer')
+        .in('customer_phone', chunk)
+        .limit(10000);
+
+      if (error) {
+        throw new Error(
+          `No se pudo calcular qué leads respondieron: ${error.message}`,
+        );
+      }
+
+      for (const row of data ?? []) {
+        if (typeof row.customer_phone === 'string' && row.customer_phone) {
+          responded.add(row.customer_phone);
+        }
+      }
+    }
+
+    return responded;
+  }
+
+  private noteValue(notes: string, label: string): string {
+    const prefix = `${label.toLowerCase()}:`;
+    const line = notes
+      .split(/\r?\n/)
+      .find((item) => item.trim().toLowerCase().startsWith(prefix));
+
+    if (!line) return '';
+    return line.slice(line.indexOf(':') + 1).trim();
   }
 
   private setNoteValue(notes: string, label: string, value: string): string {
