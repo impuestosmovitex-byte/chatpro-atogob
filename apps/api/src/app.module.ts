@@ -89,6 +89,7 @@ import { AiConversationArchiveService } from './ai-conversation-archive.service'
 import { ContactTagsController } from './contact-tags.controller';
 import { PublicLeadsController } from './public-leads.controller';
 import { LeadRegistryController } from './lead-registry.controller';
+import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -148,6 +149,7 @@ import { LeadRegistryController } from './lead-registry.controller';
     MetaAdsWhatsappMiddleware,
     MetaAdsReferralSubscriptionService,
     MetaLeadFormsService,
+    EffixWhatsappDeliveryService,
     {
       provide: MetaSocialMessageService,
       useClass: MetaSocialBatchMessageService,
