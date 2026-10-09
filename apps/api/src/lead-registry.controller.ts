@@ -1,3 +1,4 @@
+import OpenAI from 'openai';
 import {
   BadRequestException,
   Body,
@@ -9,6 +10,7 @@ import {
   Query,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
 
@@ -22,8 +24,40 @@ const LEAD_STATUS_TAGS: Record<string, string> = {
   'No interesado': 'LEAD-NO-INTERESADO',
 };
 
+const AUTO_STATUS_RANK: Record<string, number> = {
+  'Lead nuevo': 0,
+  'Respondió': 1,
+  'Calificado': 2,
+  'Interesado': 3,
+  'Asesor/Cita': 4,
+  'Venta': 5,
+};
+
+const AUTO_CLASSIFY_COMPANY_SLUG = 'emprende-con-maogo';
+const TERMINAL_AUTO_STATUSES = new Set(['Venta', 'No interesado']);
+
+type JsonObject = Record<string, unknown>;
+
+type LeadSessionRow = {
+  id: string;
+  customer_phone: string;
+  context: JsonObject | null;
+  attention_status: string | null;
+  last_message_at: string | null;
+};
+
+type LeadContactRow = {
+  id: string;
+  phone: string;
+  tags: unknown;
+  notes: string | null;
+};
+
 @Controller('lead-registry')
 export class LeadRegistryController {
+  private openAiClient: OpenAI | null = null;
+  private leadClassificationRunning = false;
+
   constructor(
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly supabaseService: SupabaseService,
@@ -245,24 +279,15 @@ export class LeadRegistryController {
     }
 
     if (sessionRow?.id) {
-      const currentContext =
-        sessionRow.context &&
-        typeof sessionRow.context === 'object' &&
-        !Array.isArray(sessionRow.context)
-          ? sessionRow.context as Record<string, unknown>
-          : {};
-      const currentLeadContext =
-        currentContext.lead_context &&
-        typeof currentContext.lead_context === 'object' &&
-        !Array.isArray(currentContext.lead_context)
-          ? currentContext.lead_context as Record<string, unknown>
-          : {};
+      const currentContext = this.toJsonObject(sessionRow.context);
+      const currentLeadContext = this.toJsonObject(currentContext.lead_context);
 
       await this.conversationMemoryService.updateSession(sessionRow.id, {
         context: {
           ...currentContext,
           lead_status: status,
           lead_status_updated_at: new Date().toISOString(),
+          lead_status_source: 'manual',
           lead_context: {
             ...currentLeadContext,
             lead_status: status,
@@ -277,6 +302,415 @@ export class LeadRegistryController {
       status,
       tag: LEAD_STATUS_TAGS[status],
     };
+  }
+
+  @Interval(60_000)
+  async autoClassifyRecentLeads(): Promise<void> {
+    if (this.leadClassificationRunning) {
+      return;
+    }
+
+    const openAi = this.getOpenAiClient();
+    if (!openAi) {
+      return;
+    }
+
+    this.leadClassificationRunning = true;
+
+    try {
+      const profile = await this.conversationMemoryService.getCompanyProfile(
+        AUTO_CLASSIFY_COMPANY_SLUG,
+      );
+      const client = this.supabaseService.getClient();
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const { data: rawSessions, error: sessionsError } = await client
+        .from('conversation_sessions')
+        .select('id, customer_phone, context, attention_status, last_message_at')
+        .eq('company_id', profile.id)
+        .gte('last_message_at', cutoff)
+        .order('last_message_at', { ascending: false })
+        .limit(80);
+
+      if (sessionsError) {
+        throw new Error(
+          `No se pudieron consultar leads para clasificación: ${sessionsError.message}`,
+        );
+      }
+
+      const sessions = (rawSessions ?? [])
+        .map((row: any) => ({
+          id: typeof row.id === 'string' ? row.id : '',
+          customer_phone:
+            typeof row.customer_phone === 'string' ? row.customer_phone : '',
+          context: this.toJsonObject(row.context),
+          attention_status:
+            typeof row.attention_status === 'string' ? row.attention_status : null,
+          last_message_at:
+            typeof row.last_message_at === 'string' ? row.last_message_at : null,
+        } satisfies LeadSessionRow))
+        .filter((row) => {
+          const leadContext = this.toJsonObject(row.context?.lead_context);
+          return Boolean(row.id && row.customer_phone && Object.keys(leadContext).length);
+        });
+
+      if (!sessions.length) {
+        return;
+      }
+
+      const phones = Array.from(
+        new Set(sessions.map((session) => session.customer_phone)),
+      );
+
+      const { data: rawContacts, error: contactsError } = await client
+        .from('contacts')
+        .select('id, phone, tags, notes')
+        .eq('company_id', profile.id)
+        .in('phone', phones);
+
+      if (contactsError) {
+        throw new Error(
+          `No se pudieron consultar contactos para clasificación: ${contactsError.message}`,
+        );
+      }
+
+      const contactsByPhone = new Map<string, LeadContactRow>();
+      for (const raw of rawContacts ?? []) {
+        if (typeof raw.phone !== 'string' || !raw.phone) continue;
+        contactsByPhone.set(raw.phone, {
+          id: typeof raw.id === 'string' ? raw.id : '',
+          phone: raw.phone,
+          tags: raw.tags,
+          notes: typeof raw.notes === 'string' ? raw.notes : '',
+        });
+      }
+
+      let processed = 0;
+
+      for (const session of sessions) {
+        if (processed >= 25) break;
+
+        const contact = contactsByPhone.get(session.customer_phone);
+        if (!contact?.id) continue;
+
+        const context = this.toJsonObject(session.context);
+        const leadContext = this.toJsonObject(context.lead_context);
+        const storedStatus =
+          this.noteValue(contact.notes ?? '', 'Estado lead') ||
+          (typeof leadContext.lead_status === 'string'
+            ? leadContext.lead_status.trim()
+            : '') ||
+          'Lead nuevo';
+
+        if (TERMINAL_AUTO_STATUSES.has(storedStatus)) {
+          continue;
+        }
+
+        const lastMessageAt = session.last_message_at || '';
+        const checkedAt =
+          typeof context.lead_status_ai_checked_at === 'string'
+            ? context.lead_status_ai_checked_at
+            : '';
+
+        if (
+          checkedAt &&
+          lastMessageAt &&
+          !Number.isNaN(Date.parse(checkedAt)) &&
+          !Number.isNaN(Date.parse(lastMessageAt)) &&
+          Date.parse(checkedAt) >= Date.parse(lastMessageAt)
+        ) {
+          continue;
+        }
+
+        processed += 1;
+
+        const { data: messageRows, error: messagesError } = await client
+          .from('conversations')
+          .select('author_type, message, created_at')
+          .eq('company_id', profile.id)
+          .eq('session_id', session.id)
+          .order('created_at', { ascending: false })
+          .limit(18);
+
+        if (messagesError) {
+          console.error(
+            `[LeadAI] No se pudo leer la conversación ${session.id}:`,
+            messagesError,
+          );
+          continue;
+        }
+
+        const history = [...(messageRows ?? [])]
+          .reverse()
+          .map((row: any) => ({
+            role:
+              row.author_type === 'customer'
+                ? 'cliente'
+                : row.author_type === 'advisor'
+                  ? 'asesor'
+                  : 'ia',
+            message:
+              typeof row.message === 'string'
+                ? row.message.replace(/\s+/g, ' ').trim().slice(0, 1200)
+                : '',
+            created_at:
+              typeof row.created_at === 'string' ? row.created_at : null,
+          }))
+          .filter((item) => item.message);
+
+        const hasCustomerMessage = history.some(
+          (message) => message.role === 'cliente',
+        );
+
+        if (!hasCustomerMessage) {
+          await this.markAiChecked(session, storedStatus, 'Sin respuesta del cliente.');
+          continue;
+        }
+
+        let proposedStatus =
+          storedStatus === 'Lead nuevo' ? 'Respondió' : storedStatus;
+        let reason =
+          storedStatus === 'Lead nuevo'
+            ? 'El cliente ya respondió por WhatsApp.'
+            : 'Se conserva el estado actual.';
+
+        const handoff = this.toJsonObject(context.handoff);
+        const handoffStatus =
+          typeof handoff.status === 'string' ? handoff.status.toLowerCase() : '';
+
+        if (
+          session.attention_status === 'human' ||
+          handoffStatus === 'assigned' ||
+          handoffStatus.startsWith('waiting_') ||
+          handoffStatus === 'pending'
+        ) {
+          proposedStatus = 'Asesor/Cita';
+          reason = 'El lead fue transferido o asignado a atención humana.';
+        } else {
+          try {
+            const response = await openAi.responses.create({
+              model: this.getOpenAiModel(),
+              instructions: [
+                'Clasifica el estado comercial de un lead de Emprende con Maogo.',
+                'Devuelve SOLO JSON válido con esta forma: {"status":"Respondió|Calificado|Interesado|Asesor/Cita|No interesado","reason":"frase breve"}.',
+                'Usa Respondió cuando solo contestó, saludó, pulsó un botón o todavía no hay suficiente información comercial.',
+                'Usa Calificado cuando ya está claro qué quiere lograr y qué necesidad o área de formación le interesa.',
+                'Usa Interesado únicamente cuando demuestra intención comercial real: pregunta por precio, inscripción, beneficio, forma de empezar, pago, cupo, duración del programa o dice que quiere ingresar/comprar/inscribirse.',
+                'Usa Asesor/Cita únicamente cuando el cliente pide hablar con una persona, acepta explícitamente una llamada/cita/asesor o confirma que quiere que lo contacten.',
+                'Usa No interesado únicamente cuando rechaza claramente continuar, dice que no le interesa o pide no ser contactado.',
+                'Nunca devuelvas Venta. La venta solo se confirma por pago/inscripción real o por un asesor.',
+                'No subas a Interesado solo porque respondió preguntas de calificación.',
+                'No marques No interesado por silencio, dudas, demora o respuestas cortas.',
+                'Ten en cuenta los datos del formulario para no exigir que el cliente repita información ya conocida.',
+              ].join('\n'),
+              input: JSON.stringify({
+                estado_actual: proposedStatus,
+                datos_del_lead: leadContext,
+                conversacion: history,
+              }),
+            });
+
+            const parsed = this.parseAiStatus(response.output_text);
+            if (parsed) {
+              proposedStatus = this.preventAutomaticRegression(
+                proposedStatus,
+                parsed.status,
+              );
+              reason = parsed.reason || reason;
+            }
+          } catch (error) {
+            console.error(
+              `[LeadAI] Falló clasificación de ${session.customer_phone}:`,
+              error,
+            );
+          }
+        }
+
+        await this.persistAutomaticStatus(
+          profile.id,
+          session,
+          contact,
+          proposedStatus,
+          reason,
+        );
+      }
+    } catch (error) {
+      console.error('[LeadAI] Falló el clasificador automático de leads:', error);
+    } finally {
+      this.leadClassificationRunning = false;
+    }
+  }
+
+  private getOpenAiClient(): OpenAI | null {
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    if (!apiKey) return null;
+
+    if (!this.openAiClient) {
+      this.openAiClient = new OpenAI({ apiKey });
+    }
+
+    return this.openAiClient;
+  }
+
+  private getOpenAiModel(): string {
+    return process.env.OPENAI_MODEL?.trim() || 'gpt-5-mini';
+  }
+
+  private parseAiStatus(
+    raw: string,
+  ): { status: string; reason: string } | null {
+    const text = raw?.trim();
+    if (!text) return null;
+
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+
+    try {
+      const parsed = JSON.parse(text.slice(start, end + 1)) as {
+        status?: unknown;
+        reason?: unknown;
+      };
+      const status =
+        typeof parsed.status === 'string' ? parsed.status.trim() : '';
+      const reason =
+        typeof parsed.reason === 'string'
+          ? parsed.reason.replace(/\s+/g, ' ').trim().slice(0, 240)
+          : '';
+      const allowed = new Set([
+        'Respondió',
+        'Calificado',
+        'Interesado',
+        'Asesor/Cita',
+        'No interesado',
+      ]);
+
+      return allowed.has(status) ? { status, reason } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private preventAutomaticRegression(current: string, proposed: string): string {
+    if (proposed === 'No interesado') {
+      return current === 'Venta' ? current : proposed;
+    }
+
+    if (current === 'No interesado' || current === 'Venta') {
+      return current;
+    }
+
+    const currentRank = AUTO_STATUS_RANK[current] ?? 0;
+    const proposedRank = AUTO_STATUS_RANK[proposed] ?? 0;
+
+    return proposedRank >= currentRank ? proposed : current;
+  }
+
+  private async persistAutomaticStatus(
+    companyId: string,
+    session: LeadSessionRow,
+    contact: LeadContactRow,
+    status: string,
+    reason: string,
+  ): Promise<void> {
+    const client = this.supabaseService.getClient();
+    const now = new Date().toISOString();
+    const currentTags = Array.isArray(contact.tags)
+      ? contact.tags.filter((item: unknown): item is string => typeof item === 'string')
+      : [];
+    const funnelTags = new Set(Object.values(LEAD_STATUS_TAGS));
+    const tags = currentTags.filter((tag) => !funnelTags.has(tag));
+
+    if (LEAD_STATUS_TAGS[status]) {
+      tags.push(LEAD_STATUS_TAGS[status]);
+    }
+
+    const notes = this.setNoteValue(
+      contact.notes ?? '',
+      'Estado lead',
+      status,
+    );
+
+    const { error: contactError } = await client
+      .from('contacts')
+      .update({
+        tags: Array.from(new Set(tags)),
+        notes,
+        updated_at: now,
+      })
+      .eq('id', contact.id)
+      .eq('company_id', companyId);
+
+    if (contactError) {
+      throw new Error(
+        `No se pudo guardar la clasificación del lead: ${contactError.message}`,
+      );
+    }
+
+    const context = this.toJsonObject(session.context);
+    const leadContext = this.toJsonObject(context.lead_context);
+    const nextContext: JsonObject = {
+      ...context,
+      lead_status: status,
+      lead_status_updated_at: now,
+      lead_status_source: 'ai',
+      lead_status_reason: reason.slice(0, 240),
+      lead_status_ai_checked_at: session.last_message_at || now,
+      lead_context: {
+        ...leadContext,
+        lead_status: status,
+      },
+    };
+
+    const { error: sessionError } = await client
+      .from('conversation_sessions')
+      .update({
+        context: nextContext,
+        updated_at: now,
+      })
+      .eq('id', session.id)
+      .eq('company_id', companyId);
+
+    if (sessionError) {
+      throw new Error(
+        `El lead se clasificó, pero no se pudo sincronizar su conversación: ${sessionError.message}`,
+      );
+    }
+  }
+
+  private async markAiChecked(
+    session: LeadSessionRow,
+    status: string,
+    reason: string,
+  ): Promise<void> {
+    const context = this.toJsonObject(session.context);
+    const leadContext = this.toJsonObject(context.lead_context);
+    const now = new Date().toISOString();
+
+    const { error } = await this.supabaseService
+      .getClient()
+      .from('conversation_sessions')
+      .update({
+        context: {
+          ...context,
+          lead_status: status,
+          lead_status_ai_checked_at: session.last_message_at || now,
+          lead_status_reason: reason,
+          lead_context: {
+            ...leadContext,
+            lead_status: status,
+          },
+        },
+        updated_at: now,
+      })
+      .eq('id', session.id);
+
+    if (error) {
+      console.error(
+        `[LeadAI] No se pudo marcar revisión de ${session.id}:`,
+        error,
+      );
+    }
   }
 
   private async findRespondedPhones(
@@ -339,6 +773,12 @@ export class LeadRegistryController {
     }
 
     return lines.join('\n').trim();
+  }
+
+  private toJsonObject(value: unknown): JsonObject {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as JsonObject)
+      : {};
   }
 
   private authorize(providedKey: string) {
