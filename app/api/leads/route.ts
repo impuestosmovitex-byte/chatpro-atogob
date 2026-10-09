@@ -86,3 +86,55 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  const session = await getSession(request);
+
+  if (!session) {
+    return NextResponse.json(
+      { ok: false, error: 'Sesión requerida.' },
+      { status: 401 },
+    );
+  }
+
+  try {
+    const { apiBase, inboxKey } = config();
+    const body = (await request.json()) as {
+      phone?: unknown;
+      status?: unknown;
+    };
+
+    const response = await fetch(`${apiBase}/lead-registry/status`, {
+      method: 'PATCH',
+      headers: {
+        ...trustedHeaders(inboxKey, session),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        company: session.companySlug,
+        phone: body.phone,
+        status: body.status,
+      }),
+      cache: 'no-store',
+    });
+
+    return new NextResponse(await response.text(), {
+      status: response.status,
+      headers: {
+        'content-type':
+          response.headers.get('content-type') ?? 'application/json',
+      },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'No se pudo actualizar el estado del lead.',
+      },
+      { status: 500 },
+    );
+  }
+}
