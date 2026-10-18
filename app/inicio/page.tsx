@@ -29,13 +29,6 @@ const benefits = [
   },
 ];
 
-const chips = [
-  ["CAT", "Catálogo"],
-  ["PAG", "Pasarela de pago"],
-  ["DAT", "Información real de tu empresa"],
-  ["24/7", "Atención 24/7"],
-];
-
 export default function InicioPage() {
   return (
     <main className={styles.site}>
@@ -57,8 +50,6 @@ export default function InicioPage() {
             <Link href="/demo" className={styles.primaryButton}>Solicitar demo</Link>
             <Link href="/precios" className={styles.secondaryButton}>Ver planes</Link>
           </div>
-
-
         </div>
 
         <HeroMedia />
