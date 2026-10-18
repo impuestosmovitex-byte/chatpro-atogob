@@ -7,6 +7,10 @@ import { getAccessCapabilities } from './app/lib/access-capabilities';
 
 const PUBLIC_PATHS = new Set([
   '/login',
+  '/inicio',
+  '/precios',
+  '/demo',
+  '/integraciones',
   '/api/auth/login',
   '/api/auth/logout',
   '/api/health',
