@@ -5,14 +5,14 @@
   --site-line: #e6eaf1;
   --site-canvas: #f8f9fc;
   --site-panel: #ffffff;
-  --site-accent: #5b5ce2;
-  --site-accent-soft: #eeeeff;
-  --site-amber: #d78608;
+  --site-accent: #f4bf00;
+  --site-accent-soft: #fff4bd;
+  --site-amber: #f4bf00;
   --site-green: #18a561;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 86% 12%, rgba(91,92,226,.08), transparent 28%),
-    radial-gradient(circle at 14% 42%, rgba(215,134,8,.06), transparent 25%),
+    radial-gradient(circle at 86% 12%, rgba(244,191,0,.10), transparent 30%),
+    radial-gradient(circle at 14% 42%, rgba(244,191,0,.07), transparent 25%),
     var(--site-canvas);
   color: var(--site-ink);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
@@ -59,7 +59,7 @@
   background: var(--site-ink);
   color: #fff;
   font-size: 17px;
-  box-shadow: inset 0 -5px 12px rgba(91,92,226,.35);
+  box-shadow: inset 0 -5px 12px rgba(244,191,0,.26);
 }
 
 .nav {
@@ -94,8 +94,8 @@
 
 .primaryButton {
   background: var(--site-accent);
-  color: #fff !important;
-  box-shadow: 0 10px 26px rgba(91,92,226,.2);
+  color: var(--site-ink) !important;
+  box-shadow: 0 10px 26px rgba(244,191,0,.24);
 }
 
 .secondaryButton {
@@ -124,10 +124,10 @@
   width: fit-content;
   margin-bottom: 19px;
   padding: 8px 12px;
-  border: 1px solid #dedfff;
+  border: 1px solid #f3dc75;
   border-radius: 999px;
   background: var(--site-accent-soft);
-  color: #4647bd;
+  color: var(--site-ink);
   font-size: 12px;
   font-weight: 850;
   letter-spacing: .02em;
@@ -142,7 +142,7 @@
 
 .heroHighlight {
   display: inline;
-  background: linear-gradient(180deg, transparent 58%, #dedfff 58%);
+  background: linear-gradient(180deg, transparent 54%, #ffe36c 54%);
 }
 
 .heroCopy {
@@ -603,8 +603,8 @@
 .customerMessage { background: #fff; border: 1px solid var(--site-line); }
 .companyMessage {
   margin-left: auto;
-  background: var(--site-accent-soft);
-  color: #3536a1;
+  background: #fff1a8;
+  color: #5f4a00;
 }
 
 .catalogCard {
@@ -613,7 +613,7 @@
   padding: 13px;
   display: grid;
   gap: 6px;
-  border: 1px solid #dedfff;
+  border: 1px solid #f0d35d;
   border-radius: 13px;
   background: #fff;
 }
@@ -710,8 +710,8 @@
   background: #fff;
 }
 .priceCardFeatured {
-  border-color: #b9b9ff;
-  box-shadow: 0 22px 50px rgba(91,92,226,.12);
+  border-color: #e6bb19;
+  box-shadow: 0 22px 50px rgba(244,191,0,.13);
 }
 .priceLabel { color: var(--site-accent); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
 .priceCard h3 { margin-top: 11px; font-size: 24px; }
@@ -835,4 +835,191 @@
   .productWindow { overflow-x: auto; }
   .windowBar, .productGrid { min-width: 820px; }
   .ctaBand { align-items: flex-start; flex-direction: column; margin-bottom: 35px; }
+}
+
+
+/* Hero comercial MW1 + Emprende con Maogo */
+.heroMedia {
+  position: relative;
+  min-height: 490px;
+  overflow: hidden;
+  border: 1px solid #f0df9c;
+  border-radius: 32px;
+  background:
+    radial-gradient(circle at 80% 18%, rgba(244,191,0,.28), transparent 31%),
+    linear-gradient(145deg, #fffdf6 0%, #fff8dc 55%, #ffffff 100%);
+  box-shadow: 0 28px 72px rgba(23,34,53,.09);
+}
+
+.heroGlow {
+  position: absolute;
+  width: 330px;
+  height: 330px;
+  right: -45px;
+  top: -70px;
+  border-radius: 50%;
+  background: rgba(244,191,0,.18);
+  filter: blur(2px);
+}
+
+.heroPhoto {
+  position: absolute;
+  inset: 24px 26px 18px 26px;
+  width: calc(100% - 52px);
+  height: calc(100% - 42px);
+  object-fit: contain;
+  object-position: center;
+  border-radius: 24px;
+  z-index: 2;
+  filter: saturate(.98) contrast(1.02);
+}
+
+.heroMetric {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: 220px;
+  padding: 12px 14px;
+  border: 1px solid rgba(230,234,241,.92);
+  border-radius: 15px;
+  background: rgba(255,255,255,.95);
+  box-shadow: 0 16px 38px rgba(23,34,53,.11);
+}
+
+.heroMetric strong,
+.heroMetric small {
+  display: block;
+}
+
+.heroMetric strong {
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+
+.heroMetric small {
+  color: var(--site-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.metricIcon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  border-radius: 11px;
+  background: var(--site-accent);
+  color: var(--site-ink);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.heroMetricTop {
+  left: 16px;
+  top: 18px;
+}
+
+.heroMetricBottom {
+  right: 16px;
+  bottom: 20px;
+}
+
+.heroStrip {
+  width: min(1180px, calc(100% - 40px));
+  margin: -18px auto 18px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1.8fr repeat(8, minmax(78px, 1fr));
+  gap: 8px;
+  align-items: stretch;
+  border: 1px solid #e9e2c7;
+  border-radius: 18px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 20px 50px rgba(23,34,53,.06);
+  position: relative;
+  z-index: 8;
+}
+
+.stripLead,
+.stripItem {
+  min-height: 68px;
+  border-radius: 12px;
+}
+
+.stripLead {
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: #fffaf0;
+}
+
+.stripLead strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.stripLead span {
+  margin-top: 5px;
+  color: var(--site-muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.stripItem {
+  padding: 9px 7px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+  border: 1px solid #eef0f4;
+  background: #fff;
+  text-align: center;
+}
+
+.stripItem > span {
+  min-width: 32px;
+  height: 27px;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--site-accent-soft);
+  color: #6d5600;
+  font-size: 8px;
+  font-weight: 950;
+}
+
+.stripItem strong {
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+@media (max-width: 980px) {
+  .heroMedia { min-height: 440px; }
+  .heroStrip {
+    grid-template-columns: repeat(4, 1fr);
+    margin-top: 0;
+  }
+  .stripLead { grid-column: 1 / -1; }
+}
+
+@media (max-width: 700px) {
+  .heroMedia { min-height: 390px; border-radius: 24px; }
+  .heroPhoto {
+    inset: 34px 12px 16px;
+    width: calc(100% - 24px);
+    height: calc(100% - 50px);
+  }
+  .heroMetric { max-width: 168px; padding: 9px; }
+  .heroMetricTop { left: 8px; top: 8px; }
+  .heroMetricBottom { right: 8px; bottom: 9px; }
+  .heroStrip {
+    width: min(100% - 24px, 1180px);
+    grid-template-columns: repeat(2, 1fr);
+    padding: 10px;
+  }
 }
