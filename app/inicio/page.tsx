@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  ChannelCloud,
+  HeroMedia,
   MarketingHeader,
   ProductPreview,
 } from "../components/marketing/MarketingHeader";
@@ -46,11 +46,11 @@ export default function InicioPage() {
           <div className={styles.eyebrow}>CRM con IA para atención y automatización</div>
           <h1>
             ¿Cansado de perder ventas por{" "}
-            <span className={styles.heroHighlight}>no atender a tiempo</span> a tus clientes?
+            <span className={styles.heroHighlight}>no atender rápido</span> a tus clientes?
           </h1>
           <p className={styles.heroCopy}>
-            Conecta la IA a tu negocio, mejora la experiencia de tus clientes,
-            automatiza procesos clave y convierte más conversaciones en oportunidades reales.
+            Conecta la IA a tu negocio, mejora la experiencia de tus clientes
+            y aumenta tus resultados automatizando procesos clave de tu empresa.
           </p>
 
           <div className={styles.heroActions}>
@@ -58,17 +58,33 @@ export default function InicioPage() {
             <Link href="/precios" className={styles.secondaryButton}>Ver planes</Link>
           </div>
 
-          <div className={styles.featureChips}>
-            {chips.map(([icon, label]) => (
-              <div className={styles.featureChip} key={label}>
-                <i>{icon}</i>
-                <span>{label}</span>
-              </div>
-            ))}
-          </div>
+
         </div>
 
-        <ChannelCloud />
+        <HeroMedia />
+      </section>
+
+      <section className={styles.heroStrip} aria-label="Canales y funciones principales">
+        <div className={styles.stripLead}>
+          <strong>Conecta tus canales y herramientas en un solo lugar</strong>
+          <span>Atiende, vende y haz seguimiento desde MW1.</span>
+        </div>
+
+        {[
+          ["WA", "WhatsApp"],
+          ["IG", "Instagram"],
+          ["TG", "Telegram"],
+          ["WEB", "Chat web"],
+          ["CAT", "Catálogo"],
+          ["PAG", "Pasarela de pago"],
+          ["DAT", "Información real"],
+          ["24/7", "Atención 24/7"],
+        ].map(([short, name]) => (
+          <div className={styles.stripItem} key={name}>
+            <span>{short}</span>
+            <strong>{name}</strong>
+          </div>
+        ))}
       </section>
 
       <section className={styles.section} id="por-que">
