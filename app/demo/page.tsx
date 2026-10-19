@@ -13,9 +13,9 @@ export default function DemoPage() {
       <section className={styles.section}>
         <div className={styles.sectionIntroCentered}>
           <div className={styles.eyebrow}>Demo de MW1</div>
-          <h2>Mira cómo se siente trabajar con todo conectado.</h2>
+          <h2>Una vista simple para atender, vender y hacer seguimiento.</h2>
           <p>
-            Explora una vista ilustrativa de MW1 con conversaciones y datos de ejemplo, sin exponer información real de clientes.
+            Conoce cómo se organizan las conversaciones, el contexto comercial y los seguimientos en un solo lugar. Esta demostración utiliza datos de ejemplo.
           </p>
         </div>
 

@@ -12,7 +12,7 @@ export function MarketingHeader() {
         </Link>
 
         <nav className={styles.nav} aria-label="Navegación principal">
-          <Link href="/inicio#por-que">¿Por qué MW1?</Link>
+          <Link href="/por-que">¿Por qué MW1?</Link>
           <Link href="/precios">Planes</Link>
           <Link href="/demo">Demo</Link>
           <Link href="/integraciones">Integraciones</Link>
@@ -27,7 +27,7 @@ export function MarketingHeader() {
             </summary>
             <nav className={styles.mobileLinks} aria-label="Menú móvil">
               <Link href="/inicio">Inicio</Link>
-              <Link href="/inicio#por-que">¿Por qué MW1?</Link>
+              <Link href="/por-que">¿Por qué MW1?</Link>
               <Link href="/precios">Planes</Link>
               <Link href="/demo">Demo</Link>
               <Link href="/integraciones">Integraciones</Link>

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 export type MarketingIconName =
   | "whatsapp" | "instagram" | "messenger" | "telegram" | "web"
   | "catalog" | "payment" | "database" | "clock"
-  | "sparkles" | "users" | "shopping" | "workflow";
+  | "sparkles" | "users" | "shopping" | "workflow" | "bot";
 
 export function MarketingIcon({ name }: { name: MarketingIconName }) {
   let drawing: ReactNode;
@@ -35,15 +35,15 @@ export function MarketingIcon({ name }: { name: MarketingIconName }) {
       </>;
       break;
     case "web":
-      drawing = <><path d="M5 5.5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 3v-4a2 2 0 0 1-1-1.8V7.5a2 2 0 0 1 2-2Z" /><path d="M7.5 10h9M7.5 13.5h6" /></>;
+      drawing = <><circle cx="12" cy="12" r="9" /><path d="M3.5 12h17M12 3c2.5 2.4 4 5.7 4 9s-1.5 6.6-4 9c-2.5-2.4-4-5.7-4-9s1.5-6.6 4-9Z" /></>;
       break;
-    case "catalog":
-      drawing = <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>;
+        case "catalog":
+      drawing = <><path d="m9 3 3 2 3-2 4.5 2.5L22 10l-4 2.5V21H6v-8.5L2 10l2.5-4.5L9 3Z" /><path d="M9 3c.2 2 1.1 3 3 3s2.8-1 3-3" /></>;
       break;
-    case "payment":
-      drawing = <><rect x="2.5" y="5" width="19" height="14" rx="2.5" /><path d="M2.5 10h19M6.5 15h4" /></>;
+        case "payment":
+      drawing = <><rect x="2.5" y="5" width="19" height="14" rx="2.5" /><path d="M2.5 10h19M6.5 15h4" /><path d="m15 15 1.4 1.4 2.2-2.4" /></>;
       break;
-    case "database":
+        case "database":
       drawing = <><ellipse cx="12" cy="5.5" rx="8" ry="3" /><path d="M4 5.5v13c0 1.65 3.6 3 8 3s8-1.35 8-3v-13M4 12c0 1.65 3.6 3 8 3s8-1.35 8-3" /></>;
       break;
     case "clock":
@@ -62,5 +62,9 @@ export function MarketingIcon({ name }: { name: MarketingIconName }) {
       drawing = <><rect x="2.5" y="3" width="7" height="6" rx="1.5" /><rect x="14.5" y="15" width="7" height="6" rx="1.5" /><path d="M9.5 6h5a4 4 0 0 1 4 4v5M14.5 18h-5a4 4 0 0 1-4-4V9" /></>;
       break;
   }
+
+    case "bot":
+      drawing = <><rect x="4" y="7" width="16" height="13" rx="4" /><path d="M12 3v4M9 3h6M2 12v4M22 12v4M8 12h1M15 12h1M9 16c1.5 1 4.5 1 6 0" /><circle cx="12" cy="3" r="1" fill="currentColor" stroke="none" /></>;
+      break;
   return <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{drawing}</svg>;
 }
