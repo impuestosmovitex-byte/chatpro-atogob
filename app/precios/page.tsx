@@ -32,11 +32,13 @@ export default function PreciosPage() {
       <MarketingHeader />
       <section className={styles.section}>
         <div className={styles.sectionIntroCentered}>
-          <div className={styles.eyebrow}>Precios</div>
+          <div className={styles.eyebrow}>Planes MW1</div>
           <h2>Elige un plan y empieza ya.</h2>
           <p>
-            Impulsa tus conversiones y ventas mientras mejoras la atención al cliente y la organización de tu negocio. Elige la opción que mejor se adapte a tu equipo.
+            Mejora la atención de tus clientes, impulsa tus ventas y organiza las oportunidades comerciales con MW1.
+            Si tu meta es aumentar hasta un 20% las conversiones, empieza por reducir los tiempos de respuesta y mejorar el seguimiento.
           </p>
+          <p className={styles.pricingClarification}>El 20% es una meta comercial posible de plantear, no un resultado garantizado.</p>
         </div>
 
         <div className={styles.priceGrid}>

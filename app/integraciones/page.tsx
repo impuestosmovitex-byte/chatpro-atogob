@@ -3,52 +3,60 @@ import { MarketingIcon, type MarketingIconName } from "../components/marketing/M
 import { MarketingHeader } from "../components/marketing/MarketingHeader";
 import styles from "../components/marketing/marketing.module.css";
 
-const channels: {icon: MarketingIconName; name: string}[] = [
-  {icon:"whatsapp",name:"WhatsApp"},{icon:"instagram",name:"Instagram"},
-  {icon:"messenger",name:"Messenger"},{icon:"telegram",name:"Telegram"},
-  {icon:"web",name:"Chat web"},
+const channels: {name:string;icon:MarketingIconName;description:string}[] = [
+  {name:"WhatsApp",icon:"whatsapp",description:"Conversaciones y seguimiento con clientes."},
+  {name:"Instagram",icon:"instagram",description:"Mensajes desde tu comunidad."},
+  {name:"Messenger",icon:"messenger",description:"Consultas desde Facebook."},
+  {name:"Telegram",icon:"telegram",description:"Otro canal para centralizar atención."},
+  {name:"Chat web",icon:"web",description:"Consultas desde tu sitio."},
+];
+const stores: {name:string;icon:MarketingIconName;description:string}[] = [
+  {name:"Shopify",icon:"shopping",description:"Explora opciones para vincular tu tienda y productos."},
+  {name:"WordPress / WooCommerce",icon:"web",description:"Consulta alternativas de integración para tu comercio electrónico."},
+  {name:"Tiendanube",icon:"shopping",description:"Evalúa cómo conectar tu tienda y sus catálogos."},
+];
+const catalogs: {name:string;icon:MarketingIconName;description:string}[] = [
+  {name:"Catálogos PDF",icon:"catalog",description:"Consulta cómo aprovechar los archivos de tus productos."},
+  {name:"Catálogos de productos",icon:"shopping",description:"Presenta información de productos en la conversación."},
+  {name:"Datos de tu negocio",icon:"database",description:"Organiza horarios, políticas y respuestas frecuentes."},
+];
+const groups=[
+  {number:"01",id:"canales",title:"Canales de atención",description:"Conversa con clientes donde ya te escriben.",items:channels},
+  {number:"02",id:"tiendas",title:"Tiendas virtuales",description:"Conecta las herramientas con las que vendes.",items:stores},
+  {number:"03",id:"catalogos",title:"Catálogos e información",description:"Da respuestas útiles con el contexto de tu empresa.",items:catalogs},
 ];
 
-export default function IntegracionesPage() {
-  return (
-    <main className={styles.site}>
-      <MarketingHeader />
-      <section className={styles.section}>
-        <div className={styles.sectionIntroCentered}>
-          <div className={styles.eyebrow}>Integraciones de MW1</div>
-          <h2>Conecta los canales y herramientas con los que tu empresa ya funciona.</h2>
-          <p>Reúne la atención al cliente, tu tienda virtual y tus catálogos en una misma experiencia. Cada integración requiere su configuración y disponibilidad correspondientes.</p>
-        </div>
-        <div className={styles.integrationSection}>
-          <div className={styles.integrationSectionIntro}><span className={styles.eyebrow}>Canales de atención</span><h3>Las conversaciones de tu negocio, organizadas.</h3><p>Una vista para acompañar a tus clientes en sus canales habituales.</p></div>
-          <div className={styles.integrationGrid}>
-            {channels.map(item=>(
-              <article className={styles.integrationCard} data-channel={item.icon} key={item.name}>
-                <div className={styles.integrationBadge}><MarketingIcon name={item.icon}/></div>
-                <strong>{item.name}</strong>
-              </article>
-            ))}
+export default function IntegracionesPage(){
+  return <main className={styles.site}>
+    <MarketingHeader />
+    <section className={styles.section}>
+      <div className={styles.sectionIntroCentered}>
+        <div className={styles.eyebrow}>Integraciones MW1</div>
+        <h2>Conecta los canales y herramientas con las que tu empresa ya funciona.</h2>
+        <p>Centraliza tus canales de atención, tu tienda virtual, tus catálogos y tu información comercial desde un mismo lugar.</p>
+      </div>
+      <div className={styles.integrationGroups}>
+        {groups.map(group=><section key={group.id} className={styles.integrationGroup} aria-labelledby={group.id}>
+          <div className={styles.integrationGroupHeading}>
+            <span className={styles.integrationStep}>{group.number}</span>
+            <div><h3 id={group.id}>{group.title}</h3><p>{group.description}</p></div>
           </div>
-        </div>
-        <div className={styles.integrationSection}>
-          <div className={styles.integrationSectionIntro}><span className={styles.eyebrow}>Comercio electrónico</span><h3>Conecta tu tienda virtual.</h3><p>Explora las conexiones para consultar productos, compartir información comercial y mejorar la atención.</p></div>
-          <div className={styles.connectGrid}>
-            <article className={styles.connectCard}><span className={styles.platformMark} data-brand="shopify">S</span><h4>Shopify</h4><p>Información de catálogo y comercio para tu atención.</p><span className={styles.connectNote}>Integración según configuración</span></article>
-            <article className={styles.connectCard}><span className={styles.platformMark} data-brand="woo">W</span><h4>WordPress / WooCommerce</h4><p>Opciones para conectar los productos de tu tienda.</p><span className={styles.connectNote}>Disponibilidad por confirmar</span></article>
-            <article className={styles.connectCard}><span className={styles.platformMark} data-brand="nube">N</span><h4>Tiendanube</h4><p>Una plataforma contemplada para futuras conexiones.</p><span className={styles.connectNote}>Integración por desarrollar</span></article>
+          <div className={styles.integrationOptionGrid}>
+            {group.items.map(item=><article key={item.name} className={styles.integrationOptionCard} data-channel={item.icon}>
+              <span className={styles.integrationOptionIcon}><MarketingIcon name={item.icon}/></span>
+              <h4>{item.name}</h4><p>{item.description}</p>
+            </article>)}
           </div>
+        </section>)}
+      </div>
+      <div className={styles.integrationNotice}>
+        <div>
+          <strong>¿Quieres conectar alguna de estas herramientas?</strong>
+          <p>La disponibilidad y el alcance de cada integración dependen de su compatibilidad y configuración. Consulta cuáles están habilitadas para tu negocio.</p>
         </div>
-        <div className={styles.integrationSection}>
-          <div className={styles.integrationSectionIntro}><span className={styles.eyebrow}>Catálogos y documentos</span><h3>Tu información comercial, siempre a mano.</h3><p>Comparte información útil sobre tus productos y servicios en el momento adecuado.</p></div>
-          <div className={styles.connectGrid}>
-            <article className={styles.connectCard}><span className={styles.connectIcon}><MarketingIcon name="catalog"/></span><h4>Catálogo de productos</h4><p>Presenta las opciones de tu negocio durante una conversación.</p></article>
-            <article className={styles.connectCard}><span className={styles.connectIcon}><MarketingIcon name="database"/></span><h4>Catálogos PDF</h4><p>Una opción prevista para usar tus documentos comerciales como referencia.</p><span className={styles.connectNote}>Función por habilitar</span></article>
-            <article className={styles.connectCard}><span className={styles.connectIcon}><MarketingIcon name="bot"/></span><h4>Información para la IA</h4><p>Horarios, políticas y respuestas según las reglas de tu empresa.</p></article>
-          </div>
-        </div>
-        <div className={styles.integrationClosing}><div><h3>¿Quieres conocer qué puedes conectar hoy?</h3><p>Te ayudamos a revisar las opciones disponibles para tu negocio.</p></div><Link href="/demo" className={styles.primaryButton}>Conocer MW1</Link></div>
-      </section>
-      <footer className={styles.footer}>MW1 · Integraciones</footer>
-    </main>
-  );
+        <Link href="/demo" className={styles.primaryButton}>Conocer MW1</Link>
+      </div>
+    </section>
+    <footer className={styles.footer}>MW1 · Canales, tiendas y catálogos</footer>
+  </main>;
 }

@@ -1455,3 +1455,58 @@
 .integrationClosing a {flex-shrink:0;}
 @media(max-width:860px){.connectGrid{grid-template-columns:repeat(2,minmax(0,1fr));}.connectGrid .connectCard:last-child:nth-child(odd){grid-column:1/-1;}}
 @media(max-width:600px){.connectGrid{grid-template-columns:1fr;}.connectGrid .connectCard:last-child:nth-child(odd){grid-column:auto;}.connectCard{padding:21px;}.integrationSection{margin-top:42px;}.integrationClosing{flex-direction:column;align-items:flex-start;padding:24px;}.integrationClosing a{width:100%;}.integrationClosing h3{font-size:23px;}}
+
+
+/* MW1: superficies claras para todo el sitio comercial */
+.homeCta {
+ background:linear-gradient(120deg,#fffefa,#fff5db);
+ color:#172132;
+ border:1px solid #efdfb5;
+ box-shadow:0 14px 35px rgba(69,62,42,.045);
+}
+.homeCta .eyebrow {background:#fff;border-color:#e9dcad;color:#5b521f;}
+.homeCta h2 {color:#172132;}
+.homeCta p {color:#5f6978;}
+.homeCtaActions .secondaryButton {background:#fff;color:#172132 !important;border-color:#d7dce5;}
+.homeCtaDecoration {background:rgba(255,255,255,.8);border-color:#f0d25e;color:#9c7915;}
+.ctaBand {background:#fff9e9;border:1px solid #f2e5bf;color:#172132;box-shadow:none;}
+.ctaBand h2,.ctaBand p {color:#172132;}
+.ctaBand .primaryButton {background:#f5c819;color:#171c26 !important;}
+.sampleCheckoutAction {background:#fff1bd;color:#403213;}
+.catalogCard button {background:#f5c819;color:#171c26;}
+.pricingClarification {max-width:700px;margin-top:8px !important;font-size:12px !important;line-height:1.45 !important;color:#6c7481 !important;}
+.priceCardFeatured {border-color:#e7d58f;background:linear-gradient(150deg,#fffdf7,#fff);box-shadow:0 14px 34px rgba(105,84,27,.07);}
+.integrationGroups {display:grid;gap:45px;}
+.integrationGroup {display:grid;gap:19px;min-width:0;}
+.integrationGroupHeading {display:flex;align-items:center;gap:13px;}
+.integrationStep {width:45px;height:45px;flex:0 0 45px;display:grid;place-items:center;background:#fff3c6;color:#685116;border-radius:13px;font-size:14px;font-weight:900;}
+.integrationGroupHeading h3 {margin:0;font-size:clamp(19px,2vw,25px);line-height:1.2;}
+.integrationGroupHeading p {margin:6px 0 0;color:#697384;font-size:14px;}
+.integrationOptionGrid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;}
+.integrationOptionCard {min-width:0;padding:22px;border:1px solid #e7eaf0;border-radius:18px;background:#fff;box-shadow:0 9px 22px rgba(22,33,53,.025);}
+.integrationOptionIcon {width:48px;height:48px;display:grid;place-items:center;border-radius:13px;background:#f5f6f8;color:#253449;}
+.integrationOptionIcon svg {width:27px;height:27px;}
+.integrationOptionCard[data-channel="whatsapp"] .integrationOptionIcon {background:#e9f8ee;color:#138b50;}
+.integrationOptionCard[data-channel="instagram"] .integrationOptionIcon {background:#fff0f7;color:#b82c83;}
+.integrationOptionCard[data-channel="messenger"] .integrationOptionIcon {background:#eaf3ff;color:#1377dd;}
+.integrationOptionCard[data-channel="telegram"] .integrationOptionIcon {background:#e9f7fd;color:#188abe;}
+.integrationOptionCard[data-channel="web"] .integrationOptionIcon {background:#eef7f9;color:#176478;}
+.integrationOptionCard h4 {margin:17px 0 8px;font-size:17px;line-height:1.3;}
+.integrationOptionCard p {margin:0;color:#637082;font-size:13px;line-height:1.55;}
+.integrationNotice {display:flex;align-items:center;justify-content:space-between;gap:22px;margin-top:48px;padding:24px;border:1px solid #f1e3b8;border-radius:19px;background:#fffbef;}
+.integrationNotice strong {font-size:18px;}
+.integrationNotice p {margin-top:7px;color:#5d6674;font-size:14px;line-height:1.5;}
+.integrationNotice a {flex-shrink:0;}
+@media (max-width:850px) {.integrationOptionGrid {grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media (max-width:600px) {
+ .integrationGroups {gap:34px;}
+ .integrationOptionGrid {grid-template-columns:1fr;gap:11px;}
+ .integrationOptionCard {padding:18px;}
+ .integrationGroupHeading {align-items:flex-start;}
+ .integrationStep {width:40px;height:40px;flex-basis:40px;}
+ .integrationGroupHeading h3 {font-size:19px;}
+ .integrationGroupHeading p {font-size:13px;}
+ .integrationNotice {flex-direction:column;align-items:stretch;padding:21px;}
+ .integrationNotice a {width:100%;}
+ .homeCta {background:linear-gradient(145deg,#fffef9,#fff5d9);}
+}
