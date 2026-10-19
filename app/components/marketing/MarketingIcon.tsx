@@ -61,10 +61,9 @@ export function MarketingIcon({ name }: { name: MarketingIconName }) {
     case "workflow":
       drawing = <><rect x="2.5" y="3" width="7" height="6" rx="1.5" /><rect x="14.5" y="15" width="7" height="6" rx="1.5" /><path d="M9.5 6h5a4 4 0 0 1 4 4v5M14.5 18h-5a4 4 0 0 1-4-4V9" /></>;
       break;
-  }
-
     case "bot":
       drawing = <><rect x="4" y="7" width="16" height="13" rx="4" /><path d="M12 3v4M9 3h6M2 12v4M22 12v4M8 12h1M15 12h1M9 16c1.5 1 4.5 1 6 0" /><circle cx="12" cy="3" r="1" fill="currentColor" stroke="none" /></>;
       break;
+  }
   return <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{drawing}</svg>;
 }
