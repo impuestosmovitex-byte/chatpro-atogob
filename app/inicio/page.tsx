@@ -138,7 +138,7 @@ export default function InicioPage() {
         <div className={styles.sectionIntroCentered}>
           <div className={styles.eyebrow}>Planes</div>
           <h2>Empieza con lo que necesitas y crece con MW1.</h2>
-          <p>La estructura ya está lista para definir contigo precios, límites y beneficios finales.</p>
+          <p>Descubre cómo MW1 puede adaptarse a tu negocio y conoce las opciones disponibles para tu equipo.</p>
         </div>
 
         <div className={styles.priceGrid}>
