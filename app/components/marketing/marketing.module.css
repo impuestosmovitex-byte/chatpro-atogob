@@ -1285,3 +1285,25 @@
   .heroActions { gap:8px; }
   .heroAppInbox .appConversation:last-child { display:none; }
 }
+
+
+/* Fotografía real de portada MW1, sin recortes ni capas superpuestas. */
+.heroMedia {
+  min-height: 0;
+  padding: 0;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  overflow: hidden;
+}
+.heroPhotoReal {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+@media (max-width: 600px) {
+  .heroMedia { min-height: 0; padding: 0; border-radius: 14px; }
+}

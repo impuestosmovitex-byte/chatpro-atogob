@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import styles from "./marketing.module.css";
 
 export function MarketingHeader() {
@@ -41,54 +42,17 @@ export function MarketingHeader() {
 
 export function HeroMedia() {
   return (
-    <div className={styles.heroMedia} aria-label="Vista de ejemplo de la plataforma MW1">
-      <div className={styles.heroApp}>
-        <div className={styles.heroAppTop}>
-          <span className={styles.appMiniLogo}>M</span>
-          <strong>MW1</strong>
-          <span className={styles.heroAppSubtitle}>Atención centralizada</span>
-          <span className={styles.appLive}><i aria-hidden="true" />En línea</span>
-        </div>
-        <div className={styles.heroAppBody}>
-          <div className={styles.heroAppInbox}>
-            <span className={styles.previewSmallLabel}>BANDEJA DE ENTRADA</span>
-            <strong>Conversaciones</strong>
-            <div className={styles.appConversationSelected}>
-              <span className={styles.appPersonAvatar}>M</span>
-              <span><b>María González</b><small>Consulta sobre planes</small></span>
-              <span className={styles.appUnread}>2</span>
-            </div>
-            <div className={styles.appConversation}>
-              <span className={styles.appPersonAvatar}>C</span>
-              <span><b>Carlos Ramírez</b><small>Información de servicios</small></span>
-            </div>
-            <div className={styles.appConversation}>
-              <span className={styles.appPersonAvatar}>L</span>
-              <span><b>Laura Torres</b><small>Seguimiento comercial</small></span>
-            </div>
-          </div>
-          <div className={styles.heroAppChat}>
-            <div className={styles.appChatTitle}>
-              <span className={styles.appPersonAvatar}>M</span>
-              <span><b>María González</b><small>WhatsApp · Cliente potencial</small></span>
-            </div>
-            <div className={styles.appMessageClient}>
-              Hola, quisiera conocer cómo funciona MW1 para mi empresa.
-            </div>
-            <div className={styles.appMessageBusiness}>
-              ¡Hola, María! Podemos ayudarte a organizar conversaciones, clientes y seguimientos desde un solo lugar.
-            </div>
-            <div className={styles.appAssist}>
-              <span aria-hidden="true">✦</span>
-              <span><strong>IA como apoyo</strong><small>Respuestas y contexto disponibles para tu equipo</small></span>
-            </div>
-          </div>
-        </div>
-        <div className={styles.heroAppFoot}>
-          <span><span className={styles.appFooterDot} /> Equipo conectado</span>
-          <span>Vista ilustrativa · Datos de ejemplo</span>
-        </div>
-      </div>
+    <div className={styles.heroMedia}>
+      <Image
+        src="/media/mw1-hero.webp"
+        alt="Emprendedora de Emprende con Maogo mostrando la plataforma educativa en su computador"
+        width={1042}
+        height={850}
+        className={styles.heroPhotoReal}
+        priority
+        unoptimized
+        sizes="(max-width: 860px) 100vw, (max-width: 1240px) 46vw, 560px"
+      />
     </div>
   );
 }
