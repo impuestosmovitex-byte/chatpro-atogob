@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MarketingIcon, type MarketingIconName } from "../components/marketing/MarketingIcon";
 import {
   HeroMedia,
   MarketingHeader,
@@ -6,24 +7,24 @@ import {
 } from "../components/marketing/MarketingHeader";
 import styles from "../components/marketing/marketing.module.css";
 
-const benefits = [
+const benefits: {icon: MarketingIconName; title: string; copy: string}[] = [
   {
-    icon: "IA",
+    icon: "sparkles",
     title: "Atiende a tiempo, incluso cuando tu equipo no está",
     copy: "Automatiza respuestas y deja que la IA ayude a tus clientes 24/7 con información real de tu negocio.",
   },
   {
-    icon: "CRM",
+    icon: "users",
     title: "Cada interesado queda organizado",
     copy: "Guarda leads, notas, intereses, estados y seguimientos para que ninguna oportunidad se pierda.",
   },
   {
-    icon: "VEN",
+    icon: "shopping",
     title: "Vende dentro de la conversación",
     copy: "Comparte catálogo, opciones de pago y la información que el cliente necesita para avanzar.",
   },
   {
-    icon: "AUT",
+    icon: "workflow",
     title: "Automatiza procesos repetitivos",
     copy: "Crea seguimientos, respuestas y flujos para liberar tiempo de tu equipo sin perder control.",
   },
@@ -61,18 +62,18 @@ export default function InicioPage() {
           <span>Atiende, vende y haz seguimiento desde MW1.</span>
         </div>
 
-        {[
-          ["WA", "WhatsApp"],
-          ["IG", "Instagram"],
-          ["TG", "Telegram"],
-          ["WEB", "Chat web"],
-          ["CAT", "Catálogo"],
-          ["PAG", "Pasarela de pago"],
-          ["DAT", "Información real"],
-          ["24/7", "Atención 24/7"],
-        ].map(([short, name]) => (
-          <div className={styles.stripItem} key={name}>
-            <span>{short}</span>
+        {([
+          ["whatsapp", "WhatsApp"],
+          ["instagram", "Instagram"],
+          ["messenger", "Messenger"],
+          ["telegram", "Telegram"],
+          ["web", "Chat web"],
+          ["catalog", "Catálogo"],
+          ["payment", "Pagos"],
+          ["clock", "Atención 24/7"],
+        ] as [MarketingIconName, string][]).map(([icon, name]) => (
+          <div className={styles.stripItem} data-channel={icon} key={name}>
+            <span className={styles.channelGlyph}><MarketingIcon name={icon} /></span>
             <strong>{name}</strong>
           </div>
         ))}
@@ -91,7 +92,7 @@ export default function InicioPage() {
         <div className={styles.benefitGrid}>
           {benefits.map((benefit) => (
             <article className={styles.benefitCard} key={benefit.title}>
-              <div className={styles.benefitIcon}>{benefit.icon}</div>
+              <div className={styles.benefitIcon}><MarketingIcon name={benefit.icon} /></div>
               <h3>{benefit.title}</h3>
               <p>{benefit.copy}</p>
             </article>
@@ -119,15 +120,15 @@ export default function InicioPage() {
         </div>
 
         <div className={styles.integrationGrid}>
-          {[
-            ["WA", "WhatsApp"],
-            ["IG", "Instagram"],
-            ["MS", "Messenger"],
-            ["TG", "Telegram"],
-            ["WEB", "Chat web"],
-          ].map(([short, name]) => (
-            <article className={styles.integrationCard} key={name}>
-              <div className={styles.integrationBadge}>{short}</div>
+          {([
+            ["whatsapp", "WhatsApp"],
+            ["instagram", "Instagram"],
+            ["messenger", "Messenger"],
+            ["telegram", "Telegram"],
+            ["web", "Chat web"],
+          ] as [MarketingIconName, string][]).map(([icon, name]) => (
+            <article className={styles.integrationCard} data-channel={icon} key={name}>
+              <div className={styles.integrationBadge}><MarketingIcon name={icon} /></div>
               <strong>{name}</strong>
             </article>
           ))}

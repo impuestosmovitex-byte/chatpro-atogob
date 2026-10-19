@@ -35,8 +35,7 @@ export default function PreciosPage() {
           <div className={styles.eyebrow}>Precios</div>
           <h2>Un plan para cada etapa de tu negocio.</h2>
           <p>
-            Esta primera versión deja los valores abiertos para que definamos juntos
-            el modelo comercial sin publicar precios inventados.
+            Conoce las opciones de MW1. Nuestro equipo te ayudará a elegir las funciones y el alcance apropiados para tu empresa.
           </p>
         </div>
 

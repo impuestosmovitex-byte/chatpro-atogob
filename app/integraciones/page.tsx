@@ -1,3 +1,4 @@
+import { MarketingIcon, type MarketingIconName } from "../components/marketing/MarketingIcon";
 import { MarketingHeader } from "../components/marketing/MarketingHeader";
 import styles from "../components/marketing/marketing.module.css";
 
@@ -16,15 +17,15 @@ export default function IntegracionesPage() {
         </div>
 
         <div className={styles.integrationGrid}>
-          {[
-            ["WA", "WhatsApp"],
-            ["IG", "Instagram"],
-            ["MS", "Messenger"],
-            ["TG", "Telegram"],
-            ["WEB", "Chat web"],
-          ].map(([short, name]) => (
-            <article className={styles.integrationCard} key={name}>
-              <div className={styles.integrationBadge}>{short}</div>
+          {([
+            ["whatsapp", "WhatsApp"],
+            ["instagram", "Instagram"],
+            ["messenger", "Messenger"],
+            ["telegram", "Telegram"],
+            ["web", "Chat web"],
+          ] as [MarketingIconName, string][]).map(([icon, name]) => (
+            <article className={styles.integrationCard} data-channel={icon} key={name}>
+              <div className={styles.integrationBadge}><MarketingIcon name={icon} /></div>
               <strong>{name}</strong>
             </article>
           ))}

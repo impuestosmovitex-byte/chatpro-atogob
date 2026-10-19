@@ -15,8 +15,7 @@ export default function DemoPage() {
           <div className={styles.eyebrow}>Demo de MW1</div>
           <h2>Mira cómo se siente trabajar con todo conectado.</h2>
           <p>
-            Esta página será la base de la demo pública. Después podremos convertirla
-            en una experiencia interactiva sin exponer datos reales del CRM.
+            Explora una vista ilustrativa de MW1 con conversaciones y datos de ejemplo, sin exponer información real de clientes.
           </p>
         </div>
 
@@ -37,7 +36,7 @@ export default function DemoPage() {
 
           <article className={styles.demoCard}>
             <h3>Solicitar una demo personalizada</h3>
-            <p>Luego conectaremos este botón a un formulario corto para registrar al interesado directamente en MW1.</p>
+            <p>Pronto podrás solicitar una demostración personalizada para tu empresa. Si ya tienes acceso, entra con tu cuenta actual.</p>
             <div style={{ marginTop: 22 }}>
               <Link href="/login" className={styles.primaryButton}>Ya soy cliente</Link>
             </div>

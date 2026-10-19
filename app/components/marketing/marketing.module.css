@@ -1036,3 +1036,252 @@
     padding: 10px;
   }
 }
+
+
+/* ===== MW1 sitio público v2: limpio, mobile-first y sin imágenes embebidas ===== */
+.site {
+  --site-ink: #111827;
+  --site-muted: #5f6877;
+  --site-line: #e5e7eb;
+  --site-canvas: #ffffff;
+  --site-panel: #ffffff;
+  --site-accent: #eab308;
+  --site-accent-soft: #f5f6f8;
+  background: #fff;
+  color: var(--site-ink);
+}
+.header {
+  border-bottom: 1px solid #e9ebef;
+  background: rgba(255,255,255,.97);
+}
+.navWrap { width: min(1240px,calc(100% - 56px)); gap: clamp(14px,2vw,30px); }
+.nav { gap: clamp(14px,2vw,28px); color:#343b47; }
+.nav a:hover { color:#111827; text-decoration: underline; text-decoration-color: #eab308; text-underline-offset: 6px; }
+.logoMark { background:#131b28; box-shadow: none; }
+.primaryButton, .secondaryButton { border-radius: 11px; }
+.primaryButton { background:#151b25; color:#fff !important; box-shadow:none; }
+.secondaryButton { background:#fff; border:1px solid #d6dbe3; color:#151b25 !important; }
+.primaryButton:hover { background: #303845; box-shadow:0 8px 20px rgba(17,24,39,.10); }
+.secondaryButton:hover { border-color:#667085; }
+.mobileMenu { display:none; }
+.hero {
+  width:min(1240px,calc(100% - 56px));
+  padding:clamp(48px,6vw,88px) 0 54px;
+  gap: clamp(24px,4vw,64px);
+  grid-template-columns:minmax(0,1.06fr) minmax(0,.94fr);
+}
+.hero > div { min-width:0; }
+.eyebrow {
+  margin-bottom:20px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color:#515d6b;
+  font-size:12px;
+  border-radius:100px;
+  padding:8px 12px;
+}
+.eyebrow::before {
+  content:"";
+  display:inline-block;
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#eab308;
+}
+.hero h1 {
+  font-size:clamp(38px,4.65vw,62px);
+  line-height:1.07;
+  letter-spacing:-.049em;
+}
+.heroHighlight { background:none; border-bottom:3px solid #d9ab0c; }
+.heroCopy { color:var(--site-muted); font-size:clamp(15px,1.5vw,18px); line-height:1.64; }
+.heroActions { flex-wrap:wrap; gap:12px; }
+.heroActions .primaryButton, .heroActions .secondaryButton { min-height:50px; padding:0 25px; }
+.heroMedia {
+  background:#f8fafc;
+  min-height:440px;
+  padding: clamp(12px,2vw,24px);
+  border:1px solid #e4e8ef;
+  box-shadow:0 18px 60px rgba(23,34,53,.06);
+  border-radius:24px;
+}
+.heroApp { height:100%; min-height:395px; background:#fff; border:1px solid #e5e9ef; border-radius:16px; overflow:hidden; box-shadow:0 9px 30px rgba(17,24,39,.06); }
+.heroAppTop { min-height:57px; display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid #edf0f3; font-size:13px; }
+.appMiniLogo { display:grid; place-items:center; width:27px; height:27px; flex:0 0 27px; border-radius:8px; background:#171f2e; color:#fff; font-weight:900; }
+.heroAppSubtitle { color:#8993a1; font-size:10px; margin-left:3px; }
+.appLive { display:inline-flex; gap:5px; align-items:center; margin-left:auto; color:#168155; font-size:10px; font-weight:750; white-space:nowrap; }
+.appLive i,.appFooterDot { display:inline-block; width:7px; height:7px; background:#22a66d; border-radius:50%; }
+.heroAppBody { display:grid; grid-template-columns:minmax(0,41%) minmax(0,59%); min-height:310px; }
+.heroAppInbox { min-width:0; padding:18px 8px; border-right:1px solid #edf0f3; display:flex; flex-direction:column; gap:9px; }
+.previewSmallLabel { font-size:9px; font-weight:850; color:#8c97a8; letter-spacing:.06em; padding:0 8px; }
+.heroAppInbox > strong { font-size:15px; padding:0 8px 9px; }
+.appConversation,.appConversationSelected { min-width:0; display:flex; align-items:center; gap:7px; padding:10px 7px; border-radius:10px; }
+.appConversationSelected { background:#f1f3f6; }
+.appPersonAvatar { width:31px; height:31px; flex:0 0 31px; display:grid; place-items:center; border-radius:50%; background:#e5e9ef; color:#303a49; font-size:11px; font-weight:800; }
+.appConversation b,.appConversationSelected b,.appChatTitle b { display:block; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.appConversation small,.appConversationSelected small,.appChatTitle small { display:block; font-size:9px; color:#788395; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.appConversation > span:nth-child(2),.appConversationSelected > span:nth-child(2) { min-width:0; }
+.appUnread { border-radius:100px; background:#212b3a; color:#fff; font-size:9px; padding:3px 6px; margin-left:auto; }
+.heroAppChat { padding:12px; min-width:0; background:#fcfcfd; }
+.appChatTitle { display:flex; align-items:center; gap:9px; padding:3px 0 12px; border-bottom:1px solid #edf0f3; }
+.appMessageClient,.appMessageBusiness { max-width:93%; width:fit-content; padding:11px 12px; margin-top:16px; border-radius:13px; font-size:10px; line-height:1.55; }
+.appMessageClient { background:#fff; border:1px solid #e5e7ec; }
+.appMessageBusiness { background:#edf2f7; margin-left:auto; }
+.appAssist { display:flex; align-items:center; gap:9px; padding:9px; margin-top:19px; border:1px solid #e8ebef; background:#fff; border-radius:10px; }
+.appAssist > span:first-child { display:grid; place-items:center; background:#f5f5f4; border-radius:8px; width:25px; height:25px; flex:0 0 25px; color:#b88b00; }
+.appAssist strong,.appAssist small { display:block; font-size:9px; }
+.appAssist small { color:#858e9a; margin-top:2px; font-size:8px; }
+.heroAppFoot { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px; border-top:1px solid #edf0f3; padding:10px 15px; color:#929ba8; font-size:9px; }
+.heroAppFoot span:first-child { display:flex; align-items:center; gap:6px; }
+.heroStrip {
+  width:min(1240px,calc(100% - 56px));
+  grid-template-columns:1.9fr repeat(8,minmax(0,1fr));
+  margin:0 auto 18px;
+  padding:16px 14px;
+  gap:4px;
+  border:1px solid #e5e8ed;
+  background:#fff;
+  box-shadow:0 10px 32px rgba(17,24,39,.04);
+  border-radius:17px;
+}
+.stripLead { background:#fff; border-right:1px solid #e7e9ec; border-radius:0; padding:7px 15px; }
+.stripLead strong { font-size:13px; }
+.stripLead span { font-size:11px; }
+.stripItem {
+  min-width:0; min-height:75px; background:#fff; border:0;
+  border-radius:12px; gap:6px; padding:7px 3px;
+}
+.stripItem > span.channelGlyph {
+  width:31px; height:31px; display:grid; place-items:center;
+  border-radius:9px; background:#f3f5f7; color:#232e3f;
+}
+.stripItem > span.channelGlyph svg { width:22px; height:22px; }
+.stripItem strong { font-size:10px; color:#263242; line-height:1.15; }
+.stripItem[data-channel="whatsapp"] .channelGlyph,
+.integrationCard[data-channel="whatsapp"] .integrationBadge { color:#138b50; background:#edf9f2; }
+.stripItem[data-channel="instagram"] .channelGlyph,
+.integrationCard[data-channel="instagram"] .integrationBadge { color:#b82c83; background:#fff0f7; }
+.stripItem[data-channel="messenger"] .channelGlyph,
+.integrationCard[data-channel="messenger"] .integrationBadge { color:#1377dd; background:#eff6ff; }
+.stripItem[data-channel="telegram"] .channelGlyph,
+.integrationCard[data-channel="telegram"] .integrationBadge { color:#188abe; background:#effaff; }
+.section { width:min(1240px,calc(100% - 56px)); }
+.section h2 { font-size:clamp(30px,3.55vw,47px); }
+.benefitCard,.integrationCard,.priceCard { box-shadow:none; background:#fff; border-color:#e6e9ef; }
+.benefitIcon { background:#f2f4f7; color:#202a37; margin-bottom:23px; }
+.benefitIcon svg { width:23px; height:23px; }
+.integrationBadge { background:#f2f4f7; color:#273344; }
+.integrationBadge svg { width:25px; height:25px; }
+.integrationCard { transition:transform .2s ease, border-color .2s ease; }
+.integrationCard:hover { transform:translateY(-2px); border-color:#b9c1ce; }
+.priceCardFeatured { border-color:#959eab; box-shadow:0 10px 30px rgba(17,24,39,.055); }
+.priceLabel { color:#4d5867; }
+.priceCard .price { font-size:clamp(27px,3vw,40px); }
+.previewSidebar .previewActive { background:#e9edf2; color:#192331; }
+.previewTabs .activeTab,.previewChannel,.catalogCard span { color:#1f2937; }
+.companyMessage { background:#eaf0f5; color:#1b2837; }
+.catalogCard { border-color:#e7e9ef; }
+.catalogCard button { background:#1c2532; }
+.ctaBand { background:#151c28; width:min(1240px,calc(100% - 56px)); }
+.ctaBand .primaryButton { background:#fff; color:#111827 !important; }
+
+@media (max-width: 1100px) {
+  .navWrap { gap:13px; }
+  .nav { gap:15px; font-size:13px; }
+  .navActions { gap:7px; }
+  .navActions .primaryButton,.navActions .secondaryButton { padding:0 12px; }
+  .hero { gap:24px; }
+  .heroStrip { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .stripLead { grid-column:1/-1; border:0; border-bottom:1px solid #e7e9ec; min-height:48px; }
+}
+@media (max-width: 860px) {
+  .navWrap { grid-template-columns:auto 1fr; min-height:64px; padding:9px 0; }
+  .nav { display:none; }
+  .navActions { grid-column:2; grid-row:1; justify-self:end; }
+  .navActions .secondaryButton { display:none; }
+  .mobileMenu { display:block; position:relative; }
+  .mobileMenu > summary {
+    width:44px; height:43px; display:flex; align-items:center; justify-content:center;
+    border:1px solid #d7dce4; border-radius:11px; background:#fff; color:#182132;
+    list-style:none; cursor:pointer; font-size:23px; font-weight:600;
+  }
+  .mobileMenu > summary::-webkit-details-marker { display:none; }
+  .mobileLinks {
+    position:absolute; top:calc(100% + 13px); right:0;
+    width:min(290px,calc(100vw - 24px)); z-index:80;
+    display:grid; gap:0; padding:9px;
+    border:1px solid #e3e7ef; border-radius:15px; background:#fff;
+    box-shadow:0 18px 42px rgba(17,24,39,.13);
+  }
+  .mobileLinks a { padding:13px 12px; border-radius:9px; font-size:14px; font-weight:700; }
+  .mobileLinks a:hover { background:#f3f5f7; }
+  .hero { grid-template-columns:1fr; padding:42px 0 26px; gap:28px; }
+  .hero h1 { max-width:720px; }
+  .heroMedia { width:100%; max-width:760px; justify-self:center; }
+  .benefitGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .integrationGrid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .priceGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .priceCardFeatured { order:-1; }
+  .priceCard ul { min-height:0; }
+}
+@media (max-width: 600px) {
+  .navWrap,.hero,.section,.heroStrip,.ctaBand { width:calc(100% - 32px); }
+  .navWrap { gap:8px; }
+  .logo { font-size:19px; gap:6px; }
+  .logoMark { width:32px; height:32px; }
+  .navActions .primaryButton { min-height:42px; padding:0 11px; font-size:11px; }
+  .hero { padding-top:39px; }
+  .hero h1 { font-size:clamp(35px,8.8vw,46px); line-height:1.11; letter-spacing:-.047em; }
+  .heroCopy { font-size:15px; line-height:1.6; margin-top:18px !important; }
+  .heroActions { display:grid; grid-template-columns:1fr 1fr; margin-top:23px; }
+  .heroActions a { width:100%; min-height:46px !important; padding:0 10px !important; font-size:13px; }
+  .heroMedia { min-height:0; border-radius:17px; padding:10px; }
+  .heroApp { min-height:360px; }
+  .heroAppTop { padding:10px; min-height:53px; }
+  .heroAppSubtitle { display:none; }
+  .heroAppBody { grid-template-columns:minmax(0,39%) minmax(0,61%); min-height:285px; }
+  .heroAppInbox { padding:14px 5px; }
+  .heroAppInbox > strong { font-size:11px; }
+  .previewSmallLabel { font-size:8px; }
+  .appPersonAvatar { width:24px; height:24px; flex-basis:24px; font-size:9px; }
+  .appConversation,.appConversationSelected { gap:5px; padding:8px 4px; }
+  .appConversation b,.appConversationSelected b,.appChatTitle b { font-size:9px; }
+  .appConversation small,.appConversationSelected small,.appChatTitle small { font-size:8px; }
+  .appUnread { display:none; }
+  .heroAppChat { padding:8px; }
+  .appMessageClient,.appMessageBusiness { font-size:9px; padding:8px; margin-top:11px; }
+  .appAssist { margin-top:12px; padding:6px; gap:5px; }
+  .appAssist small { line-height:1.3; }
+  .heroAppFoot { font-size:8px; }
+  .heroStrip { padding:11px 6px; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px 2px; margin:6px auto 0; }
+  .stripLead { padding:10px 12px; }
+  .stripItem { min-height:70px; padding:5px 1px; }
+  .stripItem strong { font-size:9px; }
+  .stripItem > span.channelGlyph { width:30px; height:30px; }
+  .section { padding:55px 0; }
+  .sectionIntro p,.sectionIntroCentered p { font-size:15px; }
+  .benefitGrid { grid-template-columns:1fr; }
+  .benefitCard { min-height:0; padding:20px; }
+  .benefitIcon { margin-bottom:13px; }
+  .integrationGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .priceGrid,.demoGrid { grid-template-columns:1fr; }
+  .priceCardFeatured { order:initial; }
+  .section h2 { font-size:clamp(28px,7.3vw,38px); }
+  .productWindow { overflow:hidden; }
+  .windowBar { min-width:0; display:flex; align-items:center; justify-content:space-between; }
+  .windowSearch { display:none; }
+  .productGrid { min-width:0; display:block; }
+  .previewSidebar,.contactPanel { display:none; }
+  .conversationList { max-height:286px; overflow:auto; border-right:0; }
+  .previewConversation { min-height:61px; }
+  .chatPanel { min-height:330px; border-top:1px solid #e8ebef; }
+  .customerMessage,.companyMessage { max-width:90%; }
+  .ctaBand { padding:25px; margin-bottom:36px; }
+  .ctaBand h2 { font-size:29px; line-height:1.12; }
+}
+@media (max-width: 370px) {
+  .navActions .primaryButton { padding:0 8px; font-size:10px; }
+  .hero h1 { font-size:33px; }
+  .heroActions { gap:8px; }
+  .heroAppInbox .appConversation:last-child { display:none; }
+}
