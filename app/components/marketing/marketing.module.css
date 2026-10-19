@@ -1428,3 +1428,30 @@
 @media (max-width:370px) {
   .homeCtaActions { grid-template-columns:1fr; }
 }
+
+/* MW1 comercial: fondos siempre claros */
+.homeCta {background:linear-gradient(120deg,#fffefa 0%,#fff7dc 100%); color:#18212f; border:1px solid #f0e4b5; box-shadow:0 12px 30px rgba(21,28,40,.035);}
+.homeCta .eyebrow {background:#fff; color:#444f60; border-color:#ebdfb9;}
+.homeCta p {color:#5a6674;}
+.homeCtaActions .secondaryButton {background:#fff; color:#15202d !important; border-color:#d3d8df;}
+.homeCtaDecoration {color:#c99e0e; border-color:#eac945;}
+.integrationSection {margin-top:55px;}
+.integrationSectionIntro {margin-bottom:23px;max-width:800px;}
+.integrationSectionIntro h3 {font-size:clamp(25px,2.9vw,36px);letter-spacing:-.038em;margin:0 0 10px;}
+.integrationSectionIntro p {font-size:15px;color:#657187;line-height:1.6;margin:0;}
+.connectGrid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
+.connectCard {padding:27px;border:1px solid #e5e9ef;border-radius:19px;background:#fff;min-width:0;}
+.connectCard h4 {font-size:19px;letter-spacing:-.03em;margin:18px 0 9px;}
+.connectCard p {font-size:14px;line-height:1.55;color:#657187;margin:0;}
+.platformMark,.connectIcon {display:grid;place-items:center;width:56px;height:56px;border-radius:15px;background:#f0f3f7;font-size:26px;font-weight:900;color:#18212f;}
+.platformMark[data-brand="shopify"] {background:#eef9e9;color:#338a25;}
+.platformMark[data-brand="woo"] {background:#f5edfb;color:#7850a6;}
+.platformMark[data-brand="nube"] {background:#edf4ff;color:#366bc4;}
+.connectIcon svg {width:30px;height:30px;}
+.connectNote {display:inline-block;margin-top:16px;color:#717b8b;font-size:11px;font-weight:750;}
+.integrationClosing {display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:62px;padding:30px 34px;border-radius:19px;background:#fff9e7;border:1px solid #f0e4b5;}
+.integrationClosing h3 {font-size:25px;margin:0 0 7px;letter-spacing:-.03em;}
+.integrationClosing p {margin:0;color:#687385;font-size:14px;}
+.integrationClosing a {flex-shrink:0;}
+@media(max-width:860px){.connectGrid{grid-template-columns:repeat(2,minmax(0,1fr));}.connectGrid .connectCard:last-child:nth-child(odd){grid-column:1/-1;}}
+@media(max-width:600px){.connectGrid{grid-template-columns:1fr;}.connectGrid .connectCard:last-child:nth-child(odd){grid-column:auto;}.connectCard{padding:21px;}.integrationSection{margin-top:42px;}.integrationClosing{flex-direction:column;align-items:flex-start;padding:24px;}.integrationClosing a{width:100%;}.integrationClosing h3{font-size:23px;}}

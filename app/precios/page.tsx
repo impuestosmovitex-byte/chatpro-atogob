@@ -33,9 +33,9 @@ export default function PreciosPage() {
       <section className={styles.section}>
         <div className={styles.sectionIntroCentered}>
           <div className={styles.eyebrow}>Precios</div>
-          <h2>Un plan para cada etapa de tu negocio.</h2>
+          <h2>Elige un plan y empieza ya.</h2>
           <p>
-            Conoce las opciones de MW1. Nuestro equipo te ayudará a elegir las funciones y el alcance apropiados para tu empresa.
+            Impulsa tus conversiones y ventas mientras mejoras la atención al cliente y la organización de tu negocio. Elige la opción que mejor se adapte a tu equipo.
           </p>
         </div>
 
