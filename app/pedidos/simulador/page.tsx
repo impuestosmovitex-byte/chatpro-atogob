@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
-import { parseCatalogRequest, type CatalogChoice } from '../../lib/staging-catalog-parser';
+import { type CatalogChoice } from '../../lib/staging-catalog-parser';
 import orderStyles from '../page.module.css';
 import styles from './page.module.css';
 
@@ -31,6 +31,8 @@ export default function ChatOrderSimulatorPage(){
   const [note,setNote]=useState('');
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
+  const [thinking,setThinking]=useState(false);
+  const [assistantMode,setAssistantMode]=useState<'ia'|'simulacion'>('simulacion');
   const [error,setError]=useState('');
   const [savedOrder,setSavedOrder]=useState<{code:string;total:number}|null>(null);
   const idRef=useRef(1);
@@ -89,51 +91,51 @@ export default function ChatOrderSimulatorPage(){
     });
     return !failed;
   }
-  function handleMessage(event:FormEvent<HTMLFormElement>){
+  async function handleMessage(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
     const phrase=input.trim().slice(0,450);
-    if(!phrase||loading||saving||savedOrder)return;
+    if(!phrase||loading||saving||thinking||savedOrder)return;
     setInput('');
+    setError('');
     append('customer',phrase);
-    if(/\b(vaciar|limpiar|reiniciar)\b/i.test(phrase)){
-      setCart([]);
-      append('assistant','Listo, dejé tu carrito vacío. ¿Qué productos deseas agregar?');
-      return;
-    }
-    const removing=/\b(quitar|eliminar|retirar|sacar)\b/i.test(phrase);
-    const parsed=parseCatalogRequest(phrase,catalog);
-    if(parsed.lines.length===0){
-      append('assistant',parsed.ambiguous.length?
-        'Encontré referencias parecidas. Selecciona el producto exacto desde el catálogo lateral.'
-        :'No encontré una referencia exacta. Escribe el nombre que aparece en el catálogo o selecciónala desde el panel.');
-      return;
-    }
-    const updated=new Map(cart.map(x=>[x.variantId,{...x}]));
-    const added:string[]=[];
-    const blocked:string[]=[];
-    for(const line of parsed.lines){
-      const product=catalog.find(x=>x.variantId===line.variantId);
-      if(!product)continue;
-      const old=updated.get(product.variantId);
-      const next=removing?Math.max(0,(old?.quantity||0)-line.quantity):(old?.quantity||0)+line.quantity;
-      if(next>1000||(!removing&&product.stock!==null&&next>product.stock)){
-        blocked.push(product.label);
-        continue;
+    setThinking(true);
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),18000);
+    try{
+      const response=await fetch('/api/native-commerce/assistant/plan',{
+        method:'POST',
+        signal:controller.signal,
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({
+          message:phrase,
+          cart:cart.map(x=>({variantId:x.variantId,quantity:x.quantity})),
+        }),
+      });
+      const data=await response.json();
+      if(!response.ok||!data.ok){
+        throw new Error(data.error||'No pude consultar el catálogo en este momento.');
       }
-      if(next===0)updated.delete(product.variantId);
-      else updated.set(product.variantId,{...product,quantity:next});
-      added.push(`${line.quantity} × ${product.label}`);
+      if(!Array.isArray(data.cart)||typeof data.reply!=='string'){
+        throw new Error('El asistente devolvió un resultado incompleto.');
+      }
+      const next=data.cart as CartLine[];
+      if(next.some(x=>!catalog.some(product=>product.variantId===x.variantId))){
+        throw new Error('El catálogo cambió; actualiza el simulador.');
+      }
+      setCart(next);
+      setSavedOrder(null);
+      setAssistantMode(data.mode==='ia'?'ia':'simulacion');
+      append('assistant',data.reply||'No pude interpretar esta solicitud. Indica el producto exacto.');
+    }catch(cause){
+      const errorMessage=cause instanceof Error&&cause.name==='AbortError'
+        ? 'La consulta tardó demasiado. Inténtalo otra vez.'
+        :cause instanceof Error?cause.message:'No fue posible consultar el asistente.';
+      setError(errorMessage);
+      append('assistant','No modifiqué el carrito: '+errorMessage);
+    }finally{
+      clearTimeout(timeout);
+      setThinking(false);
     }
-    setCart([...updated.values()]);
-    setSavedOrder(null);
-    const parts=[
-      added.length?`${removing?'Quité':'Agregué'}: ${added.join(', ')}.`:'',
-      blocked.length?`No pude añadir por inventario o cantidad: ${blocked.join(', ')}.`:'',
-      parsed.unmatched.length||parsed.ambiguous.length?
-        'No entendí toda la solicitud; revisa los artículos del carrito antes de confirmar.':'',
-      'Puedes continuar agregando, quitar productos o completar los datos para registrar el pedido.',
-    ].filter(Boolean);
-    append('assistant',parts.join(' '));
   }
 
   async function createOrder(){
@@ -183,7 +185,7 @@ export default function ChatOrderSimulatorPage(){
         <div>
           <p className={orderStyles.eyebrow}>MW1 COMERCIO · LABORATORIO</p>
           <h1>Simulador de pedidos por chat</h1>
-          <p>Prueba cómo el cliente puede armar un carrito conversando. Sin IA externa ni mensajes de WhatsApp reales.</p>
+          <p>Prueba solicitudes de compra con catálogo y precios verificados. La IA se activará solo con configuración exclusiva de staging; no se envían mensajes reales.</p>
           <p><Link href="/pedidos">← Volver a Pedidos</Link></p>
         </div>
       </header>
@@ -191,7 +193,7 @@ export default function ChatOrderSimulatorPage(){
         <section className={styles.chatPanel}>
           <div className={styles.chatHeader}>
             <span className={styles.avatar}>MW</span>
-            <div><strong>Asistente de compras · DEMO</strong><small>Simulación interna · no es WhatsApp</small></div>
+            <div><strong>Asistente de compras · DEMO</strong><small>{thinking?'Consultando catálogo…':assistantMode==='ia'?'IA supervisada · no es WhatsApp':'Reconocimiento local · no es WhatsApp'}</small></div>
           </div>
           <div className={styles.messages} aria-live="polite">
             {messages.map(m=><div key={m.id} className={m.from==='assistant'?styles.assistantMessage:styles.customerMessage}>
@@ -202,10 +204,10 @@ export default function ChatOrderSimulatorPage(){
             <input aria-label="Mensaje al asistente de demostración" value={input}
               onChange={e=>setInput(e.target.value)} maxLength={450}
               placeholder="Ejemplo: 2 panes y una cubeta de huevos"
-              disabled={loading||saving||Boolean(savedOrder)}/>
-            <button type="submit" disabled={!input.trim()||loading||saving||Boolean(savedOrder)}>Enviar</button>
+              disabled={loading||saving||thinking||Boolean(savedOrder)}/>
+            <button type="submit" disabled={!input.trim()||loading||saving||thinking||Boolean(savedOrder)}>{thinking?'Consultando…':'Enviar'}</button>
           </form>
-          <p className={styles.hint}>Reconocimiento básico por nombre del producto. No sustituye todavía a la IA de ventas.</p>
+          <p className={styles.hint}>El asistente solo propone cambios al carrito. El pedido requiere confirmación explícita; los precios se verifican nuevamente al guardar.</p>
         </section>
         <section className={styles.cartPanel}>
           <h2>Carrito de compras</h2>
@@ -215,7 +217,7 @@ export default function ChatOrderSimulatorPage(){
               <small>Agregar productos desde el catálogo</small>
               {catalog.map(p=><div key={p.variantId} className={styles.choice}>
                 <span>{p.label}<small>{pesos(p.unitPrice)} · {p.stock===null?'Sin control de stock':`Stock: ${p.stock}`}</small></span>
-                <button type="button" onClick={()=>addChoice(p)} disabled={savedOrder!==null||(p.stock!==null&&p.stock===0)}>+</button>
+                <button type="button" onClick={()=>addChoice(p)} disabled={thinking||savedOrder!==null||(p.stock!==null&&p.stock===0)}>+</button>
               </div>)}
             </div>}
           {cart.length===0?<p className={styles.muted}>El carrito está vacío. Puedes escribir una solicitud o agregar productos.</p>:
@@ -224,7 +226,7 @@ export default function ChatOrderSimulatorPage(){
                 <strong>{x.label}</strong>
                 <div>
                   <input aria-label={`Cantidad de ${x.label}`} type="number" step={1} min={0} max={Math.min(1000,x.stock??1000)}
-                    value={x.quantity} disabled={savedOrder!==null} onChange={e=>{
+                    value={x.quantity} disabled={thinking||savedOrder!==null} onChange={e=>{
                       const n=Number(e.target.value);
                       if(Number.isInteger(n)&&n>=0&&n<=1000&&(x.stock===null||n<=x.stock))changeQuantity(x.variantId,n);
                     }}/>
@@ -252,7 +254,7 @@ export default function ChatOrderSimulatorPage(){
             <p>Quedó por confirmar, sin pagar y sin enviar mensajes.</p>
             <Link href="/pedidos">Abrir listado de pedidos →</Link>
           </div>:<button type="button" className={styles.confirm}
-            disabled={loading||saving||cart.length===0} onClick={()=>void createOrder()}>
+            disabled={loading||saving||thinking||cart.length===0} onClick={()=>void createOrder()}>
             {saving?'Guardando…':'Confirmar carrito y crear pedido'}
           </button>}
         </section>
