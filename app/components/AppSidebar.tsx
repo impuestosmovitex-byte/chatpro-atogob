@@ -228,6 +228,7 @@ export function AppSidebar({
     ),
     ...(ordersEnabled ? [
       { href: '/pedidos', label: 'Pedidos', icon: '▤' },
+      ...(demoNavigation ? [{ href: '/pedidos/simulador', label: 'Simular chat', icon: '◈' }] : []),
       { href: '/catalogo', label: 'Catálogo', icon: '▦' },
       { href: '/pedidos/avisos', label: 'Avisos de pedidos', icon: '◉' },
     ] : []),
@@ -359,6 +360,11 @@ export function AppSidebar({
         {ordersEnabled ? (
           <Link className={`${styles.mobileNavItem} ${isActive(pathname, '/pedidos') ? styles.mobileNavActive : ''}`} href="/pedidos">
             <span aria-hidden="true">▤</span><small>Pedidos</small>
+          </Link>
+        ) : null}
+        {ordersEnabled && demoNavigation ? (
+          <Link className={`${styles.mobileNavItem} ${isActive(pathname, '/pedidos/simulador') ? styles.mobileNavActive : ''}`} href="/pedidos/simulador">
+            <span aria-hidden="true">◈</span><small>Simular chat</small>
           </Link>
         ) : null}
         {ordersEnabled ? (
