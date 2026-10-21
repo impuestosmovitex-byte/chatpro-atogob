@@ -14,31 +14,53 @@ const money=(amount:number)=>new Intl.NumberFormat('es-CO',{
 export default function ImportCatalogPage(){
   const [sourceLabel,setSourceLabel]=useState('Catálogo de prueba');
   const [rows,setRows]=useState<ImportRow[]>([]);
+  const [sourceKind,setSourceKind]=useState<'csv'|'excel'|'pdf'>('csv');
+  const [fileNote,setFileNote]=useState('');
   const [errors,setErrors]=useState<string[]>([]);
   const [loading,setLoading]=useState(false);
   const [saved,setSaved]=useState<{imported:number;created:boolean}|null>(null);
   const requestKey=useRef<string|null>(null);
   async function handleFile(event:ChangeEvent<HTMLInputElement>){
-    setRows([]);setErrors([]);setSaved(null);requestKey.current=null;
+    setRows([]);setErrors([]);setSaved(null);setFileNote('');requestKey.current=null;
     const file=event.target.files?.[0];
     if(!file)return;
-    if(!file.name.toLowerCase().endsWith('.csv')){
-      setErrors(['Por ahora selecciona un archivo CSV. Desde Excel utiliza Archivo → Guardar como → CSV UTF-8.']);
+    const name=file.name.toLowerCase();
+    const kind:'csv'|'excel'|'pdf'|null=name.endsWith('.csv')?'csv':
+      name.endsWith('.xlsx')?'excel':name.endsWith('.pdf')?'pdf':null;
+    if(!kind){
+      setErrors(['Selecciona un archivo CSV, Excel (.xlsx) o PDF de texto.']);
       return;
     }
-    if(file.size>130000){
-      setErrors(['Archivo demasiado grande: el límite de la demo es 130 KB y 100 productos.']);
+    if(file.size>(kind==='csv'?130000:1000000)){
+      setErrors(['Archivo demasiado grande: CSV máximo 130 KB; Excel y PDF máximo 1 MB.']);
       return;
     }
     setLoading(true);
     try{
-      const text=await file.text();
-      const result=previewCsv(text);
+      let result:{rows:ImportRow[];errors:string[];notes?:string};
+      if(kind==='csv'){
+        const text=await file.text();
+        result=previewCsv(text);
+      }else{
+        const formData=new FormData();
+        formData.append('file',file);
+        const response=await fetch('/api/native-commerce/catalog/parse-file',{
+          method:'POST',body:formData,
+        });
+        const data=await response.json();
+        if(!response.ok||!data.ok){
+          throw new Error(data.error||'No fue posible leer el archivo.');
+        }
+        result={rows:data.rows||[],errors:data.errors||[],notes:data.notes||''};
+      }
       setRows(result.rows);
       setErrors(result.errors);
-      setSourceLabel(file.name.replace(/\.csv$/i,'').slice(0,110)||'Catálogo CSV de prueba');
-    }catch{
-      setErrors(['No fue posible leer el archivo. Exporta un CSV UTF-8 e inténtalo otra vez.']);
+      setSourceKind(kind);
+      setFileNote(result.notes||'');
+      setSourceLabel(file.name.replace(/\.(csv|xlsx|pdf)$/i,'').slice(0,110)||'Catálogo de prueba');
+    }catch(cause){
+      setErrors([cause instanceof Error?cause.message:
+        'No fue posible interpretar el archivo. Revisa su formato.']);
     }finally{setLoading(false);}
   }
   async function importApproved(){
@@ -49,7 +71,7 @@ export default function ImportCatalogPage(){
       const response=await fetch('/api/native-commerce/catalog/import-csv',{
         method:'POST',
         headers:{'content-type':'application/json'},
-        body:JSON.stringify({requestKey:requestKey.current,sourceLabel:sourceLabel.trim(),rows}),
+        body:JSON.stringify({requestKey:requestKey.current,sourceLabel:sourceLabel.trim(),sourceKind,rows}),
       });
       const data=await response.json();
       if(!response.ok||!data.ok)throw new Error(data.error||'No fue posible importar el catálogo.');
@@ -70,13 +92,14 @@ export default function ImportCatalogPage(){
         </div>
       </header>
       <section className={styles.panel}>
-        <h2>1. Selecciona un archivo CSV</h2>
-        <p className={styles.note}>Desde Excel guarda tu hoja como <strong>CSV UTF-8</strong>. Se admiten archivos separados por punto y coma, coma o tabulación.</p>
-        <p className={styles.note}>Columnas: <strong>SKU, Nombre, Precio, Inventario</strong> (inventario opcional). Hasta 100 productos por carga. El precio debe estar en pesos colombianos.</p>
+        <h2>1. Selecciona tu catálogo: Excel, PDF o CSV</h2>
+        <p className={styles.note}>Puedes cargar un <strong>Excel (.xlsx)</strong> directamente, un <strong>PDF con texto y tabla de productos</strong> o un CSV.</p>
+        <p className={styles.note}>Columnas: <strong>SKU, Nombre, Precio, Inventario</strong> (inventario opcional). Hasta 100 productos por carga. Los PDF escaneados como imagen todavía no se reconocen; necesitarán OCR.</p>
         <div className={pageStyles.uploadArea}>
-          <input type="file" accept=".csv,text/csv" onChange={e=>void handleFile(e)} disabled={loading||Boolean(saved)} aria-label="Seleccionar catálogo CSV"/>
+          <input type="file" accept=".xlsx,.pdf,.csv,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={e=>void handleFile(e)} disabled={loading||Boolean(saved)} aria-label="Seleccionar catálogo Excel, PDF o CSV"/>
           <a href="data:text/csv;charset=utf-8,SKU%3BNombre%3BPrecio%3BInventario%0ADEMO-PRUEBA-001%3BGalletas%3B7500%3B20%0ADEMO-PRUEBA-002%3BLeche%3B5400%3B15" download="plantilla_mw1_catalogo.csv">Descargar plantilla CSV</a>
         </div>
+        {fileNote&&<p className={styles.note} role="status">{fileNote}</p>}
         <label className={pageStyles.label}>Nombre de esta fuente
           <input value={sourceLabel} onChange={e=>setSourceLabel(e.target.value)} minLength={3} maxLength={120} disabled={loading||Boolean(saved)}/>
         </label>
@@ -113,7 +136,7 @@ export default function ImportCatalogPage(){
           {loading?'Procesando…':`Importar ${rows.length} productos`}
         </button>}
       </section>
-      <p className={styles.disclaimer}>Demo de CSV: PDF y archivos XLSX nativos se incorporarán en una etapa posterior. No utilices datos sensibles ni catálogos reales todavía.</p>
+      <p className={styles.disclaimer}>Esta es una primera prueba con archivos pequeños y tablas sencillas. Los PDF escaneados, los Excel de varias hojas y los catálogos extensos necesitarán un importador más completo. No cargues archivos sensibles ni catálogos reales todavía.</p>
     </main>
   </div>;
 }
