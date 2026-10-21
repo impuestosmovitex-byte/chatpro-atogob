@@ -34,6 +34,7 @@ export default function ChatOrderSimulatorPage(){
   const [thinking,setThinking]=useState(false);
   const [assistantMode,setAssistantMode]=useState<'ia'|'simulacion'|'catalogo'>('simulacion');
   const [suggestedProducts,setSuggestedProducts]=useState<CatalogChoice[]>([]);
+  const [photoPreview,setPhotoPreview]=useState<string|null>(null);
   const [error,setError]=useState('');
   const [savedOrder,setSavedOrder]=useState<{code:string;total:number}|null>(null);
   const idRef=useRef(1);
@@ -147,6 +148,45 @@ export default function ChatOrderSimulatorPage(){
     }
   }
 
+  async function searchPhoto(file:File){
+    if(loading||thinking||saving||savedOrder)return;
+    setError('');setSuggestedProducts([]);
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||
+      file.size>524288||file.size<200){
+      setError('Elige una imagen JPEG, PNG o WebP de máximo 512 KB.');
+      return;
+    }
+    setThinking(true);
+    try{
+      const data=await new Promise<string>((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(String(reader.result));
+        reader.onerror=()=>reject(new Error('No pude leer la foto.'));
+        reader.readAsDataURL(file);
+      });
+      setPhotoPreview(data);
+      append('customer','[Fotografía enviada para buscar un producto]');
+      const response=await fetch('/api/native-commerce/assistant/vision',{
+        method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({base64:data.split(',')[1],mimeType:file.type}),
+      });
+      const result=await response.json();
+      if(!response.ok||!result.ok)throw new Error(result.error||'Error al consultar imagen.');
+      const choices=(Array.isArray(result.options)?result.options:[])
+        .slice(0,3).flatMap((o:{variantId?:string})=>{
+          const found=catalog.find(c=>c.variantId===o.variantId);
+          return found?[found]:[];
+        });
+      setSuggestedProducts(choices);
+      setAssistantMode('catalogo');
+      append('assistant',result.reply||'Revisa las opciones del catálogo.');
+    }catch(e){
+      const message=e instanceof Error?e.message:'No se pudo procesar la imagen.';
+      setError(message);
+      append('assistant','No modifiqué el carrito: '+message);
+    }finally{setThinking(false);}
+  }
+
   async function createOrder(){
     if(!cart.length||saving||savedOrder)return;
     setError('');
@@ -221,6 +261,20 @@ export default function ChatOrderSimulatorPage(){
               ))}
             </div>
           )}
+          <div style={{padding:'12px 16px',borderTop:'1px solid #eee',display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+            <label style={{fontSize:12,fontWeight:650}}>
+              <span>Buscar producto por foto (demo)</span>
+              <input type="file" accept="image/jpeg,image/png,image/webp"
+                disabled={loading||thinking||saving||Boolean(savedOrder)}
+                onChange={e=>{
+                  const file=e.target.files?.[0];e.target.value='';
+                  if(file)void searchPhoto(file);
+                }} style={{display:'block',marginTop:7,maxWidth:240}}/>
+            </label>
+            {photoPreview&&<img src={photoPreview} alt="Fotografía enviada para buscar coincidencias"
+              style={{height:72,width:72,objectFit:'contain',borderRadius:8}}/>}
+            <span style={{fontSize:11,color:'#777'}}>Solo sugerencias: revisa la talla y pulsa Agregar.</span>
+          </div>
           <form onSubmit={handleMessage} className={styles.inputBar}>
             <input aria-label="Mensaje al asistente de demostración" value={input}
               onChange={e=>setInput(e.target.value)} maxLength={450}
