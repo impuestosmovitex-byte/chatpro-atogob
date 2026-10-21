@@ -105,7 +105,7 @@ export function previewCsv(text:string):ImportPreview{
     for(const column of factColumns){
       const value=(values[column.index]||'').trim();
       if(!value)continue;
-      const clean=value.replace(/[\\u0000-\\u001f\\u007f]/g,' ').replace(/\\s+/g,' ').trim();
+      const clean=value.replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();
       if(clean.length>column.max)issues.push('campo '+column.key+' demasiado largo');
       else facts[column.key]=clean;
     }
