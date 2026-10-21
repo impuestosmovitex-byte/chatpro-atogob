@@ -165,6 +165,43 @@ describe('MW1 staging sales planner', () => {
     expect(result).toEqual(proposal);
   });
 
+  test('ignores a model attempt to turn a price question into a purchase', () => {
+    const malicious={actions:[{op:'add' as const,variantId:'pan',quantity:1}],uncertain:false};
+    const guarded=guardSalesProposal('¿cuánto cuesta el pan?',fixtures,malicious);
+    expect(guarded.actions).toEqual([]);
+    expect(guarded.uncertain).toBe(true);
+  });
+
+  test('rejects an assistant quantity not requested by customer', () => {
+    const manipulated={actions:[{op:'add' as const,variantId:'pan',quantity:50}],uncertain:false};
+    const guarded=guardSalesProposal('quiero 2 panes',fixtures,manipulated);
+    expect(guarded.actions).toEqual([]);
+    expect(guarded.uncertain).toBe(true);
+  });
+
+  test('does not allow AI to add unrelated product even when reference is valid', () => {
+    const manipulated={actions:[{op:'add' as const,variantId:'chocolate',quantity:2}],uncertain:false};
+    const guarded=guardSalesProposal('quiero 2 panes',fixtures,manipulated);
+    expect(guarded.actions).toEqual([]);
+  });
+
+  test('empty-cart requests cannot be turned into adding other items', () => {
+    const manipulated={actions:[{op:'add' as const,variantId:'pan',quantity:10}],uncertain:false};
+    const guarded=guardSalesProposal('vaciar carrito',fixtures,manipulated);
+    expect(guarded.actions).toEqual([{op:'clear',variantId:'',quantity:0}]);
+  });
+
+  test('max 40 different products protects order creation quota', () => {
+    const many:CatalogItem[]=Array.from({length:41},(_,i)=>({
+      variantId:'sku-'+i,label:'Producto '+i,stock:100,unitPrice:100,
+    }));
+    const original=many.slice(0,40).map(x=>({variantId:x.variantId,quantity:1}));
+    const proposal={actions:[{op:'add' as const,variantId:'sku-40',quantity:1}],uncertain:false};
+    const result=applySalesProposal(many,original,proposal);
+    expect(result.cart).toHaveLength(40);
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/40 referencias/)]));
+  });
+
   test('clears cart without creating orders or payments', () => {
     const proposal=inferSalesProposal('vaciar mi carrito',fixtures);
     const result=applySalesProposal(fixtures,[{variantId:'pan',quantity:3}],proposal);
