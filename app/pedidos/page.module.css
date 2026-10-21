@@ -109,3 +109,19 @@
   .panel { padding: 14px; }
   .toolbar { flex-wrap: wrap; }
 }
+
+.dispatchPanel {
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid #e8e3e6;
+  border-radius: 10px;
+  background: #fdfbfc;
+}
+.dispatchPanel h3 { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
+.dispatchGrid { display: flex; flex-wrap: wrap; gap: 14px; margin: 18px 0; align-items: end; }
+.dispatchGrid label { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 200px; font-size: 13px; font-weight: 600; }
+.dispatchGrid input, .dispatchGrid select { border: 1px solid #d8d8db; border-radius: 8px; padding: 11px; background: #fff; color: #171719; font-size: 13px; }
+.notificationPreview { border-left: 3px solid #75203b; padding: 10px 14px; background: #fff; margin: 10px 0; border-radius: 5px; }
+.notificationPreview strong { font-size: 13px; }
+.notificationPreview p { font-size: 13px; margin: 8px 0; line-height: 1.5; }
+.notificationPreview small { color: #8b5e6c; font-size: 11px; }
