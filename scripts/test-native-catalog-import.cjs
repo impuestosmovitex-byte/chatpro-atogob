@@ -93,9 +93,18 @@ function packXlsx(entries) {
 const escapeXml = value => String(value).replace(/&/g, '&amp;')
   .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-function makeXlsx(products) {
-  const data = [['SKU', 'Nombre', 'Precio', 'Inventario'],
-    ...products.map(p => [p.sku, p.name, p.price, p.stock])];
+function makeXlsx(products, includeFacts = false) {
+  const data = includeFacts
+    ? [['SKU', 'Nombre', 'Precio', 'Inventario', 'Descripcion', 'Material',
+        'Composicion', 'Medidas', 'Ingredientes', 'Alergenos', 'Cuidados', 'Caracteristicas'],
+        ...products.map(p => [
+          p.sku,p.name,p.price,p.stock,p.facts?.description||'',
+          p.facts?.material||'',p.facts?.composition||'',p.facts?.measurements||'',
+          p.facts?.ingredients||'',p.facts?.allergens||'',p.facts?.care||'',
+          p.facts?.details||'',
+        ])]
+    : [['SKU', 'Nombre', 'Precio', 'Inventario'],
+        ...products.map(p => [p.sku, p.name, p.price, p.stock])];
   const xmlRows = data.map((cells, rowNumber) => {
     const cellsXml = cells.map((value, column) => {
       const ref = String.fromCharCode(65 + column) + (rowNumber + 1);
@@ -155,6 +164,39 @@ const parsedCsv = csvModule.previewCsv(
   + sample.map(p => [p.sku,p.name,p.price,p.stock].join(';')).join('\n')
 );
 assert.deepEqual(parsedCsv.rows, expected, 'CSV de tres productos');
+
+const enriched=[
+  {sku:'VESTIDO-001',name:'Vestido negro',price:49000,stock:2,
+    facts:{description:'Vestido corto confirmado por tienda',material:'Algodón',
+      composition:'95% algodón',measurements:'Largo 85 cm',care:'Lavar en frío'}},
+  {sku:'PAN-001',name:'Pan',price:4500,stock:10,
+    facts:{description:'Pan de prueba',ingredients:'Harina, agua y sal',allergens:'Contiene gluten'}},
+];
+const richExcel=officeModule.previewXlsxFile(makeXlsx(enriched,true));
+assert.deepEqual(richExcel.errors,[], 'Excel enriquecido no debe mostrar errores');
+assert.deepEqual(richExcel.rows,enriched,'Excel importa campos opcionales de fichas sin cambios');
+
+const richCsv=[
+  'SKU;Nombre;Precio;Inventario;Descripcion;Material;Ingredientes;Alergenos',
+  'VEST-002;Vestido azul;55000;5;"Vestido azul; confeccionado localmente";Lino;;',
+  'PAN-002;Pan artesanal;7000;8;Pan de prueba;;Trigo y agua;Contiene gluten',
+].join('\\n');
+const richPreview=csvModule.previewCsv(richCsv);
+assert.equal(richPreview.rows[0].facts?.description,'Vestido azul; confeccionado localmente',
+  'La descripción citada con punto y coma se conserva');
+assert.equal(richPreview.rows[0].facts?.material,'Lino');
+assert.equal(richPreview.rows[1].facts?.allergens,'Contiene gluten');
+assert.deepEqual(richPreview.errors,[]);
+
+const invalidFacts=csvModule.previewCsv(
+  'SKU;Nombre;Precio;Inventario;Material\\n'+
+  'SKU-001;Camisa;20000;10;'+ 'A'.repeat(251)
+);
+assert.equal(invalidFacts.rows.length,0,'Un campo demasiado largo bloquea toda la carga');
+assert.match(invalidFacts.errors.join(','),/demasiado largo/);
+
+// Backward-compatible: original four-column import has no extra metadata.
+assert.ok(!Object.hasOwn(parsedCsv.rows[0],'facts'));
 
 const repeated = csvModule.previewCsv(
   'SKU;Nombre;Precio;Inventario\n'
