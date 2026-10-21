@@ -50,7 +50,6 @@ export default function ProductFactsPage(){
   useEffect(()=>{
     const product=products.find(p=>p.id===selectedId);
     setFacts(product?.facts?{...empty(),...product.facts}:empty());
-    setNotice('');
   },[products,selectedId]);
   async function save(event:FormEvent<HTMLFormElement>){
     event.preventDefault();if(!selectedId||saving)return;
@@ -87,7 +86,7 @@ export default function ProductFactsPage(){
         <h2>Selecciona el producto</h2>
         <p className={styles.note}>Los campos corresponden al producto. Para opciones de talla y color, utiliza las variantes del catálogo.</p>
         <select aria-label="Producto a editar" value={selectedId}
-          onChange={e=>setSelectedId(e.target.value)} disabled={loading||saving}
+          onChange={e=>{setSelectedId(e.target.value);setError('');setNotice('');}} disabled={loading||saving}
           style={{width:'100%',maxWidth:590,padding:12,border:'1px solid #ccc',borderRadius:8}}>
           {!products.length&&<option value="">Sin productos disponibles</option>}
           {products.map(p=><option key={p.id} value={p.id}>{p.name} · {p.sku||'Sin SKU'}</option>)}
