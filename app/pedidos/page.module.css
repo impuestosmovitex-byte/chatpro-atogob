@@ -125,3 +125,12 @@
 .notificationPreview strong { font-size: 13px; }
 .notificationPreview p { font-size: 13px; margin: 8px 0; line-height: 1.5; }
 .notificationPreview small { color: #8b5e6c; font-size: 11px; }
+
+.notificationToggle {
+  display:flex; align-items:center; gap:14px; padding:18px 0;
+  border-bottom:1px solid #eee; cursor:pointer;
+}
+.notificationToggle input { width:20px; height:20px; accent-color:#75203b; flex-shrink:0; }
+.notificationToggle span { display:flex; flex-direction:column; gap:5px; }
+.notificationToggle strong { font-size:14px; }
+.notificationToggle small { color:#666; font-size:12px; line-height:1.4; }
