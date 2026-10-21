@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, Controller, ForbiddenException, Headers,
-  HttpCode, Injectable, Post, TooManyRequestsException, UnauthorizedException,
+  HttpCode, HttpException, HttpStatus, Injectable, Post, UnauthorizedException,
 } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import OpenAI from 'openai';
@@ -35,7 +35,7 @@ export class StagingSalesAssistantService {
     const now = Date.now();
     const id = companyId + ':' + userId;
     const times = (this.recentCalls.get(id) || []).filter(time => now - time < 60000);
-    if (times.length >= 12) throw new TooManyRequestsException('Espera antes de enviar más mensajes.');
+    if (times.length >= 12) throw new HttpException('Espera antes de enviar más mensajes.', HttpStatus.TOO_MANY_REQUESTS);
     times.push(now);
     if (this.recentCalls.size > 500) this.recentCalls.clear();
     this.recentCalls.set(id, times);
