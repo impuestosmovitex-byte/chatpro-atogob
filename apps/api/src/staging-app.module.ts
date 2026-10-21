@@ -4,6 +4,7 @@ import { AccessCapabilitiesController } from './access-capabilities.controller';
 import { AccessController } from './access.controller';
 import { NativeCommerceController } from './native-commerce.controller';
 import { SupabaseService } from './supabase.service';
+import { StagingSalesAssistantController, StagingSalesAssistantService } from './staging-sales-assistant.controller';
 
 @Controller()
 class StagingHealthController {
@@ -23,7 +24,8 @@ class StagingHealthController {
     AccessController,
     AccessCapabilitiesController,
     NativeCommerceController,
+    StagingSalesAssistantController,
   ],
-  providers: [SupabaseService, AccessAuthService],
+  providers: [SupabaseService, AccessAuthService, StagingSalesAssistantService],
 })
 export class StagingAppModule {}
