@@ -12,6 +12,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { randomUUID } from 'node:crypto';
+import { readCatalogPicture,exactImageMatches } from './staging-vision';
 
 type AdvanceOrderBody = { expectedStatus?: unknown; nextStatus?: unknown; fulfillmentMethod?: unknown; carrier?: unknown; trackingNumber?: unknown };
 type AuthorizedCompany = { id: string; name: string; slug: string };
@@ -228,6 +230,41 @@ export class NativeCommerceController {
       .eq('company_id',company.id).eq('available',true).order('sku').limit(500);
     if (error) throw new BadRequestException('No fue posible cargar las variantes.');
     return { ok:true, variants:data ?? [] };
+  }
+
+  @Post('catalog/images')
+  async addProductImage(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Body() body:Record<string,unknown> = {},
+  ) {
+    if(process.env.MW1_STAGING_MODE!=='true') throw new ForbiddenException('Solo pruebas.');
+    const company=await this.authorize(key,companyId,userId);
+    const variantId=typeof body.variantId==='string'?body.variantId:'';
+    if(!/^[0-9a-f-]{36}$/i.test(variantId))throw new BadRequestException('Selecciona una variante válida.');
+    const photo=readCatalogPicture(body.base64,body.mimeType);
+    const db=this.supabase.getClient();
+    const {data:variant,error}=await db.from('commerce_variants')
+      .select('id,product_id').eq('company_id',company.id).eq('id',variantId).maybeSingle();
+    if(error||!variant)throw new BadRequestException('La variante no pertenece a esta empresa.');
+    const {count,error:countError}=await db.from('commerce_product_images')
+      .select('id',{head:true,count:'exact'}).eq('company_id',company.id);
+    if(countError||count===null||count>=100)throw new BadRequestException('Límite de fotos alcanzado.');
+    const path=company.id+'/'+randomUUID()+'.'+photo.extension;
+    const stored=await db.storage.from('mw1-staging-products')
+      .upload(path,photo.bytes,{contentType:photo.mimeType,upsert:false});
+    if(stored.error)throw new BadRequestException('No pude almacenar la imagen.');
+    const {data,error:insertError}=await db.from('commerce_product_images')
+      .insert({company_id:company.id,product_id:variant.product_id,
+        variant_id:variant.id,storage_path:path,mime_type:photo.mimeType,
+        bytes:photo.bytes.length,sha256:photo.sha256})
+      .select('id').single();
+    if(insertError||!data){
+      await db.storage.from('mw1-staging-products').remove([path]);
+      throw new BadRequestException('No pude asociar la foto al producto.');
+    }
+    return {ok:true,imageId:data.id,variantId:variant.id};
   }
 
   @Post('orders')
