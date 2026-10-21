@@ -6,6 +6,7 @@ import { AppSidebar } from '../../components/AppSidebar';
 import styles from '../page.module.css';
 
 type Settings = {
+  notify_preparing: boolean;
   notify_ready: boolean;
   notify_dispatched: boolean;
   notify_delivered: boolean;
@@ -13,6 +14,7 @@ type Settings = {
 };
 
 const defaults: Settings = {
+  notify_preparing: true,
   notify_ready: true,
   notify_dispatched: true,
   notify_delivered: true,
@@ -52,6 +54,7 @@ export default function OrderNotificationSettingsPage() {
         method:'PATCH',
         headers:{'content-type':'application/json'},
         body:JSON.stringify({
+          notify_preparing:settings.notify_preparing,
           notify_ready:settings.notify_ready,
           notify_dispatched:settings.notify_dispatched,
           notify_delivered:settings.notify_delivered,
@@ -69,6 +72,7 @@ export default function OrderNotificationSettingsPage() {
   }
 
   const choices: Array<{key:keyof Settings; title:string; description:string}> = [
+    {key:'notify_preparing',title:'Pedido en preparación',description:'Prepara un aviso cuando se comienza a organizar y empacar el pedido.'},
     {key:'notify_ready',title:'Pedido listo',description:'Prepara un mensaje cuando el pedido esté listo para entrega o recogida.'},
     {key:'notify_dispatched',title:'Pedido despachado / en camino',description:'Para domicilio, indica que va en camino; para transportadora incluye empresa y guía.'},
     {key:'notify_delivered',title:'Pedido entregado',description:'Prepara un mensaje cuando el asesor marque la entrega como finalizada.'},
