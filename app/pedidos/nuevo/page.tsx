@@ -60,6 +60,7 @@ export default function NewNativeOrderPage() {
     return {variant:v,product:products.find(p=>p.id===v.product_id)!,quantity};
   }).filter(x=>x.quantity>0);
   const subtotal=items.reduce((sum,x)=>sum+x.quantity*Number(x.variant.price),0);
+  const selectedUnits=items.reduce((sum,x)=>sum+x.quantity,0);
   const quantitiesValid=items.every(x=>Number.isFinite(x.quantity)&&x.quantity<=1000&&
     Math.round(x.quantity*1000)===x.quantity*1000&&
     (x.variant.stock_quantity===null||x.quantity<=Number(x.variant.stock_quantity)));
@@ -77,11 +78,14 @@ export default function NewNativeOrderPage() {
       return;
     }
     setSaving(true);
+    const controller=new AbortController();
+    const timeout=window.setTimeout(()=>controller.abort(),20000);
     try{
       const requestKey=requestKeyRef.current??crypto.randomUUID();
       requestKeyRef.current=requestKey;
       const response=await fetch('/api/native-commerce/orders',{
         method:'POST',
+        signal:controller.signal,
         headers:{'content-type':'application/json'},
         body:JSON.stringify({
           requestKey,customerName:customerName.trim(),customerPhone:customerPhone.trim(),
@@ -96,8 +100,13 @@ export default function NewNativeOrderPage() {
       router.push('/pedidos?created='+encodeURIComponent(result.orderCode||''));
       router.refresh();
     }catch(cause){
-      setError(cause instanceof Error?cause.message:'No se pudo guardar el pedido.');
-    }finally{setSaving(false);}
+      setError(cause instanceof Error && cause.name==='AbortError'
+        ? 'El servidor tardó más de 20 segundos. Comprueba si el pedido aparece en el listado antes de reintentarlo.'
+        : cause instanceof Error?cause.message:'No se pudo guardar el pedido.');
+    }finally{
+      window.clearTimeout(timeout);
+      setSaving(false);
+    }
   }
 
   return (
@@ -147,8 +156,11 @@ export default function NewNativeOrderPage() {
           <section className={styles.panel}>
             <div className={styles.toolbar}>
               <h2>2. Productos y cantidades</h2>
-              <span className={styles.note}>{items.length} referencias seleccionadas</span>
+              <span className={styles.note}>{items.length} referencias · {selectedUnits} unidades seleccionadas</span>
             </div>
+            {!loading && items.length===0 && available.length>0 && (
+              <p className={styles.note} role="status"><strong>Falta seleccionar productos:</strong> escribe una cantidad mayor que cero en al menos uno de los productos de la tabla. El total se calculará automáticamente.</p>
+            )}
             {loading ? <p className={styles.empty}>Cargando catálogo…</p> :
               available.length===0 ? <p className={styles.empty}>
                 No hay referencias disponibles. <Link href="/catalogo">Agregar producto al catálogo</Link>.
@@ -179,8 +191,8 @@ export default function NewNativeOrderPage() {
             <p className={styles.total}>{pesos(subtotal)}</p>
             <p className={styles.note}>El servidor recalcula los precios antes de registrar la orden. El pago queda pendiente y no se envía ningún WhatsApp.</p>
             {error&&<p className={styles.error} role="alert">{error}</p>}
-            <button type="submit" className={styles.action} disabled={saving||loading||items.length===0}>
-              {saving?'Guardando pedido…':'Crear pedido pendiente de confirmación'}
+            <button type="submit" className={styles.action} disabled={saving||loading}>
+              {saving?'Guardando pedido…':items.length===0?'Revisar selección de productos':'Crear pedido pendiente de confirmación'}
             </button>
           </section>
         </form>
