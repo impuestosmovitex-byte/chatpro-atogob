@@ -204,7 +204,7 @@ export default function ChatOrderSimulatorPage(){
             const allowed=new Set(choices.map(c=>c.variantId));
             const previews:Record<string,string>={};
             for(const photo of (Array.isArray(payload.photos)?payload.photos:[])){
-              if(allowed.has(photo.variantId) && typeof photo.previewUrl==='string' &&
+              if(allowed.has(photo.variantId) && !previews[photo.variantId] && typeof photo.previewUrl==='string' &&
                 photo.previewUrl.startsWith('https://')){
                 previews[photo.variantId]=photo.previewUrl;
               }
@@ -287,13 +287,13 @@ export default function ChatOrderSimulatorPage(){
           {suggestedProducts.length>0 && (
             <div className={styles.recommendations}>
               <strong>{photoCandidates.length?'Coincidencias de tu fotografía · confirma la referencia':'Referencias del catálogo'}</strong>
-              {suggestedProducts.map(option=>(
+              {suggestedProducts.map((option,i)=>(
                 <div className={styles.recommendation} key={option.variantId}>
                   {photoCandidates.length>0&&photoThumbnails[option.variantId]&&(
                     <img src={photoThumbnails[option.variantId]} alt={'Foto de referencia: '+option.label}
                       className={styles.recommendationImage}/>
                   )}
-                  <span>{option.label}<small>{pesos(option.unitPrice)} · {option.stock===null?'Inventario por confirmar':option.stock===0?'Agotado':`${option.stock} unidades registradas`}</small></span>
+                  <span><strong>{photoCandidates.length>0?'Opción '+(i+1)+' · ':''}</strong>{option.label}<small>{pesos(option.unitPrice)} · {option.stock===null?'Inventario por confirmar':option.stock===0?'Agotado':`${option.stock} unidades registradas`}</small></span>
                   <button type="button" disabled={thinking||Boolean(savedOrder)||option.stock===0}
                     onClick={()=>addChoice(option)}>Agregar</button>
                 </div>
