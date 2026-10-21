@@ -31,6 +31,24 @@ describe('MW1 catálogo visual privado',()=>{
     expect(result.matches.map(x=>x.variantId)).toEqual(['v1']);
     expect(result.uncertain).toBe(true);
   });
+  test('two variants using the same picture are choices, not an automatic selection',()=>{
+    const images=[
+      {id:'pic-small',sha256:hash,variant_id:'small',product_id:'p1'},
+      {id:'pic-medium',sha256:hash,variant_id:'medium',product_id:'p1'},
+    ];
+    const variants=[
+      {id:'small',product_id:'p1',price:49000,stock_quantity:2,variant_label:'Talla 6'},
+      {id:'medium',product_id:'p1',price:49000,stock_quantity:5,variant_label:'Talla 8'},
+    ];
+    const choices=exactImageMatches(hash,images,variants,new Map([['p1','Vestido negro']]));
+    expect(choices.map(x=>x.variantId)).toEqual(['small','medium']);
+    expect(validateVisualProposal({matches:choices.map(x=>({variantId:x.variantId}))},choices).uncertain).toBe(true);
+  });
+  test('visual search cannot return a photo belonging to another catalog product',()=>{
+    const pics=[{id:'bad',sha256:hash,variant_id:'v1',product_id:'other'}];
+    const variants=[{id:'v1',product_id:'p1',price:49000,stock_quantity:4,variant_label:'Talla 8'}];
+    expect(exactImageMatches(hash,pics,variants,new Map([['p1','Vestido negro']]))).toEqual([]);
+  });
   test('never treats visual matching as a confirmed order',()=>{
     expect(validateVisualProposal({matches:[{variantId:'v1'}],uncertain:false},[option]))
       .toEqual({matches:[option],uncertain:true});
