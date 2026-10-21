@@ -211,7 +211,7 @@ export function isCatalogInformationRequest(message:string):boolean {
   const normalized=normalizedText(message);
   const infoIntent=/\b(cuanto|cuesta|cuestan|precio|precios|vale|valen|tienen|tiene|tienes|hay|disponible|disponibilidad|stock|inventario|agotad[oa]s?|colores?|tallas?|alternativ[ao]s?|similares?|parecid[ao]s?|opciones?|recomiend\w*|busco|buscar|mostrar|muestrame|cuales?|caracteristicas?|materiales?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalized);
   if(!infoIntent) return false;
-  const explicitCart=/\b(agrega|agregar|anade|anadir|pon|poner|mete|quita|quitar|retira|retirar|elimina|eliminar|cambia|cambiar|ajusta|ajustar|vaciar|limpiar|reiniciar|dame|pideme)\b/.test(normalized);
+  const explicitCart=/\b(agrega|agregame|agregar|anade|anademe|anadir|pon|ponme|poner|mete|meteme|quita|quitar|retira|retirar|elimina|eliminar|cambia|cambiar|ajusta|ajustar|vaciar|limpiar|reiniciar|dame|pideme|sumame)\b/.test(normalized);
   if(explicitCart)return false;
   const shopping=/\b(quiero|necesito|llevar|comprar)\b/.test(normalized);
   const asking=/\b(quiero|necesito)\s+(saber|ver|consultar|preguntar|conocer)\b/.test(normalized);
