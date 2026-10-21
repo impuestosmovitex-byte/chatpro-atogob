@@ -84,6 +84,51 @@ export class NativeCommerceController {
     return { ok: true, enabled: true, company: { name: company.name } };
   }
 
+  @Get('notifications/settings')
+  async notificationSettings(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+  ) {
+    const company = await this.authorize(key,companyId,userId);
+    const { data, error } = await this.supabase.getClient()
+      .from('commerce_notification_settings')
+      .select('notify_ready,notify_dispatched,notify_delivered,enabled_for_real_sending')
+      .eq('company_id',company.id).maybeSingle();
+    if (error) throw new BadRequestException('No se pudo consultar la configuración de avisos.');
+    return { ok: true, settings: data ?? {
+      notify_ready: true,notify_dispatched:true,notify_delivered:true,enabled_for_real_sending:false,
+    }};
+  }
+
+  @Patch('notifications/settings')
+  async updateNotificationSettings(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Body() body: Record<string, unknown> = {},
+  ) {
+    const company = await this.authorize(key,companyId,userId);
+    const required = ['notify_ready','notify_dispatched','notify_delivered'];
+    if (required.some(name => typeof body[name] !== 'boolean')) {
+      throw new BadRequestException('La configuración de avisos no es válida.');
+    }
+    const { data, error } = await this.supabase.getClient()
+      .from('commerce_notification_settings')
+      .upsert({
+        company_id: company.id,
+        notify_ready: body.notify_ready,
+        notify_dispatched: body.notify_dispatched,
+        notify_delivered: body.notify_delivered,
+        enabled_for_real_sending: false,
+        updated_at: new Date().toISOString(),
+      },{ onConflict:'company_id' })
+      .select('notify_ready,notify_dispatched,notify_delivered,enabled_for_real_sending')
+      .single();
+    if (error) throw new BadRequestException('No se pudo guardar la configuración.');
+    return { ok:true,settings:data };
+  }
+
   @Get('orders')
   async orders(
     @Headers('x-chatpro-inbox-key') key = '',
