@@ -209,7 +209,7 @@ function familyTerms(value:string):string[]{
  */
 export function isCatalogInformationRequest(message:string):boolean {
   const normalized=normalizedText(message);
-  const infoIntent=/\b(cuanto|cuesta|precio|vale|tienen|tiene|hay|disponible|disponibilidad|stock|inventario|agotad[oa]s?|colores?|tallas?|alternativ[ao]s?|similares?|parecid[ao]s?|opciones?|recomiend\w*|busco|buscar|mostrar|muestrame|cuales?|caracteristicas?|materiales?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalized);
+  const infoIntent=/\b(cuanto|cuesta|cuestan|precio|precios|vale|valen|tienen|tiene|tienes|hay|disponible|disponibilidad|stock|inventario|agotad[oa]s?|colores?|tallas?|alternativ[ao]s?|similares?|parecid[ao]s?|opciones?|recomiend\w*|busco|buscar|mostrar|muestrame|cuales?|caracteristicas?|materiales?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalized);
   if(!infoIntent) return false;
   const explicitCart=/\b(agrega|agregar|anade|anadir|pon|poner|mete|quita|quitar|retira|retirar|elimina|eliminar|cambia|cambiar|ajusta|ajustar|vaciar|limpiar|reiniciar|dame|pideme)\b/.test(normalized);
   if(explicitCart)return false;
@@ -261,7 +261,11 @@ export function answerCatalogQuestion(
       return sa-sb || a.label.localeCompare(b.label,'es');
     });
   const exact=related.filter(item=>matchesRequestedAttributes(message,item.label));
-  const options=(exact.length?exact:related).slice(0,6);
+  const wantsAlternatives=/\b(alternativas?|similares?|parecidos?|otras?|opciones?)\b/.test(normalizedText(message));
+  const relatedAlternatives=wantsAlternatives
+    ? related.filter(item=>!exact.some(x=>x.variantId===item.variantId)): [];
+  const options=(wantsAlternatives && relatedAlternatives.length
+    ? relatedAlternatives : exact.length?exact:related).slice(0,6);
   const explicit=requestedAttributes(message);
   const filtered=explicit.size!==null||explicit.colors.length>0;
   const missing=filtered&&exact.length===0;
@@ -272,6 +276,8 @@ export function answerCatalogQuestion(
   const characteristics=/\b(caracteristicas?|materiales?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalizedText(message));
   let intro='';
   if(missing)intro='No encontré la talla o el color exacto que indicas en este catálogo.';
+  else if(wantsAlternatives && relatedAlternatives.length)
+    intro='Estas son otras variantes de esa familia de productos (comprueba que la talla y el color te sirven):';
   else if(exact.length===1)intro='Encontré esta referencia en el catálogo:';
   else if(sizeQuestion)intro='Estas son las tallas registradas en el catálogo:';
   else if(colorQuestion)intro='Estos son los colores y referencias registrados en el catálogo:';
