@@ -230,6 +230,7 @@ export function AppSidebar({
       { href: '/pedidos', label: 'Pedidos', icon: '▤', exact: true },
       ...(demoNavigation ? [{ href: '/pedidos/simulador', label: 'Simular chat', icon: '◈' }] : []),
       { href: '/catalogo', label: 'Catálogo', icon: '▦', exact: true },
+      ...(demoNavigation ? [{ href: '/catalogo/conexiones', label: 'Fuentes y conexiones', icon: '⊞' }] : []),
       ...(demoNavigation ? [{ href: '/catalogo/fichas', label: 'Fichas de producto', icon: '▤' }] : []),
       ...(demoNavigation ? [{ href: '/catalogo/asistente', label: 'Asistente de catálogo', icon: '◈' }] : []),
       ...(demoNavigation ? [{ href: '/catalogo/importar', label: 'Importar catálogo', icon: '⇧' },{ href: '/catalogo/imagenes', label: 'Fotos del catálogo', icon: '▧' }] : []),
