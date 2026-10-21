@@ -48,6 +48,8 @@ jobs:
         run: npm ci
       - name: Verify native CSV Excel and PDF catalog importer (offline)
         run: node scripts/test-native-catalog-import.cjs
+      - name: Validate catalog source status (offline)
+        run: node scripts/test-staging-catalog-sources.cjs
       - name: Verify visual follow-up selection (offline)
         run: node scripts/test-visual-refinement.cjs
       - name: Build web
