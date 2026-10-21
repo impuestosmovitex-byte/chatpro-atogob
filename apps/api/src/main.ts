@@ -5,8 +5,8 @@ import { assertStagingIsolation } from './staging-safety';
 async function bootstrap() {
   assertStagingIsolation();
   const rootModule = process.env.MW1_STAGING_MODE === 'true'
-    ? (await import('./staging-app.module')).StagingAppModule
-    : (await import('./app.module')).AppModule;
+    ? (await import('./staging-app.module.js')).StagingAppModule
+    : (await import('./app.module.js')).AppModule;
   const app = await NestFactory.create<NestExpressApplication>(
     rootModule,
     { rawBody: true },
