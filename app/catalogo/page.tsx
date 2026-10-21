@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { AppSidebar } from '../components/AppSidebar';
 import styles from '../pedidos/page.module.css';
 
@@ -37,7 +37,7 @@ export default function CatalogPage() {
 
   useEffect(() => { void reload(); }, [reload]);
 
-  async function save(event: React.FormEvent<HTMLFormElement>) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setSuccess('');
