@@ -1510,3 +1510,212 @@
  .integrationNotice a {width:100%;}
  .homeCta {background:linear-gradient(145deg,#fffef9,#fff5d9);}
 }
+
+
+/* ===== MW1 diseño fluido · octubre 2026 =====
+   Escala tipográfica con clamp y rejillas adaptativas; únicamente web comercial.
+   No ajusta el zoom del navegador ni altera rutas o componentes internos del CRM. */
+.site {
+  --mw-content: 1360px;
+  --mw-edge: clamp(32px, 5vw, 88px);
+  --mw-text: #162034;
+  --mw-subtle: #606e7e;
+  --mw-yellow: #f5c819;
+  width: 100%;
+  min-width: 0;
+  color: var(--mw-text);
+  background: #fff;
+}
+.site :is(h1,h2,h3,h4,p), .site :is(section,article,header,footer) { min-width: 0; }
+.site :is(h1,h2,h3,h4,p) { overflow-wrap: break-word; }
+.site :is(a,button) { -webkit-tap-highlight-color: transparent; }
+.site :is(a,button,summary):focus-visible { outline: 3px solid #b88f00; outline-offset: 3px; }
+
+/* Una misma anchura de contenido, con márgenes proporcionales a la ventana. */
+.navWrap,
+.hero,
+.section,
+.channelsArea,
+.aiSection,
+.homeCta,
+.ctaBand,
+.heroStrip {
+  width: min(var(--mw-content),calc(100% - var(--mw-edge)));
+}
+.header { z-index: 80; }
+.navWrap {
+  min-height: 78px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: clamp(18px,2vw,36px);
+}
+.logo { font-size: clamp(20px, 1.4vw, 25px); flex-shrink: 0; }
+.logoMark { width: 39px; height: 39px; font-size: 19px; }
+.nav { display:flex; gap: clamp(16px,1.9vw,31px); white-space:nowrap; font-size: clamp(13px,.85vw,15px); }
+.navActions { gap: 10px; }
+.navActions > a { white-space: nowrap; font-size: clamp(12px,.8vw,14px); }
+.navActions .primaryButton, .navActions .secondaryButton { padding-inline: clamp(12px, 1.1vw,20px); min-height: 45px; }
+.mobileMenu { display:none; }
+
+.hero {
+  grid-template-columns: minmax(0,1.06fr) minmax(0,.94fr);
+  gap: clamp(32px,5vw,76px);
+  align-items: center;
+  padding-block: clamp(42px,5.3vw,76px) clamp(28px,3vw,48px);
+}
+.hero > div:first-child { min-width:0; }
+.hero h1 {
+  max-width: 760px;
+  font-size: clamp(40px,calc(3.55vw + 9px),67px);
+  line-height: 1.075;
+  letter-spacing: -.052em;
+  text-wrap: balance;
+}
+.heroCopy { max-width: 680px; font-size:clamp(16px,1.1vw,19px); line-height:1.63; margin-top:22px !important; }
+.heroActions { margin-top:26px; }
+.heroActions a { min-height:50px; font-size:clamp(13px,.93vw,15px); padding-inline:22px; }
+.heroFootnote { line-height:1.5; }
+.heroMedia { width:100%; max-width: 625px; justify-self:end; border-radius:clamp(16px,1.6vw,24px); }
+.heroPhotoReal { width:100%; height:auto; aspect-ratio:1042/850; object-fit:contain; }
+.eyebrow { font-size:clamp(12px,.78vw,14px); line-height:1.35; }
+
+.channelsArea .heroStrip {
+  width:100%;
+  grid-template-columns: minmax(220px,1.7fr) repeat(8,minmax(0,1fr));
+  align-items:center;
+  padding: clamp(12px,1vw,18px);
+  gap: 8px;
+}
+.stripLead { padding-inline:clamp(10px,1.15vw,20px); }
+.stripLead strong { font-size:clamp(13px,.9vw,16px); }
+.stripLead span { font-size:clamp(11px,.78vw,13px); }
+.stripItem { min-width:0; min-height:94px; }
+.stripItem > span.channelGlyph { width:clamp(40px,3vw,48px); height:clamp(40px,3vw,48px); }
+.stripItem > span.channelGlyph svg { width:27px; height:27px; }
+.stripItem strong { font-size:clamp(10px,.76vw,12px); }
+
+.showcaseGrid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:clamp(14px,1.5vw,21px); margin-top:19px; }
+.showcaseCard { padding:clamp(18px,1.55vw,25px); }
+.showcaseTitle h3 { font-size:clamp(17px,1.13vw,20px); }
+.showcaseTitle p { font-size:clamp(12px,.82vw,14px); line-height:1.5; }
+.sampleChat,.sampleCheckout,.sampleBot { min-height:200px; }
+.sampleClient,.sampleBot p,.sampleCheckoutLine { font-size:clamp(12px,.87vw,14px); }
+.sampleProduct strong,.sampleCheckoutTop strong,.sampleBotIdentity strong { font-size:clamp(12px,.92vw,14px); }
+
+.aiSection { margin-block:clamp(44px,5vw,76px); padding:clamp(26px,3.1vw,52px); }
+.aiSectionHeading { gap:clamp(20px,3vw,45px); }
+.aiSection h2,.section h2 { font-size:clamp(32px,calc(2.65vw + 7px),54px); line-height:1.11; text-wrap:balance; }
+.aiSectionHeading > p { font-size:clamp(15px,1vw,18px); }
+.aiFeature h3 { font-size:clamp(16px,1.08vw,19px); }
+.aiFeature p { font-size:clamp(13px,.9vw,15px); }
+
+.homeCta { padding:clamp(26px,3.5vw,54px); gap:20px; }
+.homeCta h2 { font-size:clamp(29px,calc(2.5vw + 8px),49px); text-wrap:balance; }
+.homeCta p { font-size:clamp(14px,1vw,17px); }
+.section { padding-block:clamp(44px,5.3vw,78px); }
+.sectionIntroCentered { max-width:860px; }
+.sectionIntroCentered p,.sectionIntro p { font-size:clamp(15px,1vw,18px); line-height:1.64; }
+
+.priceGrid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:clamp(14px,1.4vw,22px); }
+.priceCard { padding:clamp(20px,1.8vw,30px); min-width:0; }
+.priceCard h3 { font-size:clamp(22px,1.5vw,27px); }
+.priceCard ul { padding-left:20px; }
+.priceCard li { line-height:1.55; }
+.benefitGrid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.benefitCard { padding:clamp(18px,1.45vw,24px); }
+.benefitCard h3 { font-size:clamp(16px,1.1vw,19px); line-height:1.35; }
+.integrationOptionGrid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:clamp(12px,1.2vw,18px); }
+.integrationOptionCard { padding:clamp(18px,1.6vw,26px); }
+.integrationOptionCard h4 { font-size:clamp(16px,1.1vw,19px); }
+
+/* Vista de CRM: las columnas desaparecen progresivamente según el ancho útil. */
+.productGrid { grid-template-columns: minmax(120px,150px) minmax(190px,255px) minmax(0,1fr) minmax(170px,215px); }
+.productWindow { max-width:100%; }
+.chatPanel,.conversationList,.contactPanel { min-width:0; }
+.windowBar { grid-template-columns: minmax(80px,130px) minmax(0,1fr) minmax(90px,140px); }
+
+@media (max-width: 1200px) {
+  .channelsArea .heroStrip { grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+  .channelsArea .stripLead { grid-column:1/-1; border-right:0; border-bottom:1px solid #e7e9ef; padding:12px 15px 16px; }
+  .showcaseGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .showcaseCard:last-child { grid-column:1/-1; }
+}
+@media (max-width: 1080px) {
+  .navWrap { grid-template-columns:auto minmax(0,1fr); gap:12px; padding-block:10px; min-height:64px; }
+  .nav { display:none; }
+  .navActions { grid-column:2; grid-row:1; justify-self:end; }
+  .navActions .secondaryButton { display:none; }
+  .mobileMenu { display:block; position:relative; }
+  .mobileLinks { z-index: 100; }
+  .hero { grid-template-columns:minmax(0,1fr) minmax(0,.87fr); gap:clamp(24px,3vw,36px); }
+  .hero h1 { font-size:clamp(38px,4.2vw,50px); }
+  .benefitGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .priceGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .productGrid { grid-template-columns:minmax(115px,135px) minmax(190px,225px) minmax(0,1fr); }
+  .contactPanel { display:none; }
+}
+@media (max-width: 900px) {
+  .hero { grid-template-columns:1fr; gap:25px; padding-top:clamp(30px,5vw,46px); }
+  .hero h1 { max-width:780px; font-size:clamp(39px,5.5vw,54px); }
+  .heroMedia { width:100%; max-width:700px; justify-self:center; }
+  .heroCopy { max-width:760px; }
+  .aiSectionHeading { grid-template-columns:1fr; gap:15px; }
+  .aiFeatures { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .aiFeature:last-child { grid-column:1/-1; }
+  .integrationOptionGrid,.integrationGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .productGrid { grid-template-columns:minmax(195px,245px) minmax(0,1fr); }
+  .previewSidebar { display:none; }
+  .windowBar { min-width:0; }
+}
+@media (max-width: 640px) {
+  .site { --mw-edge:32px; }
+  .navWrap,.hero,.section,.channelsArea,.aiSection,.homeCta,.ctaBand,.heroStrip { width:calc(100% - 32px); }
+  .navWrap { gap:8px; }
+  .logo { font-size:20px; }
+  .logoMark { width:34px; height:34px; }
+  .navActions .primaryButton { font-size:12px; padding-inline:12px; min-height:42px; }
+  .mobileMenu > summary { width:42px; height:42px; }
+  .hero { padding-block: 31px 24px; }
+  .hero h1 { font-size:clamp(34px,8vw,43px); line-height:1.12; letter-spacing:-.047em; }
+  .heroCopy { font-size:15px; }
+  .heroMedia { max-width:100%; }
+  .heroActions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .heroActions .primaryButton,.heroActions .secondaryButton { min-height:48px; padding-inline:10px; font-size:13px; }
+  .channelsArea .heroStrip { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .channelsArea .stripLead { grid-column:1/-1; }
+  .stripItem { min-height:82px; }
+  .showcaseGrid { grid-template-columns:1fr; gap:13px; }
+  .showcaseCard:last-child { grid-column:auto; }
+  .sampleChat,.sampleCheckout,.sampleBot { min-height:174px; }
+  .aiFeatures { grid-template-columns:1fr; }
+  .aiFeature:last-child { grid-column:auto; }
+  .aiSection { padding:24px 19px; margin-block:42px; }
+  .aiSection h2,.section h2 { font-size:clamp(29px,7.4vw,38px); }
+  .homeCta { padding:26px 20px; margin-bottom:44px; }
+  .homeCta h2 { font-size:clamp(27px,7vw,37px); }
+  .homeCtaDecoration { display:none; }
+  .homeCtaActions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .homeCtaActions a { font-size:12px; padding-inline:9px; }
+  .section { padding-block:42px; }
+  .priceGrid,.benefitGrid,.integrationOptionGrid,.integrationGrid { grid-template-columns:1fr; }
+  .priceCardFeatured { order:initial; }
+  .productWindow { overflow:hidden; }
+  .windowBar { display:flex; justify-content:space-between; }
+  .windowSearch { display:none; }
+  .productGrid { min-width:0; display:block; }
+  .previewSidebar,.contactPanel { display:none; }
+  .conversationList { max-height:282px; overflow:auto; }
+  .chatPanel { min-height:320px; }
+  .customerMessage,.companyMessage { max-width:90%; }
+  .integrationNotice { flex-direction:column; align-items:stretch; }
+  .integrationNotice .primaryButton { width:100%; }
+}
+@media (max-width: 380px) {
+  .logo { font-size:18px; }
+  .navActions .primaryButton { font-size:11px; padding-inline:8px; }
+  .heroActions,.homeCtaActions { grid-template-columns:1fr; }
+  .channelsArea .heroStrip { gap:4px; }
+  .hero h1 { font-size:33px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .site a,.site button,.integrationCard { transition:none; }
+}
