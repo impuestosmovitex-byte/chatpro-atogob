@@ -1,8 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { assertStagingIsolation } from './staging-safety';
 
 async function bootstrap() {
+  assertStagingIsolation();
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule,
     { rawBody: true },
