@@ -175,6 +175,44 @@ export class NativeCommerceController {
     return { ok: true, products: data ?? [] };
   }
 
+  @Post('catalog/import-csv')
+  async importCsvCatalog(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Body() body: Record<string, unknown> = {},
+  ) {
+    const company = await this.authorize(key,companyId,userId);
+    const requestKey=typeof body.requestKey === 'string' ? body.requestKey : '';
+    const sourceLabel=typeof body.sourceLabel === 'string' ? body.sourceLabel.trim() : '';
+    const rows=body.rows;
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if(!uuid.test(requestKey) || sourceLabel.length<3 || sourceLabel.length>120 ||
+      !Array.isArray(rows) || rows.length===0 || rows.length>100 ||
+      rows.some((raw:unknown)=>{
+        if(!raw || typeof raw!=='object' || Array.isArray(raw))return true;
+        const row=raw as Record<string,unknown>;
+        return typeof row.sku!=='string' || row.sku.length>64 ||
+          typeof row.name!=='string' || row.name.length>180 ||
+          typeof row.price!=='number' || !Number.isFinite(row.price) ||
+          row.price<0 || row.price>999999999999 ||
+          (row.stock!==null && row.stock!==undefined &&
+            (typeof row.stock!=='number' || !Number.isFinite(row.stock) || row.stock<0));
+      })) {
+      throw new BadRequestException('Revisa el lote CSV: admite hasta 100 productos con SKU, nombre, precio e inventario opcional.');
+    }
+    const { data,error }=await this.supabase.getClient()
+      .rpc('mw1_commerce_import_csv_catalog',{
+        p_company_id:company.id,
+        p_actor_user_id:userId,
+        p_request_key:requestKey,
+        p_source_label:sourceLabel,
+        p_rows:rows,
+      });
+    if(error)throw new BadRequestException(error.message);
+    return data;
+  }
+
   @Get('variants')
   async variants(
     @Headers('x-chatpro-inbox-key') key = '',
