@@ -15,6 +15,7 @@ import { SupabaseService } from './supabase.service';
 import { randomUUID } from 'node:crypto';
 import OpenAI from 'openai';
 import { readCatalogPicture,exactImageMatches,validateVisualProposal,chooseVisualReferences,narrowVisualMatches } from './staging-vision';
+import {readProductFacts,validateProductFacts,writeProductFactsMetadata} from './staging-product-facts';
 
 type AdvanceOrderBody = { expectedStatus?: unknown; nextStatus?: unknown; fulfillmentMethod?: unknown; carrier?: unknown; trackingNumber?: unknown };
 type AuthorizedCompany = { id: string; name: string; slug: string };
@@ -171,12 +172,55 @@ export class NativeCommerceController {
   ) {
     const company = await this.authorize(key, companyId, userId);
     const { data, error } = await this.supabase.getClient().from('commerce_products')
-      .select('id,name,sku,base_price,currency,available,published,source_id')
+      .select('id,name,sku,base_price,currency,available,published,source_id,description,metadata')
       .eq('company_id', company.id)
       .order('name')
       .limit(500);
     if (error) throw new BadRequestException('No se pudo cargar el catálogo.');
-    return { ok: true, products: data ?? [] };
+    return { ok: true, products: (data ?? []).map(product => {
+      const {description,metadata,...publicFields}=product;
+      return {...publicFields,facts:readProductFacts(description,metadata)};
+    }) };
+  }
+
+  @Patch('products/:productId/facts')
+  async updateProductFacts(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Param('productId') productId = '',
+    @Body() body:Record<string,unknown> = {},
+  ) {
+    if(process.env.MW1_STAGING_MODE!=='true'){
+      throw new ForbiddenException('Las fichas de productos están habilitadas solo en la demo.');
+    }
+    const company=await this.authorize(key,companyId,userId);
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId)){
+      throw new BadRequestException('Referencia de producto inválida.');
+    }
+    let facts;
+    try{facts=validateProductFacts(body.facts);}
+    catch(error){throw new BadRequestException(error instanceof Error?error.message:'Ficha inválida.');}
+    const db=this.supabase.getClient();
+    const {data:existing,error:fetchError}=await db.from('commerce_products')
+      .select('id,metadata,updated_at')
+      .eq('company_id',company.id).eq('id',productId).maybeSingle();
+    if(fetchError||!existing){
+      throw new BadRequestException('El producto no existe en el catálogo de esta empresa.');
+    }
+    // Optimistic concurrency: a simultaneous catalog update must not silently
+    // overwrite other integration metadata.
+    const {data,error}=await db.from('commerce_products')
+      .update({
+        description:facts.description,
+        metadata:writeProductFactsMetadata(existing.metadata,facts),
+      })
+      .eq('company_id',company.id).eq('id',productId)
+      .eq('updated_at',existing.updated_at)
+      .select('id,description,metadata').maybeSingle();
+    if(error)throw new BadRequestException('No se pudo guardar la ficha del producto.');
+    if(!data)throw new BadRequestException('El producto cambió durante la edición. Actualiza y vuelve a guardar.');
+    return {ok:true,productId:data.id,facts:readProductFacts(data.description,data.metadata)};
   }
 
   @Post('catalog/import-csv')
