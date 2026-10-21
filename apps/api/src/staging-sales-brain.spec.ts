@@ -1,6 +1,7 @@
 import {
   applySalesProposal,
   inferSalesProposal,
+  guardSalesProposal,
   type CatalogItem,
 } from './staging-sales-brain';
 
@@ -92,6 +93,76 @@ describe('MW1 staging sales planner', () => {
     const result=applySalesProposal(catalog,[],proposal);
     expect(result.cart).toHaveLength(0);
     expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  test('distinguishes garment size number from product quantity', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'t6',label:'Vestido negro talla 6',unitPrice:45000,stock:10},
+      {variantId:'t8',label:'Vestido negro talla 8',unitPrice:47000,stock:10},
+      {variantId:'t10',label:'Vestido negro talla 10',unitPrice:49000,stock:10},
+    ];
+    const selected=inferSalesProposal('Quiero un vestido negro talla 8',garments);
+    expect(selected).toEqual({
+      actions:[{op:'add',variantId:'t8',quantity:1}],uncertain:false,
+    });
+    const two=inferSalesProposal('Quiero 2 vestidos negros talla 6',garments);
+    expect(two.actions).toEqual([{op:'add',variantId:'t6',quantity:2}]);
+    expect(applySalesProposal(garments,[],two).subtotal).toBe(90000);
+  });
+
+  test('does not guess a size absent from catalog', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'t8',label:'Vestido negro talla 8',unitPrice:47000,stock:10},
+    ];
+    const wrong=inferSalesProposal('Quiero vestido negro talla 6',garments);
+    expect(wrong.actions).toEqual([]);
+    expect(wrong.uncertain).toBe(true);
+  });
+
+  test('does not guess a color absent from catalog', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'black',label:'Vestido negro talla 8',unitPrice:47000,stock:10},
+    ];
+    const wrong=inferSalesProposal('Busco vestido rojo talla 8',garments);
+    expect(wrong.actions).toEqual([]);
+    expect(wrong.uncertain).toBe(true);
+  });
+
+  test('asks for size when multiple sizes match', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'six',label:'Vestido negro talla 6',unitPrice:45000,stock:10},
+      {variantId:'eight',label:'Vestido negro talla 8',unitPrice:47000,stock:10},
+    ];
+    const request=inferSalesProposal('Necesito un vestido negro',garments);
+    expect(request.actions).toEqual([]);
+    expect(request.uncertain).toBe(true);
+  });
+
+  test('rejects untrusted AI action choosing wrong size or wrong color', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'six',label:'Vestido negro talla 6',unitPrice:45000,stock:10},
+      {variantId:'red',label:'Vestido rojo talla 8',unitPrice:47000,stock:10},
+      {variantId:'eight',label:'Vestido negro talla 8',unitPrice:49000,stock:10},
+    ];
+    const proposal={
+      actions:[
+        {op:'add' as const,variantId:'six',quantity:1},
+        {op:'add' as const,variantId:'red',quantity:1},
+      ],uncertain:false,
+    };
+    const result=guardSalesProposal('Quiero vestido negro talla 8',garments,proposal);
+    expect(result.actions).toEqual([]);
+    expect(result.uncertain).toBe(true);
+    expect(applySalesProposal(garments,[],result).subtotal).toBe(0);
+  });
+
+  test('guards a valid assistant selection and preserves correct size', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'eight',label:'Vestido negro talla 8',unitPrice:49000,stock:10},
+    ];
+    const proposal={actions:[{op:'add' as const,variantId:'eight',quantity:1}],uncertain:false};
+    const result=guardSalesProposal('Quiero un vestido negro talla 8',garments,proposal);
+    expect(result).toEqual(proposal);
   });
 
   test('clears cart without creating orders or payments', () => {
