@@ -66,15 +66,15 @@ export function previewXlsxFile(buffer:Buffer):ImportPreview{
     throw new Error('El Excel debe tener una hoja inicial con SKU, Nombre, Precio e Inventario.');
   }
   const sharedXml=files.get('xl/sharedStrings.xml')||'';
-  const shared=[...sharedXml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(match=>
-    decodeXml([...match[1].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)]
+  const shared=[...sharedXml.matchAll(/<(?:[A-Za-z0-9_]+:)?si\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z0-9_]+:)?si>/g)].map(match=>
+    decodeXml([...match[1].matchAll(/<(?:[A-Za-z0-9_]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z0-9_]+:)?t>/g)]
       .map(x=>x[1]).join('')));
   const table:string[][]=[];
-  const rows=[...worksheet.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)];
+  const rows=[...worksheet.matchAll(/<(?:[A-Za-z0-9_]+:)?row\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z0-9_]+:)?row>/g)];
   if(rows.length>101)throw new Error('Máximo 100 productos por importación.');
   for(const entry of rows){
     const values:string[]=[];
-    for(const cell of entry[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)){
+    for(const cell of entry[1].matchAll(/<(?:[A-Za-z0-9_]+:)?c\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z0-9_]+:)?c>/g)){
       const address=/\br="([A-Z]{1,3})\d+"/.exec(cell[1])?.[1]||'';
       if(!address)continue;
       let index=0;
@@ -83,8 +83,8 @@ export function previewXlsxFile(buffer:Buffer):ImportPreview{
       if(index>40)continue;
       const kind=/\bt="([^"]+)"/.exec(cell[1])?.[1]||'n';
       const raw=kind==='inlineStr'?
-        [...cell[2].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map(x=>x[1]).join(''):
-        (/<v\b[^>]*>([\s\S]*?)<\/v>/.exec(cell[2])?.[1]||'');
+        [...cell[2].matchAll(/<(?:[A-Za-z0-9_]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z0-9_]+:)?t>/g)].map(x=>x[1]).join(''):
+        (/<(?:[A-Za-z0-9_]+:)?v\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z0-9_]+:)?v>/.exec(cell[2])?.[1]||'');
       values[index]=kind==='s'?shared[Number(raw)]||'':decodeXml(raw);
     }
     table.push(values);
