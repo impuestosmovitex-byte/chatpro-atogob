@@ -7,6 +7,7 @@ import {
   Headers,
   Param,
   Patch,
+  Post,
   Query,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -126,6 +127,35 @@ export class NativeCommerceController {
       .limit(100);
     if (error) throw new BadRequestException('No se pudo cargar el catálogo.');
     return { ok: true, products: data ?? [] };
+  }
+
+  @Post('products')
+  async createProduct(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Body() body: Record<string, unknown> = {},
+  ) {
+    const company = await this.authorize(key, companyId, userId);
+    const sku = typeof body.sku === 'string' ? body.sku.trim() : '';
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const price = body.price;
+    const stock = body.stock ?? null;
+    if (!sku || !name || typeof price !== 'number' || !Number.isFinite(price) ||
+        (stock !== null && (typeof stock !== 'number' || !Number.isFinite(stock)))) {
+      throw new BadRequestException('Debes indicar nombre, SKU y precio válidos.');
+    }
+    const { data, error } = await this.supabase.getClient()
+      .rpc('mw1_commerce_create_manual_product', {
+        p_company_id: company.id,
+        p_actor_user_id: userId,
+        p_sku: sku,
+        p_name: name,
+        p_price: price,
+        p_stock: stock,
+      });
+    if (error) throw new BadRequestException(error.message);
+    return data;
   }
 
   @Get('orders/:orderId')
