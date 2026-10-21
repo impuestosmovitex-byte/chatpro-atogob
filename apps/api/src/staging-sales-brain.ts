@@ -30,7 +30,8 @@ export function tokens(input: string): string[] {
   return input.normalize('NFD').toLowerCase().replace(/[\u0300-\u036f]/g, '')
     .split(/[^a-z0-9]+/).filter(Boolean).map(part => {
       if (part === 'panes') return 'pan';
-      if (part.endsWith('es') && part.length > 5 && !part.endsWith('ces')) return part.slice(0, -2);
+      // Keep final vowels in Spanish plurals: 'chocolates' -> 'chocolate'.
+      // Irregular consonant plurals can be resolved by the optional AI planner.
       if (part.endsWith('s') && part.length > 4) return part.slice(0, -1);
       return part;
     });
