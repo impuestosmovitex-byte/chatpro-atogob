@@ -92,6 +92,8 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const pathname = usePathname();
   const [roleKey, setRoleKey] = useState('');
+  const [ordersEnabled, setOrdersEnabled] = useState(false);
+  const [demoNavigation, setDemoNavigation] = useState(false);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [activeCompany, setActiveCompany] = useState(companyName);
   const [activeSlug, setActiveSlug] = useState('');
@@ -120,6 +122,18 @@ export function AppSidebar({
           session.roleKey?.trim().toLowerCase() || '';
 
         setRoleKey(normalizedRoleKey);
+        const isDemo = window.location.hostname === 'mw1-web-staging-staging.up.railway.app';
+        if (alive) setDemoNavigation(isDemo);
+        if (session.userId && (normalizedRoleKey === 'owner' || normalizedRoleKey === 'admin')) {
+          try {
+            const commerce = await fetch('/api/native-commerce/access', { cache: 'no-store' });
+            if (alive) setOrdersEnabled(commerce.ok);
+          } catch {
+            if (alive) setOrdersEnabled(false);
+          }
+        } else if (alive) {
+          setOrdersEnabled(false);
+        }
         setActiveCompany(session.companyName?.trim() || companyName);
         setActiveSlug(session.companySlug?.trim().toLowerCase() || '');
 
@@ -209,10 +223,14 @@ export function AppSidebar({
   }> = [
     ...baseNavigation.filter(
       (item) =>
-        effectiveCapabilities[item.capability] &&
+        !demoNavigation && effectiveCapabilities[item.capability] &&
         (item.href !== '/leads' || isServiceTenant),
     ),
-    ...(effectiveCapabilities.configuration
+    ...(ordersEnabled ? [
+      { href: '/pedidos', label: 'Pedidos', icon: '▤' },
+      { href: '/catalogo', label: 'Catálogo', icon: '▦' },
+    ] : []),
+    ...(!demoNavigation && effectiveCapabilities.configuration
       ? [
           {
             href: '/configuracion',
@@ -337,7 +355,17 @@ export function AppSidebar({
         aria-label="Navegación móvil"
         aria-hidden={hideMobileNavigation}
       >
-        {effectiveCapabilities.inbox ? (
+        {ordersEnabled ? (
+          <Link className={`${styles.mobileNavItem} ${isActive(pathname, '/pedidos') ? styles.mobileNavActive : ''}`} href="/pedidos">
+            <span aria-hidden="true">▤</span><small>Pedidos</small>
+          </Link>
+        ) : null}
+        {ordersEnabled ? (
+          <Link className={`${styles.mobileNavItem} ${isActive(pathname, '/catalogo') ? styles.mobileNavActive : ''}`} href="/catalogo">
+            <span aria-hidden="true">▦</span><small>Catálogo</small>
+          </Link>
+        ) : null}
+        {!demoNavigation && effectiveCapabilities.inbox ? (
           <Link
             className={`${styles.mobileNavItem} ${
               isActive(pathname, '/', true) ? styles.mobileNavActive : ''
@@ -349,7 +377,7 @@ export function AppSidebar({
           </Link>
         ) : null}
 
-        {effectiveCapabilities.clients ? (
+        {!demoNavigation && effectiveCapabilities.clients ? (
           <Link
             className={`${styles.mobileNavItem} ${
               isActive(pathname, '/clientes') ? styles.mobileNavActive : ''
@@ -361,7 +389,7 @@ export function AppSidebar({
           </Link>
         ) : null}
 
-        {effectiveCapabilities.clients && isServiceTenant ? (
+        {!demoNavigation && effectiveCapabilities.clients && isServiceTenant ? (
           <Link
             className={`${styles.mobileNavItem} ${
               isActive(pathname, '/leads') ? styles.mobileNavActive : ''
@@ -373,7 +401,7 @@ export function AppSidebar({
           </Link>
         ) : null}
 
-        {effectiveCapabilities.statistics ? (
+        {!demoNavigation && effectiveCapabilities.statistics ? (
           <Link
             className={`${styles.mobileNavItem} ${
               isActive(pathname, '/estadisticas') ? styles.mobileNavActive : ''
