@@ -211,7 +211,7 @@ function familyTerms(value:string):string[]{
  */
 export function isCatalogInformationRequest(message:string):boolean {
   const normalized=normalizedText(message);
-  const infoIntent=/\b(cuanto|cuesta|cuestan|precio|precios|vale|valen|tienen|tiene|tienes|hay|disponible|disponibilidad|stock|inventario|agotad[oa]s?|colores?|tallas?|alternativ[ao]s?|similares?|parecid[ao]s?|opciones?|recomiend\w*|busco|buscar|mostrar|muestrame|cuales?|caracteristicas?|materiales?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalized);
+  const infoIntent=/\b(cuanto|cuesta|cuestan|precio|precios|vale|valen|tienen|tiene|tienes|hay|disponible|disponibilidad|stock|inventario|agotad[oa]s?|colores?|tallas?|alternativ[ao]s?|similares?|parecid[ao]s?|opciones?|recomiend\w*|busco|buscar|mostrar|muestrame|cuales?|caracteristicas?|material(?:es)?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalized);
   if(!infoIntent) return false;
   const explicitCart=/\b(agrega|agregame|agregar|anade|anademe|anadir|pon|ponme|poner|mete|meteme|quita|quitar|retira|retirar|elimina|eliminar|cambia|cambiar|ajusta|ajustar|vaciar|limpiar|reiniciar|dame|pideme|sumame)\b/.test(normalized);
   if(explicitCart)return false;
