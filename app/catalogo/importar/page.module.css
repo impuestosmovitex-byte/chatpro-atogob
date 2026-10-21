@@ -1,0 +1,8 @@
+.uploadArea{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:16px 0;padding:20px;border:1px dashed #d3b2c2;background:#fffcfd;border-radius:12px}
+.uploadArea input{min-width:220px;max-width:100%}
+.uploadArea a{font-size:13px;color:#721e3e;font-weight:650}
+.label{display:flex;flex-direction:column;gap:7px;font-weight:650;font-size:13px;max-width:450px}
+.label input{background:white;border:1px solid #ddd;border-radius:8px;padding:11px;font-size:14px}
+.success{border:1px solid #a7dbc2;border-radius:12px;background:#f0faf4;padding:17px;margin-top:14px;font-size:14px}
+.success p{margin:9px 0}.success a{color:#116641;font-weight:650}
+@media(max-width:720px){.uploadArea{display:block}.uploadArea a{display:block;margin-top:12px}}
