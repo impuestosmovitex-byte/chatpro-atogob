@@ -229,6 +229,7 @@ export function AppSidebar({
     ...(ordersEnabled ? [
       { href: '/pedidos', label: 'Pedidos', icon: '▤' },
       { href: '/catalogo', label: 'Catálogo', icon: '▦' },
+      { href: '/pedidos/avisos', label: 'Avisos de pedidos', icon: '◉' },
     ] : []),
     ...(!demoNavigation && effectiveCapabilities.configuration
       ? [
