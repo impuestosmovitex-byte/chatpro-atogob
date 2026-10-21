@@ -207,15 +207,8 @@ describe('MW1 staging sales planner', () => {
   test('answers a price question without changing the cart', () => {
     expect(isCatalogInformationRequest('¿Cuánto cuesta el pan?')).toBe(true);
     const answer=answerCatalogQuestion('¿Cuánto cuesta el pan?',fixtures);
-    expect(answer?.reply).toContain('
-    const proposal=inferSalesProposal('vaciar mi carrito',fixtures);
-    const result=applySalesProposal(fixtures,[{variantId:'pan',quantity:3}],proposal);
-    expect(result.cart).toHaveLength(0);
-    expect(result.subtotal).toBe(0);
-  });
-});
-);
     expect(answer?.reply).toContain('Pan');
+    expect(answer?.reply).toContain('3.000');
     expect(answer?.options).toHaveLength(1);
     const unchanged=applySalesProposal(fixtures,[{variantId:'huevos',quantity:1}],{
       actions:[],uncertain:false,
@@ -252,14 +245,7 @@ describe('MW1 staging sales planner', () => {
     const answer=answerCatalogQuestion('¿Tienen vestido negro talla 8?',garments);
     expect(answer?.options.map(o=>o.variantId)).toEqual(['eight']);
     expect(answer?.reply).not.toContain('Vestido rojo');
-    expect(answer?.reply).toContain('
-    const proposal=inferSalesProposal('vaciar mi carrito',fixtures);
-    const result=applySalesProposal(fixtures,[{variantId:'pan',quantity:3}],proposal);
-    expect(result.cart).toHaveLength(0);
-    expect(result.subtotal).toBe(0);
-  });
-});
-);
+    expect(answer?.reply).toContain('Vestido negro');
   });
 
   test('warns about out-of-stock and lists alternative variants explicitly', () => {
