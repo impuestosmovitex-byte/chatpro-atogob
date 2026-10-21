@@ -22,6 +22,7 @@ type AuthorizedCompany = { id: string; name: string; slug: string };
 @Controller('native-commerce')
 export class NativeCommerceController {
   constructor(private readonly supabase: SupabaseService) {}
+  private readonly visualRate = new Map<string,number[]>();
 
   private async authorize(
     internalKey: string,
