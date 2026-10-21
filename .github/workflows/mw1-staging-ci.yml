@@ -32,7 +32,7 @@ jobs:
       - name: Build API
         run: npm run build
       - name: Execute isolation tests
-        run: npm test -- --runInBand staging-safety.spec.ts
+        run: npm test -- --runInBand staging-safety.spec.ts staging-sales-brain.spec.ts
 
   web:
     name: Next.js compile and typecheck
