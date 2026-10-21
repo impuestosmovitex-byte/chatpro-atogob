@@ -30,21 +30,22 @@ export type PriceTarget={
 export type PriceChoice=PriceTarget&{canApply:boolean;blockedReason:string|null};
 const normalize=(s:string)=>s.normalize('NFD').toLowerCase()
   .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
-const newer=/(?:\ba\b|\ben\b|\bponle\b|\bponerlo\b|\bdejarlo\s+en\b)\s*(\$?\s*(?:\d{1,3}(?:[.,]\d{3})+|\d{1,9})\s*(?:mil|miles)?\s*(?:pesos)?)/i;
-const previous=/(?:antes\s+(?:valia|costaba|era)|(?:\bde\b)\s*)\s*(\$?\s*(?:\d{1,3}(?:[.,]\d{3})+|\d{1,9})\s*(?:mil|miles)?\s*(?:pesos)?)/i;
+const newer=/(?:\ba\b|\ben\b|\bponle\b|\bponerlo\b|\bdejarlo\s+en\b)\s*(\$?\s*(?:\d{1,3}(?:[.,]\d{3})+|\d{1,9})\s*(?:mil|miles)?\s*(?:pesos)?)(?![\d.,])/i;
+const previous=/(?:antes\s+(?:valia|costaba|era)|(?:\bde\b)\s*)\s*(\$?\s*(?:\d{1,3}(?:[.,]\d{3})+|\d{1,9})\s*(?:mil|miles)?\s*(?:pesos)?)(?![\d.,])/i;
 function parseMoney(raw:string):number|null{
   const m=/^\s*\$?\s*(\d{1,3}(?:[.,]\d{3})+|\d{1,9})\s*(mil|miles)?\s*(?:pesos)?\s*$/.exec(raw.toLowerCase());
   if(!m)return null;
   const n=Number(m[1].replace(/[.,]/g,'')),value=n*(m[2]?1000:1);
   return Number.isSafeInteger(value)&&value>0&&value<=999999999?value:null;
 }
-const STRIP=/\b(cambia|cambiar|cambiale|actualiza|actualizar|ajusta|ajustar|ponle|ponerle|pon|deja|dejar|el|la|los|las|un|una|del|de|producto|articulo|precio|venta|vender|coste|costo|a|por|en|que|antes|ahora|estaba|esta|vale|valia|pesos|mil)\b/g;
+const STRIP=/\b(cambia|cambiar|cambiale|actualiza|actualizar|ajusta|ajustar|ponle|ponerle|pon|deja|dejar|el|la|los|las|un|una|al|del|de|producto|articulo|precio|venta|vender|coste|costo|a|por|en|que|antes|ahora|estaba|esta|vale|valia|pesos|mil)\b/g;
 export function parseAdminPriceCommand(input:string):PriceIntent|null{
   if(typeof input!=='string'||input.trim().length<10||input.length>450)return null;
   const val=normalize(input),isCost=/\b(costo|coste)\b/.test(val);
   if(!isCost&&!/\b(precio|vale|valia|vender|venta|cobrar|ponle|pon|cambia|cambiar|ajusta|actualiza)\b/.test(val))return null;
-  const n=newer.exec(input.toLowerCase()),o=previous.exec(input.toLowerCase());
-  let query=input.toLowerCase();
+  const plain=input.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const n=newer.exec(plain),o=previous.exec(plain);
+  let query=plain;
   if(n)query=query.replace(n[0],' ');
   if(o)query=query.replace(o[0],' ');
   query=normalize(query).replace(STRIP,' ').replace(/\s+/g,' ').trim();
@@ -55,7 +56,7 @@ export function findPriceTargets(intent:PriceIntent,items:PriceTarget[]):PriceCh
   if(!intent.query)return [];
   const terms=normalize(intent.query).split(' ').filter(Boolean);
   return items.filter(row=>{
-    if(terms.length===1&&normalize(row.sku||'')===intent.query)return true;
+    if(normalize(row.sku||'')===intent.query)return true;
     const words=normalize(row.name+' '+row.variantLabel).split(' ');
     return terms.every(t=>words.includes(t));
   }).slice(0,12).map(row=>{
