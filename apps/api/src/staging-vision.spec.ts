@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readCatalogPicture,exactImageMatches,validateVisualProposal,type VisualOption } from './staging-vision';
+import { readCatalogPicture,exactImageMatches,validateVisualProposal,chooseVisualReferences,narrowVisualMatches,type VisualOption } from './staging-vision';
 const fakeJpeg=Buffer.concat([Buffer.from([255,216,255,224]),Buffer.alloc(300,7)]);
 const base=fakeJpeg.toString('base64');
 const hash=createHash('sha256').update(fakeJpeg).digest('hex');
@@ -48,6 +48,39 @@ describe('MW1 catálogo visual privado',()=>{
     const pics=[{id:'bad',sha256:hash,variant_id:'v1',product_id:'other'}];
     const variants=[{id:'v1',product_id:'p1',price:49000,stock_quantity:4,variant_label:'Talla 8'}];
     expect(exactImageMatches(hash,pics,variants,new Map([['p1','Vestido negro']]))).toEqual([]);
+  });
+  test('multi-item screenshots compare distinct products before duplicated references',()=>{
+    const photos=[
+      {id:'1',variant_id:'black6',product_id:'dress'},
+      {id:'2',variant_id:'black8',product_id:'dress'},
+      {id:'3',variant_id:'red10',product_id:'dress'},
+      {id:'4',variant_id:'shoe7',product_id:'shoes'},
+      {id:'5',variant_id:'hat1',product_id:'hats'},
+    ];
+    const results=chooseVisualReferences(photos,4);
+    expect(results.map(p=>p.id)).toEqual(['1','4','5','2']);
+    expect(results.map(p=>p.variant_id)).not.toContain('red10');
+  });
+  test('caption selects only exact requested color and size from photo options',()=>{
+    const items:VisualOption[]=[
+      {...option,variantId:'black6',variantLabel:'Talla 6'},
+      {...option,variantId:'black8',variantLabel:'Talla 8'},
+      {...option,variantId:'red8',name:'Vestido rojo',variantLabel:'Talla 8'},
+    ];
+    const results=narrowVisualMatches('quiero el NEGRO talla 8',items);
+    expect(results.specific).toBe(true);
+    expect(results.options.map(p=>p.variantId)).toEqual(['black8']);
+  });
+  test('does not silently substitute a wrong color or missing size',()=>{
+    const matches=narrowVisualMatches('Quiero vestido azul talla 10',[option]);
+    expect(matches).toEqual({options:[],specific:true});
+    expect(narrowVisualMatches('quiero este',[option]).options).toEqual([option]);
+  });
+  test('rejects attempts to select unauthorized IDs even from a multi-item screenshot',()=>{
+    const allowed=[option];
+    expect(validateVisualProposal({matches:[
+      {variantId:'v1'},{variantId:'foreign-tenant-id'}
+    ],uncertain:false},allowed).matches.map(x=>x.variantId)).toEqual(['v1']);
   });
   test('never treats visual matching as a confirmed order',()=>{
     expect(validateVisualProposal({matches:[{variantId:'v1'}],uncertain:false},[option]))
