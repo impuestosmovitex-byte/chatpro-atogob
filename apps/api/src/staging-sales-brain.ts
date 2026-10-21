@@ -273,7 +273,7 @@ export function answerCatalogQuestion(
     explicit.size===null;
   const colorQuestion=/\b(colores?)\b/.test(normalizedText(message)) &&
     !explicit.colors.length;
-  const characteristics=/\b(caracteristicas?|materiales?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalizedText(message));
+  const characteristics=/\b(caracteristicas?|material(?:es)?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalizedText(message));
   let intro='';
   if(missing)intro='No encontré la talla o el color exacto que indicas en este catálogo.';
   else if(wantsAlternatives && relatedAlternatives.length)
