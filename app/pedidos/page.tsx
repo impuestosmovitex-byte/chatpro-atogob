@@ -299,7 +299,7 @@ export default function NativeOrdersPage() {
                   <p className={styles.note}>Estas son vistas previas de los mensajes para el cliente. La demo no envía WhatsApp reales.</p>
                   {(detail.notifications || []).map(notification => (
                     <div className={styles.notificationPreview} key={notification.id}>
-                      <strong>{notification.event_type === 'ready' ? 'Pedido listo' : notification.event_type === 'dispatched' ? 'Enviado / en camino' : 'Pedido entregado'}</strong>
+                      <strong>{notification.event_type === 'preparing' ? 'Pedido en preparación' : notification.event_type === 'ready' ? 'Pedido listo' : notification.event_type === 'dispatched' ? 'Enviado / en camino' : 'Pedido entregado'}</strong>
                       <p>{notification.message_body}</p>
                       <small>Estado: {notification.status === 'preview' ? 'Vista previa, sin enviar' : notification.status}</small>
                     </div>
