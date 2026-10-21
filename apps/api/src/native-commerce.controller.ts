@@ -170,7 +170,7 @@ export class NativeCommerceController {
       .select('id,name,sku,base_price,currency,available,published,source_id')
       .eq('company_id', company.id)
       .order('name')
-      .limit(100);
+      .limit(500);
     if (error) throw new BadRequestException('No se pudo cargar el catálogo.');
     return { ok: true, products: data ?? [] };
   }
@@ -223,7 +223,7 @@ export class NativeCommerceController {
     const { data, error } = await this.supabase.getClient()
       .from('commerce_variants')
       .select('id,product_id,sku,variant_label,unit,price,stock_quantity,available')
-      .eq('company_id',company.id).eq('available',true).order('sku').limit(300);
+      .eq('company_id',company.id).eq('available',true).order('sku').limit(500);
     if (error) throw new BadRequestException('No fue posible cargar las variantes.');
     return { ok:true, variants:data ?? [] };
   }
