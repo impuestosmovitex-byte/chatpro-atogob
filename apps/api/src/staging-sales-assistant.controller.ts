@@ -6,7 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import OpenAI from 'openai';
 import { SupabaseService } from './supabase.service';
 import {
-  applySalesProposal, inferSalesProposal,
+  applySalesProposal, inferSalesProposal, guardSalesProposal,
   type Action, type CatalogItem, type CartInput, type Proposal,
 } from './staging-sales-brain';
 
@@ -124,10 +124,11 @@ export class StagingSalesAssistantService {
     const cart = current as CartInput[];
     let proposal: Proposal = inferSalesProposal(message,catalog);
     let mode: 'ia'|'simulacion' = 'simulacion';
-    if (process.env.MW1_STAGING_AI_ENABLED === 'true' && process.env.OPENAI_API_KEY?.trim()) {
+    // Dedicated staging credential: never reuse the production OPENAI_API_KEY.
+    if (process.env.MW1_STAGING_AI_ENABLED === 'true' && process.env.MW1_STAGING_OPENAI_API_KEY?.trim()) {
       try {
         const client = new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY,
+          apiKey: process.env.MW1_STAGING_OPENAI_API_KEY,
           timeout: 12000,
           maxRetries: 0,
         });
@@ -189,7 +190,8 @@ export class StagingSalesAssistantService {
     }
 
     try {
-      const result = applySalesProposal(catalog,cart,proposal);
+      const guarded = guardSalesProposal(message,catalog,proposal);
+      const result = applySalesProposal(catalog,cart,guarded);
       return {ok:true,mode,...result};
     } catch (error) {
       throw new BadRequestException(error instanceof Error
