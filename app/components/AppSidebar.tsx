@@ -230,6 +230,7 @@ export function AppSidebar({
       { href: '/pedidos', label: 'Pedidos', icon: '▤' },
       ...(demoNavigation ? [{ href: '/pedidos/simulador', label: 'Simular chat', icon: '◈' }] : []),
       { href: '/catalogo', label: 'Catálogo', icon: '▦' },
+      ...(demoNavigation ? [{ href: '/catalogo/importar', label: 'Importar CSV', icon: '⇧' }] : []),
       { href: '/pedidos/avisos', label: 'Avisos de pedidos', icon: '◉' },
     ] : []),
     ...(!demoNavigation && effectiveCapabilities.configuration
