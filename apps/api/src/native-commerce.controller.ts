@@ -73,6 +73,16 @@ export class NativeCommerceController {
     };
   }
 
+  @Get('access')
+  async access(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+  ) {
+    const company = await this.authorize(key, companyId, userId);
+    return { ok: true, enabled: true, company: { name: company.name } };
+  }
+
   @Get('orders')
   async orders(
     @Headers('x-chatpro-inbox-key') key = '',
