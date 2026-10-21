@@ -230,7 +230,7 @@ export function AppSidebar({
       { href: '/pedidos', label: 'Pedidos', icon: '▤', exact: true },
       ...(demoNavigation ? [{ href: '/pedidos/simulador', label: 'Simular chat', icon: '◈' }] : []),
       { href: '/catalogo', label: 'Catálogo', icon: '▦', exact: true },
-      ...(demoNavigation ? [{ href: '/catalogo/importar', label: 'Importar CSV', icon: '⇧' }] : []),
+      ...(demoNavigation ? [{ href: '/catalogo/importar', label: 'Importar catálogo', icon: '⇧' },{ href: '/catalogo/imagenes', label: 'Fotos del catálogo', icon: '▧' }] : []),
       { href: '/pedidos/avisos', label: 'Avisos de pedidos', icon: '◉' },
     ] : []),
     ...(!demoNavigation && effectiveCapabilities.configuration
