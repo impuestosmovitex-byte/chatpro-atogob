@@ -175,6 +175,112 @@ export function guardSalesProposal(
   return {actions,uncertain};
 }
 
+
+/**
+ * Read-only catalog questions must never be delegated to order-changing AI
+ * actions. Answers use verified tenant-specific catalog fields only.
+ *
+ * No guessed product descriptions, delivery times or stock guarantees.
+ * A stock value of null is NOT equivalent to available inventory.
+ */
+const QUERY_WORDS=new Set([
+  'que','cual','cuale','cuanto','cuanta','cuanto','cuesta','vale','precio',
+  'precios','tiene','tienen','hay','stock','existencia','inventario','queda',
+  'quedan','disponible','disponibilidad','agotado','agotada','agotaron',
+  'color','colore','talla','talla','size','modelo','modelos','opcion','opcione',
+  'alternativa','alternativa','similar','similare','parecido','parecida',
+  'recomienda','recomendar','recomiendas','muestrame','mostrar','ver','saber',
+  'quisiera','gustaria','busco','buscar','venden','vende','vender','otra','otro',
+  'diferente','favor','por','del','para','este','esta','ese','esa','los','las',
+  'producto','productos','marca','numero','tamano',
+]);
+
+function familyTerms(value:string):string[]{
+  return core(value).filter(word=>!QUERY_WORDS.has(word) &&
+    !COLOR_ALIASES[word] && !SIZE_WORD.test(word) &&
+    !['talla','tallas','size','tamano'].includes(word));
+}
+
+/**
+ * High-priority informational expressions have precedence even in
+ * "quiero saber si tienen..." questions.
+ */
+export function isCatalogInformationRequest(message:string):boolean {
+  const normalized=normalizedText(message);
+  const infoIntent=/\b(cuanto|cuesta|precio|vale|tienen|tiene|hay|disponible|disponibilidad|stock|inventario|agotad[oa]s?|colores?|tallas?|alternativ[ao]s?|similares?|parecid[ao]s?|opciones?|recomiend\w*|busco|buscar|mostrar|muestrame|cuales?)\b/.test(normalized);
+  if(!infoIntent) return false;
+  const explicitCart=/\b(agrega|agregar|anade|anadir|pon|poner|mete|quita|quitar|retira|retirar|elimina|eliminar|cambia|cambiar|ajusta|ajustar|vaciar|limpiar|reiniciar|dame|pideme)\b/.test(normalized);
+  if(explicitCart)return false;
+  const shopping=/\b(quiero|necesito|llevar|comprar)\b/.test(normalized);
+  const asking=/\b(quiero|necesito)\s+(saber|ver|consultar|preguntar|conocer)\b/.test(normalized);
+  return !shopping || asking;
+}
+export type CatalogAnswer={
+  reply:string;
+  matched:boolean;
+  options:{variantId:string;label:string;unitPrice:number;stock:number|null}[];
+};
+function stockText(stock:number|null):string{
+  if(stock===null)return 'inventario por confirmar';
+  if(stock===0)return 'agotado según el catálogo';
+  return stock===1?'1 unidad registrada':' '+stock+' unidades registradas';
+}
+function optionText(item:CatalogItem):string{
+  return item.label+' — '+pesos(item.unitPrice)+' ('+stockText(item.stock).trim()+')';
+}
+
+/**
+ * Find related references by product-family words, but NEVER claim that
+ * a different color or size is exactly what the customer requested.
+ */
+export function answerCatalogQuestion(
+  message:string,
+  catalog:CatalogItem[],
+):CatalogAnswer|null{
+  if(!isCatalogInformationRequest(message))return null;
+  const asked=familyTerms(message);
+  if(!asked.length){
+    return {matched:false,options:[],reply:
+      '¿Qué producto buscas? Dime el nombre para consultar precios, colores, tallas o existencias del catálogo.'};
+  }
+  const matches=catalog.map(item=>{
+    const productTerms=familyTerms(item.label);
+    const overlap=asked.filter(term=>productTerms.includes(term)).length;
+    return {item,overlap};
+  }).filter(entry=>entry.overlap>0);
+  if(!matches.length){
+    return {matched:false,options:[],reply:
+      'No encontré ese producto en el catálogo registrado. Indícame una referencia o el nombre exacto para revisarlo.'};
+  }
+  const score=Math.max(...matches.map(x=>x.overlap));
+  const related=matches.filter(x=>x.overlap===score)
+    .map(x=>x.item).sort((a,b)=>{
+      const sa=a.stock===0?1:0,sb=b.stock===0?1:0;
+      return sa-sb || a.label.localeCompare(b.label,'es');
+    });
+  const exact=related.filter(item=>matchesRequestedAttributes(message,item.label));
+  const options=(exact.length?exact:related).slice(0,6);
+  const explicit=requestedAttributes(message);
+  const filtered=explicit.size!==null||explicit.colors.length>0;
+  const missing=filtered&&exact.length===0;
+  const sizeQuestion=/\b(tallas?|sizes?)\b/.test(normalizedText(message)) &&
+    explicit.size===null;
+  const colorQuestion=/\b(colores?)\b/.test(normalizedText(message)) &&
+    !explicit.colors.length;
+  let intro='';
+  if(missing)intro='No encontré la talla o el color exacto que indicas en este catálogo.';
+  else if(exact.length===1)intro='Encontré esta referencia en el catálogo:';
+  else if(sizeQuestion)intro='Estas son las tallas registradas en el catálogo:';
+  else if(colorQuestion)intro='Estos son los colores y referencias registrados en el catálogo:';
+  else intro='Estas son las referencias que encontré en el catálogo:';
+  const items=options.map(optionText);
+  const additional=(missing?' Estas son alternativas distintas; confirma talla y color antes de comprar.':'')+
+    (exact.length>6?' Hay más referencias; especifica talla o color.':'')+
+    ' Consultar el catálogo no modifica el carrito.';
+  return {matched:exact.length>0,options:options.map(item=>({...item})),
+    reply:intro+' '+items.join('; ')+'.'+additional};
+}
+
 export function applySalesProposal(
   catalog: CatalogItem[],
   current: CartInput[],
