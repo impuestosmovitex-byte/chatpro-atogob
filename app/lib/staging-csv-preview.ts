@@ -1,5 +1,19 @@
 /** CSV de Excel: punto y coma, coma o tabulación. Solo lectura, sin ejecutar fórmulas. */
-export type ImportRow={sku:string;name:string;price:number;stock:number|null};
+export type ImportFactKey='description'|'material'|'composition'|'measurements'|'ingredients'|'allergens'|'care'|'details';
+export type ImportFacts=Partial<Record<ImportFactKey,string>>;
+export type ImportRow={sku:string;name:string;price:number;stock:number|null;facts?:ImportFacts};
+
+export const IMPORT_FACT_COLUMNS:Record<ImportFactKey,{headers:string[];max:number}>={
+  description:{headers:['descripcion','description','descripcionproducto'],max:1200},
+  material:{headers:['material','tela','tejido'],max:250},
+  composition:{headers:['composicion','composition'],max:350},
+  measurements:{headers:['medidas','measurements','guia de tallas','guiadetallas'],max:550},
+  ingredients:{headers:['ingredientes','ingredients'],max:700},
+  allergens:{headers:['alergenos','alergias','allergens'],max:300},
+  care:{headers:['cuidados','conservacion','lavado','care'],max:450},
+  details:{headers:['caracteristicas','detalles','details'],max:550},
+};
+
 export type ImportPreview={rows:ImportRow[];errors:string[]};
 
 function normalizeHeader(raw:string){
@@ -67,6 +81,9 @@ export function previewCsv(text:string):ImportPreview{
   if(fields.sku<0||fields.name<0||fields.price<0) {
     return {rows:[],errors:['El archivo debe tener las columnas SKU, Nombre y Precio. Inventario es opcional.']};
   }
+  const factColumns=(Object.keys(IMPORT_FACT_COLUMNS) as ImportFactKey[])
+    .map(key=>({key,index:find(IMPORT_FACT_COLUMNS[key].headers),max:IMPORT_FACT_COLUMNS[key].max}))
+    .filter(field=>field.index>=0&&field.index!==fields.name);
   const rows:ImportRow[]=[];
   const skuSet=new Set<string>();
   for(let i=1;i<table.length;i++){
@@ -84,8 +101,16 @@ export function previewCsv(text:string):ImportPreview{
     if(stock!==null&&(!Number.isFinite(stock)||stock<0||
       Math.round(stock*1000)!==stock*1000))issues.push('inventario inválido');
     if(skuSet.has(sku))issues.push('SKU repetido');
+    const facts:ImportFacts={};
+    for(const column of factColumns){
+      const value=(values[column.index]||'').trim();
+      if(!value)continue;
+      const clean=value.replace(/[\\u0000-\\u001f\\u007f]/g,' ').replace(/\\s+/g,' ').trim();
+      if(clean.length>column.max)issues.push('campo '+column.key+' demasiado largo');
+      else facts[column.key]=clean;
+    }
     if(issues.length)errors.push(`Fila ${i+1}: ${issues.join(', ')}.`);
-    else rows.push({sku,name,price,stock});
+    else rows.push(Object.keys(facts).length?{sku,name,price,stock,facts}:{sku,name,price,stock});
     skuSet.add(sku);
   }
   return{rows,errors};
