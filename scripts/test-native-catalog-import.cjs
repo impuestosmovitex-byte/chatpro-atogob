@@ -180,7 +180,7 @@ const richCsv=[
   'SKU;Nombre;Precio;Inventario;Descripcion;Material;Ingredientes;Alergenos',
   'VEST-002;Vestido azul;55000;5;"Vestido azul; confeccionado localmente";Lino;;',
   'PAN-002;Pan artesanal;7000;8;Pan de prueba;;Trigo y agua;Contiene gluten',
-].join('\\n');
+].join('\n');
 const richPreview=csvModule.previewCsv(richCsv);
 assert.equal(richPreview.rows[0].facts?.description,'Vestido azul; confeccionado localmente',
   'La descripción citada con punto y coma se conserva');
@@ -189,7 +189,7 @@ assert.equal(richPreview.rows[1].facts?.allergens,'Contiene gluten');
 assert.deepEqual(richPreview.errors,[]);
 
 const invalidFacts=csvModule.previewCsv(
-  'SKU;Nombre;Precio;Inventario;Material\\n'+
+  'SKU;Nombre;Precio;Inventario;Material\n'+
   'SKU-001;Camisa;20000;10;'+ 'A'.repeat(251)
 );
 assert.equal(invalidFacts.rows.length,0,'Un campo demasiado largo bloquea toda la carga');
