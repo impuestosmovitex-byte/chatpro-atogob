@@ -232,6 +232,28 @@ export class NativeCommerceController {
     return { ok:true, variants:data ?? [] };
   }
 
+  @Get('catalog/images')
+  async listProductImages(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+  ) {
+    if(process.env.MW1_STAGING_MODE!=='true')throw new ForbiddenException('Solo pruebas.');
+    const company=await this.authorize(key,companyId,userId);
+    const db=this.supabase.getClient();
+    const {data,error}=await db.from('commerce_product_images')
+      .select('id,product_id,variant_id,storage_path,created_at')
+      .eq('company_id',company.id).order('created_at',{ascending:false}).limit(100);
+    if(error)throw new BadRequestException('No pude consultar las fotos.');
+    const photos=await Promise.all((data||[]).map(async (photo)=>{
+      const signed=await db.storage.from('mw1-staging-products')
+        .createSignedUrl(photo.storage_path,300);
+      return {imageId:photo.id,productId:photo.product_id,variantId:photo.variant_id,
+        previewUrl:signed.error?null:signed.data.signedUrl};
+    }));
+    return {ok:true,photos};
+  }
+
   @Post('catalog/images')
   async addProductImage(
     @Headers('x-chatpro-inbox-key') key = '',
