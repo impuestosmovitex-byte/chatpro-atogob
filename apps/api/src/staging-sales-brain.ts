@@ -304,7 +304,7 @@ export function answerCatalogQuestion(
     }else if(exact.length>1){
       detailsText=' Hay varias referencias. Confirma la talla o el color para consultar su ficha específica.';
     }else{
-      detailsText=' La tienda todavía no registró esos datos verificados en esta ficha; consulta con un asesor antes de comprar.';
+      detailsText=' Este catálogo no contiene fichas verificadas de esos detalles; consulta con un asesor antes de comprar.';
     }
   }
   const additional=(missing?' Estas son alternativas distintas; confirma talla y color antes de comprar.':'')+
