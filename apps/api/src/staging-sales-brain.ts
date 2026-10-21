@@ -39,8 +39,53 @@ export function tokens(input: string): string[] {
 const core = (value: string) => tokens(value).filter(x => !stopwords.has(x) && !(x in numberWords) && !/^\d+$/.test(x));
 const pesos = (price: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(price);
 
+
+const COLOR_ALIASES: Record<string,string> = {
+  negro:'negro', negra:'negro', blanco:'blanco', blanca:'blanco',
+  rojo:'rojo', roja:'rojo', azul:'azul', verde:'verde',
+  gris:'gris', beige:'beige', arena:'arena', cafe:'cafe',
+  marron:'marron', rosa:'rosa', rosado:'rosa', rosada:'rosa',
+  amarillo:'amarillo', amarilla:'amarillo', vinotinto:'vinotinto',
+  lila:'lila', morado:'morado', morada:'morado', fucsia:'fucsia',
+  nude:'nude', marfil:'marfil',
+};
+const SIZE_WORD = /^(?:xs|s|m|l|xl|xxl|xxxl|[0-9]{1,3})$/;
+const sizePattern = /\b(?:talla|tallas|size|tamano|tamaño)\s*(?:nro\.?|numero|#)?\s*([a-z0-9]{1,5})\b/i;
+function normalizedText(value:string):string {
+  return value.normalize('NFD').toLowerCase().replace(/[\u0300-\u036f]/g,'');
+}
+function requestedAttributes(segment:string):{size:string|null;colors:string[]} {
+  const normalized=normalizedText(segment);
+  const foundSize = sizePattern.exec(normalized);
+  const size = foundSize && SIZE_WORD.test(foundSize[1]) ? foundSize[1] : null;
+  const colors = [...new Set(tokens(normalized).map(t=>COLOR_ALIASES[t]).filter((t):t is string=>Boolean(t)))];
+  return {size,colors};
+}
+function matchesRequestedAttributes(segment:string, label:string):boolean {
+  const requested=requestedAttributes(segment);
+  const target=normalizedText(label);
+  const targetWords=tokens(target);
+  if(requested.size && !targetWords.includes(requested.size)) return false;
+  if(requested.colors.length && !requested.colors.every(color =>
+    targetWords.some(t=>COLOR_ALIASES[t]===color)
+  )) return false;
+  return true;
+}
+function quantityFromRequest(segment:string):number {
+  // Exclude numeric sizes before finding quantity:
+  // "2 vestidos negros talla 8" -> 2; "vestido talla 8" -> 1.
+  const withoutSizes=normalizedText(segment).replace(
+    /\b(?:talla|tallas|size|tamano)\s*(?:nro\.?|numero|#)?\s*(?:xs|xxxl|xxl|xl|s|m|l|[0-9]{1,3})\b/gi,
+    ' ',
+  );
+  for(const word of tokens(withoutSizes)){
+    if(/^[0-9]{1,3}$/.test(word)) return Number(word);
+    if(word in numberWords)return numberWords[word];
+  }
+  return 1;
+}
 export function inferSalesProposal(message: string, products: CatalogItem[]): Proposal {
-  const normalized = message.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const normalized = normalizedText(message);
   if (/\b(vaciar|limpiar|reiniciar)\b/.test(normalized)) {
     return { actions: [{ op: 'clear', variantId: '', quantity: 0 }], uncertain: false };
   }
@@ -52,29 +97,66 @@ export function inferSalesProposal(message: string, products: CatalogItem[]): Pr
   const actions: Action[] = [];
   let uncertain = false;
   for (const chunk of chunks) {
-    const words = tokens(chunk);
-    const clean = core(chunk);
+    const clean = core(chunk).filter(t=>t!=='talla'&&t!=='tallas'&&t!=='size'&&t!=='tamano');
     if (!clean.length) { uncertain = true; continue; }
-    const matches = products.map(item => {
-      const itemCore = core(item.label);
-      const intersection = itemCore.filter(token => clean.includes(token)).length;
-      return { item, full: itemCore.length > 0 && intersection === itemCore.length, score: intersection };
-    }).filter(x => x.score > 0);
-    if (!matches.length) { uncertain = true; continue; }
-    const maxFull = matches.some(x => x.full);
-    const candidates = matches.filter(x => x.full === maxFull);
-    const bestScore = Math.max(...candidates.map(x => x.score));
-    const best = candidates.filter(x => x.score === bestScore);
-    if (best.length !== 1) { uncertain = true; continue; }
-    let quantity = 1;
-    for (const word of words) {
-      if (/^\d{1,3}$/.test(word)) { quantity = Number(word); break; }
-      if (word in numberWords) { quantity = numberWords[word]; break; }
+    const candidates=products.map(item=>{
+      const productWords=core(item.label).filter(t=>t!=='talla'&&t!=='tallas'&&t!=='size'&&t!=='tamano');
+      const overlap=productWords.filter(w=>clean.includes(w)).length;
+      return {item,overlap,productWords};
+    }).filter(x=>x.overlap>0 && matchesRequestedAttributes(chunk,x.item.label));
+    if(!candidates.length){uncertain=true;continue;}
+    const greatestOverlap=Math.max(...candidates.map(x=>x.overlap));
+    const ranked=candidates.filter(x=>x.overlap===greatestOverlap);
+    const greatestPrecision=Math.max(...ranked.map(x=>
+      x.overlap/Math.max(x.productWords.length,1)
+    ));
+    const matches=ranked.filter(x=>
+      x.overlap/Math.max(x.productWords.length,1)===greatestPrecision
+    );
+    // Never choose an arbitrary size/color when several variants qualify.
+    if(matches.length!==1){uncertain=true;continue;}
+    const quantity=quantityFromRequest(chunk);
+    if(!Number.isSafeInteger(quantity)||quantity<1||quantity>100){
+      uncertain=true;continue;
     }
-    if (quantity < 1 || quantity > 100) { uncertain = true; continue; }
-    actions.push({ op, variantId: best[0].item.variantId, quantity });
+    actions.push({op,variantId:matches[0].item.variantId,quantity});
   }
-  return { actions: actions.slice(0, 12), uncertain };
+  return {actions:actions.slice(0,12),uncertain:uncertain || actions.length>12};
+}
+
+/**
+ * Validate assistant selections against explicit attributes in the message.
+ * For a single reference this guards against an LLM choosing another size
+ * or color that happens to be a valid ID for this company.
+ */
+export function guardSalesProposal(
+  message:string,
+  catalog:CatalogItem[],
+  candidate:Proposal,
+):Proposal {
+  if(!Array.isArray(candidate.actions)||candidate.actions.length>12 ||
+    typeof candidate.uncertain!=='boolean') return {actions:[],uncertain:true};
+  const segments=message.split(/[,;]|\s+y\s+|\s+ademas\s+/i).filter(Boolean);
+  const singleReference=segments.length===1;
+  const byId=new Map(catalog.map(p=>[p.variantId,p]));
+  const actions:Action[]=[];
+  let uncertain=candidate.uncertain;
+  for(const action of candidate.actions){
+    if(action?.op==='clear' && /\b(vaciar|limpiar|reiniciar)\b/i.test(message)){
+      actions.push(action);continue;
+    }
+    if(!action || !['add','remove','set','info'].includes(action.op) ||
+      !Number.isSafeInteger(action.quantity)||action.quantity<1||action.quantity>100){
+      uncertain=true;continue;
+    }
+    const product=byId.get(action.variantId);
+    if(!product){uncertain=true;continue;}
+    if(singleReference && !matchesRequestedAttributes(message,product.label)){
+      uncertain=true;continue;
+    }
+    actions.push(action);
+  }
+  return {actions,uncertain};
 }
 
 export function applySalesProposal(
