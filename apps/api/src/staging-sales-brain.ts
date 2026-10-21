@@ -1,3 +1,4 @@
+import {answerProductFacts,type ProductFacts} from './staging-product-facts';
 /**
  * MW1 staging sales assistant: deterministic fallback and untrusted-model
  * validation. No orders, payments or messages are created by these helpers.
@@ -7,6 +8,7 @@ export type CatalogItem = {
   label: string;
   unitPrice: number;
   stock: number | null;
+  facts?: ProductFacts;
 };
 export type CartItem = CatalogItem & { quantity: number };
 export type CartInput = { variantId: string; quantity: number };
@@ -289,8 +291,22 @@ export function answerCatalogQuestion(
   const alternativeText=alternativeItems.length?
     ' Esa referencia está agotada. Otras variantes registradas (no son la talla o color solicitados): '+
     alternativeItems.map(optionText).join('; ')+'.':'';
-  const detailsText=characteristics?
-    ' Este catálogo todavía no contiene fichas verificadas de materiales, medidas ni composición; consulta con la tienda antes de comprar.':'';
+  let detailsText='';
+  if(characteristics){
+    // All displayed variants must agree on a product fact before the AI
+    // may present it as a characteristic of the requested reference.
+    const source=exact.length?exact:options;
+    const verified=source.map(item=>item.facts?answerProductFacts(message,item.facts):null);
+    const normalized=verified.map(result=>result?.answer??'');
+    if(verified.length>0 && verified.every(Boolean) &&
+      normalized.every(value=>value===normalized[0])){
+      detailsText=' '+normalized[0];
+    }else if(exact.length>1){
+      detailsText=' Hay varias referencias. Confirma la talla o el color para consultar su ficha específica.';
+    }else{
+      detailsText=' La tienda todavía no registró esos datos verificados en esta ficha; consulta con un asesor antes de comprar.';
+    }
+  }
   const additional=(missing?' Estas son alternativas distintas; confirma talla y color antes de comprar.':'')+
     alternativeText+detailsText+
     (exact.length>6?' Hay más referencias; especifica talla o color.':'')+
