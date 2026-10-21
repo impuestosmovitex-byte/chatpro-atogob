@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
 import { type CatalogChoice } from '../../lib/staging-catalog-parser';
+import { refineVisualChoices } from '../../lib/staging-visual-refinement';
 import orderStyles from '../page.module.css';
 import styles from './page.module.css';
 
@@ -34,6 +35,7 @@ export default function ChatOrderSimulatorPage(){
   const [thinking,setThinking]=useState(false);
   const [assistantMode,setAssistantMode]=useState<'ia'|'simulacion'|'catalogo'>('simulacion');
   const [suggestedProducts,setSuggestedProducts]=useState<CatalogChoice[]>([]);
+  const [photoCandidates,setPhotoCandidates]=useState<CatalogChoice[]>([]);
   const [photoPreview,setPhotoPreview]=useState<string|null>(null);
   const [error,setError]=useState('');
   const [savedOrder,setSavedOrder]=useState<{code:string;total:number}|null>(null);
@@ -99,8 +101,18 @@ export default function ChatOrderSimulatorPage(){
     if(!phrase||loading||saving||thinking||savedOrder)return;
     setInput('');
     setError('');
-    setSuggestedProducts([]);
     append('customer',phrase);
+    if(photoCandidates.length>0){
+      const refined=refineVisualChoices(phrase,suggestedProducts.length?suggestedProducts:photoCandidates);
+      if(refined.handled){
+        const selectedIds=new Set(refined.choices.map(o=>o.variantId));
+        setSuggestedProducts(photoCandidates.filter(o=>selectedIds.has(o.variantId)));
+        append('assistant',refined.reply);
+        return;
+      }
+    }
+    setPhotoCandidates([]);
+    setSuggestedProducts([]);
     setThinking(true);
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),18000);
@@ -150,12 +162,14 @@ export default function ChatOrderSimulatorPage(){
 
   async function searchPhoto(file:File){
     if(loading||thinking||saving||savedOrder)return;
-    setError('');setSuggestedProducts([]);
+    setError('');setSuggestedProducts([]);setPhotoCandidates([]);
     if(!['image/jpeg','image/png','image/webp'].includes(file.type)||
       file.size>524288||file.size<200){
       setError('Elige una imagen JPEG, PNG o WebP de máximo 512 KB.');
       return;
     }
+    const caption=input.trim().slice(0,160);
+    if(caption)setInput('');
     setThinking(true);
     try{
       const data=await new Promise<string>((resolve,reject)=>{
@@ -165,10 +179,10 @@ export default function ChatOrderSimulatorPage(){
         reader.readAsDataURL(file);
       });
       setPhotoPreview(data);
-      append('customer','[Fotografía enviada para buscar un producto]');
+      append('customer','[Fotografía enviada para buscar productos]'+(caption?' '+caption:''));
       const response=await fetch('/api/native-commerce/assistant/vision',{
         method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({base64:data.split(',')[1],mimeType:file.type}),
+        body:JSON.stringify({base64:data.split(',')[1],mimeType:file.type,caption}),
       });
       const result=await response.json();
       if(!response.ok||!result.ok)throw new Error(result.error||'Error al consultar imagen.');
@@ -178,6 +192,7 @@ export default function ChatOrderSimulatorPage(){
           return found?[found]:[];
         });
       setSuggestedProducts(choices);
+      setPhotoCandidates(choices);
       setAssistantMode('catalogo');
       append('assistant',result.reply||'Revisa las opciones del catálogo.');
     }catch(e){
@@ -251,7 +266,7 @@ export default function ChatOrderSimulatorPage(){
           </div>
           {suggestedProducts.length>0 && (
             <div className={styles.recommendations}>
-              <strong>Referencias del catálogo</strong>
+              <strong>{photoCandidates.length?'Coincidencias de tu fotografía · confirma la referencia':'Referencias del catálogo'}</strong>
               {suggestedProducts.map(option=>(
                 <div className={styles.recommendation} key={option.variantId}>
                   <span>{option.label}<small>{pesos(option.unitPrice)} · {option.stock===null?'Inventario por confirmar':option.stock===0?'Agotado':`${option.stock} unidades registradas`}</small></span>
@@ -273,7 +288,7 @@ export default function ChatOrderSimulatorPage(){
             </label>
             {photoPreview&&<img src={photoPreview} alt="Fotografía enviada para buscar coincidencias"
               style={{height:72,width:72,objectFit:'contain',borderRadius:8}}/>}
-            <span style={{fontSize:11,color:'#777'}}>Solo sugerencias: revisa la talla y pulsa Agregar.</span>
+            <span style={{fontSize:11,color:'#777'}}>Puedes escribir «el negro, talla 8», «la opción 2» o indicar qué producto buscas. Revisa antes de pulsar Agregar.</span>
           </div>
           <form onSubmit={handleMessage} className={styles.inputBar}>
             <input aria-label="Mensaje al asistente de demostración" value={input}
