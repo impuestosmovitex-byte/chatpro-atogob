@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
-import { parseCatalogRequest, type CatalogChoice } from '../../../lib/staging-catalog-parser';
+import { parseCatalogRequest, type CatalogChoice } from '../../lib/staging-catalog-parser';
 import orderStyles from '../page.module.css';
 import styles from './page.module.css';
 
