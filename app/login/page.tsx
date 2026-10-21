@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 
@@ -10,6 +10,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [staging, setStaging] = useState(false);
+
+  useEffect(() => {
+    setStaging(window.location.hostname === 'mw1-web-staging-staging.up.railway.app');
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,8 +53,8 @@ export default function LoginPage() {
   return (
     <main className={styles.shell}>
       <section className={styles.card}>
-        <div className={styles.mark}>CP</div>
-        <p className={styles.eyebrow}>CHAT PRO</p>
+        <div className={styles.mark}>MW1</div>
+        <p className={styles.eyebrow}>MW1</p>
         <h1>Iniciar sesión</h1>
         <p className={styles.copy}>
           Ingresa tu identificación o código de acceso y tu contraseña.
@@ -63,7 +68,7 @@ export default function LoginPage() {
             onChange={(event) => setIdentifier(event.target.value)}
             autoComplete="username"
             autoFocus
-            placeholder="Ejemplo: 1020304050"
+            placeholder={staging ? 'MW1DEMO' : 'Ejemplo: 1020304050'}
           />
 
           <label htmlFor="password">Contraseña</label>
@@ -77,8 +82,9 @@ export default function LoginPage() {
           />
 
           <p className={styles.copy}>
-            Para configurar la primera cuenta de la empresa, deja vacía la
-            identificación y usa la contraseña principal actual.
+            {staging
+              ? 'Demo Supermercado: escribe MW1DEMO y la contraseña configurada para el propietario de pruebas. No uses claves de ATOGOB.'
+              : 'Para configurar la primera cuenta de la empresa, deja vacía la identificación y usa la contraseña principal actual.'}
           </p>
 
           {error ? <p className={styles.error}>{error}</p> : null}
