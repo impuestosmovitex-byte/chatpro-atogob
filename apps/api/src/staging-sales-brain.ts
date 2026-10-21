@@ -136,8 +136,17 @@ export function guardSalesProposal(
 ):Proposal {
   if(!Array.isArray(candidate.actions)||candidate.actions.length>12 ||
     typeof candidate.uncertain!=='boolean') return {actions:[],uncertain:true};
+  const normalized=normalizedText(message);
+  // Destructive and read-only intents cannot be turned into unrelated
+  // cart additions by a malformed or manipulated model response.
+  if (/\b(vaciar|limpiar|reiniciar)\b/.test(normalized)) {
+    return {actions:[{op:'clear',variantId:'',quantity:0}],uncertain:false};
+  }
+  const readOnlyQuestion=/\b(cuanto|cuesta|precio|vale|disponible|tienes|tienen)\b/.test(normalized) &&
+    !/\b(agrega|agregar|quiero|dame|pon|poner|compra|comprar|quita|quitar|cambia|cambiar)\b/.test(normalized);
   const segments=message.split(/[,;]|\s+y\s+|\s+ademas\s+/i).filter(Boolean);
   const singleReference=segments.length===1;
+  const requestedTokens=core(message);
   const byId=new Map(catalog.map(p=>[p.variantId,p]));
   const actions:Action[]=[];
   let uncertain=candidate.uncertain;
@@ -151,7 +160,14 @@ export function guardSalesProposal(
     }
     const product=byId.get(action.variantId);
     if(!product){uncertain=true;continue;}
-    if(singleReference && !matchesRequestedAttributes(message,product.label)){
+    if(readOnlyQuestion && action.op!=='info'){
+      uncertain=true;continue;
+    }
+    if(singleReference && (
+      !matchesRequestedAttributes(message,product.label) ||
+      !core(product.label).some(token=>requestedTokens.includes(token)) ||
+      (action.op!=='info' && action.quantity!==quantityFromRequest(message))
+    )){
       uncertain=true;continue;
     }
     actions.push(action);
@@ -210,6 +226,10 @@ export function applySalesProposal(
       : action.op === 'remove' ? Math.max(0, existing - action.quantity) : action.quantity;
     if (updated > 1000 || (product.stock !== null && updated > product.stock)) {
       warnings.push('No hay inventario suficiente para ' + product.label + '.');
+      continue;
+    }
+    if (updated>0 && existing===0 && cart.size>=40){
+      warnings.push('El carrito admite máximo 40 referencias.');
       continue;
     }
     if (updated === 0) cart.delete(product.variantId);
