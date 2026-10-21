@@ -1,5 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
-import {proxyNativeCommerce} from '../../../../../lib/native-commerce-proxy';
+import {proxyNativeCommerce} from '../../../../../../lib/native-commerce-proxy';
 
 export const dynamic='force-dynamic';
 export async function POST(request:NextRequest){
