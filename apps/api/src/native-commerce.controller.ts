@@ -186,8 +186,9 @@ export class NativeCommerceController {
     const requestKey=typeof body.requestKey === 'string' ? body.requestKey : '';
     const sourceLabel=typeof body.sourceLabel === 'string' ? body.sourceLabel.trim() : '';
     const rows=body.rows;
+    const sourceKind = typeof body.sourceKind === 'string' ? body.sourceKind : 'csv';
     const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if(!uuid.test(requestKey) || sourceLabel.length<3 || sourceLabel.length>120 ||
+    if(!['csv','excel','pdf'].includes(sourceKind) || !uuid.test(requestKey) || sourceLabel.length<3 || sourceLabel.length>120 ||
       !Array.isArray(rows) || rows.length===0 || rows.length>100 ||
       rows.some((raw:unknown)=>{
         if(!raw || typeof raw!=='object' || Array.isArray(raw))return true;
@@ -202,12 +203,13 @@ export class NativeCommerceController {
       throw new BadRequestException('Revisa el lote CSV: admite hasta 100 productos con SKU, nombre, precio e inventario opcional.');
     }
     const { data,error }=await this.supabase.getClient()
-      .rpc('mw1_commerce_import_csv_catalog',{
+      .rpc('mw1_commerce_import_file_catalog',{
         p_company_id:company.id,
         p_actor_user_id:userId,
         p_request_key:requestKey,
         p_source_label:sourceLabel,
         p_rows:rows,
+        p_source_kind:sourceKind,
       });
     if(error)throw new BadRequestException(error.message);
     return data;
