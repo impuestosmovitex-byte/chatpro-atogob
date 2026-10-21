@@ -93,11 +93,11 @@ export class NativeCommerceController {
     const company = await this.authorize(key,companyId,userId);
     const { data, error } = await this.supabase.getClient()
       .from('commerce_notification_settings')
-      .select('notify_ready,notify_dispatched,notify_delivered,enabled_for_real_sending')
+      .select('notify_preparing,notify_ready,notify_dispatched,notify_delivered,enabled_for_real_sending')
       .eq('company_id',company.id).maybeSingle();
     if (error) throw new BadRequestException('No se pudo consultar la configuración de avisos.');
     return { ok: true, settings: data ?? {
-      notify_ready: true,notify_dispatched:true,notify_delivered:true,enabled_for_real_sending:false,
+      notify_preparing: true,notify_ready: true,notify_dispatched:true,notify_delivered:true,enabled_for_real_sending:false,
     }};
   }
 
@@ -109,7 +109,7 @@ export class NativeCommerceController {
     @Body() body: Record<string, unknown> = {},
   ) {
     const company = await this.authorize(key,companyId,userId);
-    const required = ['notify_ready','notify_dispatched','notify_delivered'];
+    const required = ['notify_preparing','notify_ready','notify_dispatched','notify_delivered'];
     if (required.some(name => typeof body[name] !== 'boolean')) {
       throw new BadRequestException('La configuración de avisos no es válida.');
     }
@@ -117,6 +117,7 @@ export class NativeCommerceController {
       .from('commerce_notification_settings')
       .upsert({
         company_id: company.id,
+        notify_preparing: body.notify_preparing,
         notify_ready: body.notify_ready,
         notify_dispatched: body.notify_dispatched,
         notify_delivered: body.notify_delivered,
