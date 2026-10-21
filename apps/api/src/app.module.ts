@@ -80,6 +80,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { PlatformHealthController } from './platform-health.controller';
 import { PlatformHealthService } from './platform-health.service';
 import { PlatformAdminController } from './platform-admin.controller';
+import { NativeCommerceController } from './native-commerce.controller';
 import { WhatsappTemplateController } from './whatsapp-template.controller';
 import { WhatsappTemplateService } from './whatsapp-template.service';
 import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
@@ -132,6 +133,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
     ServiceAreasController,
     PlatformHealthController,
     PlatformAdminController,
+    NativeCommerceController,
     WhatsappTemplateController,
     PushNotificationController,
   ],
