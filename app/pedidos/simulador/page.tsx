@@ -32,7 +32,8 @@ export default function ChatOrderSimulatorPage(){
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
   const [thinking,setThinking]=useState(false);
-  const [assistantMode,setAssistantMode]=useState<'ia'|'simulacion'>('simulacion');
+  const [assistantMode,setAssistantMode]=useState<'ia'|'simulacion'|'catalogo'>('simulacion');
+  const [suggestedProducts,setSuggestedProducts]=useState<CatalogChoice[]>([]);
   const [error,setError]=useState('');
   const [savedOrder,setSavedOrder]=useState<{code:string;total:number}|null>(null);
   const idRef=useRef(1);
@@ -97,6 +98,7 @@ export default function ChatOrderSimulatorPage(){
     if(!phrase||loading||saving||thinking||savedOrder)return;
     setInput('');
     setError('');
+    setSuggestedProducts([]);
     append('customer',phrase);
     setThinking(true);
     const controller=new AbortController();
@@ -124,7 +126,14 @@ export default function ChatOrderSimulatorPage(){
       }
       setCart(next);
       setSavedOrder(null);
-      setAssistantMode(data.mode==='ia'?'ia':'simulacion');
+      setAssistantMode(data.mode==='ia'?'ia':data.mode==='catalogo'?'catalogo':'simulacion');
+      const options=Array.isArray(data.productOptions)?data.productOptions:[];
+      setSuggestedProducts(options.slice(0,6).flatMap((item:unknown)=>{
+        if(!item||typeof item!=='object')return [];
+        const obj=item as Partial<CatalogChoice>;
+        const found=catalog.find(p=>p.variantId===obj.variantId);
+        return found?[found]:[];
+      }));
       append('assistant',data.reply||'No pude interpretar esta solicitud. Indica el producto exacto.');
     }catch(cause){
       const errorMessage=cause instanceof Error&&cause.name==='AbortError'
@@ -193,13 +202,25 @@ export default function ChatOrderSimulatorPage(){
         <section className={styles.chatPanel}>
           <div className={styles.chatHeader}>
             <span className={styles.avatar}>MW</span>
-            <div><strong>Asistente de compras · DEMO</strong><small>{thinking?'Consultando catálogo…':assistantMode==='ia'?'IA supervisada · no es WhatsApp':'Reconocimiento local · no es WhatsApp'}</small></div>
+            <div><strong>Asistente de compras · DEMO</strong><small>{thinking?'Consultando catálogo…':assistantMode==='ia'?'IA supervisada · no es WhatsApp':assistantMode==='catalogo'?'Precios y existencias del catálogo · sin WhatsApp':'Reconocimiento local · no es WhatsApp'}</small></div>
           </div>
           <div className={styles.messages} aria-live="polite">
             {messages.map(m=><div key={m.id} className={m.from==='assistant'?styles.assistantMessage:styles.customerMessage}>
               {m.text}
             </div>)}
           </div>
+          {suggestedProducts.length>0 && (
+            <div className={styles.recommendations}>
+              <strong>Referencias del catálogo</strong>
+              {suggestedProducts.map(option=>(
+                <div className={styles.recommendation} key={option.variantId}>
+                  <span>{option.label}<small>{pesos(option.unitPrice)} · {option.stock===null?'Inventario por confirmar':option.stock===0?'Agotado':`${option.stock} unidades registradas`}</small></span>
+                  <button type="button" disabled={thinking||Boolean(savedOrder)||option.stock===0}
+                    onClick={()=>addChoice(option)}>Agregar</button>
+                </div>
+              ))}
+            </div>
+          )}
           <form onSubmit={handleMessage} className={styles.inputBar}>
             <input aria-label="Mensaje al asistente de demostración" value={input}
               onChange={e=>setInput(e.target.value)} maxLength={450}
