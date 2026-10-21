@@ -235,6 +235,9 @@ export class NativeCommerceController {
     const sourceLabel=typeof body.sourceLabel === 'string' ? body.sourceLabel.trim() : '';
     const rows=body.rows;
     const sourceKind = typeof body.sourceKind === 'string' ? body.sourceKind : 'csv';
+    if (process.env.MW1_STAGING_MODE !== 'true') {
+      throw new ForbiddenException('Importación disponible solo en MW1 de pruebas.');
+    }
     const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if(!['csv','excel','pdf'].includes(sourceKind) || !uuid.test(requestKey) || sourceLabel.length<3 || sourceLabel.length>120 ||
       !Array.isArray(rows) || rows.length===0 || rows.length>100 ||
@@ -246,12 +249,22 @@ export class NativeCommerceController {
           typeof row.price!=='number' || !Number.isFinite(row.price) ||
           row.price<0 || row.price>999999999999 ||
           (row.stock!==null && row.stock!==undefined &&
-            (typeof row.stock!=='number' || !Number.isFinite(row.stock) || row.stock<0));
+            (typeof row.stock!=='number' || !Number.isFinite(row.stock) || row.stock<0)) ||
+          (row.facts!==undefined && (
+            !row.facts || typeof row.facts!=='object' || Array.isArray(row.facts) ||
+            Object.entries(row.facts as Record<string,unknown>).some(([field,value])=>{
+              const limits:Record<string,number>={
+                description:1200,material:250,composition:350,measurements:550,
+                ingredients:700,allergens:300,care:450,details:550,
+              };
+              return !(field in limits) || typeof value!=='string' || value.length>limits[field];
+            })
+          ));
       })) {
       throw new BadRequestException('Revisa el lote CSV: admite hasta 100 productos con SKU, nombre, precio e inventario opcional.');
     }
     const { data,error }=await this.supabase.getClient()
-      .rpc('mw1_commerce_import_file_catalog',{
+      .rpc('mw1_commerce_import_rich_catalog',{
         p_company_id:company.id,
         p_actor_user_id:userId,
         p_request_key:requestKey,
