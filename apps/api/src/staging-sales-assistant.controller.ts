@@ -5,6 +5,7 @@ import {
 import { timingSafeEqual } from 'node:crypto';
 import OpenAI from 'openai';
 import { SupabaseService } from './supabase.service';
+import {readProductFacts} from './staging-product-facts';
 import {
   answerCatalogQuestion, applySalesProposal, inferSalesProposal, guardSalesProposal,
   type Action, type CatalogItem, type CartInput, type Proposal,
@@ -89,7 +90,7 @@ export class StagingSalesAssistantService {
     }
 
     const [productRows, variantRows, sourceRows] = await Promise.all([
-      db.from('commerce_products').select('id,name,published,available,source_id')
+      db.from('commerce_products').select('id,name,published,available,source_id,description,metadata')
         .eq('company_id',companyId).limit(300),
       db.from('commerce_variants').select('id,product_id,variant_label,price,stock_quantity,available')
         .eq('company_id',companyId).limit(400),
@@ -102,13 +103,14 @@ export class StagingSalesAssistantService {
     const sources = new Map((sourceRows.data || []).map(row => [row.id,row.status]));
     const products = new Map((productRows.data || []).filter(p =>
       p.published && p.available && sources.get(p.source_id) === 'ready'
-    ).map(p => [p.id,p.name]));
+    ).map(p => [p.id,{name:p.name,facts:readProductFacts(p.description,p.metadata)}]));
     const catalog: CatalogItem[] = (variantRows.data || [])
       .filter(v => v.available && products.has(v.product_id))
       .map(v => ({
         variantId: v.id,
-        label: v.variant_label === 'Única' ? products.get(v.product_id)!
-          : products.get(v.product_id)! + ' ' + v.variant_label,
+        label: v.variant_label === 'Única' ? products.get(v.product_id)!.name
+          : products.get(v.product_id)!.name + ' ' + v.variant_label,
+        facts: products.get(v.product_id)!.facts,
         unitPrice: Number(v.price),
         stock: v.stock_quantity === null ? null : Number(v.stock_quantity),
       })).filter(v => v.unitPrice >= 0 && Number.isFinite(v.unitPrice)
