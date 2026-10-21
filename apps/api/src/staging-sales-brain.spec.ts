@@ -2,6 +2,8 @@ import {
   applySalesProposal,
   inferSalesProposal,
   guardSalesProposal,
+  answerCatalogQuestion,
+  isCatalogInformationRequest,
   type CatalogItem,
 } from './staging-sales-brain';
 
@@ -200,6 +202,118 @@ describe('MW1 staging sales planner', () => {
     const result=applySalesProposal(many,original,proposal);
     expect(result.cart).toHaveLength(40);
     expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/40 referencias/)]));
+  });
+
+  test('answers a price question without changing the cart', () => {
+    expect(isCatalogInformationRequest('¿Cuánto cuesta el pan?')).toBe(true);
+    const answer=answerCatalogQuestion('¿Cuánto cuesta el pan?',fixtures);
+    expect(answer?.reply).toContain('
+    const proposal=inferSalesProposal('vaciar mi carrito',fixtures);
+    const result=applySalesProposal(fixtures,[{variantId:'pan',quantity:3}],proposal);
+    expect(result.cart).toHaveLength(0);
+    expect(result.subtotal).toBe(0);
+  });
+});
+);
+    expect(answer?.reply).toContain('Pan');
+    expect(answer?.options).toHaveLength(1);
+    const unchanged=applySalesProposal(fixtures,[{variantId:'huevos',quantity:1}],{
+      actions:[],uncertain:false,
+    });
+    expect(unchanged.cart).toHaveLength(1);
+    expect(unchanged.changed).toBe(false);
+  });
+
+  test('answers availability using only catalog stock', () => {
+    const options:CatalogItem[]=[
+      {variantId:'rice',label:'Arroz',unitPrice:6500,stock:2},
+      {variantId:'milk',label:'Leche',unitPrice:4500,stock:null},
+    ];
+    expect(answerCatalogQuestion('¿Tienes arroz?',options)?.reply).toContain('2 unidades registradas');
+    expect(answerCatalogQuestion('¿Tienes leche?',options)?.reply).toContain('inventario por confirmar');
+    expect(isCatalogInformationRequest('¿Tienes arroz?')).toBe(true);
+  });
+
+  test('does not invent materials, ingredients or other characteristics', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'a',label:'Blusa negra talla M',unitPrice:39000,stock:3},
+    ];
+    const answer=answerCatalogQuestion('¿Qué material tiene la blusa?',garments);
+    expect(answer?.reply).toContain('no contiene fichas verificadas');
+    expect(answer?.reply).not.toMatch(/algodon|poliester|seda/i);
+  });
+
+  test('shows exact available size and color, without choosing another size', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'six',label:'Vestido negro talla 6',unitPrice:42000,stock:4},
+      {variantId:'eight',label:'Vestido negro talla 8',unitPrice:45000,stock:2},
+      {variantId:'red',label:'Vestido rojo talla 8',unitPrice:44000,stock:2},
+    ];
+    const answer=answerCatalogQuestion('¿Tienen vestido negro talla 8?',garments);
+    expect(answer?.options.map(o=>o.variantId)).toEqual(['eight']);
+    expect(answer?.reply).not.toContain('Vestido rojo');
+    expect(answer?.reply).toContain('
+    const proposal=inferSalesProposal('vaciar mi carrito',fixtures);
+    const result=applySalesProposal(fixtures,[{variantId:'pan',quantity:3}],proposal);
+    expect(result.cart).toHaveLength(0);
+    expect(result.subtotal).toBe(0);
+  });
+});
+);
+  });
+
+  test('warns about out-of-stock and lists alternative variants explicitly', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'black',label:'Vestido negro talla 8',unitPrice:45000,stock:0},
+      {variantId:'red',label:'Vestido rojo talla 8',unitPrice:44000,stock:4},
+    ];
+    const answer=answerCatalogQuestion('¿Tienes vestido negro talla 8?',garments);
+    expect(answer?.reply).toContain('agotado');
+    expect(answer?.reply).toContain('Vestido rojo talla 8');
+    expect(answer?.reply).toContain('Otras variantes');
+  });
+
+  test('shows options on missing garment color but never claims exact stock', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'black',label:'Vestido negro talla 8',unitPrice:45000,stock:2},
+      {variantId:'red',label:'Vestido rojo talla 8',unitPrice:44000,stock:3},
+    ];
+    const answer=answerCatalogQuestion('¿Hay vestido blanco talla 8?',garments);
+    expect(answer?.matched).toBe(false);
+    expect(answer?.reply).toContain('No encontré la talla o el color exacto');
+    expect(answer?.reply).toContain('confirma talla y color');
+  });
+
+  test('lists colors and available sizes registered in catalog', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'black8',label:'Vestido negro talla 8',unitPrice:45000,stock:2},
+      {variantId:'red6',label:'Vestido rojo talla 6',unitPrice:44000,stock:3},
+    ];
+    expect(answerCatalogQuestion('¿Qué colores tienen de vestido?',garments)?.options).toHaveLength(2);
+    expect(answerCatalogQuestion('¿Qué tallas tienen de vestido?',garments)?.options).toHaveLength(2);
+  });
+
+  test('alternatives return different variants, marked as different color/size', () => {
+    const garments:CatalogItem[]=[
+      {variantId:'black8',label:'Vestido negro talla 8',unitPrice:45000,stock:2},
+      {variantId:'red8',label:'Vestido rojo talla 8',unitPrice:44000,stock:3},
+    ];
+    const answer=answerCatalogQuestion('¿Qué alternativas tienes al vestido negro talla 8?',garments);
+    expect(answer?.reply).toContain('otras variantes');
+    expect(answer?.options.map(x=>x.variantId)).toEqual(['red8']);
+  });
+
+  test('unknown products do not receive fake offers or prices', () => {
+    const answer=answerCatalogQuestion('¿Tienes motocicletas?',fixtures);
+    expect(answer?.matched).toBe(false);
+    expect(answer?.options).toHaveLength(0);
+    expect(answer?.reply).toContain('No encontré ese producto');
+  });
+
+  test('does not turn explicit add commands into informational answers', () => {
+    expect(isCatalogInformationRequest('Agrégame dos panes, ¿tienes?')).toBe(false);
+    expect(isCatalogInformationRequest('Quiero saber si tienes pan')).toBe(true);
+    expect(isCatalogInformationRequest('Quiero 2 panes')).toBe(false);
   });
 
   test('clears cart without creating orders or payments', () => {
