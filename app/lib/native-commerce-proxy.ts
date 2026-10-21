@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getInboxSession, INBOX_SESSION_COOKIE } from './inbox-auth';
 
-type ProxyVerb = 'GET' | 'PATCH';
+type ProxyVerb = 'GET' | 'PATCH' | 'POST';
 
 export async function proxyNativeCommerce(
   request: NextRequest,
