@@ -187,7 +187,7 @@ export default function ChatOrderSimulatorPage(){
       });
       const result=await response.json();
       if(!response.ok||!result.ok)throw new Error(result.error||'Error al consultar imagen.');
-      const choices=(Array.isArray(result.options)?result.options:[])
+      const choices:CatalogChoice[]=(Array.isArray(result.options)?result.options:[])
         .slice(0,3).flatMap((o:{variantId?:string})=>{
           const found=catalog.find(c=>c.variantId===o.variantId);
           return found?[found]:[];
