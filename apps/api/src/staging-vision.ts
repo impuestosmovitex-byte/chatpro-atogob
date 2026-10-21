@@ -60,3 +60,57 @@ export function validateVisualProposal(
   // Even the strongest visual result must be confirmed by the user.
   return{matches:selected,uncertain:true};
 }
+
+/**
+ * Fair bounded reference sampling for photographs containing multiple products.
+ * Try distinct products before a second photo of the same product; never allow
+ * one catalogue item to crowd out other companies' (tenant already scoped).
+ */
+export function chooseVisualReferences<T extends {product_id:string;variant_id:string}>(
+  images:T[],max=8,
+):T[]{
+  if(!Number.isSafeInteger(max)||max<1||max>12)throw new Error('Límite visual inválido.');
+  const distinct:T[]=[];
+  const used=new Set<string>();
+  const products=new Set<string>();
+  for(const image of images){
+    if(used.has(image.variant_id)||products.has(image.product_id))continue;
+    distinct.push(image);used.add(image.variant_id);products.add(image.product_id);
+    if(distinct.length>=max)return distinct;
+  }
+  for(const image of images){
+    if(used.has(image.variant_id))continue;
+    distinct.push(image);used.add(image.variant_id);
+    if(distinct.length>=max)break;
+  }
+  return distinct;
+}
+const COLORS:Record<string,string>={
+  negro:'negro',negra:'negro',blanco:'blanco',blanca:'blanco',
+  rojo:'rojo',roja:'rojo',azul:'azul',verde:'verde',beige:'beige',
+  gris:'gris',cafe:'cafe',marron:'marron',arena:'arena',
+  rosa:'rosa',rosado:'rosa',rosada:'rosa',vinotinto:'vinotinto',
+  morado:'morado',morada:'morado',lila:'lila',
+};
+function visualWords(s:string):string[]{
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .split(/[^a-z0-9]+/).filter(Boolean);
+}
+/** Attribute constraints never promote an image into an exact SKU match. */
+export function narrowVisualMatches(
+  caption:string,
+  options:VisualOption[],
+):{options:VisualOption[];specific:boolean}{
+  const words=visualWords(caption.slice(0,160));
+  const normalized=words.join(' ');
+  const size=/(?:^| )talla (?:numero |nro )?(xs|xxxl|xxl|xl|s|m|l|\d{1,3})(?: |$)/.exec(normalized)?.[1]||null;
+  const colors=[...new Set(words.map(w=>COLORS[w]).filter((v):v is string=>Boolean(v)))];
+  if(!size&&!colors.length)return {options,specific:false};
+  const matched=options.filter(o=>{
+    const label=visualWords(o.name+' '+o.variantLabel);
+    if(size&&!label.includes(size))return false;
+    if(colors.length&&!colors.every(c=>label.some(word=>COLORS[word]===c)))return false;
+    return true;
+  });
+  return {options:matched,specific:true};
+}
