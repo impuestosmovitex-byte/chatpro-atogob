@@ -6,7 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import OpenAI from 'openai';
 import { SupabaseService } from './supabase.service';
 import {
-  applySalesProposal, inferSalesProposal, guardSalesProposal,
+  answerCatalogQuestion, applySalesProposal, inferSalesProposal, guardSalesProposal,
   type Action, type CatalogItem, type CartInput, type Proposal,
 } from './staging-sales-brain';
 
@@ -122,6 +122,22 @@ export class StagingSalesAssistantService {
         requiresConfirmation:true, warnings:[] };
     }
     const cart = current as CartInput[];
+
+    // Questions about products are answered from the merchant's verified
+    // catalog only. Never call the LLM or mutate the cart for these requests.
+    const readOnlyAnswer = answerCatalogQuestion(message,catalog);
+    if (readOnlyAnswer) {
+      try {
+        const unchanged = applySalesProposal(catalog,cart,{actions:[],uncertain:false});
+        return {
+          ok:true,mode:'catalogo',...unchanged,changed:false,
+          reply:readOnlyAnswer.reply,productOptions:readOnlyAnswer.options,
+        };
+      } catch (error) {
+        throw new BadRequestException(error instanceof Error
+          ? error.message : 'El carrito no es válido.');
+      }
+    }
     let proposal: Proposal = inferSalesProposal(message,catalog);
     let mode: 'ia'|'simulacion' = 'simulacion';
     // Dedicated staging credential: never reuse the production OPENAI_API_KEY.
