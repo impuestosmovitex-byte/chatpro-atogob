@@ -137,6 +137,15 @@ export async function POST(request: NextRequest) {
       return responseWithSession(data.session);
     }
 
+    // Staging never enables the legacy shared bootstrap password.
+    // All demo access must authenticate a real, company-bound user.
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      return NextResponse.json(
+        { ok: false, error: 'Para entrar a la demo usa el código MW1DEMO y la contraseña de pruebas.' },
+        { status: 400 },
+      );
+    }
+
     if (!(await passwordMatches(password))) {
       return NextResponse.json(
         { ok: false, error: 'La contraseña no es correcta.' },
