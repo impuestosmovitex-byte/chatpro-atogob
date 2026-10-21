@@ -36,6 +36,7 @@ export default function ChatOrderSimulatorPage(){
   const [assistantMode,setAssistantMode]=useState<'ia'|'simulacion'|'catalogo'>('simulacion');
   const [suggestedProducts,setSuggestedProducts]=useState<CatalogChoice[]>([]);
   const [photoCandidates,setPhotoCandidates]=useState<CatalogChoice[]>([]);
+  const [photoThumbnails,setPhotoThumbnails]=useState<Record<string,string>>({});
   const [photoPreview,setPhotoPreview]=useState<string|null>(null);
   const [error,setError]=useState('');
   const [savedOrder,setSavedOrder]=useState<{code:string;total:number}|null>(null);
@@ -162,7 +163,7 @@ export default function ChatOrderSimulatorPage(){
 
   async function searchPhoto(file:File){
     if(loading||thinking||saving||savedOrder)return;
-    setError('');setSuggestedProducts([]);setPhotoCandidates([]);
+    setError('');setSuggestedProducts([]);setPhotoCandidates([]);setPhotoThumbnails({});
     if(!['image/jpeg','image/png','image/webp'].includes(file.type)||
       file.size>524288||file.size<200){
       setError('Elige una imagen JPEG, PNG o WebP de máximo 512 KB.');
@@ -193,6 +194,25 @@ export default function ChatOrderSimulatorPage(){
         });
       setSuggestedProducts(choices);
       setPhotoCandidates(choices);
+      // The API only signs URLs for photos belonging to the signed-in company.
+      // Thumbnails are optional and must never affect the ability to order.
+      if(choices.length){
+        try{
+          const response=await fetch('/api/native-commerce/catalog/images',{cache:'no-store'});
+          if(response.ok){
+            const payload=await response.json();
+            const allowed=new Set(choices.map(c=>c.variantId));
+            const previews:Record<string,string>={};
+            for(const photo of (Array.isArray(payload.photos)?payload.photos:[])){
+              if(allowed.has(photo.variantId) && typeof photo.previewUrl==='string' &&
+                photo.previewUrl.startsWith('https://')){
+                previews[photo.variantId]=photo.previewUrl;
+              }
+            }
+            setPhotoThumbnails(previews);
+          }
+        }catch{/* Image previews are best-effort. */}
+      }
       setAssistantMode('catalogo');
       append('assistant',result.reply||'Revisa las opciones del catálogo.');
     }catch(e){
@@ -269,6 +289,10 @@ export default function ChatOrderSimulatorPage(){
               <strong>{photoCandidates.length?'Coincidencias de tu fotografía · confirma la referencia':'Referencias del catálogo'}</strong>
               {suggestedProducts.map(option=>(
                 <div className={styles.recommendation} key={option.variantId}>
+                  {photoCandidates.length>0&&photoThumbnails[option.variantId]&&(
+                    <img src={photoThumbnails[option.variantId]} alt={'Foto de referencia: '+option.label}
+                      className={styles.recommendationImage}/>
+                  )}
                   <span>{option.label}<small>{pesos(option.unitPrice)} · {option.stock===null?'Inventario por confirmar':option.stock===0?'Agotado':`${option.stock} unidades registradas`}</small></span>
                   <button type="button" disabled={thinking||Boolean(savedOrder)||option.stock===0}
                     onClick={()=>addChoice(option)}>Agregar</button>
