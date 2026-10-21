@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRef, useState, type ChangeEvent } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
 import { previewCsv, type ImportRow } from '../../lib/staging-csv-preview';
-import styles from '../page.module.css';
+import styles from '../../pedidos/page.module.css';
 import pageStyles from './page.module.css';
 
 const money=(amount:number)=>new Intl.NumberFormat('es-CO',{
