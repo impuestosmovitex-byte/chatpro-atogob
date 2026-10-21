@@ -94,10 +94,10 @@ export default function ImportCatalogPage(){
       <section className={styles.panel}>
         <h2>1. Selecciona tu catálogo: Excel, PDF o CSV</h2>
         <p className={styles.note}>Puedes cargar un <strong>Excel (.xlsx)</strong> directamente, un <strong>PDF con texto y tabla de productos</strong> o un CSV.</p>
-        <p className={styles.note}>Columnas: <strong>SKU, Nombre, Precio, Inventario</strong> (inventario opcional). Hasta 100 productos por carga. Los PDF escaneados como imagen todavía no se reconocen; necesitarán OCR.</p>
+        <p className={styles.note}>Columnas obligatorias: <strong>SKU, Nombre y Precio</strong>. Opcionales: Inventario, Descripción, Material, Composición, Medidas, Ingredientes, Alérgenos, Cuidados y Características. Las fichas enriquecidas se leen de Excel y CSV; el PDF sencillo reconoce por ahora SKU, nombre, precio e inventario.</p>
         <div className={pageStyles.uploadArea}>
           <input type="file" accept=".xlsx,.pdf,.csv,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={e=>void handleFile(e)} disabled={loading||Boolean(saved)} aria-label="Seleccionar catálogo Excel, PDF o CSV"/>
-          <a href="data:text/csv;charset=utf-8,SKU%3BNombre%3BPrecio%3BInventario%0ADEMO-PRUEBA-001%3BGalletas%3B7500%3B20%0ADEMO-PRUEBA-002%3BLeche%3B5400%3B15" download="plantilla_mw1_catalogo.csv">Descargar plantilla CSV</a>
+          <a href="data:text/csv;charset=utf-8,SKU%3BNombre%3BPrecio%3BInventario%3BDescripcion%3BMaterial%3BMedidas%3BIngredientes%3BAlergenos%0ADEMO-VEST-001%3BVestido%3B49000%3B12%3BModelo%20de%20prueba%3BAlgodon%3BLargo%2085%20cm%3B%3B%0ADEMO-PAN-001%3BPan%3B4500%3B10%3BPan%20de%20prueba%3B%3B%3BHarina%20y%20agua%3BContiene%20gluten" download="plantilla_mw1_catalogo_completo.csv">Descargar plantilla con fichas</a>
         </div>
         {fileNote&&<p className={styles.note} role="status">{fileNote}</p>}
         <label className={pageStyles.label}>Nombre de esta fuente
@@ -116,9 +116,9 @@ export default function ImportCatalogPage(){
         </div>}
         {rows.length?<div className={styles.tableScroll}>
           <table className={styles.table}>
-            <thead><tr><th>Referencia</th><th>Nombre</th><th>Precio</th><th>Inventario</th></tr></thead>
+            <thead><tr><th>Referencia</th><th>Nombre</th><th>Precio</th><th>Inventario</th><th>Ficha</th></tr></thead>
             <tbody>{rows.map(row=><tr key={row.sku}>
-              <td>{row.sku}</td><td>{row.name}</td><td>{money(row.price)}</td><td>{row.stock===null?'Sin control':row.stock}</td>
+              <td>{row.sku}</td><td>{row.name}</td><td>{money(row.price)}</td><td>{row.stock===null?'Sin control':row.stock}</td><td>{Object.keys(row.facts||{}).length?`${Object.keys(row.facts||{}).length} campos`: 'Sin detalles'}</td>
             </tr>)}</tbody>
           </table>
         </div>:<p className={styles.empty}>Selecciona un archivo para revisar sus productos antes de guardarlos.</p>}
@@ -126,11 +126,11 @@ export default function ImportCatalogPage(){
       <section className={styles.panel}>
         <h2>3. Aprobar importación</h2>
         <p className={styles.note}>MW1 comprobará las referencias repetidas, el límite de tu plan y la seguridad de tu empresa. Si hay un error, no se guarda ningún producto del lote.</p>
-        <p className={styles.note}>En esta etapa no se almacenan archivos originales. Solo los productos aprobados, con sus precios e inventario.</p>
+        <p className={styles.note}>Los archivos originales no se almacenan. Se guardan únicamente los productos aprobados y los detalles suministrados por la tienda, sin generar características automáticamente.</p>
         {saved?<div className={pageStyles.success} role="status">
           <strong>{saved.created?'¡Catálogo importado!':'Esta importación ya estaba registrada.'}</strong>
           <p>{saved.imported} productos quedaron asociados únicamente a tu empresa.</p>
-          <Link href="/catalogo">Ver catálogo →</Link> · <Link href="/pedidos/simulador">Probar en el chat →</Link>
+          <Link href="/catalogo">Ver catálogo →</Link> · <Link href="/catalogo/fichas">Revisar fichas →</Link> · <Link href="/pedidos/simulador">Probar en el chat →</Link>
         </div>:<button className={styles.action} type="button" onClick={()=>void importApproved()}
           disabled={loading||rows.length===0||errors.length>0||sourceLabel.trim().length<3}>
           {loading?'Procesando…':`Importar ${rows.length} productos`}
