@@ -44,3 +44,5 @@
 .recommendation small{display:block;font-size:11px;color:#777;margin-top:4px}
 .recommendation button{background:white;border:1px solid #8b3b56;color:#75203b;font-weight:600;border-radius:7px;padding:8px 12px;cursor:pointer}
 .recommendation button:disabled{opacity:.5;cursor:not-allowed}
+
+.recommendationImage{width:58px;height:68px;object-fit:contain;border-radius:7px;border:1px solid #eee;background:#fff;flex-shrink:0}
