@@ -14,6 +14,7 @@ type Order = {
   channel: string;
   status: OrderStatus;
   payment_status: string;
+  fulfillment_method: 'local_delivery' | 'carrier' | 'pickup';
   currency: string;
   grand_total: number | string;
   created_at: string;
@@ -26,6 +27,8 @@ type OrderDetail = {
     customer_note?: string;
     delivery_address?: Record<string, unknown>;
   };
+  shipments: Array<{ id: string; carrier: string | null; tracking_number: string | null; status: string; dispatched_at: string | null }>;
+  notifications: Array<{ id: string; event_type: string; message_body: string; status: string }>;
   items: Array<{
     id: string;
     product_name: string;
@@ -69,6 +72,9 @@ export default function NativeOrdersPage() {
   const [companyName, setCompanyName] = useState('Mi empresa');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [fulfillmentMethod, setFulfillmentMethod] = useState<'local_delivery' | 'carrier' | 'pickup'>('local_delivery');
+  const [carrier, setCarrier] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
   const [error, setError] = useState('');
 
   const reload = useCallback(async () => {
@@ -96,7 +102,7 @@ export default function NativeOrdersPage() {
       const response = await fetch(`/api/native-commerce/orders/${selectedId}`, { cache: 'no-store' });
       const data = await response.json();
       if (!cancelled) {
-        if (response.ok && data.ok) setDetail(data);
+        if (response.ok && data.ok) { setDetail(data); setFulfillmentMethod(data.order?.fulfillment_method || 'local_delivery'); }
         else setError(data.error || 'No se pudo consultar el pedido.');
       }
     })().catch(() => {
@@ -108,6 +114,11 @@ export default function NativeOrdersPage() {
   async function advance(order: Order) {
     const next = nextStates[order.status];
     if (!next || busy) return;
+    if (next === 'dispatched') {
+      setSelectedId(order.id);
+      setFulfillmentMethod(order.fulfillment_method || 'local_delivery');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -121,6 +132,41 @@ export default function NativeOrdersPage() {
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo actualizar el pedido.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dispatchOrder() {
+    const order = orders.find(item => item.id === selectedId);
+    if (!order || order.status !== 'ready' || busy) return;
+    if (fulfillmentMethod === 'carrier' && (!carrier.trim() || !trackingNumber.trim())) {
+      setError('Para enviar por transportadora, ingresa la empresa y el número de guía.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/native-commerce/orders/${order.id}/status`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          expectedStatus: 'ready',
+          nextStatus: 'dispatched',
+          fulfillmentMethod,
+          carrier: fulfillmentMethod === 'carrier' ? carrier.trim() : null,
+          trackingNumber: fulfillmentMethod === 'carrier' ? trackingNumber.trim() : null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || 'No fue posible registrar el despacho.');
+      }
+      setCarrier('');
+      setTrackingNumber('');
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo registrar el despacho.');
     } finally {
       setBusy(false);
     }
@@ -185,7 +231,7 @@ export default function NativeOrdersPage() {
                       <td>{money(order.grand_total, order.currency)}</td>
                       <td>{nextStates[order.status] ?
                         <button type="button" disabled={busy} className={styles.action} onClick={() => void advance(order)}>
-                          {labels[nextStates[order.status] as OrderStatus]}
+                          {nextStates[order.status] === 'dispatched' ? 'Registrar despacho' : labels[nextStates[order.status] as OrderStatus]}
                         </button> : <span className={styles.muted}>Finalizado</span>}</td>
                     </tr>
                   ))}</tbody>
@@ -210,10 +256,60 @@ export default function NativeOrdersPage() {
               </table></div>
               <p className={styles.total}>Total: {money(detail.order.grand_total, detail.order.currency)}</p>
               <p className={styles.note}>{detail.order.customer_note || 'Sin observaciones.'}</p>
+              {detail.order.status === 'ready' && (
+                <div className={styles.dispatchPanel}>
+                  <h3>Registrar entrega o despacho</h3>
+                  <p className={styles.note}>Selecciona cómo se entregará el pedido. Si utilizas una transportadora, la guía y la empresa son obligatorias.</p>
+                  <div className={styles.dispatchGrid}>
+                    <label>Método de entrega
+                      <select value={fulfillmentMethod} onChange={event => setFulfillmentMethod(event.target.value as typeof fulfillmentMethod)}>
+                        <option value="local_delivery">Domicilio / repartidor propio</option>
+                        <option value="carrier">Transportadora con número de guía</option>
+                        <option value="pickup">Recogida en tienda</option>
+                      </select>
+                    </label>
+                    {fulfillmentMethod === 'carrier' && (
+                      <>
+                        <label>Empresa transportadora
+                          <input required maxLength={100} placeholder="Ejemplo: Interrapidísimo" value={carrier} onChange={event => setCarrier(event.target.value)} />
+                        </label>
+                        <label>Número de guía
+                          <input required maxLength={120} placeholder="Ingresa el número de guía" value={trackingNumber} onChange={event => setTrackingNumber(event.target.value)} />
+                        </label>
+                      </>
+                    )}
+                  </div>
+                  <button type="button" className={styles.action} disabled={busy} onClick={() => void dispatchOrder()}>
+                    {busy ? 'Guardando…' : 'Confirmar despacho y preparar aviso'}
+                  </button>
+                </div>
+              )}
+              {(detail.shipments || []).length > 0 && (
+                <div className={styles.dispatchPanel}>
+                  <h3>Información del envío</h3>
+                  {(detail.shipments || []).map(ship => (
+                    <p key={ship.id}>{ship.carrier || 'Entrega'}{ship.tracking_number ? ` · Guía: ${ship.tracking_number}` : ''}
+                      {' · '}{ship.status === 'delivered' ? 'Entregado' : 'Despachado'}</p>
+                  ))}
+                </div>
+              )}
+              {(detail.notifications || []).length > 0 && (
+                <div className={styles.dispatchPanel}>
+                  <h3>Avisos automáticos preparados</h3>
+                  <p className={styles.note}>Estas son vistas previas de los mensajes para el cliente. La demo no envía WhatsApp reales.</p>
+                  {(detail.notifications || []).map(notification => (
+                    <div className={styles.notificationPreview} key={notification.id}>
+                      <strong>{notification.event_type === 'ready' ? 'Pedido listo' : notification.event_type === 'dispatched' ? 'Enviado / en camino' : 'Pedido entregado'}</strong>
+                      <p>{notification.message_body}</p>
+                      <small>Estado: {notification.status === 'preview' ? 'Vista previa, sin enviar' : notification.status}</small>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>}
           </section>
         )}
-        <p className={styles.disclaimer}>Los pagos no se confirman manualmente desde esta pantalla. La integración con pasarela de pago se desarrollará por separado.</p>
+        <p className={styles.disclaimer}>Los pagos no se confirman manualmente. Los avisos se generan en modo vista previa; todavía no se envían mensajes reales.</p>
       </main>
     </div>
   );
