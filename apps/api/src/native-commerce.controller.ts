@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 
-type AdvanceOrderBody = { expectedStatus?: unknown; nextStatus?: unknown };
+type AdvanceOrderBody = { expectedStatus?: unknown; nextStatus?: unknown; fulfillmentMethod?: unknown; carrier?: unknown; trackingNumber?: unknown };
 type AuthorizedCompany = { id: string; name: string; slug: string };
 
 @Controller('native-commerce')
@@ -102,7 +102,7 @@ export class NativeCommerceController {
     }
 
     let query = this.supabase.getClient().from('commerce_orders')
-      .select('id,order_code,channel,status,payment_status,currency,grand_total,created_at,updated_at')
+      .select('id,order_code,channel,status,payment_status,currency,grand_total,fulfillment_method,created_at,updated_at')
       .eq('company_id', company.id)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -168,7 +168,7 @@ export class NativeCommerceController {
     const company = await this.authorize(key, companyId, userId);
     const db = this.supabase.getClient();
     const { data: order, error: orderError } = await db.from('commerce_orders')
-      .select('id,order_code,status,payment_status,currency,subtotal,delivery_fee,discount_total,grand_total,customer_snapshot,delivery_address,scheduled_for,customer_note,staff_note,created_at')
+      .select('id,order_code,status,payment_status,fulfillment_method,currency,subtotal,delivery_fee,discount_total,grand_total,customer_snapshot,delivery_address,scheduled_for,customer_note,staff_note,created_at')
       .eq('company_id', company.id)
       .eq('id', orderId).maybeSingle();
     if (orderError || !order) throw new BadRequestException('Pedido no encontrado.');
@@ -176,7 +176,16 @@ export class NativeCommerceController {
       .select('id,product_name,variant_label,unit,quantity,unit_price,line_total')
       .eq('company_id', company.id).eq('order_id', orderId);
     if (itemsError) throw new BadRequestException('No se pudo consultar el detalle.');
-    return { ok: true, order, items: items ?? [] };
+    const [shipments, notifications] = await Promise.all([
+      db.from('commerce_shipments').select('id,carrier,tracking_number,status,dispatched_at,delivered_at')
+        .eq('company_id',company.id).eq('order_id',orderId).order('created_at',{ascending:false}),
+      db.from('commerce_order_notifications').select('id,event_type,message_body,status,created_at')
+        .eq('company_id',company.id).eq('order_id',orderId).order('created_at',{ascending:true}),
+    ]);
+    if (shipments.error || notifications.error) {
+      throw new BadRequestException('No fue posible consultar la información del envío.');
+    }
+    return { ok: true, order, items: items ?? [], shipments: shipments.data ?? [], notifications: notifications.data ?? [] };
   }
 
   @Patch('orders/:orderId/status')
@@ -197,16 +206,31 @@ export class NativeCommerceController {
       throw new BadRequestException('Indica una transición válida.');
     }
 
-    // The database RPC checks active company and membership again,
-    // locks the order, validates the allowed transition, and appends an event
-    // atomically. This API never marks a payment as paid.
+    const method = typeof body.fulfillmentMethod === 'string'
+      ? body.fulfillmentMethod.trim() : null;
+    const carrier = typeof body.carrier === 'string'
+      ? body.carrier.trim() : null;
+    const trackingNumber = typeof body.trackingNumber === 'string'
+      ? body.trackingNumber.trim() : null;
+    if (method && !['local_delivery','carrier','pickup'].includes(method)) {
+      throw new BadRequestException('Método de entrega no válido.');
+    }
+    if ((carrier && carrier.length > 100) || (trackingNumber && trackingNumber.length > 120)) {
+      throw new BadRequestException('Los datos de transporte son demasiado largos.');
+    }
+
+    // Atomic tenant-scoped transition, optional shipment data, audit event
+    // and safe message preview. This never marks a payment paid or sends messages.
     const { data, error } = await this.supabase.getClient()
-      .rpc('mw1_commerce_transition_order', {
+      .rpc('mw1_commerce_transition_order_v2', {
         p_company_id: company.id,
         p_order_id: orderId,
         p_expected_status: expectedStatus,
         p_next_status: nextStatus,
         p_actor_user_id: userId,
+        p_fulfillment_method: method,
+        p_carrier: carrier,
+        p_tracking_number: trackingNumber,
       });
     if (error) {
       throw new BadRequestException(error.message);
