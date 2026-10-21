@@ -300,6 +300,12 @@ export class NativeCommerceController {
   ) {
     if(process.env.MW1_STAGING_MODE!=='true')throw new ForbiddenException('Solo pruebas.');
     const company=await this.authorize(key,companyId,userId);
+    const now=Date.now();
+    const rateId=company.id+':'+userId;
+    const recent=(this.visualRate.get(rateId)||[]).filter(t=>now-t<60000);
+    if(recent.length>=5)throw new BadRequestException('Máximo cinco búsquedas visuales por minuto.');
+    if(this.visualRate.size>500)this.visualRate.clear();
+    this.visualRate.set(rateId,[...recent,now]);
     const photo=readCatalogPicture(body.base64,body.mimeType);
     const db=this.supabase.getClient();
     const [imagesResult,variantsResult,productsResult]=await Promise.all([
