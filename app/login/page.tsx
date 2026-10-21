@@ -39,9 +39,10 @@ export default function LoginPage() {
       }
 
       const destination = new URLSearchParams(window.location.search).get('next');
-      router.replace(
-        destination && destination.startsWith('/') ? destination : '/',
-      );
+      const safeDestination = destination && destination.startsWith('/') && !destination.startsWith('//')
+        ? destination
+        : '/';
+      router.replace(staging && safeDestination === '/' ? '/pedidos' : safeDestination);
       router.refresh();
     } catch {
       setError('No se pudo conectar con Chat Pro. Intenta nuevamente.');
