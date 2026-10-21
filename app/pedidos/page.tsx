@@ -185,7 +185,7 @@ export default function NativeOrdersPage() {
           <div>
             <p className={styles.eyebrow}>MW1 COMERCIO · ÁREA OPERATIVA</p>
             <h1>Pedidos</h1>
-            <p><a href="/catalogo">Administrar catálogo →</a></p>
+            <p><a href="/catalogo">Administrar catálogo →</a> · <a href="/pedidos/avisos">Configurar avisos automáticos →</a></p>
             <p>Organiza los pedidos que llegan por conversación, sin necesidad de una tienda virtual.</p>
           </div>
           <button className={styles.reload} type="button" onClick={() => void reload()} disabled={loading}>
