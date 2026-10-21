@@ -227,9 +227,9 @@ export function AppSidebar({
         (item.href !== '/leads' || isServiceTenant),
     ),
     ...(ordersEnabled ? [
-      { href: '/pedidos', label: 'Pedidos', icon: '▤' },
+      { href: '/pedidos', label: 'Pedidos', icon: '▤', exact: true },
       ...(demoNavigation ? [{ href: '/pedidos/simulador', label: 'Simular chat', icon: '◈' }] : []),
-      { href: '/catalogo', label: 'Catálogo', icon: '▦' },
+      { href: '/catalogo', label: 'Catálogo', icon: '▦', exact: true },
       ...(demoNavigation ? [{ href: '/catalogo/importar', label: 'Importar CSV', icon: '⇧' }] : []),
       { href: '/pedidos/avisos', label: 'Avisos de pedidos', icon: '◉' },
     ] : []),
