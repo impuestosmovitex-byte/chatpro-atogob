@@ -17,7 +17,7 @@ export const PRODUCT_FACT_LIMITS = {
 } as const;
 
 export type ProductFacts = {
-  [K in keyof typeof PRODUCT_FACT_LIMITS]: string;
+  -readonly [K in keyof typeof PRODUCT_FACT_LIMITS]: string;
 };
 
 const keys = Object.keys(PRODUCT_FACT_LIMITS) as (keyof ProductFacts)[];
