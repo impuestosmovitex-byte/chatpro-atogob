@@ -74,7 +74,7 @@ export default function CatalogPage() {
             <p className={styles.eyebrow}>MW1 COMERCIO · CATÁLOGO NATIVO</p>
             <h1>Catálogo</h1>
             <p>Registra productos para vender por conversación, incluso sin tienda online.</p>
-            <p><Link href="/catalogo/importar"><strong>Importar catálogo →</strong></Link> · <Link href="/catalogo/imagenes"><strong>Fotografías de productos →</strong></Link> · <Link href="/pedidos">Ver pedidos →</Link></p>
+            <p><Link href="/catalogo/importar"><strong>Importar catálogo →</strong></Link> · <Link href="/catalogo/fichas"><strong>Fichas de productos →</strong></Link> · <Link href="/catalogo/imagenes"><strong>Fotografías de productos →</strong></Link> · <Link href="/pedidos">Ver pedidos →</Link></p>
           </div>
           <button type="button" className={styles.reload} disabled={loading} onClick={() => void reload()}>
             {loading ? 'Cargando…' : 'Actualizar'}
