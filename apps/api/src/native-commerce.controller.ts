@@ -175,6 +175,69 @@ export class NativeCommerceController {
     return { ok: true, products: data ?? [] };
   }
 
+  @Get('variants')
+  async variants(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+  ) {
+    const company = await this.authorize(key,companyId,userId);
+    const { data, error } = await this.supabase.getClient()
+      .from('commerce_variants')
+      .select('id,product_id,sku,variant_label,unit,price,stock_quantity,available')
+      .eq('company_id',company.id).eq('available',true).order('sku').limit(300);
+    if (error) throw new BadRequestException('No fue posible cargar las variantes.');
+    return { ok:true, variants:data ?? [] };
+  }
+
+  @Post('orders')
+  async createOrder(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Body() body: Record<string, unknown> = {},
+  ) {
+    const company=await this.authorize(key,companyId,userId);
+    const requestKey=typeof body.requestKey === 'string' ? body.requestKey.trim() : '';
+    const customerName=typeof body.customerName === 'string' ? body.customerName.trim() : '';
+    const customerPhone=typeof body.customerPhone === 'string' ? body.customerPhone.trim() : '';
+    const deliveryAddress=typeof body.deliveryAddress === 'string' ? body.deliveryAddress.trim() : '';
+    const fulfillmentMethod=typeof body.fulfillmentMethod === 'string'
+      ? body.fulfillmentMethod.trim() : '';
+    const customerNote=typeof body.customerNote === 'string' ? body.customerNote.trim() : '';
+    const items=body.items;
+    const isUuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+
+    if (!isUuid.test(requestKey) || customerName.length<2 || customerName.length>120 ||
+      !/^[+]?[0-9]{7,15}$/.test(customerPhone) ||
+      deliveryAddress.length>350 || customerNote.length>500 ||
+      !['local_delivery','carrier','pickup'].includes(fulfillmentMethod) ||
+      (fulfillmentMethod!=='pickup' && deliveryAddress.length<5) ||
+      !Array.isArray(items) || items.length===0 || items.length>40 ||
+      items.some((item: unknown) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
+        const row=item as Record<string,unknown>;
+        return typeof row.variantId!=='string' || !isUuid.test(row.variantId) ||
+          typeof row.quantity!=='number' || !Number.isFinite(row.quantity) ||
+          row.quantity<=0 || row.quantity>1000 || Math.round(row.quantity*1000)!==row.quantity*1000;
+      })) {
+      throw new BadRequestException('Revisa los datos del cliente y los artículos del pedido.');
+    }
+    const { data,error }=await this.supabase.getClient().rpc('mw1_commerce_create_order',{
+      p_company_id:company.id,
+      p_actor_user_id:userId,
+      p_request_key:requestKey,
+      p_customer_name:customerName,
+      p_customer_phone:customerPhone,
+      p_delivery_address:deliveryAddress,
+      p_fulfillment_method:fulfillmentMethod,
+      p_customer_note:customerNote,
+      p_items:items,
+    });
+    if(error)throw new BadRequestException(error.message);
+    return data;
+  }
+
   @Post('products')
   async createProduct(
     @Headers('x-chatpro-inbox-key') key = '',
