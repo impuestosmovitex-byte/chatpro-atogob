@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import OpenAI from 'openai';
 import { readCatalogPicture,exactImageMatches,validateVisualProposal,chooseVisualReferences,narrowVisualMatches } from './staging-vision';
 import {readProductFacts,validateProductFacts,writeProductFactsMetadata} from './staging-product-facts';
+import {parseAdminPriceCommand,findPriceTargets,catalogOrigin,type PriceTarget,type CatalogKind} from './staging-catalog-admin-command';
 
 type AdvanceOrderBody = { expectedStatus?: unknown; nextStatus?: unknown; fulfillmentMethod?: unknown; carrier?: unknown; trackingNumber?: unknown };
 type AuthorizedCompany = { id: string; name: string; slug: string };
@@ -221,6 +222,133 @@ export class NativeCommerceController {
     if(error)throw new BadRequestException('No se pudo guardar la ficha del producto.');
     if(!data)throw new BadRequestException('El producto cambió durante la edición. Actualiza y vuelve a guardar.');
     return {ok:true,productId:data.id,facts:readProductFacts(data.description,data.metadata)};
+  }
+
+  /**
+   * Admin-only product catalog pricing chat. This endpoint is intentionally
+   * read-only: a model cannot mutate prices by generating text.
+   */
+  @Post('catalog/admin/price/preview')
+  async previewCatalogPrice(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Body() body:Record<string,unknown> = {},
+  ) {
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new ForbiddenException('Administración por chat solo en MW1 de pruebas.');
+    const company=await this.authorize(key,companyId,userId);
+    const message=typeof body.message==='string'?body.message.trim():'';
+    if(message.length<10||message.length>450)
+      throw new BadRequestException('Escribe una instrucción entre 10 y 450 caracteres.');
+    const intent=parseAdminPriceCommand(message);
+    if(!intent)return {ok:true,mode:'clarify',choices:[],
+      reply:'Puedo preparar cambios de precios. Escribe: Cambia el precio del arroz blanco Diana a 20000 pesos.'};
+    if(intent.field==='cost_ambiguous')return {ok:true,mode:'clarify',choices:[],
+      reply:'¿Deseas modificar el costo interno de compra o el precio de venta? Por seguridad solo preparo cambios de precio de venta en esta demo.'};
+    if(intent.newPrice===null)return {ok:true,mode:'clarify',choices:[],
+      reply:'No pude identificar el nuevo precio. Escríbelo claramente, por ejemplo: a 20000 pesos.'};
+    if(!intent.query)return {ok:true,mode:'clarify',choices:[],
+      reply:'Indica el producto o su referencia SKU para encontrar el artículo correcto.'};
+    const db=this.supabase.getClient();
+    const [p,v,src]=await Promise.all([
+      db.from('commerce_products')
+        .select('id,source_id,sku,name,currency,external_product_id')
+        .eq('company_id',company.id).limit(500),
+      db.from('commerce_variants')
+        .select('id,product_id,sku,variant_label,price,external_variant_id')
+        .eq('company_id',company.id).limit(500),
+      db.from('commerce_catalog_sources')
+        .select('id,kind,label,status')
+        .eq('company_id',company.id).limit(120),
+    ]);
+    if(p.error||v.error||src.error)
+      throw new BadRequestException('No fue posible consultar los productos de esta empresa.');
+    const products=new Map((p.data||[]).map(x=>[x.id,x]));
+    const sources=new Map((src.data||[]).map(x=>[x.id,x]));
+    const targets:PriceTarget[]=(v.data||[]).flatMap(x=>{
+      const product=products.get(x.product_id);
+      if(!product)return [];
+      const source=product.source_id?sources.get(product.source_id):null;
+      const kind:CatalogKind=source?(source.kind as CatalogKind):
+        product.source_id?'website':'manual';
+      return [{
+        productId:product.id,variantId:x.id,sku:x.sku||product.sku||null,
+        name:product.name,variantLabel:x.variant_label,
+        price:Number(x.price),currency:product.currency,
+        sourceKind:kind,sourceLabel:source?.label||'Catálogo manual',
+        externalProductId:product.external_product_id,
+        externalVariantId:x.external_variant_id,
+      }];
+    });
+    const choices=findPriceTargets(intent,targets).map(x=>({
+      ...x,canApply:x.canApply&&(!products.get(x.productId)?.source_id ||
+        sources.get(products.get(x.productId)!.source_id)?.status==='ready'),
+    }));
+    if(!choices.length)return {ok:true,mode:'not_found',choices:[],
+      reply:'No encontré una coincidencia exacta. Escribe el SKU o el nombre con talla y color. No se modificó ningún precio.'};
+    const normalized=choices.map(x=>x.canApply?x:{
+      ...x,blockedReason:x.blockedReason||'La fuente no está lista para aplicar cambios.'
+    });
+    if(intent.claimedOldPrice!==null && normalized.some(x=>x.price!==intent.claimedOldPrice)){
+      return {ok:true,mode:'stale',choices:normalized,newPrice:intent.newPrice,
+        reply:'El precio actual no coincide con el precio anterior que mencionaste. Revisa la ficha antes de confirmar.'};
+    }
+    const ambiguous=normalized.length!==1;
+    return {ok:true,mode:ambiguous?'choose':normalized[0].canApply?'confirm':'external',
+      newPrice:intent.newPrice,choices:normalized,
+      reply:ambiguous?'Encontré varias referencias. Elige la talla, color o SKU exactos antes de confirmar.'
+        :normalized[0].canApply?
+        'Comprueba el producto, el precio anterior y el precio nuevo. Solo cambiará cuando presiones Confirmar.'
+        :normalized[0].blockedReason};
+  }
+
+  @Post('catalog/admin/price/confirm')
+  async confirmCatalogPrice(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Body() body:Record<string,unknown> = {},
+  ) {
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new ForbiddenException('Administración por chat solo en MW1 de pruebas.');
+    const company=await this.authorize(key,companyId,userId);
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const variantId=typeof body.variantId==='string'?body.variantId:'';
+    const requestKey=typeof body.requestKey==='string'?body.requestKey:'';
+    const expected=body.expectedPrice;
+    const price=body.newPrice;
+    if(body.confirm!==true||!uuid.test(variantId)||!uuid.test(requestKey)
+      ||typeof expected!=='number'||!Number.isFinite(expected)||expected<0
+      ||typeof price!=='number'||!Number.isSafeInteger(price)||price<1||price>999999999){
+      throw new BadRequestException('Confirma el cambio indicando referencia y precios válidos.');
+    }
+    const {data,error}=await this.supabase.getClient()
+      .rpc('mw1_commerce_confirm_price_change',{
+        p_company_id:company.id,p_actor_user_id:userId,
+        p_variant_id:variantId,p_expected_price:expected,
+        p_new_price:price,p_request_key:requestKey,
+      });
+    if(error)throw new BadRequestException(error.message);
+    return data;
+  }
+
+  @Get('catalog/sources')
+  async catalogSources(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+  ) {
+    if(process.env.MW1_STAGING_MODE!=='true')throw new ForbiddenException('Solo pruebas.');
+    const company=await this.authorize(key,companyId,userId);
+    const {data,error}=await this.supabase.getClient()
+      .from('commerce_catalog_sources')
+      .select('id,kind,label,status,last_synced_at')
+      .eq('company_id',company.id).limit(100);
+    if(error)throw new BadRequestException('No se pudieron consultar las fuentes.');
+    return {ok:true,sources:(data||[]).map(x=>({
+      ...catalogOrigin(x.kind,x.label),id:x.id,status:x.status,lastSyncedAt:x.last_synced_at,
+    }))};
   }
 
   @Post('catalog/import-csv')
