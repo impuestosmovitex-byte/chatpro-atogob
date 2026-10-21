@@ -62,7 +62,7 @@ export function validateProductFacts(input: unknown): ProductFacts {
     if(typeof value!=='string'||value.length>PRODUCT_FACT_LIMITS[key]*2){
       throw new Error('El campo '+key+' debe ser texto de longitud permitida.');
     }
-    const cleaned=text(value,PRODUCT_FACT_LIMITS[key]);
+    const cleaned=text(value,PRODUCT_FACT_LIMITS[key]+1);
     if(cleaned.length>PRODUCT_FACT_LIMITS[key]){
       throw new Error('La información de '+key+' es demasiado extensa.');
     }
