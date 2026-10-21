@@ -192,7 +192,9 @@ const QUERY_WORDS=new Set([
   'recomienda','recomendar','recomiendas','muestrame','mostrar','ver','saber',
   'quisiera','gustaria','busco','buscar','venden','vende','vender','otra','otro',
   'diferente','favor','por','del','para','este','esta','ese','esa','los','las',
-  'producto','productos','marca','numero','tamano',
+  'producto','productos','marca','numero','tamano','caracteristica',
+  'caracteristicas','material','materiales','tela','composicion','ingrediente',
+  'ingredientes','detalle','detalles','medida','medidas',
 ]);
 
 function familyTerms(value:string):string[]{
@@ -207,7 +209,7 @@ function familyTerms(value:string):string[]{
  */
 export function isCatalogInformationRequest(message:string):boolean {
   const normalized=normalizedText(message);
-  const infoIntent=/\b(cuanto|cuesta|precio|vale|tienen|tiene|hay|disponible|disponibilidad|stock|inventario|agotad[oa]s?|colores?|tallas?|alternativ[ao]s?|similares?|parecid[ao]s?|opciones?|recomiend\w*|busco|buscar|mostrar|muestrame|cuales?)\b/.test(normalized);
+  const infoIntent=/\b(cuanto|cuesta|precio|vale|tienen|tiene|hay|disponible|disponibilidad|stock|inventario|agotad[oa]s?|colores?|tallas?|alternativ[ao]s?|similares?|parecid[ao]s?|opciones?|recomiend\w*|busco|buscar|mostrar|muestrame|cuales?|caracteristicas?|materiales?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalized);
   if(!infoIntent) return false;
   const explicitCart=/\b(agrega|agregar|anade|anadir|pon|poner|mete|quita|quitar|retira|retirar|elimina|eliminar|cambia|cambiar|ajusta|ajustar|vaciar|limpiar|reiniciar|dame|pideme)\b/.test(normalized);
   if(explicitCart)return false;
@@ -267,6 +269,7 @@ export function answerCatalogQuestion(
     explicit.size===null;
   const colorQuestion=/\b(colores?)\b/.test(normalizedText(message)) &&
     !explicit.colors.length;
+  const characteristics=/\b(caracteristicas?|materiales?|telas?|composicion|ingredientes?|medidas?|detalles?)\b/.test(normalizedText(message));
   let intro='';
   if(missing)intro='No encontré la talla o el color exacto que indicas en este catálogo.';
   else if(exact.length===1)intro='Encontré esta referencia en el catálogo:';
@@ -274,7 +277,16 @@ export function answerCatalogQuestion(
   else if(colorQuestion)intro='Estos son los colores y referencias registrados en el catálogo:';
   else intro='Estas son las referencias que encontré en el catálogo:';
   const items=options.map(optionText);
+  const unavailable=exact.length>0 && exact.every(item=>item.stock===0);
+  const alternativeItems=unavailable?
+    related.filter(item=>!exact.some(x=>x.variantId===item.variantId) && item.stock!==0).slice(0,3):[];
+  const alternativeText=alternativeItems.length?
+    ' Esa referencia está agotada. Otras variantes registradas (no son la talla o color solicitados): '+
+    alternativeItems.map(optionText).join('; ')+'.':'';
+  const detailsText=characteristics?
+    ' Este catálogo todavía no contiene fichas verificadas de materiales, medidas ni composición; consulta con la tienda antes de comprar.':'';
   const additional=(missing?' Estas son alternativas distintas; confirma talla y color antes de comprar.':'')+
+    alternativeText+detailsText+
     (exact.length>6?' Hay más referencias; especifica talla o color.':'')+
     ' Consultar el catálogo no modifica el carrito.';
   return {matched:exact.length>0,options:options.map(item=>({...item})),
