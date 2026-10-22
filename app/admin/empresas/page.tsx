@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { AppSidebar } from '../../components/AppSidebar';
+import Link from 'next/link';
 
 type Entitlements = {
   planKey: string;
