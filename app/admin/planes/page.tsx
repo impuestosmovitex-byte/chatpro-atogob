@@ -39,6 +39,8 @@ export default function AdminPlansPage(){
   const [plans,setPlans]=useState<Plan[]>(keys.map(initial));
   const [selected,setSelected]=useState<Key>('inicial');
   const [saving,setSaving]=useState(false);
+  const [previewUsers,setPreviewUsers]=useState(3);
+  const [previewConnections,setPreviewConnections]=useState(3);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
   useEffect(()=>{
@@ -138,6 +140,19 @@ export default function AdminPlansPage(){
                 placeholder={String(field==='priceCop'?suggested[selected].price:field==='maxUsers'?suggested[selected].users:suggested[selected].lines)}
                 value={plan[field]??''} onChange={event=>updateNumber(field,event.target.value)}/>
             </label>)}
+          </div>
+          <div style={{padding:16,margin:'0 0 20px',border:'1px solid #e2e8f0',borderRadius:12,background:'#f8fafc'}}>
+            <strong>Simulador privado · vista previa comercial</strong>
+            <p style={{fontSize:12,color:'#667085',margin:'8px 0'}}>Adicionales provisionales: $32.000/usuario y $50.000/conexión. No se guardan como tarifas oficiales.</p>
+            <div style={{display:'flex',flexWrap:'wrap',gap:15,marginTop:12}}>
+              <label>Usuarios a simular <input type="number" min={1} max={1000} style={{...control,width:120}} value={previewUsers} onChange={e=>setPreviewUsers(Math.max(1,Math.min(1000,Number(e.target.value)||1)))}/></label>
+              <label>Conexiones a simular <input type="number" min={1} max={1000} style={{...control,width:120}} value={previewConnections} onChange={e=>setPreviewConnections(Math.max(1,Math.min(1000,Number(e.target.value)||1)))}/></label>
+            </div>
+            <p style={{marginTop:12,fontWeight:800}}>Total orientativo mensual: {((plan.priceCop??suggested[selected].price)+Math.max(0,previewUsers-(plan.maxUsers??suggested[selected].users))*32000+Math.max(0,previewConnections-(plan.maxWhatsappLines??suggested[selected].lines))*50000).toLocaleString('es-CO')} COP</p>
+            <button type="button" onClick={() => {
+              setPlans(old=>old.map(p=>p.planKey===selected?{...p,priceCop:suggested[selected].price,maxUsers:suggested[selected].users,maxWhatsappLines:suggested[selected].lines,reviewStatus:'draft'}:p));
+              setNotice('Valores propuestos cargados localmente. Revisa y guarda el borrador si estás conforme.');
+            }} style={{padding:'10px 14px',marginTop:9,borderRadius:9,background:'#172235',color:'white',border:0,cursor:'pointer'}}>Cargar valores sugeridos en el formulario</button>
           </div>
           <h3>Capacidades que se ofrecerían en este plan</h3>
           <div style={{display:'grid',gridTemplateColumns:
