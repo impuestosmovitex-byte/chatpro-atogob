@@ -3,6 +3,7 @@ import { AccessAuthService } from './access-auth.service';
 import { AccessCapabilitiesController } from './access-capabilities.controller';
 import { AccessController } from './access.controller';
 import { NativeCommerceController } from './native-commerce.controller';
+import { PlatformAdminController } from './platform-admin.controller';
 import { SupabaseService } from './supabase.service';
 import { StagingSalesAssistantController, StagingSalesAssistantService } from './staging-sales-assistant.controller';
 
@@ -23,6 +24,7 @@ class StagingHealthController {
     StagingHealthController,
     AccessController,
     AccessCapabilitiesController,
+    PlatformAdminController,
     NativeCommerceController,
     StagingSalesAssistantController,
   ],
