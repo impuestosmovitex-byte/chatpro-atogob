@@ -4,7 +4,7 @@ import {MarketingHeader} from "../components/marketing/MarketingHeader";
 import {MW1_COMMERCIAL_PROPOSAL} from "../lib/mw1-commercial-proposal";
 import styles from "../components/marketing/marketing.module.css";
 
-type PublishedRow={plan_key:string;price_cop:number;max_users:number;max_whatsapp_lines:number;extra_user_cop:number|null;extra_connection_cop:number|null};
+type PublishedRow={plan_key:string;price_cop:number;max_users:number;max_whatsapp_lines:number;extra_user_cop:number|null;extra_connection_cop:number|null;public_summary:string|null;public_features:string[]|null};
 async function readPublished():Promise<PublishedRow[]>{
  if(process.env.MW1_STAGING_MODE!=='true')return [];
  const base=process.env.CHATPRO_API_URL?.trim(),key=process.env.CHATPRO_INBOX_KEY?.trim();
@@ -21,7 +21,7 @@ export default async function PreciosPage(){
  const published=await readPublished();
  const prices=MW1_COMMERCIAL_PROPOSAL.map(plan=>{
   const found=published.find(p=>p.plan_key===plan.legacyKey);
-  return {...plan,price:found?.price_cop??plan.price,users:found?.max_users??plan.users,connections:found?.max_whatsapp_lines??plan.connections,extraUserCop:found?.extra_user_cop??32000,extraConnectionCop:found?.extra_connection_cop??50000};
+  return {...plan,price:found?.price_cop??plan.price,users:found?.max_users??plan.users,connections:found?.max_whatsapp_lines??plan.connections,extraUserCop:found?.extra_user_cop??32000,extraConnectionCop:found?.extra_connection_cop??50000,summary:found?.public_summary?.trim()||plan.summary,included:Array.isArray(found?.public_features)&&found.public_features.length>0?found.public_features.filter((x):x is string=>typeof x==='string').slice(0,20):plan.included};
  });
  return <main className={styles.site}>
   <MarketingHeader/>
