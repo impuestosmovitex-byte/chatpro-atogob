@@ -4,6 +4,7 @@ import { CompanyCommerceService } from './company-commerce.service';
 import { type CompanyCommerceProduct } from './company-shopify.service';
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
+import {normalizeAiUsage} from './platform-ai-usage-metering';
 import {
   ConversationMemoryService,
   type CompanyProfile,
@@ -82,6 +83,26 @@ export class ChatAgentService {
     private readonly metaSocialMessagingService: MetaSocialMessagingService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
   ) {}
+
+  /** Staging-only metering. Errors never change what the customer receives. */
+  private async recordStagingAiUsage(
+    companyId:string,
+    response:{id?:string;model?:string;usage?:{input_tokens?:number;output_tokens?:number;input_tokens_details?:{cached_tokens?:number}}|null},
+    operation:string,
+  ):Promise<void>{
+    if(process.env.MW1_STAGING_MODE!=='true'||!response.id||!response.usage)return;
+    try{
+      const row=normalizeAiUsage({
+        companyId,sourceEventId:response.id,model:response.model||this.getModel(),
+        operation,inputTokens:response.usage.input_tokens??0,
+        outputTokens:response.usage.output_tokens??0,
+        cachedInputTokens:response.usage.input_tokens_details?.cached_tokens??0,
+      });
+      const {error}=await this.supabaseService.getClient()
+        .from('platform_ai_usage_events').upsert(row,{onConflict:'company_id,source_event_id',ignoreDuplicates:true});
+      if(error)console.warn('[MW1][usage] staging meter unavailable');
+    }catch{console.warn('[MW1][usage] invalid or unavailable usage record');}
+  }
 
   private readConversationCategory(
     context: JsonObject,
@@ -580,6 +601,7 @@ export class ChatAgentService {
       tool_choice: 'auto',
     });
 
+      await this.recordStagingAiUsage(activeSession.companyId,response,'agent_initial');
       console.log(
         `[ChatPro][agent] phase=openai_initial duration_ms=${Date.now() - openAiStartedAt}`,
       );
@@ -670,6 +692,7 @@ export class ChatAgentService {
         tool_choice: 'auto',
       });
 
+      await this.recordStagingAiUsage(activeSession.companyId,response,'agent_after_tools');
       console.log(
         `[ChatPro][agent] phase=openai_after_tools turn=${turn + 1} ` +
         `duration_ms=${Date.now() - openAiStartedAt}`,
