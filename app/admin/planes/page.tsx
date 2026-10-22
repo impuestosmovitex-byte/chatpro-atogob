@@ -38,6 +38,7 @@ export default function AdminPlansPage(){
   const [plans,setPlans]=useState<Plan[]>(keys.map(initial));
   const [selected,setSelected]=useState<Key>('inicial');
   const [saving,setSaving]=useState(false);
+  const [publishing,setPublishing]=useState(false);
   const [previewUsers,setPreviewUsers]=useState(3);
   const [previewConnections,setPreviewConnections]=useState(3);
   const [error,setError]=useState('');
@@ -85,6 +86,18 @@ export default function AdminPlansPage(){
     }catch(cause){
       setError(cause instanceof Error?cause.message:'No se guardó el borrador.');
     }finally{setSaving(false);}
+  }
+  async function publish(){
+    if(publishing||saving||!authorized||plan.reviewStatus!=='ready_for_review')return;
+    if(!window.confirm('¿Publicar el precio y los cupos guardados de este plan en la web de staging? No modifica contratos ni activa pagos.'))return;
+    setPublishing(true);setError('');setNotice('');
+    try{
+      const response=await fetch('/api/platform-admin/plan-publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({planKey:selected})});
+      const result=await response.json() as {ok?:boolean;error?:string;message?:string};
+      if(!response.ok||!result.ok)throw new Error(result.error||'No se pudo publicar.');
+      setNotice(result.message||'Precio publicado en el entorno de pruebas.');
+    }catch(cause){setError(cause instanceof Error?cause.message:'No se pudo publicar.');}
+    finally{setPublishing(false);}
   }
   return <div style={{background:'#f5f6f8',minHeight:'100vh',color:'#172235'}}>
     <AppSidebar/>
@@ -188,6 +201,12 @@ export default function AdminPlansPage(){
               fontWeight:700}}>
             {saving?'Guardando…':'Guardar borrador privado'}
           </button>
+          <button type="button" onClick={()=>void publish()}
+            disabled={publishing||saving||plan.reviewStatus!=='ready_for_review'}
+            style={{padding:'12px 20px',borderRadius:10,marginLeft:12,border:'1px solid #172235',background:'white',color:'#172235',fontWeight:700,cursor:'pointer'}}>
+            {publishing?'Publicando…':'Publicar precio en staging'}
+          </button>
+          <p style={{fontSize:12,color:'#667085',marginTop:12}}>Primero guarda el borrador con estado «Listo para revisión». El botón publica únicamente precio y cupos, no concede permisos a clientes ni activa pagos. Las funcionalidades completas aún requieren aprobación.</p>
         </form>
       </div>}
     </main>
