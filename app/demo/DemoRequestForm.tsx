@@ -9,6 +9,11 @@ export function DemoRequestForm(){
   const[planInterest,setPlanInterest]=useState('sin_definir');
   const[consent,setConsent]=useState(false);
   const[website,setWebsite]=useState('');
+  useEffect(()=>{
+    const requested=new URLSearchParams(window.location.search).get('plan');
+    if(requested&&['inicial','pro','empresa'].includes(requested))
+      setPlanInterest(requested);
+  },[]);
   const[sending,setSending]=useState(false);
   const[error,setError]=useState('');
   const[success,setSuccess]=useState(false);
