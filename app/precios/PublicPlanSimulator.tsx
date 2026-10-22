@@ -1,11 +1,11 @@
 'use client';
 import {useState} from 'react';
 import Link from 'next/link';
-import {MW1_COMMERCIAL_PROPOSAL,MW1_EXTRA_USER_PREVIEW_COP,MW1_EXTRA_CONNECTION_PREVIEW_COP} from '../lib/mw1-commercial-proposal';
+import {MW1_EXTRA_USER_PREVIEW_COP,MW1_EXTRA_CONNECTION_PREVIEW_COP} from '../lib/mw1-commercial-proposal';
 
-const options=MW1_COMMERCIAL_PROPOSAL;
+type PublicOption={key:string;name:string;price:number;users:number;connections:number};
 const pesos=(value:number)=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(value);
-export default function PublicPlanSimulator(){
+export default function PublicPlanSimulator({options}:{options:PublicOption[]}){
  const [selected,setSelected]=useState(1);
  const [users,setUsers]=useState<number>(3);
  const [connections,setConnections]=useState<number>(3);
