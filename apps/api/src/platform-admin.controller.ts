@@ -11,6 +11,7 @@ import {
 import { createHash } from 'crypto';
 import { AccessAuthService } from './access-auth.service';
 import { SupabaseService } from './supabase.service';
+import {companyReadiness} from './platform-company-readiness';
 
 type CreateCompanyBody = {
   name?: unknown;
@@ -114,6 +115,26 @@ export class PlatformAdminController {
       );
     }
 
+    // Configured integration records only. Never read credential/config columns.
+    // A provider status of active is NOT evidence of a successful live exchange.
+    const integrationLookup = companyIds.length
+      ? await client.from('company_integrations')
+          .select('company_id,provider,integration_type,status')
+          .in('company_id',companyIds)
+      : {data:[],error:null};
+    if(integrationLookup.error) {
+      throw new BadRequestException('No se pudieron consultar los estados de integración.');
+    }
+    const integrationsByCompany=new Map<string,Array<{
+      provider:string;integration_type:string;status:string
+    }>>();
+    for(const row of integrationLookup.data ?? []) {
+      const existing=integrationsByCompany.get(row.company_id) ?? [];
+      existing.push({provider:row.provider,integration_type:row.integration_type,
+        status:row.status});
+      integrationsByCompany.set(row.company_id,existing);
+    }
+
     const entitlementsByCompany = new Map<string, EntitlementRow>(
       ((entitlements.data ?? []) as EntitlementRow[]).map((row) => [
         row.company_id,
@@ -134,12 +155,32 @@ export class PlatformAdminController {
       companies: (companies ?? []).map((company) => {
         const entitlement = entitlementsByCompany.get(company.id);
 
+        const activeUsers=activeUsersByCompany.get(company.id) ?? 0;
+        const safeEntitlements=entitlement
+          ? this.toEntitlementResponse(entitlement)
+          : {
+              planKey: 'legacy',
+              aiEnabled: true, whatsappEnabled: true,
+              instagramEnabled: true,messengerEnabled: true,
+              automationsEnabled: true,statisticsEnabled: true,
+              maxUsers: null,maxWhatsappLines: null,
+            };
+        const readiness=companyReadiness({
+          activeUsers,companyStatus:company.status,
+          planKey:safeEntitlements.planKey,
+          whatsappEnabled:safeEntitlements.whatsappEnabled,
+          instagramEnabled:safeEntitlements.instagramEnabled,
+          messengerEnabled:safeEntitlements.messengerEnabled,
+          aiEnabled:safeEntitlements.aiEnabled,
+          connections:integrationsByCompany.get(company.id)??[],
+        });
         return {
           id: company.id,
           slug: company.slug,
           name: company.name,
           status: company.status,
-          activeUsers: activeUsersByCompany.get(company.id) ?? 0,
+          activeUsers,
+          readiness,
           entitlements: entitlement
             ? this.toEntitlementResponse(entitlement)
             : {
