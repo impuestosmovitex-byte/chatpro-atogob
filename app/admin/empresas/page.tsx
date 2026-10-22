@@ -32,6 +32,11 @@ type Company = {
   entitlements: Entitlements;
 };
 
+type DemoLead={
+  id:string;companyName:string;contactName:string;contactEmail:string;
+  planInterest:string;status:string;createdAt:string;
+};
+
 type CompaniesResponse = {
   ok?: boolean;
   error?: string;
@@ -95,6 +100,9 @@ export default function PlatformCompaniesPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [demoRequests,setDemoRequests]=useState<DemoLead[]>([]);
+  const [demoLoading,setDemoLoading]=useState(false);
+  const [demoAvailable,setDemoAvailable]=useState(false);
 
   async function load() {
     setLoading(true);
@@ -134,6 +142,28 @@ export default function PlatformCompaniesPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(()=>{
+    if(authorized!==true)return;
+    let active=true;
+    setDemoLoading(true);
+    fetch('/api/platform-admin/demo-requests',{cache:'no-store'})
+      .then(async response=>{
+        if(!active)return;
+        if(!response.ok){
+          setDemoAvailable(false);
+          return;
+        }
+        const payload=await response.json() as {ok?:boolean;requests?:DemoLead[]};
+        if(active&&payload.ok){
+          setDemoAvailable(true);
+          setDemoRequests(Array.isArray(payload.requests)?payload.requests:[]);
+        }
+      })
+      .catch(()=>{if(active)setDemoAvailable(false);})
+      .finally(()=>{if(active)setDemoLoading(false);});
+    return()=>{active=false;};
+  },[authorized]);
 
   function setValue<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -341,7 +371,7 @@ export default function PlatformCompaniesPage() {
                       <span><strong>WhatsApp:</strong> {company.entitlements.whatsappEnabled ? 'Sí' : 'No'}</span>
                       <span><strong>Automat.:</strong> {company.entitlements.automationsEnabled ? 'Sí' : 'No'}</span>
                       <span><strong>Estadísticas:</strong> {company.entitlements.statisticsEnabled ? 'Sí' : 'No'}</span>
-                      <div style={{marginTop:14,padding:'13px 14px',borderRadius:10,
+                      <div style={{gridColumn:'1 / -1',marginTop:14,padding:'13px 14px',borderRadius:10,
                         background:'#f8f7f5',border:'1px solid #ebe8e4'}}>
                         <strong style={{fontSize:13}}>Incorporación y diagnóstico inicial</strong>
                         <p style={{fontSize:13,margin:'6px 0 10px',fontWeight:650}}>
@@ -373,6 +403,38 @@ export default function PlatformCompaniesPage() {
             </section>
           </div>
         )}
+        {authorized===true&&demoAvailable?(
+          <section style={{...cardStyle,marginTop:24}}>
+            <h2 style={{marginTop:0}}>Solicitudes de demo de MW1</h2>
+            <p style={{color:'#667085',fontSize:13}}>
+              Bandeja comercial de pruebas. Estas solicitudes no crean empresas,
+              no activan planes y no confirman pagos.
+            </p>
+            {demoLoading?<p>Cargando solicitudes…</p>:null}
+            {demoRequests.length===0?<p>Sin solicitudes registradas.</p>:
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                  <thead><tr style={{textAlign:'left'}}>
+                    <th style={{padding:10}}>Empresa</th>
+                    <th style={{padding:10}}>Contacto</th>
+                    <th style={{padding:10}}>Plan consultado</th>
+                    <th style={{padding:10}}>Estado</th>
+                    <th style={{padding:10}}>Fecha</th>
+                  </tr></thead>
+                  <tbody>{demoRequests.map(lead=><tr key={lead.id}
+                    style={{borderTop:'1px solid #eceef2'}}>
+                    <td style={{padding:10}}>{lead.companyName}</td>
+                    <td style={{padding:10}}>{lead.contactName}
+                      <div><a href={'mailto:'+lead.contactEmail}>{lead.contactEmail}</a></div>
+                    </td>
+                    <td style={{padding:10}}>{lead.planInterest}</td>
+                    <td style={{padding:10}}>{lead.status==='new'?'Nueva':lead.status}</td>
+                    <td style={{padding:10}}>{new Date(lead.createdAt).toLocaleString('es-CO')}</td>
+                  </tr>)}</tbody>
+                </table>
+              </div>}
+          </section>
+        ):null}
       </main>
     </div>
   );
