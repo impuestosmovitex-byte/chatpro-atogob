@@ -4,7 +4,7 @@ import {MarketingHeader} from "../components/marketing/MarketingHeader";
 import {MW1_COMMERCIAL_PROPOSAL} from "../lib/mw1-commercial-proposal";
 import styles from "../components/marketing/marketing.module.css";
 
-type PublishedRow={plan_key:string;price_cop:number;max_users:number;max_whatsapp_lines:number};
+type PublishedRow={plan_key:string;price_cop:number;max_users:number;max_whatsapp_lines:number;extra_user_cop:number|null;extra_connection_cop:number|null};
 async function readPublished():Promise<PublishedRow[]>{
  if(process.env.MW1_STAGING_MODE!=='true')return [];
  const base=process.env.CHATPRO_API_URL?.trim(),key=process.env.CHATPRO_INBOX_KEY?.trim();
@@ -21,7 +21,7 @@ export default async function PreciosPage(){
  const published=await readPublished();
  const prices=MW1_COMMERCIAL_PROPOSAL.map(plan=>{
   const found=published.find(p=>p.plan_key===plan.legacyKey);
-  return {...plan,price:found?.price_cop??plan.price,users:found?.max_users??plan.users,connections:found?.max_whatsapp_lines??plan.connections};
+  return {...plan,price:found?.price_cop??plan.price,users:found?.max_users??plan.users,connections:found?.max_whatsapp_lines??plan.connections,extraUserCop:found?.extra_user_cop??32000,extraConnectionCop:found?.extra_connection_cop??50000};
  });
  return <main className={styles.site}>
   <MarketingHeader/>
@@ -48,7 +48,7 @@ export default async function PreciosPage(){
      <Link href={`/demo?plan=${plan.key}`} className={plan.featured?styles.primaryButton:styles.secondaryButton}>Solicitar demo</Link>
     </article>)}
    </div>
-   <PublicPlanSimulator options={prices.map(p=>({key:p.key,name:p.name,price:p.price,users:p.users,connections:p.connections}))}/>
+   <PublicPlanSimulator options={prices.map(p=>({key:p.key,name:p.name,price:p.price,users:p.users,connections:p.connections,extraUserCop:p.extraUserCop,extraConnectionCop:p.extraConnectionCop}))}/>
   </section>
   <footer className={styles.footer}>MW1 · Precios orientativos pendientes de aprobación</footer>
  </main>;
