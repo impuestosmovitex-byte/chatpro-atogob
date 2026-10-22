@@ -1,5 +1,7 @@
 # MW1 — Plan de lanzamiento multiempresa (control de alcance)
 
+> **RECTIFICACIÓN — 21-oct-2026:** este documento describe el ROADMAP AMPLIADO y sus porcentajes 30,8%/26,7% NO representan el avance del CRM con IA que ya funciona en producción. Para comercializar el CRM actual con incorporación guiada, utilizar el checklist actualizado: [MW1-LANZAMIENTO-CRM-CON-IA-MVP-2026.md](./MW1-LANZAMIENTO-CRM-CON-IA-MVP-2026.md). El nuevo examen estima 85/100 de preparación comercial, sujeto a cinco verificaciones críticas de seguridad, multiempresa y operación. PDF, pedidos internos, WooCommerce/Tiendanube y funciones avanzadas quedan fuera del MVP comercial.
+
 **Corte:** 21 de octubre de 2026, Bogotá. **Versión:** 1.0 — primera auditoría del alcance, no certificación de producción.
 
 ## Definición fija: cuándo podemos lanzar
