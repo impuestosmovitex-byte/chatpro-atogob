@@ -1,19 +1,16 @@
 'use client';
 import {useState} from 'react';
 import Link from 'next/link';
+import {MW1_COMMERCIAL_PROPOSAL,MW1_EXTRA_USER_PREVIEW_COP,MW1_EXTRA_CONNECTION_PREVIEW_COP} from '../lib/mw1-commercial-proposal';
 
-const options=[
- {key:'basico',name:'Básico',price:149000,users:2,connections:1},
- {key:'eco',name:'Eco',price:259000,users:3,connections:3},
- {key:'pro',name:'Pro',price:599000,users:3,connections:5},
-] as const;
+const options=MW1_COMMERCIAL_PROPOSAL;
 const pesos=(value:number)=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(value);
 export default function PublicPlanSimulator(){
  const [selected,setSelected]=useState(1);
  const [users,setUsers]=useState<number>(3);
  const [connections,setConnections]=useState<number>(3);
- const [extraUserPrice]=useState(32000);
- const [extraConnectionPrice]=useState(50000);
+ const extraUserPrice=MW1_EXTRA_USER_PREVIEW_COP;
+ const extraConnectionPrice=MW1_EXTRA_CONNECTION_PREVIEW_COP;
  const plan=options[selected];
  const extraUsers=Math.max(0,users-plan.users);
  const extraConnections=Math.max(0,connections-plan.connections);
