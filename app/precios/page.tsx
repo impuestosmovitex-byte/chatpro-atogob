@@ -53,7 +53,7 @@ export default function PreciosPage() {
               <ul>
                 {plan.details.map((detail) => <li key={detail}>{detail}</li>)}
               </ul>
-              <Link href="/demo" className={plan.featured ? styles.primaryButton : styles.secondaryButton}>
+              <Link href={"/demo?plan="+plan.name.toLowerCase()} className={plan.featured ? styles.primaryButton : styles.secondaryButton}>
                 Solicitar demo
               </Link>
             </article>
