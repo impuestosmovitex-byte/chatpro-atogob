@@ -15,7 +15,15 @@ type Entitlements = {
   maxWhatsappLines: number | null;
 };
 
+type OnboardingStatus={
+  stage:'create_owner'|'choose_plan'|'connect_channel'|'verify_real_message'|'ready_for_pilot_review';
+  title:string; notes:string[];configuredChannels:number;
+  pendingConnectors:number;connectorErrors:number;
+  integrations:Array<{key:string;label:string;status:string;meaning:string}>;
+};
+
 type Company = {
+  readiness?:OnboardingStatus;
   id: string;
   slug: string;
   name: string;
@@ -333,6 +341,31 @@ export default function PlatformCompaniesPage() {
                       <span><strong>WhatsApp:</strong> {company.entitlements.whatsappEnabled ? 'Sí' : 'No'}</span>
                       <span><strong>Automat.:</strong> {company.entitlements.automationsEnabled ? 'Sí' : 'No'}</span>
                       <span><strong>Estadísticas:</strong> {company.entitlements.statisticsEnabled ? 'Sí' : 'No'}</span>
+                      <div style={{marginTop:14,padding:'13px 14px',borderRadius:10,
+                        background:'#f8f7f5',border:'1px solid #ebe8e4'}}>
+                        <strong style={{fontSize:13}}>Incorporación y diagnóstico inicial</strong>
+                        <p style={{fontSize:13,margin:'6px 0 10px',fontWeight:650}}>
+                          {company.readiness?.title||'Estado aún no disponible'}
+                        </p>
+                        <div style={{display:'flex',gap:10,flexWrap:'wrap',fontSize:12}}>
+                          <span>Canales registrados: {company.readiness?.configuredChannels??'—'}</span>
+                          <span>Pendientes: {company.readiness?.pendingConnectors??'—'}</span>
+                          <span>Con error: {company.readiness?.connectorErrors??'—'}</span>
+                        </div>
+                        {company.readiness?.integrations?.length?(
+                          <p style={{fontSize:12,marginTop:9}}>
+                            {company.readiness.integrations.map(i=>
+                              i.label+': '+(i.status==='active'?'registrada':
+                                i.status==='error'?'error':i.status==='pending'?'pendiente':'desconectada')
+                            ).join(' · ')}
+                          </p>
+                        ):<p style={{fontSize:12}}>Sin integraciones reconocidas en el registro.</p>}
+                        {company.readiness?.notes?.length?
+                          <ul style={{fontSize:12,color:'#6b7280',paddingLeft:18,
+                            lineHeight:1.55,margin:'9px 0 0'}}>
+                            {company.readiness.notes.map((note,index)=><li key={index}>{note}</li>)}
+                          </ul>:null}
+                      </div>
                     </div>
                   </article>
                 ))}
