@@ -299,6 +299,39 @@ export class PlatformAdminController {
 
   // The public website reads this non-sensitive snapshot through its own server.
   // This endpoint still requires the internal backend key and only runs in staging.
+  // Staging-only AI usage report. Reads metered events; missing data means uninstrumented,
+  // not zero cost across OpenAI. Never exposes tenant message content.
+  @Get('ai-usage')
+  async getAiUsage(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Query('companyId') companyId = '',
+  ) {
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Reporte disponible solo en pruebas.');
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(companyId))
+      throw new BadRequestException('Empresa inválida.');
+    const monthStart=new Date();
+    monthStart.setUTCDate(1);monthStart.setUTCHours(0,0,0,0);
+    const {data,error}=await this.supabaseService.getClient()
+      .from('platform_ai_usage_events')
+      .select('input_tokens,output_tokens,cached_input_tokens,estimated_cost_usd,model,recorded_at')
+      .eq('company_id',companyId)
+      .gte('recorded_at',monthStart.toISOString()).limit(10000);
+    if(error)throw new BadRequestException('No se pudo consultar el consumo de IA.');
+    const events=data??[];
+    return {ok:true,companyId,periodStart:monthStart.toISOString(),
+      records:events.length,truncated:events.length===10000,
+      inputTokens:events.reduce((n,e)=>n+Number(e.input_tokens||0),0),
+      outputTokens:events.reduce((n,e)=>n+Number(e.output_tokens||0),0),
+      cachedInputTokens:events.reduce((n,e)=>n+Number(e.cached_input_tokens||0),0),
+      knownEstimatedCostUsd:events.reduce((n,e)=>n+Number(e.estimated_cost_usd||0),0),
+      recordsWithoutCost:events.filter(e=>e.estimated_cost_usd===null).length,
+      coverage:'staging_instrumented_events_only'};
+  }
+
   @Get('plans/public')
   async getPublicPlanPrices(@Headers('x-chatpro-inbox-key') providedKey = '') {
     this.assertInternalKey(providedKey);
