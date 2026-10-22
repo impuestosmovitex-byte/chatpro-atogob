@@ -3,14 +3,14 @@ import {useState} from 'react';
 import Link from 'next/link';
 import {MW1_EXTRA_USER_PREVIEW_COP,MW1_EXTRA_CONNECTION_PREVIEW_COP} from '../lib/mw1-commercial-proposal';
 
-type PublicOption={key:string;name:string;price:number;users:number;connections:number};
+type PublicOption={key:string;name:string;price:number;users:number;connections:number;extraUserCop:number;extraConnectionCop:number};
 const pesos=(value:number)=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(value);
 export default function PublicPlanSimulator({options}:{options:PublicOption[]}){
  const [selected,setSelected]=useState(1);
  const [users,setUsers]=useState<number>(3);
  const [connections,setConnections]=useState<number>(3);
- const extraUserPrice=MW1_EXTRA_USER_PREVIEW_COP;
- const extraConnectionPrice=MW1_EXTRA_CONNECTION_PREVIEW_COP;
+ const extraUserPrice=plan.extraUserCop??MW1_EXTRA_USER_PREVIEW_COP;
+ const extraConnectionPrice=plan.extraConnectionCop??MW1_EXTRA_CONNECTION_PREVIEW_COP;
  const plan=options[selected];
  const extraUsers=Math.max(0,users-plan.users);
  const extraConnections=Math.max(0,connections-plan.connections);
@@ -29,6 +29,6 @@ export default function PublicPlanSimulator({options}:{options:PublicOption[]}){
     <div><small style={{color:'#667085'}}>Suscripción mensual orientativa</small><div style={{fontSize:30,fontWeight:900}}>{pesos(total)} <small style={{fontSize:13,fontWeight:500}}>/ mes</small></div></div>
     <Link href={`/demo?plan=${plan.key}`} style={{background:'#f4bf00',borderRadius:12,padding:'13px 18px',fontWeight:800}}>Solicitar propuesta</Link>
    </div>
-   <p style={{fontSize:12,color:'#667085',marginTop:14,lineHeight:1.6}}>Precios en evaluación. Los adicionales de $32.000 por usuario y $50.000 por conexión son simulaciones, no tarifas aprobadas. Los cargos Meta/WhatsApp se pagan aparte; disponibilidad y cupos de IA sujetos a confirmación.</p>
+   <p style={{fontSize:12,color:'#667085',marginTop:14,lineHeight:1.6}}>Precios en evaluación. Los importes adicionales mostrados son orientativos y quedan sujetos a confirmación comercial. Los cargos Meta/WhatsApp se pagan aparte; disponibilidad y cupos de IA sujetos a confirmación.</p>
  </section>;
 }
