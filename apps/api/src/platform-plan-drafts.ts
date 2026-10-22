@@ -10,6 +10,8 @@ export type PlanDraft={
   priceCop:number|null;
   maxUsers:number|null;
   maxWhatsappLines:number|null;
+  extraUserCop:number|null;
+  extraConnectionCop:number|null;
   aiEnabled:boolean;
   whatsappEnabled:boolean;
   instagramEnabled:boolean;
@@ -26,6 +28,7 @@ export const PLAN_LABELS:Record<PlanKey,string>={
 export function emptyPlanDraft(planKey:PlanKey):PlanDraft{
   return {
     planKey,priceCop:null,maxUsers:null,maxWhatsappLines:null,
+    extraUserCop:null,extraConnectionCop:null,
     aiEnabled:false,whatsappEnabled:false,instagramEnabled:false,
     messengerEnabled:false,automationsEnabled:false,statisticsEnabled:false,
     notes:'',reviewStatus:'draft',
@@ -39,6 +42,7 @@ export function validatePlanDraft(value:unknown):PlanDraft{
     'planKey','priceCop','maxUsers','maxWhatsappLines','aiEnabled',
     'whatsappEnabled','instagramEnabled','messengerEnabled',
     'automationsEnabled','statisticsEnabled','notes','reviewStatus',
+    'extraUserCop','extraConnectionCop',
   ];
   if(Object.keys(record).some(k=>!allowed.includes(k)))
     throw new Error('El plan contiene un campo no permitido.');
@@ -53,6 +57,11 @@ export function validatePlanDraft(value:unknown):PlanDraft{
     if(amount!==null&&
       (typeof amount!=='number'||!Number.isSafeInteger(amount)||
       amount<min||amount>max))throw new Error('Límite inválido en '+field+'.');
+  }
+  for(const field of ['extraUserCop','extraConnectionCop'] as const){
+    const n=record[field];
+    if(n!==null&&(typeof n!=='number'||!Number.isSafeInteger(n)||n<0||n>999999999))
+      throw new Error('Precio adicional inválido en '+field+'.');
   }
   const booleans=[
     'aiEnabled','whatsappEnabled','instagramEnabled','messengerEnabled',
@@ -73,6 +82,8 @@ export function validatePlanDraft(value:unknown):PlanDraft{
     priceCop:record.priceCop as number|null,
     maxUsers:record.maxUsers as number|null,
     maxWhatsappLines:record.maxWhatsappLines as number|null,
+    extraUserCop:record.extraUserCop as number|null,
+    extraConnectionCop:record.extraConnectionCop as number|null,
     aiEnabled:record.aiEnabled as boolean,
     whatsappEnabled:record.whatsappEnabled as boolean,
     instagramEnabled:record.instagramEnabled as boolean,
