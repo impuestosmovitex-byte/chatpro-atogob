@@ -12,6 +12,9 @@ export type PlanDraft={
   maxWhatsappLines:number|null;
   extraUserCop:number|null;
   extraConnectionCop:number|null;
+  aiMonthlyBudgetCop:number|null;
+  publicSummary:string;
+  publicFeatures:string[];
   aiEnabled:boolean;
   whatsappEnabled:boolean;
   instagramEnabled:boolean;
@@ -29,6 +32,7 @@ export function emptyPlanDraft(planKey:PlanKey):PlanDraft{
   return {
     planKey,priceCop:null,maxUsers:null,maxWhatsappLines:null,
     extraUserCop:null,extraConnectionCop:null,
+    aiMonthlyBudgetCop:null,publicSummary:'',publicFeatures:[],
     aiEnabled:false,whatsappEnabled:false,instagramEnabled:false,
     messengerEnabled:false,automationsEnabled:false,statisticsEnabled:false,
     notes:'',reviewStatus:'draft',
@@ -42,7 +46,7 @@ export function validatePlanDraft(value:unknown):PlanDraft{
     'planKey','priceCop','maxUsers','maxWhatsappLines','aiEnabled',
     'whatsappEnabled','instagramEnabled','messengerEnabled',
     'automationsEnabled','statisticsEnabled','notes','reviewStatus',
-    'extraUserCop','extraConnectionCop',
+    'extraUserCop','extraConnectionCop','aiMonthlyBudgetCop','publicSummary','publicFeatures',
   ];
   if(Object.keys(record).some(k=>!allowed.includes(k)))
     throw new Error('El plan contiene un campo no permitido.');
@@ -63,6 +67,14 @@ export function validatePlanDraft(value:unknown):PlanDraft{
     if(n!==null&&(typeof n!=='number'||!Number.isSafeInteger(n)||n<0||n>999999999))
       throw new Error('Precio adicional inválido en '+field+'.');
   }
+  const aiBudget=record.aiMonthlyBudgetCop;
+  if(aiBudget!==null&&(typeof aiBudget!=='number'||!Number.isSafeInteger(aiBudget)||aiBudget<0||aiBudget>999999999))
+    throw new Error('Presupuesto de IA inválido.');
+  if(typeof record.publicSummary!=='string'||record.publicSummary.length>300)
+    throw new Error('Resumen público inválido.');
+  if(!Array.isArray(record.publicFeatures)||record.publicFeatures.length>20||
+    record.publicFeatures.some(v=>typeof v!=='string'||v.trim().length===0||v.length>150))
+    throw new Error('Beneficios públicos inválidos.');
   const booleans=[
     'aiEnabled','whatsappEnabled','instagramEnabled','messengerEnabled',
     'automationsEnabled','statisticsEnabled',
@@ -84,6 +96,9 @@ export function validatePlanDraft(value:unknown):PlanDraft{
     maxWhatsappLines:record.maxWhatsappLines as number|null,
     extraUserCop:record.extraUserCop as number|null,
     extraConnectionCop:record.extraConnectionCop as number|null,
+    aiMonthlyBudgetCop:record.aiMonthlyBudgetCop as number|null,
+    publicSummary:(record.publicSummary as string).trim(),
+    publicFeatures:(record.publicFeatures as string[]).map(v=>v.trim()),
     aiEnabled:record.aiEnabled as boolean,
     whatsappEnabled:record.whatsappEnabled as boolean,
     instagramEnabled:record.instagramEnabled as boolean,
