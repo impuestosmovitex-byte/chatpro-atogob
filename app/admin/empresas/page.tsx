@@ -231,6 +231,9 @@ export default function PlatformCompaniesPage() {
           <p style={{ margin: 0, color: '#667085' }}>
             Crea empresas independientes, define accesos y controla sus límites.
           </p>
+          <p style={{fontSize:13,margin:'12px 0'}}>
+            <Link href="/admin/planes">Definir planes comerciales (borradores) →</Link>
+          </p>
         </div>
 
         {error ? (
