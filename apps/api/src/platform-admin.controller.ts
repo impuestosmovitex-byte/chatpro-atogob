@@ -199,6 +199,33 @@ export class PlatformAdminController {
     };
   }
 
+  @Get('demo-requests')
+  async listDemoRequests(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+  ) {
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true'){
+      throw new UnauthorizedException('Solicitudes disponibles únicamente en el entorno de pruebas.');
+    }
+    const {data,error}=await this.supabaseService.getClient()
+      .from('platform_demo_requests')
+      .select('id,company_name,contact_name,contact_email,plan_interest,status,created_at')
+      .order('created_at',{ascending:false})
+      .limit(50);
+    if(error)throw new BadRequestException('No fue posible consultar las solicitudes.');
+    return {ok:true,requests:(data??[]).map(record=>({
+      id:record.id,
+      companyName:record.company_name,
+      contactName:record.contact_name,
+      contactEmail:record.contact_email,
+      planInterest:record.plan_interest,
+      status:record.status,
+      createdAt:record.created_at,
+    }))};
+  }
+
   @Post('companies')
   async createCompany(
     @Headers('x-chatpro-inbox-key') providedKey = '',
