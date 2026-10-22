@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import {useEffect,useState,type FormEvent} from 'react';
 import {AppSidebar} from '../../components/AppSidebar';
+import {MW1_COMMERCIAL_PROPOSAL,MW1_EXTRA_USER_PREVIEW_COP,MW1_EXTRA_CONNECTION_PREVIEW_COP} from '../../lib/mw1-commercial-proposal';
 
 type Key='inicial'|'pro'|'empresa';
 type Plan={
@@ -10,13 +11,11 @@ type Plan={
   messengerEnabled:boolean;automationsEnabled:boolean;statisticsEnabled:boolean;
   notes:string;reviewStatus:'draft'|'ready_for_review';
 };
-// Commercial labels only; legacy keys are preserved to avoid data migration.
+// Legacy database keys remain intact; display labels come from the shared commercial proposal.
 const names:Record<Key,string>={inicial:'Básico',pro:'Eco',empresa:'Pro'};
-const suggested:Record<Key,{price:number;users:number;lines:number;description:string}>={
- inicial:{price:149000,users:2,lines:1,description:'CRM, bandeja, atención humana y capacitación básica.'},
- pro:{price:259000,users:3,lines:3,description:'IA comercial, automatizaciones, estadísticas y capacitación avanzada.'},
- empresa:{price:599000,users:3,lines:5,description:'Capacitación premium. Pedidos internos aún en desarrollo.'},
-};
+const suggested:Record<Key,{price:number;users:number;lines:number;description:string}>=Object.fromEntries(
+ MW1_COMMERCIAL_PROPOSAL.map(p=>[p.legacyKey,{price:p.price,users:p.users,lines:p.connections,description:p.summary}])
+) as Record<Key,{price:number;users:number;lines:number;description:string}>;
 const keys:Key[]=['inicial','pro','empresa'];
 const initial=(planKey:Key):Plan=>({
   planKey,priceCop:null,maxUsers:null,maxWhatsappLines:null,
@@ -148,7 +147,7 @@ export default function AdminPlansPage(){
               <label>Usuarios a simular <input type="number" min={1} max={1000} style={{...control,width:120}} value={previewUsers} onChange={e=>setPreviewUsers(Math.max(1,Math.min(1000,Number(e.target.value)||1)))}/></label>
               <label>Conexiones a simular <input type="number" min={1} max={1000} style={{...control,width:120}} value={previewConnections} onChange={e=>setPreviewConnections(Math.max(1,Math.min(1000,Number(e.target.value)||1)))}/></label>
             </div>
-            <p style={{marginTop:12,fontWeight:800}}>Total orientativo mensual: {((plan.priceCop??suggested[selected].price)+Math.max(0,previewUsers-(plan.maxUsers??suggested[selected].users))*32000+Math.max(0,previewConnections-(plan.maxWhatsappLines??suggested[selected].lines))*50000).toLocaleString('es-CO')} COP</p>
+            <p style={{marginTop:12,fontWeight:800}}>Total orientativo mensual: {((plan.priceCop??suggested[selected].price)+Math.max(0,previewUsers-(plan.maxUsers??suggested[selected].users))*MW1_EXTRA_USER_PREVIEW_COP+Math.max(0,previewConnections-(plan.maxWhatsappLines??suggested[selected].lines))*MW1_EXTRA_CONNECTION_PREVIEW_COP).toLocaleString('es-CO')} COP</p>
             <button type="button" onClick={() => {
               setPlans(old=>old.map(p=>p.planKey===selected?{...p,priceCop:suggested[selected].price,maxUsers:suggested[selected].users,maxWhatsappLines:suggested[selected].lines,reviewStatus:'draft'}:p));
               setNotice('Valores propuestos cargados localmente. Revisa y guarda el borrador si estás conforme.');
