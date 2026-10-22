@@ -9,9 +9,9 @@ export default function PublicPlanSimulator({options}:{options:PublicOption[]}){
  const [selected,setSelected]=useState(1);
  const [users,setUsers]=useState<number>(3);
  const [connections,setConnections]=useState<number>(3);
+ const plan=options[selected];
  const extraUserPrice=plan.extraUserCop??MW1_EXTRA_USER_PREVIEW_COP;
  const extraConnectionPrice=plan.extraConnectionCop??MW1_EXTRA_CONNECTION_PREVIEW_COP;
- const plan=options[selected];
  const extraUsers=Math.max(0,users-plan.users);
  const extraConnections=Math.max(0,connections-plan.connections);
  const total=plan.price+extraUsers*extraUserPrice+extraConnections*extraConnectionPrice;
