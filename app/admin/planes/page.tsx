@@ -10,7 +10,13 @@ type Plan={
   messengerEnabled:boolean;automationsEnabled:boolean;statisticsEnabled:boolean;
   notes:string;reviewStatus:'draft'|'ready_for_review';
 };
-const names:Record<Key,string>={inicial:'Inicial',pro:'Pro',empresa:'Empresa'};
+// Commercial labels only; legacy keys are preserved to avoid data migration.
+const names:Record<Key,string>={inicial:'Básico',pro:'Eco',empresa:'Pro'};
+const suggested:Record<Key,{price:number;users:number;lines:number;description:string}>={
+ inicial:{price:149000,users:2,lines:1,description:'CRM, bandeja, atención humana y capacitación básica.'},
+ pro:{price:259000,users:3,lines:3,description:'IA comercial, automatizaciones, estadísticas y capacitación avanzada.'},
+ empresa:{price:599000,users:3,lines:5,description:'Capacitación premium. Pedidos internos aún en desarrollo.'},
+};
 const keys:Key[]=['inicial','pro','empresa'];
 const initial=(planKey:Key):Plan=>({
   planKey,priceCop:null,maxUsers:null,maxWhatsappLines:null,
@@ -87,7 +93,7 @@ export default function AdminPlansPage(){
       </p>
       <h1 style={{fontSize:34,margin:'10px 0'}}>Definir planes</h1>
       <p style={{color:'#667085',maxWidth:750}}>
-        Trabaja en las propuestas Inicial, Pro y Empresa. Los borradores no modifican
+        Trabaja en las propuestas Básico, Eco y Pro. Los borradores no modifican
         los límites de ninguna compañía ni publican precios. No activan cobros.
       </p>
       <p><Link href="/admin/empresas">← Volver a empresas</Link> ·
@@ -112,6 +118,8 @@ export default function AdminPlansPage(){
         </div>
         <form onSubmit={event=>void save(event)}>
           <h2 style={{fontSize:22,marginBottom:6}}>{names[selected]}</h2>
+          <p style={{fontSize:13,color:'#667085'}}>Referencia comercial: {suggested[selected].price.toLocaleString('es-CO')} COP al mes; {suggested[selected].users} usuarios y {suggested[selected].lines} conexiones. {suggested[selected].description}</p>
+          <p style={{fontSize:12,color:'#926100'}}>Los nombres comerciales son nuevos; se mantienen las claves internas por seguridad. Las referencias no se guardan automáticamente.</p>
           <p style={{fontSize:13,color:'#667085',marginBottom:20}}>
             Moneda: COP. No se mostrará ningún importe al público hasta aprobarlo
             y construir la publicación controlada.
@@ -127,7 +135,7 @@ export default function AdminPlansPage(){
               {label}
               <input style={control} type="number" min={1}
                 max={field==='priceCop'?999999999:1000} step={1}
-                placeholder="Por definir"
+                placeholder={String(field==='priceCop'?suggested[selected].price:field==='maxUsers'?suggested[selected].users:suggested[selected].lines)}
                 value={plan[field]??''} onChange={event=>updateNumber(field,event.target.value)}/>
             </label>)}
           </div>
