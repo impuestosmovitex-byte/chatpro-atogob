@@ -293,6 +293,56 @@ export class PlatformAdminController {
       message:'Borrador privado guardado. No se cobraron planes ni cambiaron permisos.'};
   }
 
+  // The public website reads this non-sensitive snapshot through its own server.
+  // This endpoint still requires the internal backend key and only runs in staging.
+  @Get('plans/public')
+  async getPublicPlanPrices(@Headers('x-chatpro-inbox-key') providedKey = '') {
+    this.assertInternalKey(providedKey);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Precios de prueba no disponibles.');
+    const {data,error}=await this.supabaseService.getClient()
+      .from('platform_published_plan_prices')
+      .select('plan_key,price_cop,max_users,max_whatsapp_lines,published_at')
+      .limit(3);
+    if(error)throw new BadRequestException('No se pudo cargar la lista de precios.');
+    return {ok:true,plans:data??[]};
+  }
+
+  @Post('plans/publish')
+  async publishPlanPrice(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Body() body:unknown,
+  ) {
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Publicación disponible solo en pruebas.');
+    if(!body||typeof body!=='object'||Array.isArray(body))
+      throw new BadRequestException('Plan inválido.');
+    const key=(body as Record<string,unknown>).planKey;
+    if(typeof key!=='string'||!PLAN_KEYS.includes(key as typeof PLAN_KEYS[number]))
+      throw new BadRequestException('Plan no reconocido.');
+    const client=this.supabaseService.getClient();
+    const {data:draft,error:draftError}=await client
+      .from('platform_commercial_plan_drafts')
+      .select('plan_key,price_cop,max_users,max_whatsapp_lines,whatsapp_enabled,review_status')
+      .eq('plan_key',key).maybeSingle();
+    if(draftError||!draft)throw new BadRequestException('Guarda un borrador antes de publicarlo.');
+    if(draft.review_status!=='ready_for_review'||!draft.whatsapp_enabled||
+       !Number.isSafeInteger(draft.price_cop)||draft.price_cop<=0||
+       !Number.isSafeInteger(draft.max_users)||draft.max_users<=0||
+       !Number.isSafeInteger(draft.max_whatsapp_lines)||draft.max_whatsapp_lines<=0)
+      throw new BadRequestException('El plan debe estar completo y listo para revisión.');
+    const {error}=await client.from('platform_published_plan_prices').upsert({
+      plan_key:key,price_cop:draft.price_cop,max_users:draft.max_users,
+      max_whatsapp_lines:draft.max_whatsapp_lines,
+      published_at:new Date().toISOString(),published_by:userId,
+    },{onConflict:'plan_key'});
+    if(error)throw new BadRequestException('No se pudo publicar el precio.');
+    return {ok:true,message:'Precio y cupos publicados en staging. No se activaron suscripciones ni se modificaron clientes.'};
+  }
+
   @Post('companies')
   async createCompany(
     @Headers('x-chatpro-inbox-key') providedKey = '',
