@@ -12,6 +12,7 @@ import { createHash } from 'crypto';
 import { AccessAuthService } from './access-auth.service';
 import { SupabaseService } from './supabase.service';
 import {companyReadiness} from './platform-company-readiness';
+import {emptyPlanDraft,PLAN_KEYS,validatePlanDraft} from './platform-plan-drafts';
 
 type CreateCompanyBody = {
   name?: unknown;
@@ -224,6 +225,72 @@ export class PlatformAdminController {
       status:record.status,
       createdAt:record.created_at,
     }))};
+  }
+
+  @Get('plans/drafts')
+  async getPlanDrafts(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+  ) {
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Edición de planes disponible solo en pruebas.');
+    const {data,error}=await this.supabaseService.getClient()
+      .from('platform_commercial_plan_drafts')
+      .select('plan_key,price_cop,max_users,max_whatsapp_lines,ai_enabled,whatsapp_enabled,instagram_enabled,messenger_enabled,automations_enabled,statistics_enabled,notes,review_status')
+      .limit(3);
+    if(error)throw new BadRequestException('No se pudieron consultar los borradores comerciales.');
+    const drafts=new Map((data??[]).map(p=>[p.plan_key,p]));
+    return {ok:true,plans:PLAN_KEYS.map(key=>{
+      const row=drafts.get(key);
+      if(!row)return emptyPlanDraft(key);
+      return {
+        planKey:key,priceCop:row.price_cop,
+        maxUsers:row.max_users,maxWhatsappLines:row.max_whatsapp_lines,
+        aiEnabled:row.ai_enabled,whatsappEnabled:row.whatsapp_enabled,
+        instagramEnabled:row.instagram_enabled,
+        messengerEnabled:row.messenger_enabled,
+        automationsEnabled:row.automations_enabled,
+        statisticsEnabled:row.statistics_enabled,
+        notes:row.notes,reviewStatus:row.review_status,
+      };
+    })};
+  }
+
+  @Post('plans/drafts')
+  async savePlanDraft(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Body() body:unknown,
+  ) {
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Edición de planes disponible solo en pruebas.');
+    let draft;
+    try{draft=validatePlanDraft(body);}
+    catch(cause){throw new BadRequestException(
+      cause instanceof Error?cause.message:'Plan inválido.',
+    );}
+    const {data,error}=await this.supabaseService.getClient()
+      .from('platform_commercial_plan_drafts')
+      .upsert({
+        plan_key:draft.planKey,currency:'COP',
+        price_cop:draft.priceCop,max_users:draft.maxUsers,
+        max_whatsapp_lines:draft.maxWhatsappLines,
+        ai_enabled:draft.aiEnabled,whatsapp_enabled:draft.whatsappEnabled,
+        instagram_enabled:draft.instagramEnabled,
+        messenger_enabled:draft.messengerEnabled,
+        automations_enabled:draft.automationsEnabled,
+        statistics_enabled:draft.statisticsEnabled,
+        notes:draft.notes,review_status:draft.reviewStatus,
+        updated_by:userId,updated_at:new Date().toISOString(),
+      },{onConflict:'plan_key'})
+      .select('plan_key').single();
+    if(error||!data)throw new BadRequestException('No se pudo guardar el borrador.');
+    return {ok:true,planKey:draft.planKey,reviewStatus:draft.reviewStatus,
+      message:'Borrador privado guardado. No se cobraron planes ni cambiaron permisos.'};
   }
 
   @Post('companies')
