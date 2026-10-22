@@ -28,7 +28,7 @@ export default function DemoPage() {
             <h3>Demo para ventas</h3>
             <p>Recorre el flujo desde que llega un cliente hasta que queda listo para seguimiento comercial.</p>
             <div className={styles.demoSteps}>
-              <div className={styles.demoStep}><span>1</span><div><strong>Entra una conversación</strong><small>WhatsApp, Instagram, Telegram o web.</small></div></div>
+              <div className={styles.demoStep}><span>1</span><div><strong>Entra una conversación</strong><small>WhatsApp, Instagram o Messenger, según los canales configurados.</small></div></div>
               <div className={styles.demoStep}><span>2</span><div><strong>MW1 conserva el contexto</strong><small>Datos, interés, notas y estado del lead.</small></div></div>
               <div className={styles.demoStep}><span>3</span><div><strong>Tu equipo continúa</strong><small>Atiende manualmente o con apoyo de IA y automatizaciones.</small></div></div>
             </div>
