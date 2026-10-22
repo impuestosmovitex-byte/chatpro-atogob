@@ -4,6 +4,7 @@ import {
   ProductPreview,
 } from "../components/marketing/MarketingHeader";
 import styles from "../components/marketing/marketing.module.css";
+import {DemoRequestForm} from "./DemoRequestForm";
 
 export default function DemoPage() {
   return (
@@ -36,7 +37,9 @@ export default function DemoPage() {
 
           <article className={styles.demoCard}>
             <h3>Solicitar una demo personalizada</h3>
-            <p>Pronto podrás solicitar una demostración personalizada para tu empresa. Si ya tienes acceso, entra con tu cuenta actual.</p>
+            <p>Recibe una asesoría para configurar MW1 según los canales y las necesidades de tu empresa.</p>
+            {process.env.MW1_STAGING_MODE==='true'?<DemoRequestForm/>:
+              <p>Las solicitudes en línea se habilitarán cuando finalicemos las pruebas de seguridad y privacidad.</p>}
             <div style={{ marginTop: 22 }}>
               <Link href="/login" className={styles.primaryButton}>Ya soy cliente</Link>
             </div>
