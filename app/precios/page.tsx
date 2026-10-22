@@ -1,4 +1,5 @@
 import Link from "next/link";
+import PublicPlanSimulator from "./PublicPlanSimulator";
 import { MarketingHeader } from "../components/marketing/MarketingHeader";
 import styles from "../components/marketing/marketing.module.css";
 
@@ -62,6 +63,7 @@ export default function PreciosPage() {
             </article>
           ))}
         </div>
+        <PublicPlanSimulator />
       </section>
       <footer className={styles.footer}>MW1 · Planes y precios sujetos a confirmación</footer>
     </main>
