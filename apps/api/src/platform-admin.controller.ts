@@ -238,7 +238,7 @@ export class PlatformAdminController {
       throw new UnauthorizedException('Edición de planes disponible solo en pruebas.');
     const {data,error}=await this.supabaseService.getClient()
       .from('platform_commercial_plan_drafts')
-      .select('plan_key,price_cop,max_users,max_whatsapp_lines,extra_user_cop,extra_connection_cop,ai_enabled,whatsapp_enabled,instagram_enabled,messenger_enabled,automations_enabled,statistics_enabled,notes,review_status')
+      .select('plan_key,price_cop,max_users,max_whatsapp_lines,extra_user_cop,extra_connection_cop,ai_monthly_budget_cop,public_summary,public_features,ai_enabled,whatsapp_enabled,instagram_enabled,messenger_enabled,automations_enabled,statistics_enabled,notes,review_status')
       .limit(3);
     if(error)throw new BadRequestException('No se pudieron consultar los borradores comerciales.');
     const drafts=new Map((data??[]).map(p=>[p.plan_key,p]));
@@ -249,6 +249,7 @@ export class PlatformAdminController {
         planKey:key,priceCop:row.price_cop,
         maxUsers:row.max_users,maxWhatsappLines:row.max_whatsapp_lines,
         extraUserCop:row.extra_user_cop,extraConnectionCop:row.extra_connection_cop,
+        aiMonthlyBudgetCop:row.ai_monthly_budget_cop,publicSummary:row.public_summary??'',publicFeatures:row.public_features??[],
         aiEnabled:row.ai_enabled,whatsappEnabled:row.whatsapp_enabled,
         instagramEnabled:row.instagram_enabled,
         messengerEnabled:row.messenger_enabled,
@@ -281,6 +282,7 @@ export class PlatformAdminController {
         price_cop:draft.priceCop,max_users:draft.maxUsers,
         max_whatsapp_lines:draft.maxWhatsappLines,
         extra_user_cop:draft.extraUserCop,extra_connection_cop:draft.extraConnectionCop,
+        ai_monthly_budget_cop:draft.aiMonthlyBudgetCop,public_summary:draft.publicSummary,public_features:draft.publicFeatures,
         ai_enabled:draft.aiEnabled,whatsapp_enabled:draft.whatsappEnabled,
         instagram_enabled:draft.instagramEnabled,
         messenger_enabled:draft.messengerEnabled,
@@ -304,7 +306,7 @@ export class PlatformAdminController {
       throw new UnauthorizedException('Precios de prueba no disponibles.');
     const {data,error}=await this.supabaseService.getClient()
       .from('platform_published_plan_prices')
-      .select('plan_key,price_cop,max_users,max_whatsapp_lines,extra_user_cop,extra_connection_cop,published_at')
+      .select('plan_key,price_cop,max_users,max_whatsapp_lines,extra_user_cop,extra_connection_cop,ai_monthly_budget_cop,public_summary,public_features,published_at')
       .limit(3);
     if(error)throw new BadRequestException('No se pudo cargar la lista de precios.');
     return {ok:true,plans:data??[]};
@@ -328,7 +330,7 @@ export class PlatformAdminController {
     const client=this.supabaseService.getClient();
     const {data:draft,error:draftError}=await client
       .from('platform_commercial_plan_drafts')
-      .select('plan_key,price_cop,max_users,max_whatsapp_lines,extra_user_cop,extra_connection_cop,whatsapp_enabled,review_status')
+      .select('plan_key,price_cop,max_users,max_whatsapp_lines,extra_user_cop,extra_connection_cop,ai_monthly_budget_cop,public_summary,public_features,whatsapp_enabled,review_status')
       .eq('plan_key',key).maybeSingle();
     if(draftError||!draft)throw new BadRequestException('Guarda un borrador antes de publicarlo.');
     if(draft.review_status!=='ready_for_review'||!draft.whatsapp_enabled||
@@ -340,6 +342,7 @@ export class PlatformAdminController {
       plan_key:key,price_cop:draft.price_cop,max_users:draft.max_users,
       max_whatsapp_lines:draft.max_whatsapp_lines,
       extra_user_cop:draft.extra_user_cop,extra_connection_cop:draft.extra_connection_cop,
+      ai_monthly_budget_cop:draft.ai_monthly_budget_cop,public_summary:draft.public_summary,public_features:draft.public_features,
       published_at:new Date().toISOString(),published_by:userId,
     },{onConflict:'plan_key'});
     if(error)throw new BadRequestException('No se pudo publicar el precio.');
