@@ -56,6 +56,10 @@ Audio e interpretación de imágenes: el operador declara uso real y el código 
 
 **Railway Online** indica servicios existentes en ejecución; no demuestra que la última rama de GitHub ya esté publicada ni que se puedan desplegar cambios.
 
+## Administración, contratación e incorporación comercial
+
+La ampliación del Super Admin, plan de registro y nuevas fuentes de catálogo se controla en [MW1-SUPERADMIN-ONBOARDING-PLANES-Y-CATALOGOS.md](./MW1-SUPERADMIN-ONBOARDING-PLANES-Y-CATALOGOS.md). Esas mejoras no bloquean por sí solas la primera oferta guiada del CRM, excepto las verificaciones C01–C05.
+
 ## Evidencia
 
 - GitHub rama de desarrollo: https://github.com/impuestosmovitex-byte/chatpro-atogob/tree/feature/mw1-saas-staging-20261020
