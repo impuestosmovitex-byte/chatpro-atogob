@@ -1,5 +1,5 @@
 'use client';
-import {useState,type FormEvent} from 'react';
+import {useEffect,useState,type FormEvent} from 'react';
 import styles from './demo-request.module.css';
 
 export function DemoRequestForm(){
