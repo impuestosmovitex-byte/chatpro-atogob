@@ -7,6 +7,7 @@ import {MW1_COMMERCIAL_PROPOSAL,MW1_EXTRA_USER_PREVIEW_COP,MW1_EXTRA_CONNECTION_
 type Key='inicial'|'pro'|'empresa';
 type Plan={
   planKey:Key;priceCop:number|null;maxUsers:number|null;maxWhatsappLines:number|null;
+  extraUserCop:number|null;extraConnectionCop:number|null;
   aiEnabled:boolean;whatsappEnabled:boolean;instagramEnabled:boolean;
   messengerEnabled:boolean;automationsEnabled:boolean;statisticsEnabled:boolean;
   notes:string;reviewStatus:'draft'|'ready_for_review';
@@ -19,6 +20,7 @@ const suggested:Record<Key,{price:number;users:number;lines:number;description:s
 const keys:Key[]=['inicial','pro','empresa'];
 const initial=(planKey:Key):Plan=>({
   planKey,priceCop:null,maxUsers:null,maxWhatsappLines:null,
+  extraUserCop:null,extraConnectionCop:null,
   aiEnabled:false,whatsappEnabled:false,instagramEnabled:false,
   messengerEnabled:false,automationsEnabled:false,statisticsEnabled:false,
   notes:'',reviewStatus:'draft',
@@ -69,7 +71,7 @@ export default function AdminPlansPage(){
     setPlans(old=>old.map(p=>p.planKey===selected?{...p,[field]:value}:p));
     setNotice('');
   };
-  const updateNumber=(field:'priceCop'|'maxUsers'|'maxWhatsappLines',raw:string)=>{
+  const updateNumber=(field:'priceCop'|'maxUsers'|'maxWhatsappLines'|'extraUserCop'|'extraConnectionCop',raw:string)=>{
     update(field,raw.trim()===''?null:Number(raw));
   };
   async function save(event:FormEvent<HTMLFormElement>){
@@ -153,14 +155,24 @@ export default function AdminPlansPage(){
                 value={plan[field]??''} onChange={event=>updateNumber(field,event.target.value)}/>
             </label>)}
           </div>
+          <h3 style={{marginBottom:12}}>Tarifas adicionales del plan</h3>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:17,marginBottom:20}}>
+            {([['extraUserCop','Usuario adicional al mes'],['extraConnectionCop','Conexión adicional al mes']] as const).map(([field,label])=>
+              <label key={field} style={{fontSize:13,fontWeight:650,display:'grid',gap:7}}>
+                {label} (COP)
+                <input style={control} type="number" min={0} max={999999999} step={1}
+                  placeholder={field==='extraUserCop'?'32000':'50000'}
+                  value={plan[field]??''} onChange={e=>updateNumber(field,e.target.value)}/>
+              </label>)}
+          </div>
           <div style={{padding:16,margin:'0 0 20px',border:'1px solid #e2e8f0',borderRadius:12,background:'#f8fafc'}}>
             <strong>Simulador privado · vista previa comercial</strong>
-            <p style={{fontSize:12,color:'#667085',margin:'8px 0'}}>Adicionales provisionales: $32.000/usuario y $50.000/conexión. No se guardan como tarifas oficiales.</p>
+            <p style={{fontSize:12,color:'#667085',margin:'8px 0'}}>Usa los valores del borrador cuando estén definidos; en caso contrario, muestra referencias provisionales.</p>
             <div style={{display:'flex',flexWrap:'wrap',gap:15,marginTop:12}}>
               <label>Usuarios a simular <input type="number" min={1} max={1000} style={{...control,width:120}} value={previewUsers} onChange={e=>setPreviewUsers(Math.max(1,Math.min(1000,Number(e.target.value)||1)))}/></label>
               <label>Conexiones a simular <input type="number" min={1} max={1000} style={{...control,width:120}} value={previewConnections} onChange={e=>setPreviewConnections(Math.max(1,Math.min(1000,Number(e.target.value)||1)))}/></label>
             </div>
-            <p style={{marginTop:12,fontWeight:800}}>Total orientativo mensual: {((plan.priceCop??suggested[selected].price)+Math.max(0,previewUsers-(plan.maxUsers??suggested[selected].users))*MW1_EXTRA_USER_PREVIEW_COP+Math.max(0,previewConnections-(plan.maxWhatsappLines??suggested[selected].lines))*MW1_EXTRA_CONNECTION_PREVIEW_COP).toLocaleString('es-CO')} COP</p>
+            <p style={{marginTop:12,fontWeight:800}}>Total orientativo mensual: {((plan.priceCop??suggested[selected].price)+Math.max(0,previewUsers-(plan.maxUsers??suggested[selected].users))* (plan.extraUserCop??MW1_EXTRA_USER_PREVIEW_COP)+Math.max(0,previewConnections-(plan.maxWhatsappLines??suggested[selected].lines))* (plan.extraConnectionCop??MW1_EXTRA_CONNECTION_PREVIEW_COP)).toLocaleString('es-CO')} COP</p>
             <button type="button" onClick={() => {
               setPlans(old=>old.map(p=>p.planKey===selected?{...p,priceCop:suggested[selected].price,maxUsers:suggested[selected].users,maxWhatsappLines:suggested[selected].lines,reviewStatus:'draft'}:p));
               setNotice('Valores propuestos cargados localmente. Revisa y guarda el borrador si estás conforme.');
