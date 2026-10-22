@@ -46,6 +46,19 @@ describe('MW1 staging commercial plans are proposals, never billing',()=>{
   test('rejects nonboolean capabilities',()=>{
     expect(()=>validatePlanDraft({...proposal(),aiEnabled:'true'})).toThrow(/marcarse/);
   });
+  test('add-on prices can be set independently and zero is allowed',()=>{
+    const draft=validatePlanDraft({...proposal(),extraUserCop:32000,extraConnectionCop:0});
+    expect(draft.extraUserCop).toBe(32000);
+    expect(draft.extraConnectionCop).toBe(0);
+  });
+  test('rejects invalid add-on prices',()=>{
+    for(const extraUserCop of [-1,1.3,'32000',Number.NaN,1000000000]){
+      expect(()=>validatePlanDraft({...proposal(),extraUserCop})).toThrow(/extraUserCop/);
+    }
+    for(const extraConnectionCop of [-1,0.5,'50000']){
+      expect(()=>validatePlanDraft({...proposal(),extraConnectionCop})).toThrow(/extraConnectionCop/);
+    }
+  });
   test('rejects oversized plan notes',()=>{
     expect(()=>validatePlanDraft({...proposal(),notes:'x'.repeat(1401)})).toThrow();
   });
