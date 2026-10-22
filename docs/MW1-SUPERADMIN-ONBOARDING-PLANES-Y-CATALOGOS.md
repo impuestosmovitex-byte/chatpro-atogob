@@ -73,7 +73,8 @@ No inventar precios. Antes de publicar importes debemos definir como mínimo:
 - [x] D03 Añadir al backend aislado de staging el controlador administrativo ya existente para poder probar empresas, sin habilitar webhooks reales.
 - [ ] D04 Verificar la nueva pantalla y la creación de dos tenants en staging tras recuperar despliegues.
 - [ ] D05 Crear solicitud de demo con consentimiento, control anti-spam y bandeja administrativa (no concede accesos).
-- [ ] D06 Definir precios, límites de planes y asientos extra en COP con reglas aprobadas.
+- [x] D06a Crear borradores comerciales privados para Inicial, Pro y Empresa, editables solo por Super Admin en staging, con COP, usuarios, líneas y módulos. Código y pruebas preparados; migración 019 aún NO aplicada.
+- [ ] D06b Aprobar importes, límites y reglas de usuarios adicionales/costos Meta/OpenAI. Los borradores NO son tarifas públicas ni modifican los contratos o límites actuales.
 - [ ] D07 Desarrollar cobro confirmado por webhook del proveedor, idempotencia y auditoría; **sin activación por retorno del navegador**.
 - [ ] D08 Activación de empresa/usuarios asistida tras compra y onboarding verificable.
 - [ ] D09 Agregar observabilidad real por tenant (canal, último webhook, cola, fallos, costos IA) sin exponer mensajes.
@@ -81,6 +82,16 @@ No inventar precios. Antes de publicar importes debemos definir como mínimo:
 
 **No lanzar escritura automatizada ni facturación sin D04–D09 probados.**
 El CRM comercial básico con alta y cobro **manual verificado** puede venderse antes, cumpliendo las cinco pruebas críticas del plan de lanzamiento del CRM con IA.
+
+## Implementación reciente de planes — solamente staging
+
+- Interfaz interna: `/admin/planes`; existe enlace desde `/admin/empresas`.
+- Rutas protegidas: `GET/POST /platform-admin/plans/drafts` y proxy de sesión. Se valida Super Admin en el backend y `MW1_STAGING_MODE=true`.
+- Migración pendiente: `supabase/migrations/202610210019_staging_commercial_plan_drafts.sql`.
+- Cada plan puede mantenerse como **borrador**, o pasar a **listo para revisión interna** con precio y límites completos. Ninguno se publica ni genera cobros.
+- La página comercial mantiene los importes **por definir** hasta la aprobación de precios. Elegir «Solicitar demo» conserva el plan como interés, pero no confirma un pago.
+- **No aplicar migración en ATOGOB ni conectar estos borradores directamente a `company_entitlements`.** La asignación del plan se realizará solamente mediante proceso independiente de cobro verificado o incorporación guiada aprobada.
+- Siguiente puerta: el propietario comercial aprueba precio COP, usuarios incluidos, líneas de WhatsApp, IA incluida, soporte, costos de Meta, volumen y política de usuarios adicionales. Hasta ese momento, ningún precio es oficial.
 
 ## Riesgos técnicos y estado del despliegue
 
