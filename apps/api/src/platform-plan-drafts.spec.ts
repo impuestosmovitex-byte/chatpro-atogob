@@ -59,6 +59,13 @@ describe('MW1 staging commercial plans are proposals, never billing',()=>{
       expect(()=>validatePlanDraft({...proposal(),extraConnectionCop})).toThrow(/extraConnectionCop/);
     }
   });
+  test('validates plan public benefits and AI monthly budget',()=>{
+    const valid=validatePlanDraft({...proposal(),aiMonthlyBudgetCop:10000,publicSummary:'Atención comercial',publicFeatures:['CRM','Soporte']});
+    expect(valid.publicFeatures).toEqual(['CRM','Soporte']);
+    expect(()=>validatePlanDraft({...proposal(),aiMonthlyBudgetCop:-1})).toThrow(/IA/);
+    expect(()=>validatePlanDraft({...proposal(),publicFeatures:['x'.repeat(151)]})).toThrow(/Beneficios/);
+    expect(()=>validatePlanDraft({...proposal(),publicSummary:'x'.repeat(301)})).toThrow(/Resumen/);
+  });
   test('rejects oversized plan notes',()=>{
     expect(()=>validatePlanDraft({...proposal(),notes:'x'.repeat(1401)})).toThrow();
   });
