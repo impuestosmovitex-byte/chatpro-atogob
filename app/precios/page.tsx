@@ -38,7 +38,7 @@ export default function PreciosPage() {
             Mejora la atención de tus clientes, impulsa tus ventas y organiza las oportunidades comerciales con MW1.
             Si tu meta es aumentar hasta un 20% las conversiones, empieza por reducir los tiempos de respuesta y mejorar el seguimiento.
           </p>
-          <p className={styles.pricingClarification}>El 20% es una meta comercial posible de plantear, no un resultado garantizado.</p>
+          <p className={styles.pricingClarification}>El 20% es una meta comercial posible de plantear, no un resultado garantizado. Tarifas y condiciones sujetas a definición; consulta antes de contratar.</p>
         </div>
 
         <div className={styles.priceGrid}>
