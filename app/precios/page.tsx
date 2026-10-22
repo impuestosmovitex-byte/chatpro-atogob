@@ -33,7 +33,7 @@ export default function PreciosPage() {
       <section className={styles.section}>
         <div className={styles.sectionIntroCentered}>
           <div className={styles.eyebrow}>Planes MW1</div>
-          <h2>Elige un plan y empieza ya.</h2>
+          <h2>Conoce los planes de MW1 para tu empresa.</h2>
           <p>
             Mejora la atención de tus clientes, impulsa tus ventas y organiza las oportunidades comerciales con MW1.
             Si tu meta es aumentar hasta un 20% las conversiones, empieza por reducir los tiempos de respuesta y mejorar el seguimiento.
