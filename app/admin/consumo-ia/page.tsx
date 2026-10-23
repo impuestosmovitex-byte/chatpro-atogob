@@ -1,7 +1,7 @@
 'use client';
 import {useState} from 'react';
 import Link from 'next/link';
-import {AppSidebar} from '../../components/AppSidebar';
+import {PlatformSidebar} from '../../components/PlatformSidebar';
 
 type Usage={ok:boolean;companyId:string;periodStart:string;records:number;truncated:boolean;inputTokens:number;outputTokens:number;cachedInputTokens:number;knownEstimatedCostUsd:number;recordsWithoutCost:number;pricedFromConfiguredRatesUsd?:number;recordsMissingRates?:number;rateConfigurationAvailable?:boolean;coverage:string};
 export default function AiUsageAdmin(){
@@ -20,8 +20,8 @@ export default function AiUsageAdmin(){
   finally{setLoading(false);}
  }
  return <div style={{background:'#f6f7fa',minHeight:'100vh',color:'#172235'}}>
-  <AppSidebar/>
-  <main style={{marginLeft:160,padding:'36px 42px',maxWidth:1080}}>
+  <PlatformSidebar/>
+  <main style={{marginLeft:176,padding:'36px 42px',maxWidth:1080}}>
    <p style={{fontSize:12,fontWeight:800,color:'#866408'}}>SUPERADMIN · MW1 STAGING</p>
    <h1 style={{fontSize:32,margin:'10px 0'}}>Consumo de IA por empresa</h1>
    <p>Reporte interno de llamadas instrumentadas. Todavía NO refleja la totalidad de OpenAI ni permite cobrar o limitar consumo.</p>
