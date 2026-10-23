@@ -402,7 +402,12 @@ export default function PlatformCompaniesPage() {
                         <div style={{ color: '#667085', fontSize: 13 }}>{company.slug}</div>
                       </div>
                       <span style={{ alignSelf: 'start', background: company.status === 'active' ? '#eaf8ee' : '#f2f3f5', padding: '5px 9px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
-                        {company.status}
+                        {company.readiness?.configuredChannels
+                          ? 'Canal registrado · operación sin verificar'
+                          : 'Sin canales conectados'}
+                      </span>
+                      <span style={{fontSize:11,color:'#64748b',alignSelf:'center'}}>
+                        Registro: {company.status}
                       </span>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 14, fontSize: 13 }}>
