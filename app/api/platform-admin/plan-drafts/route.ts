@@ -6,7 +6,7 @@ async function forward(request:NextRequest,method:'GET'|'POST'){
   if(process.env.MW1_STAGING_MODE!=='true')
     return NextResponse.json({ok:false,error:'Solo disponible en MW1 de pruebas.'},{status:403});
   const session=await getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
-  if(!session?.userId||session.type!=='user')
+  if(!session?.userId||session.type!=='platform')
     return NextResponse.json({ok:false,error:'Sesión requerida.'},{status:401});
   const key=process.env.CHATPRO_INBOX_KEY?.trim();
   const base=process.env.CHATPRO_API_URL?.trim();
