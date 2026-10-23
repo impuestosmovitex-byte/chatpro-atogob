@@ -32,7 +32,7 @@ jobs:
       - name: Build API
         run: npm run build
       - name: Execute isolation tests
-        run: npm test -- --runInBand staging-safety.spec.ts staging-sales-brain.spec.ts staging-vision.spec.ts staging-product-facts.spec.ts staging-catalog-admin-command.spec.ts platform-company-readiness.spec.ts staging-demo-requests.controller.spec.ts platform-plan-drafts.spec.ts platform-admin-security.spec.ts platform-external-tenants.spec.ts access-platform.spec.ts platform-admin-invitation.spec.ts platform-ai-usage-metering.spec.ts platform-ai-cost.spec.ts platform-finance-scenario.spec.ts platform-finance-controller.spec.ts chat-agent-individual-product.spec.ts
+        run: npm test -- --runInBand staging-safety.spec.ts staging-sales-brain.spec.ts staging-vision.spec.ts staging-product-facts.spec.ts staging-catalog-admin-command.spec.ts platform-company-readiness.spec.ts staging-demo-requests.controller.spec.ts platform-plan-drafts.spec.ts platform-admin-security.spec.ts platform-external-tenants.spec.ts access-platform.spec.ts platform-admin-invitation.spec.ts platform-ai-usage-metering.spec.ts platform-ai-cost.spec.ts platform-finance-scenario.spec.ts platform-finance-controller.spec.ts platform-company-finance.spec.ts chat-agent-individual-product.spec.ts
 
   web:
     name: Next.js compile and typecheck
