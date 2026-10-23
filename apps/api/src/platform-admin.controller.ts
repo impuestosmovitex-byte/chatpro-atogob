@@ -237,11 +237,14 @@ export class PlatformAdminController {
     // entitlements, message records, secrets or billing into staging.
     let linkedCompanies:Array<{
       name:string;slug:string;billingStatus:string;source:string;verifiedAt:string;
+      recommendedPlan:string|null;commercialMode:string;activeUsers:number|null;
+      activeIntegrations:number|null;messages30d:number|null;aiResponses30d:number|null;
+      lastMessageAt:string|null;activityObservedAt:string|null;aiCostStatus:string;recommendationReason:string;
     }>=[];
     if(process.env.MW1_STAGING_MODE==='true'){
       const {data:directory,error:directoryError}=await client
         .from('platform_external_tenant_registry')
-        .select('company_name,company_slug,billing_status,environment_label,verified_at')
+        .select('company_name,company_slug,billing_status,environment_label,verified_at,commercial_plan_suggestion,commercial_mode,active_users_count,active_integration_records,messages_30d,ai_response_records_30d,last_message_at,activity_observed_at,ai_cost_status,recommended_plan_reason')
         .order('company_name',{ascending:true}).limit(100);
       if(directoryError)
         throw new BadRequestException('No se pudo consultar el directorio de empresas operativas.');
@@ -251,6 +254,16 @@ export class PlatformAdminController {
         billingStatus:item.billing_status,
         source:item.environment_label,
         verifiedAt:item.verified_at,
+        recommendedPlan:item.commercial_plan_suggestion,
+        commercialMode:item.commercial_mode,
+        activeUsers:item.active_users_count,
+        activeIntegrations:item.active_integration_records,
+        messages30d:item.messages_30d,
+        aiResponses30d:item.ai_response_records_30d,
+        lastMessageAt:item.last_message_at,
+        activityObservedAt:item.activity_observed_at,
+        aiCostStatus:item.ai_cost_status,
+        recommendationReason:item.recommended_plan_reason,
       }));
     }
     return {
