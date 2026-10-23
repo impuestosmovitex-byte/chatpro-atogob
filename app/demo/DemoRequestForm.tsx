@@ -11,7 +11,7 @@ export function DemoRequestForm(){
   const[website,setWebsite]=useState('');
   useEffect(()=>{
     const requested=new URLSearchParams(window.location.search).get('plan');
-    if(requested&&['inicial','pro','empresa'].includes(requested))
+    if(requested&&['basico','eco','pro'].includes(requested))
       setPlanInterest(requested);
   },[]);
   const[sending,setSending]=useState(false);
@@ -59,9 +59,9 @@ export function DemoRequestForm(){
     <label>Plan de interés
       <select value={planInterest} onChange={event=>setPlanInterest(event.target.value)}>
         <option value="sin_definir">No estoy seguro</option>
-        <option value="inicial">Inicial</option>
+        <option value="basico">Básico</option>
+        <option value="eco">Eco</option>
         <option value="pro">Pro</option>
-        <option value="empresa">Empresa</option>
       </select>
     </label>
     <div className={styles.hidden} aria-hidden="true">
