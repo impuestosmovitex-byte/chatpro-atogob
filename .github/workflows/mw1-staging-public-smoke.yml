@@ -6,6 +6,9 @@ on:
       - feature/mw1-saas-staging-20261020
     paths:
       - '.github/workflows/mw1-staging-public-smoke.yml'
+      - 'proxy.ts'
+      - 'app/api/staging-admin-setup/route.ts'
+      - 'app/activar-administrador/page.tsx'
   workflow_dispatch:
 
 permissions:
