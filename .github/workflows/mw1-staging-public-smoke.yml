@@ -39,3 +39,21 @@ jobs:
             echo "$path anonymous HTTP $status"
             test "$status" = "401"
           done
+      - name: Verify activation rejects foreign origins but accepts official site
+        shell: bash
+        run: |
+          set -euo pipefail
+          # No credentials or valid invitation codes are used here.
+          foreign="$(curl -sS --max-time 18 -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/staging-admin-setup" \
+            -H 'Origin: https://attacker.invalid' -H 'Content-Type: application/json' --data '{}')"
+          echo "Foreign origin HTTP $foreign"
+          test "$foreign" = "403"
+          allowed=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            allowed="$(curl -sS --max-time 18 -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/staging-admin-setup" \
+              -H "Origin: $BASE_URL" -H 'Sec-Fetch-Site: same-origin' -H 'Content-Type: application/json' --data '{}')"
+            echo "Official origin attempt $attempt HTTP $allowed"
+            test "$allowed" = "400" && break
+            sleep 15
+          done
+          test "$allowed" = "400"
