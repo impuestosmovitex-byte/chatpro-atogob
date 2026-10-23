@@ -9,32 +9,23 @@ describe('staging first-superadmin invitation security',()=>{
  let used=false,hasAdmin=false,created=0,writes:string[]=[];
  const rawToken='a'.repeat(64);
  const makeClient=()=>({
-  from:(table:string)=>{
-   const obj={
-    select:(_cols:string,opts?:unknown)=>({
-      eq:(field:string,value:unknown)=>({
-        maybeSingle:async()=>{
-          if(table==='app_profiles')return {data:null,error:null};
-          if(table==='companies')return {data:{id:'0e160710-6dc4-48ea-88e7-954f463388d8',slug:'mw1-demo-mercado'},error:null};
-          if(table==='app_roles')return {data:{id:'ee23ecf1-6c44-494b-a23d-03f096f019fb'},error:null};
-          return {data:null,error:null};
-        },
-        eq:(_field:string,_value:unknown)=>({maybeSingle:async()=>({data:{id:'0e160710-6dc4-48ea-88e7-954f463388d8',slug:'mw1-demo-mercado'},error:null})}),
-        is:(_field:string,_value:unknown)=>({maybeSingle:async()=>({data:{id:'ee23ecf1-6c44-494b-a23d-03f096f019fb'},error:null})})
-      }),
-    }),
-    update:(_row:unknown)=>({eq:(_f:string,_v:unknown)=>({is:(_f2:string,_v2:unknown)=>({gt:(_f3:string,_v3:unknown)=>({
-      select:(_col:string)=>({maybeSingle:async()=>used?{data:null,error:null}:(used=true,{data:{id:'7d117ca1-8fe3-4c74-b39b-cd1666238a57',login_identifier:'1018453680',company_slug:'mw1-demo-mercado'},error:null})})
-    })})})}),
-    insert:async(row:unknown)=>{writes.push(table);if(table==='platform_admins')hasAdmin=true;return {error:null}},
-    delete:()=>({eq:async()=>({error:null})}),
-   };
-   if(table==='platform_admins')return {
-    select:()=>({eq:async()=>({count:hasAdmin?1:0,error:null})}),
-    insert:obj.insert,delete:obj.delete,
-   };
-   return obj;
-  },
+  from:(table:string)=>({
+   select:(_cols:string,_opts?:unknown)=>({
+    eq:(_field:string,_value:unknown)=>{
+     if(table==='platform_admins')return Promise.resolve({count:hasAdmin?1:0,error:null});
+     return {
+      eq:(_f:string,_v:unknown)=>({maybeSingle:async()=>({data:{id:'0e160710-6dc4-48ea-88e7-954f463388d8',slug:'mw1-demo-mercado'},error:null})}),
+      is:(_f:string,_v:unknown)=>({maybeSingle:async()=>({data:{id:'ee23ecf1-6c44-494b-a23d-03f096f019fb'},error:null})}),
+      maybeSingle:async()=>({data:null,error:null}),
+     };
+    },
+   }),
+   update:(_row:unknown)=>({eq:(_f:string,_v:unknown)=>({is:(_f2:string,_v2:unknown)=>({gt:(_f3:string,_v3:unknown)=>({
+    select:(_col:string)=>({maybeSingle:async()=>used?{data:null,error:null}:(used=true,{data:{id:'7d117ca1-8fe3-4c74-b39b-cd1666238a57',login_identifier:'1018453680',company_slug:'mw1-demo-mercado'},error:null})})
+   })})})}),
+   insert:async(_row:unknown)=>{writes.push(table);if(table==='platform_admins')hasAdmin=true;return {error:null}},
+   delete:()=>({eq:async()=>({error:null})}),
+  }),
   auth:{admin:{
    createUser:async()=>{created++;return {data:{user:{id:'479e7b8c-6392-47c0-a93e-e9664c73cd02'}},error:null}},
    deleteUser:async()=>({error:null}),
