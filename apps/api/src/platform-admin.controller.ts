@@ -13,6 +13,7 @@ import { AccessAuthService } from './access-auth.service';
 import { SupabaseService } from './supabase.service';
 import {companyReadiness} from './platform-company-readiness';
 import {emptyPlanDraft,PLAN_KEYS,validatePlanDraft} from './platform-plan-drafts';
+import {estimateAiCostUsd} from './platform-ai-cost';
 
 type CreateCompanyBody = {
   name?: unknown;
@@ -322,7 +323,33 @@ export class PlatformAdminController {
       .gte('recorded_at',monthStart.toISOString()).limit(10000);
     if(error)throw new BadRequestException('No se pudo consultar el consumo de IA.');
     const events=data??[];
+    const {data:rateRows,error:rateError}=await this.supabaseService.getClient()
+      .from('platform_ai_model_rates')
+      .select('model,input_usd_per_million,cached_input_usd_per_million,output_usd_per_million')
+      .limit(200);
+    // Missing/invalid pricing must not be misreported as zero cost.
+    const rates=new Map((rateError?[]:rateRows??[]).map(rate=>[rate.model,rate]));
+    let calculatedCostUsd=0;
+    let recordsMissingRates=0;
+    for(const event of events){
+      if(event.estimated_cost_usd!==null)continue;
+      const rate=rates.get(event.model);
+      if(!rate){recordsMissingRates++;continue;}
+      try{
+        calculatedCostUsd+=estimateAiCostUsd({
+          inputTokens:Number(event.input_tokens),cachedInputTokens:Number(event.cached_input_tokens),
+          outputTokens:Number(event.output_tokens),
+        },{
+          inputUsdPerMillion:Number(rate.input_usd_per_million),
+          cachedInputUsdPerMillion:Number(rate.cached_input_usd_per_million),
+          outputUsdPerMillion:Number(rate.output_usd_per_million),
+        });
+      }catch{recordsMissingRates++;}
+    }
     return {ok:true,companyId,periodStart:monthStart.toISOString(),
+      pricedFromConfiguredRatesUsd:calculatedCostUsd,
+      recordsMissingRates:rateError?events.filter(e=>e.estimated_cost_usd===null).length:recordsMissingRates,
+      rateConfigurationAvailable:!rateError,
       records:events.length,truncated:events.length===10000,
       inputTokens:events.reduce((n,e)=>n+Number(e.input_tokens||0),0),
       outputTokens:events.reduce((n,e)=>n+Number(e.output_tokens||0),0),
