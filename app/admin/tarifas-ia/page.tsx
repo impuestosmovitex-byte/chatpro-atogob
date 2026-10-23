@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useState,type FormEvent} from 'react';
 import Link from 'next/link';
-import {AppSidebar} from '../../components/AppSidebar';
+import {PlatformSidebar} from '../../components/PlatformSidebar';
 type Rate={model:string;input_usd_per_million:number;cached_input_usd_per_million:number;output_usd_per_million:number;effective_from:string};
 export default function AiRatesPage(){
  const [rates,setRates]=useState<Rate[]>([]),[model,setModel]=useState(''),[input,setInput]=useState(''),[cached,setCached]=useState(''),[output,setOutput]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
@@ -24,8 +24,8 @@ export default function AiRatesPage(){
   }catch(err){setError(err instanceof Error?err.message:'Error');}finally{setBusy(false);}
  }
  const field={padding:11,borderRadius:9,border:'1px solid #ccd2df',width:'100%'};
- return <div style={{background:'#f6f7fa',minHeight:'100vh',color:'#172235'}}><AppSidebar/>
-  <main style={{marginLeft:160,padding:'34px 40px',maxWidth:1080}}>
+ return <div style={{background:'#f6f7fa',minHeight:'100vh',color:'#172235'}}><PlatformSidebar/>
+  <main style={{marginLeft:176,padding:'34px 40px',maxWidth:1080}}>
    <p style={{fontSize:12,fontWeight:800,color:'#987400'}}>SUPERADMIN · MW1 STAGING</p>
    <h1 style={{fontSize:30}}>Tarifas de modelos de IA</h1>
    <p style={{color:'#657187'}}>Solo tarifas verificadas, expresadas en USD por millón de tokens. Sin tarifas cargadas, el costo figura pendiente.</p>
