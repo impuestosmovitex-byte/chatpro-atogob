@@ -4,7 +4,7 @@ export const dynamic='force-dynamic';
 async function forward(request:NextRequest,method:'GET'|'POST'){
  if(process.env.MW1_STAGING_MODE!=='true')return NextResponse.json({ok:false,error:'Solo staging.'},{status:403});
  const session=await getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
- if(!session?.userId||session.type!=='user')return NextResponse.json({ok:false,error:'Sesión requerida.'},{status:401});
+ if(!session?.userId||session.type!=='platform')return NextResponse.json({ok:false,error:'Sesión requerida.'},{status:401});
  const key=process.env.CHATPRO_INBOX_KEY?.trim(),base=process.env.CHATPRO_API_URL?.trim();
  if(!key||!base)return NextResponse.json({ok:false,error:'Servicio no configurado.'},{status:503});
  let body:unknown;
