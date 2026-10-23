@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { PlatformSidebar } from '../../components/PlatformSidebar';
 import Link from 'next/link';
+import {MW1_PILOT_PRESETS,resolvePilotPlan,type PilotPlan} from '../../lib/mw1-pilot-onboarding';
 
 type Entitlements = {
   planKey: string;
@@ -124,6 +125,8 @@ export default function PlatformCompaniesPage() {
   const [leadDrafts,setLeadDrafts]=useState<Record<string,LeadFollowupDraft>>({});
   const [leadSaving,setLeadSaving]=useState<string|null>(null);
   const [leadMessage,setLeadMessage]=useState('');
+  const [reviewedCompanyAccess,setReviewedCompanyAccess]=useState(false);
+  const [preparedFromLead,setPreparedFromLead]=useState<string|null>(null);
 
   async function load() {
     setLoading(true);
@@ -217,10 +220,25 @@ export default function PlatformCompaniesPage() {
     finally{setLeadSaving(null);}
   }
 
+  function formWithPilotPlan(plan:PilotPlan):FormState{
+    const preset=MW1_PILOT_PRESETS[plan];
+    return {...initialForm,planKey:preset.legacyKey,maxUsers:String(preset.users),
+      maxWhatsappLines:String(preset.whatsappLines),aiEnabled:preset.ai,
+      whatsappEnabled:true,instagramEnabled:preset.instagram,
+      messengerEnabled:preset.messenger,automationsEnabled:preset.automation,
+      statisticsEnabled:preset.statistics};
+  }
+
   function prepareCompanyFromLead(lead:DemoLead){
-    // Explicit manual draft only. Never copy lead details into credentials or grant plan entitlements.
-    setForm({...initialForm,name:lead.companyName,slug:generateSlug(lead.companyName)});
-    setSuccess('Formulario preparado. Verifica el plan, confirma el propietario y configura accesos antes de crear la empresa.');
+    // Draft only. No credentials, plan assignment, subscriptions or companies are created.
+    const pilotPlan=resolvePilotPlan(lead.planInterest);
+    const base=pilotPlan?formWithPilotPlan(pilotPlan):initialForm;
+    setForm({...base,name:lead.companyName,slug:generateSlug(lead.companyName)});
+    setReviewedCompanyAccess(false);
+    setPreparedFromLead(lead.id);
+    setSuccess(pilotPlan
+      ?'Propuesta '+MW1_PILOT_PRESETS[pilotPlan].name+' cargada. Comprueba módulos, capacidad y propietario antes de crear la cuenta.'
+      :'El interesado no eligió un plan. Revísalo antes de crear la cuenta.');
     setError('');
     document.getElementById('mw1-new-company-form')?.scrollIntoView({behavior:'smooth',block:'start'});
   }
@@ -242,6 +260,7 @@ export default function PlatformCompaniesPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
+    if(!reviewedCompanyAccess){setError('Confirma primero el plan, los permisos y los datos del propietario.');return;}
 
     setSaving(true);
     setError('');
@@ -270,6 +289,8 @@ export default function PlatformCompaniesPage() {
 
       setSuccess(`${data.company?.name || 'La empresa'} quedó creada y aislada.`);
       setForm(initialForm);
+      setReviewedCompanyAccess(false);
+      setPreparedFromLead(null);
       await load();
     } catch {
       setError('No se pudo crear la empresa.');
@@ -313,6 +334,7 @@ export default function PlatformCompaniesPage() {
               <p style={{ color: '#667085', marginTop: -6 }}>
                 La empresa inicia sin chats, clientes, productos ni credenciales de otra empresa.
               </p>
+              {preparedFromLead&&<p style={{background:'#fff6d5',padding:12,borderRadius:10,color:'#49390c',fontSize:13}}>Alta preparada a partir de una solicitud calificada. No se ha creado la empresa ni iniciado la prueba.</p>}
 
               <div style={{ display: 'grid', gap: 14 }}>
                 <label>
@@ -347,7 +369,28 @@ export default function PlatformCompaniesPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                   <label>
                     <strong>Plan</strong>
-                    <input style={{ ...inputStyle, marginTop: 6 }} value={form.planKey} onChange={(e) => setValue('planKey', e.target.value)} />
+                    <select aria-label="Elegir propuesta de plan" style={{ ...inputStyle, marginTop: 6 }}
+                      value={form.planKey} onChange={(e)=>{
+                        const value=e.target.value;
+                        const p=resolvePilotPlan(value);
+                        setForm(current=>p?{...current,
+                          planKey:MW1_PILOT_PRESETS[p].legacyKey,
+                          maxUsers:String(MW1_PILOT_PRESETS[p].users),
+                          maxWhatsappLines:String(MW1_PILOT_PRESETS[p].whatsappLines),
+                          aiEnabled:MW1_PILOT_PRESETS[p].ai,
+                          whatsappEnabled:true,
+                          instagramEnabled:MW1_PILOT_PRESETS[p].instagram,
+                          messengerEnabled:MW1_PILOT_PRESETS[p].messenger,
+                          automationsEnabled:MW1_PILOT_PRESETS[p].automation,
+                          statisticsEnabled:MW1_PILOT_PRESETS[p].statistics
+                        }:{...current,planKey:value});
+                        setReviewedCompanyAccess(false);
+                      }}>
+                      <option value="custom">Personalizado (revisión manual)</option>
+                      <option value="inicial">Básico</option>
+                      <option value="pro">Eco</option>
+                      <option value="empresa">Pro</option>
+                    </select>
                   </label>
                   <label>
                     <strong>Usuarios</strong>
@@ -359,6 +402,12 @@ export default function PlatformCompaniesPage() {
                   </label>
                 </div>
 
+                <p style={{fontSize:12,lineHeight:1.6,color:'#58677c',margin:'-5px 0 1px'}}>
+                  {resolvePilotPlan(form.planKey)
+                    ? MW1_PILOT_PRESETS[resolvePilotPlan(form.planKey)!].note
+                    :'Plan personalizado: verifica cada límite y capacidad antes de registrar.'}
+                  {' '}Las líneas WhatsApp no representan el total de conexiones de distintos canales.
+                </p>
                 <div style={{ borderTop: '1px solid #eceef2', paddingTop: 14 }}>
                   <strong>Módulos habilitados</strong>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
@@ -391,6 +440,15 @@ export default function PlatformCompaniesPage() {
                   </div>
                 </div>
 
+                <label style={{display:'flex',gap:11,alignItems:'flex-start',padding:12,
+                  background:'#f7f8fb',borderRadius:11,fontSize:13,lineHeight:1.6}}>
+                  <input type="checkbox" required checked={reviewedCompanyAccess}
+                    onChange={e=>setReviewedCompanyAccess(e.target.checked)}
+                    style={{marginTop:4}}/>
+                  <span>He verificado el nombre y plan, el límite de usuarios, los canales autorizados
+                  y los datos de acceso del propietario. Crear esta empresa es una acción separada
+                  de aprobar el cobro y de iniciar los días de prueba.</span>
+                </label>
                 <button
                   type="submit"
                   disabled={saving}
