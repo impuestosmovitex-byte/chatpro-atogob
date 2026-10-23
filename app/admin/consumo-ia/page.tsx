@@ -3,7 +3,7 @@ import {useState} from 'react';
 import Link from 'next/link';
 import {AppSidebar} from '../../components/AppSidebar';
 
-type Usage={ok:boolean;companyId:string;periodStart:string;records:number;truncated:boolean;inputTokens:number;outputTokens:number;cachedInputTokens:number;knownEstimatedCostUsd:number;recordsWithoutCost:number;coverage:string};
+type Usage={ok:boolean;companyId:string;periodStart:string;records:number;truncated:boolean;inputTokens:number;outputTokens:number;cachedInputTokens:number;knownEstimatedCostUsd:number;recordsWithoutCost:number;pricedFromConfiguredRatesUsd?:number;recordsMissingRates?:number;rateConfigurationAvailable?:boolean;coverage:string};
 export default function AiUsageAdmin(){
  const [companyId,setCompanyId]=useState('');
  const [loading,setLoading]=useState(false);
@@ -38,7 +38,9 @@ export default function AiUsageAdmin(){
      <p>Tokens de salida: <strong>{data.outputTokens.toLocaleString('es-CO')}</strong></p>
      <p>Tokens en caché: <strong>{data.cachedInputTokens.toLocaleString('es-CO')}</strong></p>
      <p>Costo estimado conocido (USD): <strong>{data.knownEstimatedCostUsd.toFixed(4)}</strong></p>
-     <p>Eventos sin costo estimado: <strong>{data.recordsWithoutCost}</strong></p>
+     <p>Costo calculado con tarifas configuradas (USD): <strong>{data.pricedFromConfiguredRatesUsd?.toFixed(4)??'Pendiente'}</strong></p>
+     <p>Eventos sin tarifa verificable: <strong>{data.recordsMissingRates??'Pendiente'}</strong></p>
+     <p>Eventos sin costo directo registrado: <strong>{data.recordsWithoutCost}</strong></p>
      <p style={{color:'#976100'}}>Advertencia: {data.records===0?'sin mediciones registradas no significa consumo cero.':'datos parciales; no usar para facturación.'}{data.truncated?' Se alcanzó el límite de filas; consulta incompleta.':''}</p>
     </div>}
    </div>
