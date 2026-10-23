@@ -8,6 +8,7 @@ const links=[
  {href:'/admin/empresas',label:'Empresas',icon:'▤'},
  {href:'/admin/planes',label:'Planes y precios',icon:'◇'},
  {href:'/admin/simulador-financiero',label:'Simulador financiero',icon:'▥'},
+ {href:'/admin/rentabilidad-empresas',label:'Rentabilidad por empresa',icon:'◉'},
  {href:'/admin/consumo-ia',label:'Consumo de IA',icon:'◎'},
  {href:'/admin/tarifas-ia',label:'Tarifas OpenAI',icon:'⚙'},
 ];
