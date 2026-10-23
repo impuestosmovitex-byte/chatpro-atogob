@@ -5,12 +5,12 @@ export type FinanceCompanyEntry={
  periodMonth:string;companySource:FinanceCompanySource;companySlug:string;
  billedCop:number|null;receivedCop:number|null;openaiCop:number|null;
  supportCop:number|null;onboardingCop:number|null;otherDirectCop:number|null;
- allocationWeight:number;evidenceNote:string;
+ allocationWeight:number;includeInAllocation:boolean;evidenceNote:string;
 };
 export function validateFinanceCompanyEntry(raw:unknown):FinanceCompanyEntry{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Registro de empresa inválido.');
  const o=raw as Record<string,unknown>;
- const keys=new Set<string>(['periodMonth','companySource','companySlug','allocationWeight','evidenceNote',...DIRECT_FIELDS]);
+ const keys=new Set<string>(['periodMonth','companySource','companySlug','allocationWeight','includeInAllocation','evidenceNote',...DIRECT_FIELDS]);
  if(Object.keys(o).some(k=>!keys.has(k)))throw Error('Campo de empresa no permitido.');
  if(typeof o.periodMonth!=='string'||!/^20[2-9][0-9]-(0[1-9]|1[0-2])-01$/.test(o.periodMonth))
   throw Error('Mes no válido.');
@@ -21,6 +21,7 @@ export function validateFinanceCompanyEntry(raw:unknown):FinanceCompanyEntry{
  if(typeof o.allocationWeight!=='number'||!Number.isFinite(o.allocationWeight)||
     o.allocationWeight<=0||o.allocationWeight>1000||Math.round(o.allocationWeight*1000)!==o.allocationWeight*1000)
   throw Error('Peso de distribución inválido.');
+ if(typeof o.includeInAllocation!=='boolean')throw Error('Asignación de costos inválida.');
  if(typeof o.evidenceNote!=='string'||o.evidenceNote.length>1000)
   throw Error('Nota financiera inválida.');
  for(const key of DIRECT_FIELDS){
