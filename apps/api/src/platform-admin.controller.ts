@@ -15,6 +15,7 @@ import {companyReadiness} from './platform-company-readiness';
 import {emptyPlanDraft,PLAN_KEYS,validatePlanDraft} from './platform-plan-drafts';
 import {estimateAiCostUsd} from './platform-ai-cost';
 import {validateFinanceScenario,validateFinanceActual} from './platform-finance-scenario';
+import {validateFinanceCompanyEntry} from './platform-company-finance';
 
 type CreateCompanyBody = {
   name?: unknown;
@@ -490,6 +491,88 @@ export class PlatformAdminController {
       },{onConflict:'period_month'});
     if(error)throw new BadRequestException('No se pudo guardar el registro mensual.');
     return {ok:true,message:'Registro manual del mes guardado en staging. No se generó una factura.'};
+  }
+
+  @Get('finance/companies')
+  async getCompanyFinance(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Query('month') month = '',
+  ){
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Rentabilidad por empresa solo en staging.');
+    if(!/^20[2-9][0-9]-(0[1-9]|1[0-2])-01$/.test(month))
+      throw new BadRequestException('Mes inválido.');
+    const client=this.supabaseService.getClient();
+    const [linked,local,records,actual]=await Promise.all([
+      client.from('platform_external_tenant_registry')
+        .select('company_name,company_slug,commercial_plan_suggestion,activity_observed_at,ai_cost_status')
+        .order('company_name',{ascending:true}).limit(100),
+      client.from('companies').select('name,slug,status')
+        .order('name',{ascending:true}).limit(200),
+      client.from('platform_finance_company_monthly')
+        .select('period_month,company_source,company_slug,billed_cop,received_cop,openai_cop,support_cop,onboarding_cop,other_direct_cop,allocation_weight,include_in_allocation,evidence_note,updated_at')
+        .eq('period_month',month).limit(1000),
+      client.from('platform_finance_monthly_actuals')
+        .select('railway_cop,supabase_cop,technical_support_cop,personnel_cop,marketing_cop,other_cop,openai_cop,updated_at')
+        .eq('period_month',month).maybeSingle(),
+    ]);
+    if(linked.error||local.error||records.error||actual.error)
+      throw new BadRequestException('No se pudo consultar el control financiero por empresa.');
+    const options=[
+      ...(linked.data??[]).map(c=>({
+        companySource:'operational',companySlug:c.company_slug,
+        companyName:c.company_name,suggestedPlan:c.commercial_plan_suggestion,
+        aiCostStatus:c.ai_cost_status,activityObservedAt:c.activity_observed_at,
+        status:'Registro operativo, no sincronizado',
+      })),
+      ...(local.data??[]).map(c=>({
+        companySource:'staging',companySlug:c.slug,
+        companyName:c.name,suggestedPlan:null,aiCostStatus:'not_measured',
+        activityObservedAt:null,status:c.status,
+      })),
+    ];
+    return {ok:true,periodMonth:month,companies:options,records:records.data??[],
+      sharedActual:actual.data??null,informationType:'manual_not_reconciled',
+      note:'Los importes son manuales; no son facturas ni lecturas directas de OpenAI/Railway.'};
+  }
+
+  @Post('finance/company')
+  async saveCompanyFinance(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Body() body:unknown,
+  ){
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Rentabilidad por empresa solo en staging.');
+    let entry;
+    try{entry=validateFinanceCompanyEntry(body);}
+    catch(e){throw new BadRequestException(e instanceof Error?e.message:'Registro inválido.');}
+    const client=this.supabaseService.getClient();
+    const sourceTable=entry.companySource==='operational'?
+      'platform_external_tenant_registry':'companies';
+    const field=entry.companySource==='operational'?'company_slug':'slug';
+    const {data:exists,error:existsError}=await client.from(sourceTable)
+      .select(field).eq(field,entry.companySlug).maybeSingle();
+    if(existsError||!exists)
+      throw new BadRequestException('Empresa no registrada en el directorio permitido.');
+    const {error}=await client.from('platform_finance_company_monthly').upsert({
+      period_month:entry.periodMonth,company_source:entry.companySource,
+      company_slug:entry.companySlug,billed_cop:entry.billedCop,
+      received_cop:entry.receivedCop,openai_cop:entry.openaiCop,
+      support_cop:entry.supportCop,onboarding_cop:entry.onboardingCop,
+      other_direct_cop:entry.otherDirectCop,
+      allocation_weight:entry.allocationWeight,
+      include_in_allocation:entry.includeInAllocation,
+      evidence_note:entry.evidenceNote,updated_by:userId,
+      updated_at:new Date().toISOString(),
+    },{onConflict:'period_month,company_source,company_slug'});
+    if(error)throw new BadRequestException('No se pudo guardar el registro por empresa.');
+    return {ok:true,message:'Registro financiero privado guardado. No se han creado facturas, cobros ni límites.'};
   }
 
   @Get('ai-model-rates')
