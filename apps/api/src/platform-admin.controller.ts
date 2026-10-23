@@ -14,6 +14,7 @@ import { SupabaseService } from './supabase.service';
 import {companyReadiness} from './platform-company-readiness';
 import {emptyPlanDraft,PLAN_KEYS,validatePlanDraft} from './platform-plan-drafts';
 import {estimateAiCostUsd} from './platform-ai-cost';
+import {validateFinanceScenario,validateFinanceActual} from './platform-finance-scenario';
 
 type CreateCompanyBody = {
   name?: unknown;
@@ -417,6 +418,80 @@ export class PlatformAdminController {
   // This endpoint still requires the internal backend key and only runs in staging.
   // Staging-only AI usage report. Reads metered events; missing data means uninstrumented,
   // not zero cost across OpenAI. Never exposes tenant message content.
+  // Private platform financial workbook. Staging only; this is not billing.
+  @Get('finance')
+  async getFinance(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Query('month') month = '',
+  ){
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Finanzas de pruebas solamente.');
+    if(!/^20[2-9][0-9]-(0[1-9]|1[0-2])-01$/.test(month))
+      throw new BadRequestException('Mes inválido.');
+    const client=this.supabaseService.getClient();
+    const [scenario,actual]=await Promise.all([
+      client.from('platform_finance_scenarios').select('assumptions,updated_at')
+        .eq('scenario_key','current').maybeSingle(),
+      client.from('platform_finance_monthly_actuals')
+        .select('period_month,received_cop,railway_cop,supabase_cop,openai_cop,technical_support_cop,personnel_cop,marketing_cop,other_cop,evidence_note,updated_at')
+        .eq('period_month',month).maybeSingle(),
+    ]);
+    if(scenario.error||actual.error)
+      throw new BadRequestException('No se pudo cargar el control financiero.');
+    return {ok:true,scenario:scenario.data?.assumptions??null,
+      scenarioUpdatedAt:scenario.data?.updated_at??null,actual:actual.data??null};
+  }
+
+  @Post('finance/scenario')
+  async saveFinanceScenario(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Body() body:unknown,
+  ){
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Finanzas de pruebas solamente.');
+    let assumptions;
+    try{assumptions=validateFinanceScenario(body);}
+    catch(e){throw new BadRequestException(e instanceof Error?e.message:'Escenario inválido.');}
+    const {error}=await this.supabaseService.getClient()
+      .from('platform_finance_scenarios')
+      .upsert({scenario_key:'current',assumptions,updated_by:userId,
+        updated_at:new Date().toISOString()},{onConflict:'scenario_key'});
+    if(error)throw new BadRequestException('No se pudo guardar el escenario.');
+    return {ok:true,message:'Simulación privada guardada. No se han creado cargos ni modificado clientes.'};
+  }
+
+  @Post('finance/actual')
+  async saveFinanceActual(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Body() body:unknown,
+  ){
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Finanzas de pruebas solamente.');
+    let input;
+    try{input=validateFinanceActual(body);}
+    catch(e){throw new BadRequestException(e instanceof Error?e.message:'Registro inválido.');}
+    const {error}=await this.supabaseService.getClient()
+      .from('platform_finance_monthly_actuals').upsert({
+        period_month:input.periodMonth,received_cop:input.receivedCop,
+        railway_cop:input.railwayCop,supabase_cop:input.supabaseCop,
+        openai_cop:input.openaiCop,technical_support_cop:input.technicalSupportCop,
+        personnel_cop:input.personnelCop,marketing_cop:input.marketingCop,
+        other_cop:input.otherCop,evidence_note:input.evidenceNote,
+        updated_by:userId,updated_at:new Date().toISOString(),
+      },{onConflict:'period_month'});
+    if(error)throw new BadRequestException('No se pudo guardar el registro mensual.');
+    return {ok:true,message:'Registro manual del mes guardado en staging. No se generó una factura.'};
+  }
+
   @Get('ai-model-rates')
   async listAiModelRates(
     @Headers('x-chatpro-inbox-key') providedKey = '',
