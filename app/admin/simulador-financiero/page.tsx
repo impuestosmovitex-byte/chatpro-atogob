@@ -1,7 +1,7 @@
 'use client';
 import {useMemo,useState} from 'react';
 import Link from 'next/link';
-import {AppSidebar} from '../../components/AppSidebar';
+import {PlatformSidebar} from '../../components/PlatformSidebar';
 import {MW1_COMMERCIAL_PROPOSAL} from '../../lib/mw1-commercial-proposal';
 
 const cop=(value:number)=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(value);
@@ -28,8 +28,8 @@ export default function SimuladorFinancieroMW1(){
   return {clients,income,fixed,variable,costs,contribution,margin:income>0?contribution/income*100:0,unitCost:clients?costs/clients:0};
  },[counts,prices,railway,supabase,otherFixed,openAiPerCompany,supportPerCompany,fxRate,usdOpenAi]);
  return <div style={{minHeight:'100vh',background:'#f6f7fa',color:'#172235'}}>
-  <AppSidebar/>
-  <main style={{marginLeft:160,padding:'36px 42px 70px',maxWidth:1250}}>
+  <PlatformSidebar/>
+  <main style={{marginLeft:176,padding:'36px 42px 70px',maxWidth:1250}}>
    <p style={{fontSize:12,fontWeight:850,color:'#967000'}}>SUPERADMIN · MW1 · SIMULACIÓN</p>
    <h1 style={{fontSize:32,margin:'9px 0'}}>Simulador financiero</h1>
    <p style={{color:'#657187',lineHeight:1.6}}>Ajusta empresas, tarifas, infraestructura y consumo estimado de IA para evaluar la contribución mensual del SaaS. No consulta facturas reales, no modifica precios públicos y no activa cobros.</p>
