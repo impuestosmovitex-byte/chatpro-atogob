@@ -5,7 +5,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 export type ChatProSession = {
-  type: 'user' | 'bootstrap';
+  type: 'user' | 'bootstrap' | 'platform';
   userId: string | null;
   companyId: string;
   companySlug: string;
@@ -171,7 +171,7 @@ export async function getInboxSession(
       payload.v !== 2 ||
       !Number.isInteger(payload.exp) ||
       payload.exp <= Date.now() ||
-      (payload.type !== 'user' && payload.type !== 'bootstrap') ||
+      (payload.type !== 'user' && payload.type !== 'bootstrap' && payload.type !== 'platform') ||
       typeof payload.companyId !== 'string' ||
       typeof payload.companySlug !== 'string' ||
       typeof payload.companyName !== 'string' ||
