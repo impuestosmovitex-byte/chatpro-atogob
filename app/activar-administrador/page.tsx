@@ -49,7 +49,7 @@ export default function ActivateStagingAdmin(){
    <p>Usuario asignado: <strong>1018453680</strong></p>
    {done?<div role="status">
     <p style={{color:'#087443'}}>Tu usuario fue activado en el entorno de pruebas.</p>
-    <Link href="/login?next=%2Fadmin%2Fplanes">Ir al inicio de sesión de MW1</Link>
+    <Link href="/login?company=mw1-demo-mercado&next=%2Fadmin%2Fplanes">Ir al inicio de sesión de MW1</Link>
    </div>:<form onSubmit={e=>void activate(e)} style={{display:'grid',gap:16,marginTop:22}}>
     <p style={{fontSize:13,color:'#596779'}}>Elige una contraseña exclusiva para MW1. No la compartas por ChatGPT. Esta activación solo funciona una vez.</p>
     <div style={{padding:14,background:'#f5f7fb',borderRadius:10,display:'grid',gap:9}}>
