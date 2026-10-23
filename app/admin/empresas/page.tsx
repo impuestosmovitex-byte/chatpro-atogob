@@ -33,7 +33,14 @@ type Company = {
   entitlements: Entitlements;
 };
 
-type LinkedCompany={name:string;slug:string;source:string;billingStatus:string;verifiedAt:string;};
+type LinkedCompany={
+  name:string;slug:string;source:string;billingStatus:string;verifiedAt:string;
+  recommendedPlan:string|null;commercialMode:string;
+  activeUsers:number|null;activeIntegrations:number|null;
+  messages30d:number|null;aiResponses30d:number|null;
+  lastMessageAt:string|null;activityObservedAt:string|null;
+  aiCostStatus:string;recommendationReason:string;
+};
 type DemoLead={
   id:string;companyName:string;contactName:string;contactEmail:string;
   planInterest:string;status:string;createdAt:string;
@@ -369,6 +376,17 @@ export default function PlatformCompaniesPage() {
                   <strong style={{fontSize:16}}>{linked.name}</strong>
                   <p style={{fontSize:12,color:'#63718a',margin:'4px 0 10px'}}>{linked.slug} · {linked.source}</p>
                   <p style={{fontSize:13,margin:'5px 0'}}><strong>Facturación MW1:</strong> Pendiente de configurar y validar; no significa servicio gratuito ni pago confirmado.</p>
+                  <div style={{display:'grid',gap:9,gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',margin:'14px 0 10px'}}>
+                    <span style={{fontSize:13}}><strong>Plan sugerido:</strong> {linked.recommendedPlan?.toUpperCase()||'Por evaluar'}<small style={{display:'block',color:'#64748b'}}>Solo comercial; sin aplicar límites</small></span>
+                    <span style={{fontSize:13}}><strong>Usuarios registrados:</strong> {linked.activeUsers??'Sin medición'}</span>
+                    <span style={{fontSize:13}}><strong>Conexiones activas registradas:</strong> {linked.activeIntegrations??'Sin medición'}</span>
+                    <span style={{fontSize:13}}><strong>Mensajes / 30 días:</strong> {linked.messages30d?.toLocaleString('es-CO')??'Sin medición'}</span>
+                    <span style={{fontSize:13}}><strong>Registros con respuesta IA / 30 días:</strong> {linked.aiResponses30d?.toLocaleString('es-CO')??'Sin medición'}</span>
+                  </div>
+                  <p style={{fontSize:12,color:'#45556d',margin:'5px 0'}}><strong>Último mensaje registrado:</strong> {linked.lastMessageAt?new Date(linked.lastMessageAt).toLocaleString('es-CO'):'No registrado'}</p>
+                  <p style={{fontSize:12,color:'#45556d',margin:'5px 0'}}><strong>Costo verificable de OpenAI por empresa:</strong> No medido todavía. Las respuestas registradas no equivalen a tokens ni cargos.</p>
+                  <p style={{fontSize:12,color:'#45556d',margin:'5px 0'}}><strong>Motivo:</strong> {linked.recommendationReason||'Por evaluar'}</p>
+                  <p style={{fontSize:12,color:'#64748b',margin:'7px 0'}}><strong>Datos consultados:</strong> {linked.activityObservedAt?new Date(linked.activityObservedAt).toLocaleString('es-CO'):'Sin registro'}. Es una fotografía de actividad, no información en tiempo real.</p>
                   <p style={{fontSize:12,color:'#63718a',margin:'5px 0'}}>Sin sincronización automática de usuarios, consumos ni planes. No se creó una cuenta demo duplicada.</p>
                 </article>)}
               </div>}
