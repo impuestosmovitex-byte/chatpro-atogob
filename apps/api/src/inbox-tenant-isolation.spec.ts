@@ -12,6 +12,7 @@ describe('Staging cross-company inbox authorization',()=>{
  const companyA={id:'company-a-id',slug:'company-a',name:'Demo A'};
  const companyB={id:'company-b-id',slug:'company-b',name:'Demo B'};
  let queried:string[]=[];
+ let currentRoleKey='advisor';
  const perms={
   from:(table:string)=>{
    queried.push(table);
@@ -26,7 +27,7 @@ describe('Staging cross-company inbox authorization',()=>{
    }
    if(table==='app_roles'){
     return {select:()=>({eq:()=>({maybeSingle:async()=>({
-     data:{key:'advisor',company_id:null},error:null,
+     data:{key:currentRoleKey,company_id:null},error:null,
     })})})};
    }
    if(table==='app_role_permissions'){
@@ -57,7 +58,7 @@ describe('Staging cross-company inbox authorization',()=>{
   social as unknown as MetaSocialInboxService,
   {} as MetaSocialMessagingService,
  );
- beforeEach(()=>{process.env.CHATPRO_INBOX_KEY=internalKey;queried=[];});
+ beforeEach(()=>{process.env.CHATPRO_INBOX_KEY=internalKey;queried=[];currentRoleKey='advisor';});
  afterAll(()=>{if(oldKey===undefined)delete process.env.CHATPRO_INBOX_KEY;
   else process.env.CHATPRO_INBOX_KEY=oldKey;});
  it('rejects user A attempting to list company B with a forged company parameter',async()=>{
@@ -76,6 +77,15 @@ describe('Staging cross-company inbox authorization',()=>{
    companyB.slug,'all','20','0','','')).rejects.toThrow();
   expect(queried).toContain('company_memberships');
   expect(queried).not.toContain('app_role_permissions');
+ });
+ it('each demo owner can pass membership checks only in their own company',async()=>{
+  currentRoleKey='owner';
+  await expect(controller.internalTest(internalKey,'user','user-a','Advisor A',
+   companyA.id,'owner',companyA.slug,{action:'unsupported'})).rejects.toThrow(/Acción de prueba no válida/);
+  await expect(controller.internalTest(internalKey,'user','user-b','Advisor B',
+   companyB.id,'owner',companyB.slug,{action:'unsupported'})).rejects.toThrow(/Acción de prueba no válida/);
+  expect(queried.filter(x=>x==='company_memberships')).toHaveLength(2);
+  expect(queried.filter(x=>x==='app_roles')).toHaveLength(2);
  });
  it('does not grant stale owner privilege after role is downgraded to advisor',async()=>{
   await expect(controller.internalTest(internalKey,'user','user-a','Advisor A',
