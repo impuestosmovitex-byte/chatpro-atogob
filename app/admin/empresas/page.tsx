@@ -44,6 +44,7 @@ type LinkedCompany={
 type DemoLead={
   id:string;companyName:string;contactName:string;contactEmail:string;
   planInterest:string;status:string;createdAt:string;
+  requestType:'trial'|'demo';contactPhone:string|null;whatsappSetup:string|null;trialDays:number|null;trialActivatedAt:string|null;
 };
 
 type CompaniesResponse = {
@@ -451,10 +452,10 @@ export default function PlatformCompaniesPage() {
         )}
         {authorized===true&&demoAvailable?(
           <section style={{...cardStyle,marginTop:24}}>
-            <h2 style={{marginTop:0}}>Solicitudes de demo de MW1</h2>
+            <h2 style={{marginTop:0}}>Solicitudes comerciales y pruebas de MW1</h2>
             <p style={{color:'#667085',fontSize:13}}>
-              Bandeja comercial de pruebas. Estas solicitudes no crean empresas,
-              no activan planes y no confirman pagos.
+              Bandeja de solicitudes de demo y prueba guiada de 14 días. No crean empresas,
+              no activan planes, no inician los 14 días y no confirman pagos.
             </p>
             {demoLoading?<p>Cargando solicitudes…</p>:null}
             {demoRequests.length===0?<p>Sin solicitudes registradas.</p>:
@@ -463,6 +464,7 @@ export default function PlatformCompaniesPage() {
                   <thead><tr style={{textAlign:'left'}}>
                     <th style={{padding:10}}>Empresa</th>
                     <th style={{padding:10}}>Contacto</th>
+                    <th style={{padding:10}}>Solicitud</th>
                     <th style={{padding:10}}>Plan consultado</th>
                     <th style={{padding:10}}>Estado</th>
                     <th style={{padding:10}}>Fecha</th>
@@ -472,8 +474,16 @@ export default function PlatformCompaniesPage() {
                     <td style={{padding:10}}>{lead.companyName}</td>
                     <td style={{padding:10}}>{lead.contactName}
                       <div><a href={'mailto:'+lead.contactEmail}>{lead.contactEmail}</a></div>
+                      {lead.contactPhone&&<div><a href={'tel:'+lead.contactPhone}>{lead.contactPhone}</a></div>}
+                      {lead.whatsappSetup&&<div style={{fontSize:11,color:'#667085'}}>WhatsApp: {{
+                        business_app:'Usa WhatsApp Business',
+                        cloud_api:'Ya utiliza API',
+                        new_number:'Número nuevo',
+                        unsure:'Requiere orientación',
+                      }[lead.whatsappSetup]??'Por revisar'}</div>}
                     </td>
-                    <td style={{padding:10}}>{lead.planInterest}</td>
+                    <td style={{padding:10}}>{lead.requestType==='trial'?'Prueba guiada 14 días':'Demo'}</td>
+                    <td style={{padding:10}}>{{inicial:'Básico',pro:'Eco',empresa:'Pro',sin_definir:'Por definir'}[lead.planInterest]??lead.planInterest}</td>
                     <td style={{padding:10}}>{lead.status==='new'?'Nueva':lead.status}</td>
                     <td style={{padding:10}}>{new Date(lead.createdAt).toLocaleString('es-CO')}</td>
                   </tr>)}</tbody>
