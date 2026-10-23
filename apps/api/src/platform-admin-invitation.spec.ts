@@ -59,13 +59,13 @@ describe('staging first-superadmin invitation security',()=>{
   const result=await controller.activateStagingSuperadmin(key,{token:rawToken,password:'long-example-password-for-staging'});
   expect(result.ok).toBe(true);
   expect(used).toBe(false);
-  expect(writes).toEqual(['app_profiles','company_memberships','platform_admins']);
+  expect(writes).toEqual(['app_profiles','platform_admins']);
   await expect(controller.activateStagingSuperadmin(key,{token:rawToken,password:'another-long-password'})).rejects.toThrow(/completada/);
  });
- test('one-time token creates password-protected profile, demo membership and platform grant',async()=>{
+ test('one-time token creates a platform-only profile and platform grant',async()=>{
   const outcome=await controller.activateStagingSuperadmin(key,{token:rawToken,password:'not-a-weak-password'});
   expect(outcome).toMatchObject({ok:true,loginIdentifier:'1018453680'});
-  expect(writes).toEqual(['app_profiles','company_memberships','platform_admins']);
+  expect(writes).toEqual(['app_profiles','platform_admins']);
   expect(created).toBe(1);
   await expect(controller.activateStagingSuperadmin(key,{token:rawToken,password:'another-strong-password'})).rejects.toThrow();
   expect(created).toBe(1);
