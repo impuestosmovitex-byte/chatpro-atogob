@@ -21,7 +21,7 @@ export default async function PreciosPage(){
  const published=await readPublished();
  const prices=MW1_COMMERCIAL_PROPOSAL.map(plan=>{
   const found=published.find(p=>p.plan_key===plan.legacyKey);
-  return {...plan,price:found?.price_cop??plan.price,users:found?.max_users??plan.users,connections:found?.max_whatsapp_lines??plan.connections,extraUserCop:found?.extra_user_cop??32000,extraConnectionCop:found?.extra_connection_cop??50000,summary:found?.public_summary?.trim()||plan.summary,included:Array.isArray(found?.public_features)&&found.public_features.length>0?found.public_features.filter((x):x is string=>typeof x==='string').slice(0,20):plan.included};
+  return {...plan,published:!!found,price:found?.price_cop??plan.price,users:found?.max_users??plan.users,connections:found?.max_whatsapp_lines??plan.connections,extraUserCop:found?.extra_user_cop??32000,extraConnectionCop:found?.extra_connection_cop??50000,summary:found?.public_summary?.trim()||plan.summary,included:Array.isArray(found?.public_features)&&found.public_features.length>0?found.public_features.filter((x):x is string=>typeof x==='string').slice(0,20):plan.included};
  });
  return <main className={styles.site}>
   <MarketingHeader/>
@@ -30,13 +30,16 @@ export default async function PreciosPage(){
     <div className={styles.eyebrow}>Planes MW1</div>
     <h2>Elige el plan que se ajusta a tu negocio.</h2>
     <p>Desde pequeños comercios hasta equipos de ventas: clientes y conversaciones en una sola plataforma.</p>
-    <p className={styles.pricingClarification}>Tarifas orientativas sujetas a confirmación. Las funciones todavía en desarrollo se identifican expresamente.</p>
+    <p className={styles.pricingClarification}>Las tarifas publicadas se indican en cada plan. Los demás valores son referencias provisionales. Ninguno representa un cobro automático ni activa suscripciones.</p>
    </div>
    <div className={styles.priceGrid}>
     {prices.map(plan=><article key={plan.key} className={plan.featured?`${styles.priceCard} ${styles.priceCardFeatured}`:styles.priceCard}>
      <span className={styles.priceLabel}>{plan.eyebrow}</span>
      <h3>{plan.name}</h3>
      <div className={styles.price}>${pesos(plan.price)}<span style={{fontSize:14,fontWeight:500}}> / mes</span></div>
+     <p style={{fontSize:12,fontWeight:750,color:plan.published?'#166036':'#85610a'}}>
+       {plan.published?'Tarifa publicada en ambiente de pruebas':'Propuesta orientativa · pendiente de aprobación'}
+     </p>
      <p style={{fontSize:14,color:'#657187',margin:'10px 0'}}>{plan.summary}</p>
      <p style={{fontWeight:800,marginBottom:8}}>{plan.users} usuarios · {plan.connections} conexiones</p>
      <ul>{plan.highlights.map(x=><li key={x}>{x}</li>)}</ul>
@@ -50,6 +53,6 @@ export default async function PreciosPage(){
    </div>
    <PublicPlanSimulator options={prices.map(p=>({key:p.key,name:p.name,price:p.price,users:p.users,connections:p.connections,extraUserCop:p.extraUserCop,extraConnectionCop:p.extraConnectionCop}))}/>
   </section>
-  <footer className={styles.footer}>MW1 · Precios orientativos pendientes de aprobación</footer>
+  <footer className={styles.footer}>MW1 · Los precios configurados en pruebas no generan pagos ni activan cuentas. Las condiciones comerciales requieren confirmación.</footer>
  </main>;
 }
