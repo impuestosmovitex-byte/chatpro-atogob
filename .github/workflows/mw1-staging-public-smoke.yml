@@ -44,13 +44,13 @@ jobs:
             # Deliberately omit -L: a redirect to /login is a regression.
             status="$(curl -sS --connect-timeout 8 --max-time 18 -o /tmp/mw1-why -w '%{http_code}' "$BASE_URL/por-que")"
             echo "Why MW1 attempt $attempt HTTP $status"
-            if test "$status" = "200" && grep -q 'Que una conversación sin atender' /tmp/mw1-why; then
+            if test "$status" = "200" && grep -q '¿Por qué utilizar MW1?' /tmp/mw1-why; then
               break
             fi
             sleep 12
           done
           test "$status" = "200"
-          grep -q 'Que una conversación sin atender' /tmp/mw1-why
+          grep -q '¿Por qué utilizar MW1?' /tmp/mw1-why
           ! grep -q 'Iniciar sesión para continuar' /tmp/mw1-why
       - name: Protected admin endpoints deny anonymous requests
         shell: bash
