@@ -48,7 +48,8 @@ export default async function PreciosPage(){
       <h4 style={{margin:'16px 0 8px'}}>Incluye</h4><ul>{plan.included.map(x=><li key={x}>{x}</li>)}</ul>
       <h4 style={{margin:'16px 0 8px'}}>Condiciones y disponibilidad</h4><ul>{plan.conditional.map(x=><li key={x}>{x}</li>)}</ul>
      </details>
-     <Link href={`/demo?plan=${plan.key}`} className={plan.featured?styles.primaryButton:styles.secondaryButton}>Solicitar demo</Link>
+     <Link href={`/prueba-gratis?plan=${plan.key}`} className={plan.featured?styles.primaryButton:styles.secondaryButton}>Solicitar 14 días de prueba</Link>
+     <p style={{fontSize:12,color:'#68758b',marginTop:9}}>Prueba guiada sujeta a activación. <Link href={`/demo?plan=${plan.key}`}>Prefiero una demo</Link></p>
     </article>)}
    </div>
    <PublicPlanSimulator options={prices.map(p=>({key:p.key,name:p.name,price:p.price,users:p.users,connections:p.connections,extraUserCop:p.extraUserCop,extraConnectionCop:p.extraConnectionCop}))}/>
