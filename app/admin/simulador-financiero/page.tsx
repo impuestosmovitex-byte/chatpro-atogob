@@ -17,6 +17,24 @@ export default function SimuladorFinancieroMW1(){
  const [supportPerCompany,setSupportPerCompany]=useState(0);
  const [fxRate,setFxRate]=useState(4000);
  const [usdOpenAi,setUsdOpenAi]=useState(false);
+ const [priceNotice,setPriceNotice]=useState('');
+ const [loadingPublished,setLoadingPublished]=useState(false);
+ async function importPublishedPrices(){
+  setLoadingPublished(true);setPriceNotice('');
+  try{
+   const response=await fetch('/api/platform-admin/plan-published',{cache:'no-store'});
+   const data=await response.json() as {ok?:boolean;error?:string;plans?:Array<{plan_key:string;price_cop:number}>};
+   if(!response.ok||!data.ok||!Array.isArray(data.plans))throw new Error(data.error||'No se pudo consultar precios publicados.');
+   const published=new Map(data.plans.map(p=>[p.plan_key,p.price_cop]));
+   if(published.size===0){setPriceNotice('Todavía no hay planes publicados. Continúan los valores de referencia.');return;}
+   setPrices(current=>MW1_COMMERCIAL_PROPOSAL.map((plan,i)=>{
+    const n=published.get(plan.legacyKey);
+    return typeof n==='number'&&Number.isFinite(n)&&n>0?n:current[i];
+   }));
+   setPriceNotice('Se cargaron las tarifas publicadas que existen. Los demás planes conservan sus valores actuales. No se actualizaron suscripciones.');
+  }catch(e){setPriceNotice(e instanceof Error?e.message:'No fue posible importar las tarifas.');}
+  finally{setLoadingPublished(false);}
+ }
  const result=useMemo(()=>{
   const clients=counts.reduce((n,v)=>n+v,0);
   const income=counts.reduce((n,v,i)=>n+v*prices[i],0);
@@ -36,6 +54,14 @@ export default function SimuladorFinancieroMW1(){
    <p><Link href="/admin/planes">Planes</Link> · <Link href="/admin/consumo-ia">Consumo IA</Link> · <Link href="/admin/tarifas-ia">Tarifas IA</Link></p>
    <section style={{marginTop:24,background:'#fff',padding:22,borderRadius:16,border:'1px solid #e3e7ee'}}>
     <h2 style={{fontSize:20,marginBottom:16}}>Empresas y mensualidades</h2>
+    <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',marginBottom:18}}>
+      <button type="button" onClick={()=>void importPublishedPrices()} disabled={loadingPublished}
+       style={{padding:'10px 14px',background:'#172235',color:'white',border:0,borderRadius:9,fontWeight:700}}>
+       {loadingPublished?'Consultando…':'Cargar precios publicados en MW1'}
+      </button>
+      <span style={{fontSize:12,color:'#657187'}}>Importa solo los precios guardados y publicados. Los escenarios siguen siendo editables.</span>
+    </div>
+    {priceNotice&&<p role="status" style={{padding:11,borderRadius:8,background:'#f4f6fb',color:'#364b66'}}>{priceNotice}</p>}
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:16}}>
     {MW1_COMMERCIAL_PROPOSAL.map((p,i)=><div key={p.key} style={{display:'grid',gap:9,padding:15,borderRadius:12,background:'#fafbfe'}}>
      <strong>{p.name}</strong>
