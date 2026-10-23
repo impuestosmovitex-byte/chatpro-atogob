@@ -232,8 +232,30 @@ export class PlatformAdminController {
       );
     }
 
+    // Operational clients are registered as read-only directory references.
+    // They live in separate Supabase databases: do not merge memberships,
+    // entitlements, message records, secrets or billing into staging.
+    let linkedCompanies:Array<{
+      name:string;slug:string;billingStatus:string;source:string;verifiedAt:string;
+    }>=[];
+    if(process.env.MW1_STAGING_MODE==='true'){
+      const {data:directory,error:directoryError}=await client
+        .from('platform_external_tenant_registry')
+        .select('company_name,company_slug,billing_status,environment_label,verified_at')
+        .order('company_name',{ascending:true}).limit(100);
+      if(directoryError)
+        throw new BadRequestException('No se pudo consultar el directorio de empresas operativas.');
+      linkedCompanies=(directory??[]).map(item=>({
+        name:item.company_name,
+        slug:item.company_slug,
+        billingStatus:item.billing_status,
+        source:item.environment_label,
+        verifiedAt:item.verified_at,
+      }));
+    }
     return {
       ok: true,
+      linkedCompanies,
       companies: (companies ?? []).map((company) => {
         const entitlement = entitlementsByCompany.get(company.id);
 
