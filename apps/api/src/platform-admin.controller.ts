@@ -330,7 +330,7 @@ export class PlatformAdminController {
     }
     const {data,error}=await this.supabaseService.getClient()
       .from('platform_demo_requests')
-      .select('id,company_name,contact_name,contact_email,plan_interest,status,created_at')
+      .select('id,company_name,contact_name,contact_email,contact_phone,whatsapp_setup,trial_requested_days,trial_activated_at,source,plan_interest,status,created_at')
       .order('created_at',{ascending:false})
       .limit(50);
     if(error)throw new BadRequestException('No fue posible consultar las solicitudes.');
@@ -340,6 +340,11 @@ export class PlatformAdminController {
       contactName:record.contact_name,
       contactEmail:record.contact_email,
       planInterest:record.plan_interest,
+      requestType:record.source==='web_trial'?'trial':'demo',
+      contactPhone:record.contact_phone??null,
+      whatsappSetup:record.whatsapp_setup??null,
+      trialDays:record.trial_requested_days??null,
+      trialActivatedAt:record.trial_activated_at??null,
       status:record.status,
       createdAt:record.created_at,
     }))};
