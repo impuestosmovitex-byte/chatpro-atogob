@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/mw1-staging-public-smoke.yml'
       - 'proxy.ts'
+      - 'app/por-que/page.tsx'
+      - 'app/por-que/por-que.module.css'
       - 'app/api/staging-admin-setup/route.ts'
       - 'app/activar-administrador/page.tsx'
   workflow_dispatch:
@@ -33,6 +35,23 @@ jobs:
             test -s /tmp/mw1-page
           done
           grep -q '"ok":true' <(curl -fsS --max-time 18 "$BASE_URL/api/health")
+      - name: Verify Why MW1 is public without authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            # Deliberately omit -L: a redirect to /login is a regression.
+            status="$(curl -sS --connect-timeout 8 --max-time 18 -o /tmp/mw1-why -w '%{http_code}' "$BASE_URL/por-que")"
+            echo "Why MW1 attempt $attempt HTTP $status"
+            if test "$status" = "200" && grep -q 'Que una conversación sin atender' /tmp/mw1-why; then
+              break
+            fi
+            sleep 12
+          done
+          test "$status" = "200"
+          grep -q 'Que una conversación sin atender' /tmp/mw1-why
+          ! grep -q 'Iniciar sesión para continuar' /tmp/mw1-why
       - name: Protected admin endpoints deny anonymous requests
         shell: bash
         run: |
