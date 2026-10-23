@@ -2,7 +2,6 @@ import type {Metadata} from 'next';
 import Link from 'next/link';
 import {MarketingHeader} from '../components/marketing/MarketingHeader';
 import {DemoRequestForm} from '../demo/DemoRequestForm';
-import {MW1_COMMERCIAL_PROPOSAL} from '../lib/mw1-commercial-proposal';
 import styles from '../components/marketing/marketing.module.css';
 
 export const metadata:Metadata={
@@ -37,12 +36,6 @@ export default function PruebaGratisPage(){
       <p style={{fontSize:12,lineHeight:1.7}}>Las integraciones y los cargos de mensajería de Meta pueden tener condiciones y precios independientes. Algunas funciones dependen de aprobación, canal y plan.</p>
      </div>
      <p style={{marginTop:20}}><Link href="/precios">Comparar los tres planes →</Link></p>
-     <div style={{display:'flex',flexWrap:'wrap',gap:9,marginTop:10}}>
-      {MW1_COMMERCIAL_PROPOSAL.map(plan=><Link key={plan.key} href={'/prueba-gratis?plan='+plan.key}
-        style={{padding:'9px 14px',border:'1px solid #d9dfe8',borderRadius:10,color:'#172235',fontWeight:750,fontSize:13,textDecoration:'none'}}>
-        {plan.name}
-       </Link>)}
-     </div>
     </article>
     <article className={styles.demoCard}>
       <h3>Solicitar mis 14 días de prueba</h3>
