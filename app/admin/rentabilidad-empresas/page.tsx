@@ -38,9 +38,11 @@ const blank=(option:Option):Form=>({billedCop:'',receivedCop:'',openaiCop:'',sup
  allocationWeight:1,evidenceNote:''});
 const asText=(n:unknown)=>n===null||n===undefined?'':String(n);
 const keyOf=(o:Option)=>o.companySource+':'+o.companySlug;
-function defaultMonth(){const date=new Date();const dt=new Intl.DateTimeFormat('en-CA',{
- timeZone:'America/Bogota',year:'numeric',month:'2-digit'}).format(date);
- return dt+'-01';
+function defaultMonth(){
+ const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Bogota',year:'numeric',month:'2-digit'}).formatToParts(new Date());
+ const year=parts.find(p=>p.type==='year')?.value??'2026';
+ const month=parts.find(p=>p.type==='month')?.value??'10';
+ return year+'-'+month+'-01';
 }
 function toForm(o:Option,row:RecordDb|undefined):Form{
  if(!row)return blank(o);
