@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { AppSidebar } from '../../components/AppSidebar';
+import { PlatformSidebar } from '../../components/PlatformSidebar';
 import Link from 'next/link';
 
 type Entitlements = {
@@ -221,7 +221,7 @@ export default function PlatformCompaniesPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f6f8', color: '#171a21' }}>
-      <AppSidebar />
+      <PlatformSidebar />
       <main style={{ marginLeft: 160, padding: '38px 42px 80px', maxWidth: 1500 }}>
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, color: '#9a7627' }}>
