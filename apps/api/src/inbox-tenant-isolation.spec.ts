@@ -58,13 +58,19 @@ describe('Staging cross-company inbox authorization',()=>{
  it('rejects user A attempting to list company B with a forged company parameter',async()=>{
   await expect(controller.list(internalKey,'user','user-a','Advisor A',companyA.id,'owner',
    companyB.slug,'all','20','0','','')).rejects.toThrow();
-  expect(queried).toContain('company_memberships');
-  expect(queried).not.toContain('app_role_permissions');
+  // A signed company A cookie cannot request company B at all.
+  expect(queried).toEqual([]);
  });
  it('rejects user A attempting to read company B conversation by identifier',async()=>{
   await expect(controller.getConversation(internalKey,'user','user-a','Advisor A',
     companyA.id,'owner',companyB.slug,'','','','session-b')).rejects.toThrow();
+  expect(queried).toEqual([]);
+ });
+ it('rejects forged company B header for user A after fresh membership verification',async()=>{
+  await expect(controller.list(internalKey,'user','user-a','Advisor A',companyB.id,'owner',
+   companyB.slug,'all','20','0','','')).rejects.toThrow();
   expect(queried).toContain('company_memberships');
+  expect(queried).not.toContain('app_role_permissions');
  });
  it('does not let platform administrator session impersonate a tenant owner',async()=>{
   await expect(controller.list(internalKey,'platform','admin','Admin',companyA.id,
