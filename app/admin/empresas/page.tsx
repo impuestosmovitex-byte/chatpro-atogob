@@ -33,6 +33,7 @@ type Company = {
   entitlements: Entitlements;
 };
 
+type LinkedCompany={name:string;slug:string;source:string;billingStatus:string;verifiedAt:string;};
 type DemoLead={
   id:string;companyName:string;contactName:string;contactEmail:string;
   planInterest:string;status:string;createdAt:string;
@@ -42,6 +43,7 @@ type CompaniesResponse = {
   ok?: boolean;
   error?: string;
   companies?: Company[];
+  linkedCompanies?: LinkedCompany[];
 };
 
 type FormState = {
@@ -95,6 +97,7 @@ const inputStyle: React.CSSProperties = {
 
 export default function PlatformCompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [linkedCompanies,setLinkedCompanies]=useState<LinkedCompany[]>([]);
   const [form, setForm] = useState<FormState>(initialForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -133,6 +136,7 @@ export default function PlatformCompaniesPage() {
       }
 
       setCompanies(data.companies || []);
+      setLinkedCompanies(Array.isArray(data.linkedCompanies)?data.linkedCompanies:[]);
     } catch {
       setError('No se pudo cargar la administración de empresas.');
     } finally {
@@ -248,7 +252,7 @@ export default function PlatformCompaniesPage() {
         ) : null}
 
         {authorized === false ? null : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(460px, 0.9fr) minmax(520px, 1.1fr)', gap: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,430px),1fr))', gap: 22 }}>
             <form onSubmit={submit} style={cardStyle}>
               <h2 style={{ marginTop: 0 }}>+ Nueva empresa</h2>
               <p style={{ color: '#667085', marginTop: -6 }}>
@@ -345,8 +349,8 @@ export default function PlatformCompaniesPage() {
             <section style={cardStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <h2 style={{ margin: 0 }}>Empresas en MW1</h2>
-                  <p style={{ color: '#667085', margin: '5px 0 0' }}>{companies.length} empresas registradas</p>
+                  <h2 style={{ margin: 0 }}>Directorio de empresas MW1</h2>
+                  <p style={{ color: '#667085', margin: '5px 0 0' }}>{companies.length+linkedCompanies.length} empresas identificadas · {linkedCompanies.length} operativas vinculadas · {companies.length} en staging</p>
                 </div>
                 <button type="button" onClick={() => void load()} style={{ ...inputStyle, width: 'auto', cursor: 'pointer', background: '#fff' }}>
                   Actualizar
@@ -354,6 +358,21 @@ export default function PlatformCompaniesPage() {
               </div>
 
               {loading ? <p>Cargando…</p> : null}
+              {!loading&&linkedCompanies.length>0&&<div style={{margin:'18px 0 22px',display:'grid',gap:12}}>
+                <h3 style={{fontSize:17,margin:'4px 0'}}>Empresas operativas vinculadas</h3>
+                <p style={{color:'#667085',fontSize:13,margin:0}}>
+                  Cuentas existentes en el MW1 operativo. Son empresas clientes, no propietarios de MW1.
+                  Estas fichas son referencias de solo lectura: sus conversaciones, accesos, contratos
+                  y permisos siguen en su entorno original.
+                </p>
+                {linkedCompanies.map(linked=><article key={linked.slug} style={{border:'1px solid #dce6f2',background:'#f8fbff',borderRadius:12,padding:15}}>
+                  <strong style={{fontSize:16}}>{linked.name}</strong>
+                  <p style={{fontSize:12,color:'#63718a',margin:'4px 0 10px'}}>{linked.slug} · {linked.source}</p>
+                  <p style={{fontSize:13,margin:'5px 0'}}><strong>Facturación MW1:</strong> Pendiente de configurar y validar; no significa servicio gratuito ni pago confirmado.</p>
+                  <p style={{fontSize:12,color:'#63718a',margin:'5px 0'}}>Sin sincronización automática de usuarios, consumos ni planes. No se creó una cuenta demo duplicada.</p>
+                </article>)}
+              </div>}
+              <h3 style={{fontSize:17,margin:'20px 0 8px'}}>Empresas en pruebas de MW1</h3>
               {!loading && companies.length === 0 ? <p>No hay empresas todavía.</p> : null}
 
               <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
