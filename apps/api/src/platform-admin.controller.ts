@@ -8,7 +8,7 @@ import {
   Query,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { AccessAuthService } from './access-auth.service';
 import { SupabaseService } from './supabase.service';
 import {companyReadiness} from './platform-company-readiness';
@@ -75,15 +75,26 @@ export class PlatformAdminController {
     if(adminError||admins===null)
       throw new BadRequestException('No se pudo comprobar el estado de administración.');
     if(admins>0)throw new UnauthorizedException('El alta inicial ya fue completada.');
-    // UPDATE ... WHERE used_at IS NULL is the one-time atomic claim.
-    // If subsequent provisioning fails, the invitation stays consumed (fail closed).
-    const digest=createHash('sha256').update(body.token).digest('hex');
-    const {data:invite,error:inviteError}=await client.from('platform_staging_admin_invites')
-      .update({used_at:new Date().toISOString()})
-      .eq('token_sha256',digest).is('used_at',null)
-      .gt('expires_at',new Date().toISOString())
-      .select('id,login_identifier,company_slug').maybeSingle();
-    if(inviteError||!invite)throw new UnauthorizedException('Este enlace no es válido o ya caducó.');
+    // Operators can also place an independent random code directly in the
+    // staging API environment. This avoids ever transmitting it through chat.
+    // Remove MW1_STAGING_ADMIN_SETUP_TOKEN after successful activation.
+    const configuredCode=process.env.MW1_STAGING_ADMIN_SETUP_TOKEN?.trim()||'';
+    const codeMatch=/^[0-9a-f]{64}$/.test(configuredCode)&&
+      timingSafeEqual(Buffer.from(body.token,'hex'),Buffer.from(configuredCode,'hex'));
+    let invite:{login_identifier:string;company_slug:string}|null=null;
+    if(codeMatch){
+      invite={login_identifier:'1018453680',company_slug:'mw1-demo-mercado'};
+    }else{
+      // Single-use DB invitation when issued by a trusted staging operator.
+      const digest=createHash('sha256').update(body.token).digest('hex');
+      const {data:claimed,error:inviteError}=await client.from('platform_staging_admin_invites')
+        .update({used_at:new Date().toISOString()})
+        .eq('token_sha256',digest).is('used_at',null)
+        .gt('expires_at',new Date().toISOString())
+        .select('id,login_identifier,company_slug').maybeSingle();
+      if(inviteError||!claimed)throw new UnauthorizedException('Código de activación inválido.');
+      invite=claimed;
+    }
     const identifier=invite.login_identifier;
     const password=body.password;
     if(password.includes(identifier))
