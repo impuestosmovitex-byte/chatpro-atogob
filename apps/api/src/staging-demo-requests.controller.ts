@@ -35,12 +35,13 @@ export class StagingDemoRequestsController {
     const contactName=clean(data.contactName,100);
     const contactEmail=clean(data.contactEmail,180).toLowerCase();
     const planInterest=clean(data.planInterest,20);
+    const legacyPlanKey=({basico:'inicial',eco:'pro',pro:'empresa',inicial:'inicial',empresa:'empresa',sin_definir:'sin_definir'} as Record<string,string>)[planInterest];
     const visitorDigest=clean(data.visitorDigest,64);
     if(companyName.length<2||companyName.length>100||
       contactName.length<2||contactName.length>100||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)||
       contactEmail.length>180||
-      !['inicial','pro','empresa','sin_definir'].includes(planInterest)||
+      !legacyPlanKey||
       !/^[0-9a-f]{64}$/.test(visitorDigest)||data.consent!==true)
       throw new BadRequestException('Completa la solicitud y autoriza el contacto.');
     const client=this.db.getClient();
@@ -52,7 +53,7 @@ export class StagingDemoRequestsController {
     if((count??0)>=3)return {ok:true,message:'Solicitud recibida. Nuestro equipo revisará tu información.'};
     const {error}=await client.from('platform_demo_requests').insert({
       company_name:companyName,contact_name:contactName,
-      contact_email:contactEmail,plan_interest:planInterest,
+      contact_email:contactEmail,plan_interest:legacyPlanKey,
       visitor_digest:visitorDigest,consent_at:new Date().toISOString(),
       status:'new',source:'web_demo',
     });
