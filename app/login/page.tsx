@@ -11,9 +11,11 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [staging, setStaging] = useState(false);
+  const [platformLogin,setPlatformLogin]=useState(false);
 
   useEffect(() => {
     setStaging(window.location.hostname === 'mw1-web-staging-staging.up.railway.app');
+    setPlatformLogin(new URLSearchParams(window.location.search).get('mode')==='platform');
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -25,7 +27,7 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ identifier, password, company:new URLSearchParams(window.location.search).get('company')||undefined }),
+        body: JSON.stringify({ identifier, password, company:platformLogin?'__platform__':new URLSearchParams(window.location.search).get('company')||undefined }),
       });
 
       const data = (await response.json()) as {
@@ -42,7 +44,7 @@ export default function LoginPage() {
       const safeDestination = destination && destination.startsWith('/') && !destination.startsWith('//')
         ? destination
         : '/';
-      router.replace(staging && safeDestination === '/' ? '/pedidos' : safeDestination);
+      router.replace(platformLogin && safeDestination==='/' ? '/admin' : staging && safeDestination==='/' ? '/pedidos' : safeDestination);
       router.refresh();
     } catch {
       setError('No se pudo conectar con Chat Pro. Intenta nuevamente.');
@@ -56,7 +58,7 @@ export default function LoginPage() {
       <section className={styles.card}>
         <div className={styles.mark}>MW1</div>
         <p className={styles.eyebrow}>MW1</p>
-        <h1>Iniciar sesión</h1>
+        <h1>{platformLogin?'Administración general MW1':'Iniciar sesión'}</h1>
         <p className={styles.copy}>
           Ingresa tu identificación o código de acceso y tu contraseña.
         </p>
@@ -69,7 +71,7 @@ export default function LoginPage() {
             onChange={(event) => setIdentifier(event.target.value)}
             autoComplete="username"
             autoFocus
-            placeholder={staging ? 'MW1DEMO' : 'Ejemplo: 1020304050'}
+            placeholder={platformLogin?'Identificación del superadministrador':staging ? 'MW1DEMO' : 'Ejemplo: 1020304050'}
           />
 
           <label htmlFor="password">Contraseña</label>
@@ -83,11 +85,12 @@ export default function LoginPage() {
           />
 
           <p className={styles.copy}>
-            {staging
-              ? 'Demo Supermercado: escribe MW1DEMO y la contraseña configurada para el propietario de pruebas. No uses claves de ATOGOB.'
+            {platformLogin ? 'Acceso independiente de las empresas. Aquí se administran los planes y las compañías de MW1.' : staging
+              ? 'Cuenta de empresa de demostración. No uses claves de ATOGOB.'
               : 'Para configurar la primera cuenta de la empresa, deja vacía la identificación y usa la contraseña principal actual.'}
           </p>
 
+          {staging?<p className={styles.copy}>{platformLogin?<a href="/login?company=mw1-demo-mercado">Entrar como usuario de empresa demo</a>:<a href="/login?mode=platform&next=%2Fadmin">Entrar como superadministrador MW1</a>}</p>:null}
           {error ? <p className={styles.error}>{error}</p> : null}
           <button type="submit" disabled={loading || !password}>
             {loading ? 'Ingresando…' : 'Ingresar'}
