@@ -36,6 +36,15 @@ export class StagingDemoRequestsController {
     const contactEmail=clean(data.contactEmail,180).toLowerCase();
     const planInterest=clean(data.planInterest,20);
     const legacyPlanKey=({basico:'inicial',eco:'pro',pro:'empresa',inicial:'inicial',empresa:'empresa',sin_definir:'sin_definir'} as Record<string,string>)[planInterest];
+    const requestType=clean(data.requestType,16)||'demo';
+    if(requestType!=='demo'&&requestType!=='trial')
+      throw new BadRequestException('Tipo de solicitud inválido.');
+    const contactPhone=clean(data.contactPhone,20).replace(/[\s()-]/g,'');
+    const whatsappSetup=clean(data.whatsappSetup,24);
+    const isTrial=requestType==='trial';
+    if(isTrial&&(!/^\+?[0-9]{7,19}$/.test(contactPhone)||
+      !['business_app','cloud_api','new_number','unsure'].includes(whatsappSetup)))
+      throw new BadRequestException('Indica un número de contacto y cómo usas WhatsApp.');
     const visitorDigest=clean(data.visitorDigest,64);
     if(companyName.length<2||companyName.length>100||
       contactName.length<2||contactName.length>100||
@@ -55,10 +64,14 @@ export class StagingDemoRequestsController {
       company_name:companyName,contact_name:contactName,
       contact_email:contactEmail,plan_interest:legacyPlanKey,
       visitor_digest:visitorDigest,consent_at:new Date().toISOString(),
-      status:'new',source:'web_demo',
+      status:'new',source:isTrial?'web_trial':'web_demo',
+      ...(isTrial?{contact_phone:contactPhone,whatsapp_setup:whatsappSetup,
+        trial_requested_days:14}:{}),
     });
     if(error)throw new BadRequestException('No fue posible registrar la solicitud.');
     // No user account, company, plan or WhatsApp message is created.
-    return {ok:true,message:'Solicitud registrada. Un asesor podrá contactarte para revisar la configuración.'};
+    return {ok:true,message:isTrial
+      ?'Solicitud de prueba recibida. La prueba de 14 días requiere activación confirmada con un asesor; todavía no ha comenzado.'
+      :'Solicitud registrada. Un asesor podrá contactarte para revisar la configuración.'};
   }
 }
