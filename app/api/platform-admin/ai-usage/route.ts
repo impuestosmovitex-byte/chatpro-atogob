@@ -4,7 +4,7 @@ export const dynamic='force-dynamic';
 export async function GET(request:NextRequest){
  if(process.env.MW1_STAGING_MODE!=='true')return NextResponse.json({ok:false,error:'Solo staging.'},{status:403});
  const session=await getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
- if(!session?.userId||session.type!=='user')return NextResponse.json({ok:false,error:'Sesión requerida.'},{status:401});
+ if(!session?.userId||session.type!=='platform')return NextResponse.json({ok:false,error:'Sesión requerida.'},{status:401});
  const companyId=request.nextUrl.searchParams.get('companyId')??'';
  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(companyId))
   return NextResponse.json({ok:false,error:'Empresa inválida.'},{status:400});
