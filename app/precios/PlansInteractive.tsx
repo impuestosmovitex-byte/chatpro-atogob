@@ -18,8 +18,8 @@ export default function PlansInteractive({plans}:{plans:PlanCardOption[]}){
    {plans.map(plan=>{
     const active=selected===plan.key;
     return <article key={plan.key} className={styles.priceCard}
-     style={{borderColor:active?'#e6bb19':'#e6eaf1',
-      boxShadow:active?'0 15px 40px rgba(244,191,0,.13)':'none',
+     style={{borderColor:'#e6bb19',background:'#fffdf5',
+      boxShadow:active?'0 0 0 2px #172235, 0 15px 40px rgba(244,191,0,.13)':'0 7px 22px rgba(244,191,0,.07)',
       display:'flex',flexDirection:'column',gap:0}}>
      <span className={styles.priceLabel}>{plan.eyebrow}</span>
      <h3>{plan.name}</h3>
