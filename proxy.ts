@@ -11,6 +11,7 @@ const PUBLIC_PATHS = new Set([
   '/precios',
   '/demo',
   '/integraciones',
+  '/por-que',
   '/api/auth/login',
   '/api/auth/logout',
   '/api/health',
