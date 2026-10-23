@@ -9,7 +9,7 @@ describe('Isolated staging commercial demo intake',()=>{
   let count:number;
   const data={
     companyName:'Tienda Beta',contactName:'Persona Prueba',
-    contactEmail:'pruebas@example.org',planInterest:'pro',
+    contactEmail:'pruebas@example.org',planInterest:'eco',
     visitorDigest:'b'.repeat(64),consent:true,
   };
   beforeEach(()=>{
@@ -41,6 +41,10 @@ describe('Isolated staging commercial demo intake',()=>{
       company_name:'Tienda Beta',plan_interest:'pro',status:'new',
     });
     expect(JSON.stringify(res)).not.toContain('pruebas@example.org');
+  });
+  test('maps commercial names to legacy storage without modifying entitlements',async()=>{
+    await controller.submit('internal-test-value',{...data,planInterest:'pro'});
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({plan_interest:'empresa'}));
   });
   test('rejects invalid or absent consent',async()=>{
     await expect(controller.submit('internal-test-value',{...data,consent:false}))
