@@ -475,12 +475,12 @@ export default function PlatformCompaniesPage() {
                     <td style={{padding:10}}>{lead.contactName}
                       <div><a href={'mailto:'+lead.contactEmail}>{lead.contactEmail}</a></div>
                       {lead.contactPhone&&<div><a href={'tel:'+lead.contactPhone}>{lead.contactPhone}</a></div>}
-                      {lead.whatsappSetup&&<div style={{fontSize:11,color:'#667085'}}>WhatsApp: {{
+                      {lead.whatsappSetup&&<div style={{fontSize:11,color:'#667085'}}>WhatsApp: {({
                         business_app:'Usa WhatsApp Business',
                         cloud_api:'Ya utiliza API',
                         new_number:'Número nuevo',
                         unsure:'Requiere orientación',
-                      }[lead.whatsappSetup]??'Por revisar'}</div>}
+                      } as Record<string,string>)[lead.whatsappSetup]??'Por revisar'}</div>}
                     </td>
                     <td style={{padding:10}}>{lead.requestType==='trial'?'Prueba guiada 14 días':'Demo'}</td>
                     <td style={{padding:10}}>{{inicial:'Básico',pro:'Eco',empresa:'Pro',sin_definir:'Por definir'}[lead.planInterest]??lead.planInterest}</td>
