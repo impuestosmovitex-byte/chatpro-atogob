@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import {useEffect,useState,type FormEvent} from 'react';
-import {AppSidebar} from '../../components/AppSidebar';
+import {PlatformSidebar} from '../../components/PlatformSidebar';
 import {MW1_COMMERCIAL_PROPOSAL,MW1_EXTRA_USER_PREVIEW_COP,MW1_EXTRA_CONNECTION_PREVIEW_COP} from '../../lib/mw1-commercial-proposal';
 
 type Key='inicial'|'pro'|'empresa';
@@ -110,8 +110,8 @@ export default function AdminPlansPage(){
     finally{setPublishing(false);}
   }
   return <div style={{background:'#f5f6f8',minHeight:'100vh',color:'#172235'}}>
-    <AppSidebar/>
-    <main style={{maxWidth:1250,marginLeft:160,padding:'38px 42px 80px'}}>
+    <PlatformSidebar/>
+    <main style={{maxWidth:1250,marginLeft:176,padding:'38px 42px 80px'}}>
       <p style={{fontSize:12,fontWeight:800,color:'#957020',letterSpacing:1.3}}>
         SUPER ADMIN MW1 · PLANES COMERCIALES
       </p>
