@@ -20,7 +20,7 @@ export default function PublicPlanSimulator({options,selectedPlanKey,onSelectPla
    <h3 style={{fontSize:25,marginBottom:8}}>Diseña tu plan</h3>
    <p style={{fontSize:14,color:'#586477',lineHeight:1.6,marginBottom:20}}>Calcula un valor orientativo según usuarios y conexiones. No genera cargos ni activa servicios.</p>
    <div style={{display:'flex',flexWrap:'wrap',gap:9,marginBottom:22}}>
-    {options.map((p,i)=><button type="button" key={p.key} aria-pressed={selected===i} onClick={()=>{onSelectPlan(p.key);setUsers(p.users);setConnections(p.connections);}} style={{padding:'10px 18px',borderRadius:12,border:'1px solid #dce2eb',cursor:'pointer',fontWeight:800,background:selected===i?'#172235':'#fff',color:selected===i?'#fff':'#172235'}}>{p.name}</button>)}
+    {options.map((p,i)=><button type="button" key={p.key} aria-pressed={selected===i} onClick={()=>{onSelectPlan(p.key);setUsers(p.users);setConnections(p.connections);}} style={{padding:'10px 18px',borderRadius:12,border:'1px solid #dce2eb',cursor:'pointer',fontWeight:800,background:'#f4bf00',color:'#172235',outline:selected===i?'2px solid #172235':'none',outlineOffset:2}}>{p.name}</button>)}
    </div>
    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:24,marginBottom:22}}>
     <label style={{display:'grid',gap:10,fontWeight:700}}>Usuarios: {users}<input aria-label="Cantidad de usuarios" type="range" min={plan.users} max={20} value={users} onChange={e=>setUsers(Number(e.target.value))}/><small style={{fontWeight:400,color:'#667085'}}>Incluidos: {plan.users}; adicional estimado: {pesos(extraUserPrice)}/mes</small></label>
