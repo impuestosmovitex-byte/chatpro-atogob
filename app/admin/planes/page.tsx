@@ -40,6 +40,7 @@ export default function AdminPlansPage(){
   const [authorized,setAuthorized]=useState(false);
   const [loaded,setLoaded]=useState(false);
   const [plans,setPlans]=useState<Plan[]>(keys.map(initial));
+  const [savedPlans,setSavedPlans]=useState<Plan[]>(keys.map(initial));
   const [selected,setSelected]=useState<Key>('inicial');
   const [saving,setSaving]=useState(false);
   const [publishing,setPublishing]=useState(false);
@@ -60,7 +61,9 @@ export default function AdminPlansPage(){
         const data=await response.json() as {ok?:boolean;error?:string;plans?:Plan[]};
         if(!response.ok||!data.ok)throw Error(data.error||'No se pudieron cargar los planes.');
         if(active&&Array.isArray(data.plans)){
-          setPlans(keys.map(key=>data.plans!.find(p=>p.planKey===key)||initial(key)));
+          const loadedPlans=keys.map(key=>data.plans!.find(p=>p.planKey===key)||initial(key));
+          setPlans(loadedPlans);
+          setSavedPlans(loadedPlans);
         }
       }catch(cause){
         if(active)setError(cause instanceof Error?cause.message:'Error consultando los planes.');
@@ -69,6 +72,8 @@ export default function AdminPlansPage(){
     return()=>{active=false;};
   },[]);
   const plan=plans.find(p=>p.planKey===selected)||initial(selected);
+  const savedPlan=savedPlans.find(p=>p.planKey===selected)||initial(selected);
+  const hasUnsavedChanges=JSON.stringify(plan)!==JSON.stringify(savedPlan);
   const update=<K extends keyof Plan>(field:K,value:Plan[K])=>{
     setPlans(old=>old.map(p=>p.planKey===selected?{...p,[field]:value}:p));
     setNotice('');
@@ -86,13 +91,14 @@ export default function AdminPlansPage(){
       });
       const data=await res.json() as {ok?:boolean;error?:string;message?:string};
       if(!res.ok||!data.ok)throw Error(data.error||'No fue posible guardar.');
+      setSavedPlans(old=>old.map(p=>p.planKey===selected?plan:p));
       setNotice(data.message||'Borrador guardado.');
     }catch(cause){
       setError(cause instanceof Error?cause.message:'No se guardó el borrador.');
     }finally{setSaving(false);}
   }
   async function publish(){
-    if(publishing||saving||!authorized||plan.reviewStatus!=='ready_for_review')return;
+    if(publishing||saving||!authorized||hasUnsavedChanges||plan.reviewStatus!=='ready_for_review')return;
     if(!window.confirm('¿Publicar el precio y los cupos guardados de este plan en la web de staging? No modifica contratos ni activa pagos.'))return;
     setPublishing(true);setError('');setNotice('');
     try{
@@ -234,11 +240,12 @@ export default function AdminPlansPage(){
             {saving?'Guardando…':'Guardar borrador privado'}
           </button>
           <button type="button" onClick={()=>void publish()}
-            disabled={publishing||saving||plan.reviewStatus!=='ready_for_review'}
+            disabled={publishing||saving||hasUnsavedChanges||plan.reviewStatus!=='ready_for_review'}
             style={{padding:'12px 20px',borderRadius:10,marginLeft:12,border:'1px solid #172235',background:'white',color:'#172235',fontWeight:700,cursor:'pointer'}}>
             {publishing?'Publicando…':'Publicar precio en staging'}
           </button>
-          <p style={{fontSize:12,color:'#667085',marginTop:12}}>Primero guarda el borrador con estado «Listo para revisión». El botón publica únicamente precio y cupos, no concede permisos a clientes ni activa pagos. Las funcionalidades completas aún requieren aprobación.</p>
+          {hasUnsavedChanges&&<p role="status" style={{fontSize:13,color:'#9a6700',marginTop:12}}>Hay cambios sin guardar. Guarda este plan antes de publicarlo en staging.</p>}
+          <p style={{fontSize:12,color:'#667085',marginTop:12}}>Primero guarda el borrador con estado «Listo para revisión». Publicar actualiza precio, cupos y beneficios comerciales guardados; no concede permisos a clientes ni activa pagos.</p>
         </form>
       </div>}
     </main>
