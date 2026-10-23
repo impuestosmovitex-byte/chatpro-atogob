@@ -33,7 +33,7 @@ export default function PorQuePage(){
     <p className={styles.lead}>MW1 es una plataforma diseñada para integrar, gestionar y controlar los mensajes y canales de comunicación de tu empresa desde un solo lugar.</p>
     <p className={styles.sublead}>Centraliza la atención, organiza a tus asesores y apóyate en inteligencia artificial para que las conversaciones no dependan de que estés conectado todo el día.</p>
     <div className={styles.actions}>
-     <Link href="/demo" className={marketing.primaryButton}>Solicitar una demostración ↗</Link>
+     <Link href="/prueba-gratis" className={marketing.primaryButton}>Solicitar 14 días de prueba ↗</Link>
      <Link href="/precios" className={marketing.secondaryButton}>Conocer los planes</Link>
     </div>
     <span className={styles.heroDisclaimer}>Disponibilidad según plan, canales conectados y configuración. MW1 apoya a tu equipo; no garantiza ventas ni resultados comerciales específicos.</span>
@@ -152,7 +152,7 @@ export default function PorQuePage(){
    <p className={styles.kicker}>Empieza a transformar la atención de tu negocio</p>
    <h2>MW1 es más que un CRM. Es una forma de organizar tu empresa para seguir creciendo.</h2>
    <p>Centraliza tus conversaciones, apoya a tus asesores con IA, automatiza tareas repetitivas y da seguimiento a cada oportunidad desde una misma plataforma.</p>
-   <div className={styles.actions}><Link href="/demo" className={marketing.primaryButton}>Quiero conocer MW1</Link><Link href="/precios" className={marketing.secondaryButton}>Ver planes y precios</Link></div>
+   <div className={styles.actions}><Link href="/prueba-gratis" className={marketing.primaryButton}>Probar MW1 durante 14 días</Link><Link href="/precios" className={marketing.secondaryButton}>Ver planes y precios</Link></div>
   </section>
   <footer className={marketing.footer}>MW1 · Atención más organizada, inteligencia artificial y control para tu empresa</footer>
  </main>;
