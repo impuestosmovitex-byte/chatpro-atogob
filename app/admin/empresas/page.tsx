@@ -45,7 +45,13 @@ type DemoLead={
   id:string;companyName:string;contactName:string;contactEmail:string;
   planInterest:string;status:string;createdAt:string;
   requestType:'trial'|'demo';contactPhone:string|null;whatsappSetup:string|null;trialDays:number|null;trialActivatedAt:string|null;
+  internalNote:string;followUpOn:string|null;
 };
+
+type LeadFollowupDraft={status:'new'|'contacted'|'qualified'|'closed';internalNote:string;followUpOn:string;};
+
+const leadStatusOptions:LeadFollowupDraft['status'][]=['new','contacted','qualified','closed'];
+const leadStatusLabels:Record<LeadFollowupDraft['status'],string>={new:'Nueva',contacted:'Contactada',qualified:'Calificada',closed:'Cerrada'};
 
 type CompaniesResponse = {
   ok?: boolean;
@@ -115,6 +121,9 @@ export default function PlatformCompaniesPage() {
   const [demoRequests,setDemoRequests]=useState<DemoLead[]>([]);
   const [demoLoading,setDemoLoading]=useState(false);
   const [demoAvailable,setDemoAvailable]=useState(false);
+  const [leadDrafts,setLeadDrafts]=useState<Record<string,LeadFollowupDraft>>({});
+  const [leadSaving,setLeadSaving]=useState<string|null>(null);
+  const [leadMessage,setLeadMessage]=useState('');
 
   async function load() {
     setLoading(true);
@@ -170,13 +179,43 @@ export default function PlatformCompaniesPage() {
         const payload=await response.json() as {ok?:boolean;requests?:DemoLead[]};
         if(active&&payload.ok){
           setDemoAvailable(true);
-          setDemoRequests(Array.isArray(payload.requests)?payload.requests:[]);
+          const leads=Array.isArray(payload.requests)?payload.requests:[];
+          setDemoRequests(leads);
+          setLeadDrafts(Object.fromEntries(leads.map(lead=>[lead.id,{
+            status:lead.status as LeadFollowupDraft['status'],
+            internalNote:lead.internalNote??'',
+            followUpOn:lead.followUpOn??'',
+          }])));
         }
       })
       .catch(()=>{if(active)setDemoAvailable(false);})
       .finally(()=>{if(active)setDemoLoading(false);});
     return()=>{active=false;};
   },[authorized]);
+
+  function updateLeadDraft(id:string,patch:Partial<LeadFollowupDraft>){
+    setLeadDrafts(old=>({...old,[id]:{...old[id],...patch}}));
+    setLeadMessage('');
+  }
+
+  async function saveLeadFollowup(id:string){
+    const draft=leadDrafts[id];
+    if(!draft||leadSaving)return;
+    setLeadSaving(id);setLeadMessage('');
+    try{
+      const result=await fetch('/api/platform-admin/demo-requests',{
+        method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({id,status:draft.status,internalNote:draft.internalNote,followUpOn:draft.followUpOn||null}),
+      });
+      const payload=await result.json() as {ok?:boolean;error?:string;message?:string};
+      if(!result.ok||!payload.ok)throw new Error(payload.error||'No se pudo actualizar la solicitud.');
+      setDemoRequests(current=>current.map(lead=>lead.id===id?{
+        ...lead,status:draft.status,internalNote:draft.internalNote,followUpOn:draft.followUpOn||null,
+      }:lead));
+      setLeadMessage('Seguimiento guardado. El estado no activa ningún plan ni inicia una prueba.');
+    }catch(e){setLeadMessage(e instanceof Error?e.message:'No se pudo guardar el seguimiento.');}
+    finally{setLeadSaving(null);}
+  }
 
   function setValue<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -457,6 +496,7 @@ export default function PlatformCompaniesPage() {
               Bandeja de solicitudes de demo y prueba guiada de 14 días. No crean empresas,
               no activan planes, no inician los 14 días y no confirman pagos.
             </p>
+            {leadMessage&&<p role="status" style={{fontSize:13,padding:12,borderRadius:10,background:'#edf4ff'}}>{leadMessage}</p>}
             {demoLoading?<p>Cargando solicitudes…</p>:null}
             {demoRequests.length===0?<p>Sin solicitudes registradas.</p>:
               <div style={{overflowX:'auto'}}>
@@ -466,7 +506,7 @@ export default function PlatformCompaniesPage() {
                     <th style={{padding:10}}>Contacto</th>
                     <th style={{padding:10}}>Solicitud</th>
                     <th style={{padding:10}}>Plan consultado</th>
-                    <th style={{padding:10}}>Estado</th>
+                    <th style={{padding:10}}>Seguimiento y estado</th>
                     <th style={{padding:10}}>Fecha</th>
                   </tr></thead>
                   <tbody>{demoRequests.map(lead=><tr key={lead.id}
@@ -488,7 +528,31 @@ export default function PlatformCompaniesPage() {
                     </td>
                     <td style={{padding:10}}>{lead.requestType==='trial'?'Prueba guiada 14 días':'Demo'}</td>
                     <td style={{padding:10}}>{{inicial:'Básico',pro:'Eco',empresa:'Pro',sin_definir:'Por definir'}[lead.planInterest]??lead.planInterest}</td>
-                    <td style={{padding:10}}>{lead.status==='new'?'Nueva':lead.status}</td>
+                    <td style={{padding:10,minWidth:210}}>
+                      <div style={{display:'grid',gap:7}}>
+                        <select aria-label={'Estado de '+lead.companyName} style={{...inputStyle,padding:7}}
+                          value={leadDrafts[lead.id]?.status||lead.status}
+                          onChange={e=>updateLeadDraft(lead.id,{status:e.target.value as LeadFollowupDraft['status']})}>
+                          {leadStatusOptions.map(status=><option key={status} value={status}>{leadStatusLabels[status]}</option>)}
+                        </select>
+                        <textarea aria-label={'Notas de '+lead.companyName} rows={2} maxLength={1000}
+                          value={leadDrafts[lead.id]?.internalNote??''}
+                          onChange={e=>updateLeadDraft(lead.id,{internalNote:e.target.value})}
+                          style={{...inputStyle,padding:7,fontSize:12}}
+                          placeholder="Seguimiento, requisitos pendientes. Nunca guardes claves ni códigos."/>
+                        <label style={{fontSize:11,color:'#667085'}}>Próximo contacto
+                          <input type="date" aria-label={'Próximo contacto de '+lead.companyName}
+                            value={leadDrafts[lead.id]?.followUpOn??''}
+                            onChange={e=>updateLeadDraft(lead.id,{followUpOn:e.target.value})}
+                            style={{...inputStyle,padding:7,marginTop:3}}/>
+                        </label>
+                        <button type="button" disabled={leadSaving!==null}
+                          onClick={()=>void saveLeadFollowup(lead.id)}
+                          style={{padding:'9px 12px',borderRadius:8,border:0,background:'#172235',color:'#fff',fontWeight:700,cursor:'pointer'}}>
+                          {leadSaving===lead.id?'Guardando…':'Guardar seguimiento'}
+                        </button>
+                      </div>
+                    </td>
                     <td style={{padding:10}}>{new Date(lead.createdAt).toLocaleString('es-CO')}</td>
                   </tr>)}</tbody>
                 </table>
