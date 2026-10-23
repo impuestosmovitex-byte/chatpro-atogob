@@ -302,6 +302,54 @@ export class PlatformAdminController {
   // This endpoint still requires the internal backend key and only runs in staging.
   // Staging-only AI usage report. Reads metered events; missing data means uninstrumented,
   // not zero cost across OpenAI. Never exposes tenant message content.
+  @Get('ai-model-rates')
+  async listAiModelRates(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+  ) {
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Tarifas disponibles solo en pruebas.');
+    const {data,error}=await this.supabaseService.getClient()
+      .from('platform_ai_model_rates')
+      .select('model,input_usd_per_million,cached_input_usd_per_million,output_usd_per_million,effective_from')
+      .order('model',{ascending:true}).limit(200);
+    if(error)throw new BadRequestException('No se pudieron consultar las tarifas.');
+    return {ok:true,rates:data??[]};
+  }
+
+  @Post('ai-model-rates')
+  async saveAiModelRate(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Body() body:unknown,
+  ) {
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Tarifas disponibles solo en pruebas.');
+    if(!body||typeof body!=='object'||Array.isArray(body))
+      throw new BadRequestException('Tarifa inválida.');
+    const b=body as Record<string,unknown>;
+    if(Object.keys(b).some(k=>!['model','input','cached','output'].includes(k))||
+       typeof b.model!=='string'||!/^[a-zA-Z0-9._:-]{1,120}$/.test(b.model))
+      throw new BadRequestException('Modelo inválido.');
+    for(const field of ['input','cached','output']){
+      const n=b[field];
+      if(typeof n!=='number'||!Number.isFinite(n)||n<0||n>999999)
+        throw new BadRequestException('Tarifa inválida: '+field);
+    }
+    const {error}=await this.supabaseService.getClient()
+      .from('platform_ai_model_rates').upsert({
+        model:b.model,input_usd_per_million:b.input,
+        cached_input_usd_per_million:b.cached,output_usd_per_million:b.output,
+        effective_from:new Date().toISOString(),updated_at:new Date().toISOString(),
+      },{onConflict:'model'});
+    if(error)throw new BadRequestException('No se pudo guardar la tarifa.');
+    return {ok:true,message:'Tarifa interna guardada en staging. No se actualizaron facturas.'};
+  }
+
   @Get('ai-usage')
   async getAiUsage(
     @Headers('x-chatpro-inbox-key') providedKey = '',
