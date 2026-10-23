@@ -24,6 +24,11 @@ describe('Staging cross-company inbox authorization',()=>{
      })
     })})};
    }
+   if(table==='app_roles'){
+    return {select:()=>({eq:()=>({maybeSingle:async()=>({
+     data:{key:'advisor',company_id:null},error:null,
+    })})})};
+   }
    if(table==='app_role_permissions'){
     return {select:()=>({eq:()=>Promise.resolve({data:[{permission_id:'permission-inbox-view'}],error:null})})};
    }
@@ -71,6 +76,14 @@ describe('Staging cross-company inbox authorization',()=>{
    companyB.slug,'all','20','0','','')).rejects.toThrow();
   expect(queried).toContain('company_memberships');
   expect(queried).not.toContain('app_role_permissions');
+ });
+ it('does not grant stale owner privilege after role is downgraded to advisor',async()=>{
+  await expect(controller.internalTest(internalKey,'user','user-a','Advisor A',
+   companyA.id,'owner',companyA.slug,{action:'start'})).rejects.toThrow(
+    /Solo un propietario o administrador/,
+  );
+  expect(queried).toContain('app_roles');
+  expect(queried).toContain('company_memberships');
  });
  it('does not let platform administrator session impersonate a tenant owner',async()=>{
   await expect(controller.list(internalKey,'platform','admin','Admin',companyA.id,
