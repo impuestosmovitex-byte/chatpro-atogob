@@ -1,11 +1,30 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {PlatformSidebar} from '../../components/PlatformSidebar';
 
+type CompanyOption={id:string;name:string;slug:string};
 type Usage={ok:boolean;companyId:string;periodStart:string;records:number;truncated:boolean;inputTokens:number;outputTokens:number;cachedInputTokens:number;knownEstimatedCostUsd:number;recordsWithoutCost:number;pricedFromConfiguredRatesUsd?:number;recordsMissingRates?:number;rateConfigurationAvailable?:boolean;coverage:string};
 export default function AiUsageAdmin(){
  const [companyId,setCompanyId]=useState('');
+ const [companies,setCompanies]=useState<CompanyOption[]>([]);
+ const [companiesLoading,setCompaniesLoading]=useState(true);
+ const [companiesError,setCompaniesError]=useState('');
+ useEffect(()=>{
+  let active=true;
+  void (async()=>{
+   try{
+    const response=await fetch('/api/platform-admin/companies',{cache:'no-store'});
+    const data=await response.json() as {ok?:boolean;companies?:CompanyOption[];error?:string};
+    if(!response.ok||!data.ok||!Array.isArray(data.companies))throw new Error(data.error||'No se pudo consultar las empresas.');
+    if(!active)return;
+    setCompanies(data.companies);
+    setCompanyId(current=>current||data.companies?.[0]?.id||'');
+   }catch(e){if(active)setCompaniesError(e instanceof Error?e.message:'No se pudieron cargar las empresas.');}
+   finally{if(active)setCompaniesLoading(false);}
+  })();
+  return()=>{active=false;};
+ },[]);
  const [loading,setLoading]=useState(false);
  const [data,setData]=useState<Usage|null>(null);
  const [error,setError]=useState('');
@@ -27,9 +46,16 @@ export default function AiUsageAdmin(){
    <p>Reporte interno de llamadas instrumentadas. Todavía NO refleja la totalidad de OpenAI ni permite cobrar o limitar consumo.</p>
    <p><Link href="/admin/empresas">Volver a empresas</Link> · <Link href="/admin/planes">Planes comerciales</Link></p>
    <div style={{background:'white',padding:22,borderRadius:14,marginTop:22,display:'grid',gap:12}}>
-    <label htmlFor="companyId">Identificador interno de la empresa</label>
-    <input id="companyId" value={companyId} onChange={e=>setCompanyId(e.target.value)} placeholder="UUID de empresa" style={{padding:12,border:'1px solid #ccd2dc',borderRadius:8}}/>
-    <button type="button" disabled={loading} onClick={()=>void search()} style={{padding:12,background:'#172235',color:'#fff',border:0,borderRadius:8,cursor:'pointer'}}>{loading?'Consultando…':'Consultar consumo registrado'}</button>
+    <label htmlFor="companyId">Empresa a consultar</label>
+    {companiesLoading?<p>Cargando empresas registradas…</p>
+    :companiesError?<><p role="alert" style={{color:'#a32323'}}>{companiesError}</p>
+      <input id="companyId" aria-label="UUID de empresa" value={companyId} onChange={e=>setCompanyId(e.target.value)} placeholder="UUID de empresa" style={{padding:12,border:'1px solid #ccd2dc',borderRadius:8}}/></>
+    :companies.length===0?<p>No hay empresas registradas para consultar.</p>
+    :<select id="companyId" value={companyId} onChange={e=>{setCompanyId(e.target.value);setData(null);}}
+      style={{padding:12,border:'1px solid #ccd2dc',borderRadius:8}}>
+      {companies.map(company=><option key={company.id} value={company.id}>{company.name} ({company.slug})</option>)}
+    </select>}
+    <button type="button" disabled={loading||!companyId} onClick={()=>void search()} style={{padding:12,background:'#172235',color:'#fff',border:0,borderRadius:8,cursor:'pointer'}}>{loading?'Consultando…':'Consultar consumo registrado'}</button>
     {error&&<p role="alert" style={{color:'#b42318'}}>{error}</p>}
     {data&&<div style={{display:'grid',gap:12}}>
      <h2 style={{fontSize:21}}>Eventos instrumentados desde {new Date(data.periodStart).toLocaleDateString('es-CO')}</h2>
