@@ -67,6 +67,31 @@ describe('Isolated staging commercial demo intake',()=>{
       .rejects.toThrow(/Completa/);
     expect(insert).not.toHaveBeenCalled();
   });
+  test('records a guided 14-day trial with plan and WhatsApp readiness but no active subscription',async()=>{
+    const result=await controller.submit('internal-test-value',{...data,
+      requestType:'trial',contactPhone:'+573001112233',whatsappSetup:'business_app'});
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain('todavía no ha comenzado');
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      source:'web_trial',status:'new',plan_interest:'pro',
+      contact_phone:'+573001112233',whatsapp_setup:'business_app',
+      trial_requested_days:14,
+    }));
+    expect(JSON.stringify(insert.mock.calls[0][0])).not.toContain('trial_activated_at');
+  });
+  test('rejects trial without legitimate phone and connection assessment',async()=>{
+    await expect(controller.submit('internal-test-value',{...data,requestType:'trial',
+      contactPhone:'',whatsappSetup:'business_app'})).rejects.toThrow(/número/);
+    await expect(controller.submit('internal-test-value',{...data,requestType:'trial',
+      contactPhone:'3001112233',whatsappSetup:'approved_without_review'})).rejects.toThrow(/WhatsApp/);
+    expect(insert).not.toHaveBeenCalled();
+  });
+  test('rejects unsupported commercial request type',async()=>{
+    await expect(controller.submit('internal-test-value',{...data,requestType:'activate-paid'}))
+      .rejects.toThrow(/Tipo de solicitud/);
+    expect(insert).not.toHaveBeenCalled();
+  });
   test('rate limits without exposing whether email already exists',async()=>{
     count=3;
     const result=await controller.submit('internal-test-value',data);
