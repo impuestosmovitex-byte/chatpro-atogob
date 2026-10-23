@@ -120,6 +120,8 @@ export async function proxy(request: NextRequest) {
 
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('next', pathname);
+    if(pathname==='/admin'||pathname.startsWith('/admin/'))
+      loginUrl.searchParams.set('mode','platform');
 
     return secureResponse(NextResponse.redirect(loginUrl));
   }
