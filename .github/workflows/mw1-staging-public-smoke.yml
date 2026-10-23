@@ -1,0 +1,41 @@
+name: MW1 staging - public smoke and access checks
+
+on:
+  push:
+    branches:
+      - feature/mw1-saas-staging-20261020
+    paths:
+      - '.github/workflows/mw1-staging-public-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Public routes and no-session access safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      BASE_URL: https://mw1-web-staging-staging.up.railway.app
+    steps:
+      - name: Check public pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /api/health /inicio /precios /demo; do
+            status="$(curl -sS -L --retry 8 --retry-delay 8 --retry-all-errors --connect-timeout 8 --max-time 18 -o /tmp/mw1-page -w '%{http_code}' "$BASE_URL$path")"
+            echo "$path HTTP $status"
+            test "$status" = "200"
+            test -s /tmp/mw1-page
+          done
+          grep -q '"ok":true' <(curl -fsS --max-time 18 "$BASE_URL/api/health")
+      - name: Protected admin endpoints deny anonymous requests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /api/platform-admin/plan-drafts /api/platform-admin/ai-model-rates /api/platform-admin/ai-usage; do
+            status="$(curl -sS --max-time 18 -o /dev/null -w '%{http_code}' "$BASE_URL$path")"
+            echo "$path anonymous HTTP $status"
+            test "$status" = "401"
+          done
