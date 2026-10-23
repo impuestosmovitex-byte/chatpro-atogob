@@ -1,7 +1,7 @@
 import {companyFinancialResult,validateFinanceCompanyEntry} from './platform-company-finance';
 const valid={periodMonth:'2026-10-01',companySource:'operational',companySlug:'atogob',
  billedCop:null,receivedCop:null,openaiCop:null,supportCop:null,onboardingCop:null,
- otherDirectCop:null,allocationWeight:1,evidenceNote:''};
+ otherDirectCop:null,allocationWeight:1,includeInAllocation:true,evidenceNote:''};
 describe('financial tenant entries without automatic billing',()=>{
  test('retains unknown amounts as null, never treats them as zero',()=>{
   const value=validateFinanceCompanyEntry(valid);
