@@ -40,6 +40,7 @@ export default function AdminPlansPage(){
   const [authorized,setAuthorized]=useState(false);
   const [loaded,setLoaded]=useState(false);
   const [plans,setPlans]=useState<Plan[]>(keys.map(initial));
+  const [featureTexts,setFeatureTexts]=useState<Partial<Record<Key,string>>>({});
   const [savedPlans,setSavedPlans]=useState<Plan[]>(keys.map(initial));
   const [selected,setSelected]=useState<Key>('inicial');
   const [saving,setSaving]=useState(false);
@@ -64,6 +65,7 @@ export default function AdminPlansPage(){
           const loadedPlans=keys.map(key=>data.plans!.find(p=>p.planKey===key)||initial(key));
           setPlans(loadedPlans);
           setSavedPlans(loadedPlans);
+          setFeatureTexts(Object.fromEntries(loadedPlans.map(p=>[p.planKey,p.publicFeatures.join('\n')])) as Partial<Record<Key,string>>);
         }
       }catch(cause){
         if(active)setError(cause instanceof Error?cause.message:'Error consultando los planes.');
@@ -198,8 +200,8 @@ export default function AdminPlansPage(){
                 placeholder={suggested[selected].description}/>
             </label>
             <label style={{display:'grid',gap:6,fontSize:13,fontWeight:650}}>Beneficios visibles en «Ver más» · uno por línea, máximo 20
-              <textarea rows={7} style={control} value={plan.publicFeatures.join('\n')}
-                onChange={e=>update('publicFeatures',e.target.value.split(/\r?\n/).filter(v=>v.trim()!=='').slice(0,20))}
+              <textarea rows={7} maxLength={1500} style={control} value={featureTexts[selected]??plan.publicFeatures.join('\n')}
+                onChange={e=>{const text=e.target.value;setFeatureTexts(old=>({...old,[selected]:text}));update('publicFeatures',text.split(/\r?\n/).map(v=>v.trim()).filter(Boolean).slice(0,20));}}
                 placeholder="CRM y bandeja\nAtención humana\nSoporte técnico"/>
             </label>
             <p style={{fontSize:12,color:'#667085'}}>No incluyas funciones que todavía estén en desarrollo como si estuvieran disponibles. Los cambios requieren guardar y publicar en staging.</p>
