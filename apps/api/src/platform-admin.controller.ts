@@ -330,7 +330,7 @@ export class PlatformAdminController {
     }
     const {data,error}=await this.supabaseService.getClient()
       .from('platform_demo_requests')
-      .select('id,company_name,contact_name,contact_email,contact_phone,whatsapp_setup,trial_requested_days,trial_activated_at,source,plan_interest,status,created_at')
+      .select('id,company_name,contact_name,contact_email,contact_phone,whatsapp_setup,trial_requested_days,trial_activated_at,source,plan_interest,status,internal_note,next_followup_on,created_at')
       .order('created_at',{ascending:false})
       .limit(50);
     if(error)throw new BadRequestException('No fue posible consultar las solicitudes.');
@@ -345,9 +345,56 @@ export class PlatformAdminController {
       whatsappSetup:record.whatsapp_setup??null,
       trialDays:record.trial_requested_days??null,
       trialActivatedAt:record.trial_activated_at??null,
+      internalNote:record.internal_note??'',
+      followUpOn:record.next_followup_on??null,
       status:record.status,
       createdAt:record.created_at,
     }))};
+  }
+
+  @Post('demo-requests/follow-up')
+  async updateDemoRequestFollowUp(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+    @Body() body:unknown,
+  ){
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('El seguimiento comercial solo está disponible en staging.');
+    if(!body||typeof body!=='object'||Array.isArray(body))
+      throw new BadRequestException('Datos de seguimiento inválidos.');
+    const value=body as Record<string,unknown>;
+    const keys=['id','status','internalNote','followUpOn'];
+    if(Object.keys(value).some(k=>!keys.includes(k)))
+      throw new BadRequestException('Campo de seguimiento no permitido.');
+    if(typeof value.id!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value.id))
+      throw new BadRequestException('Identificador de solicitud inválido.');
+    if(typeof value.status!=='string'||!['new','contacted','qualified','closed'].includes(value.status))
+      throw new BadRequestException('Estado comercial inválido.');
+    if(typeof value.internalNote!=='string'||value.internalNote.length>1000)
+      throw new BadRequestException('Nota interna inválida.');
+    const followUpOn=value.followUpOn;
+    if(followUpOn!==null){
+      if(typeof followUpOn!=='string'||!/^20[2-9][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(followUpOn)||
+        Number.isNaN(Date.parse(followUpOn))||
+        new Date(followUpOn).toISOString().slice(0,10)!==followUpOn)
+        throw new BadRequestException('Fecha de seguimiento inválida.');
+    }
+    const {data,error}=await this.supabaseService.getClient()
+      .from('platform_demo_requests')
+      .update({
+        status:value.status,internal_note:value.internalNote.trim(),
+        next_followup_on:followUpOn,
+        updated_at:new Date().toISOString(),
+      })
+      .eq('id',value.id)
+      .select('id,status,internal_note,next_followup_on,updated_at')
+      .maybeSingle();
+    if(error||!data)throw new BadRequestException('No se pudo actualizar la solicitud indicada.');
+    return {ok:true,id:data.id,status:data.status,internalNote:data.internal_note,
+      followUpOn:data.next_followup_on,updatedAt:data.updated_at,
+      message:'Seguimiento comercial guardado. No se activó ninguna prueba, usuario, plan ni cobro.'};
   }
 
   @Get('plans/drafts')
