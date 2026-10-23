@@ -217,6 +217,14 @@ export default function PlatformCompaniesPage() {
     finally{setLeadSaving(null);}
   }
 
+  function prepareCompanyFromLead(lead:DemoLead){
+    // Explicit manual draft only. Never copy lead details into credentials or grant plan entitlements.
+    setForm({...initialForm,name:lead.companyName,slug:generateSlug(lead.companyName)});
+    setSuccess('Formulario preparado. Verifica el plan, confirma el propietario y configura accesos antes de crear la empresa.');
+    setError('');
+    document.getElementById('mw1-new-company-form')?.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
   function setValue<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
   }
@@ -300,7 +308,7 @@ export default function PlatformCompaniesPage() {
 
         {authorized === false ? null : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,430px),1fr))', gap: 22 }}>
-            <form onSubmit={submit} style={cardStyle}>
+            <form id="mw1-new-company-form" onSubmit={submit} style={cardStyle}>
               <h2 style={{ marginTop: 0 }}>+ Nueva empresa</h2>
               <p style={{ color: '#667085', marginTop: -6 }}>
                 La empresa inicia sin chats, clientes, productos ni credenciales de otra empresa.
@@ -551,6 +559,11 @@ export default function PlatformCompaniesPage() {
                           style={{padding:'9px 12px',borderRadius:8,border:0,background:'#172235',color:'#fff',fontWeight:700,cursor:'pointer'}}>
                           {leadSaving===lead.id?'Guardando…':'Guardar seguimiento'}
                         </button>
+                        {lead.status==='qualified'&&<button type="button"
+                          onClick={()=>prepareCompanyFromLead(lead)}
+                          style={{padding:'9px 12px',borderRadius:8,border:'1px solid #c49b1c',background:'#fff5c0',color:'#172235',fontWeight:750,cursor:'pointer'}}>
+                          Preparar alta de empresa ↗
+                        </button>}
                       </div>
                     </td>
                     <td style={{padding:10}}>{new Date(lead.createdAt).toLocaleString('es-CO')}</td>
