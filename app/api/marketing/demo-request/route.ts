@@ -8,7 +8,9 @@ const json=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:{
 export async function POST(request:NextRequest){
   if(process.env.MW1_STAGING_MODE!=='true')
     return json({ok:false,error:'Las solicitudes se habilitarán después de las pruebas.'},403);
-  if(request.headers.get('origin')!==new URL(request.url).origin)
+  // Railway's reverse proxy may expose a different internal request origin.
+  // The public signup is only allowed from MW1 staging's own HTTPS site.
+  if(request.headers.get('origin')!=='https://mw1-web-staging-staging.up.railway.app')
     return json({ok:false,error:'Solicitud no autorizada.'},403);
   const key=process.env.CHATPRO_INBOX_KEY?.trim();
   const api=process.env.CHATPRO_API_URL?.trim().replace(/\/$/,'');
@@ -30,6 +32,9 @@ export async function POST(request:NextRequest){
     contactEmail:requestData.contactEmail,
     planInterest:requestData.planInterest,
     consent:requestData.consent,
+    requestType:requestData.requestType==='trial'?'trial':'demo',
+    contactPhone:requestData.contactPhone,
+    whatsappSetup:requestData.whatsappSetup,
     visitorDigest:digest,
   };
   try{
