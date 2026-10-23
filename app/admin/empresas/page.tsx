@@ -222,7 +222,7 @@ export default function PlatformCompaniesPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#f5f6f8', color: '#171a21' }}>
       <PlatformSidebar />
-      <main style={{ marginLeft: 160, padding: '38px 42px 80px', maxWidth: 1500 }}>
+      <main style={{ marginLeft: 176, padding: '38px 42px 80px', maxWidth: 1500 }}>
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, color: '#9a7627' }}>
             SUPER ADMIN MW1
