@@ -4,6 +4,7 @@ import {SupabaseService} from './supabase.service';
 
 describe('staging first-superadmin invitation security',()=>{
  const prevKey=process.env.CHATPRO_INBOX_KEY,prevStaging=process.env.MW1_STAGING_MODE;
+ const previousSetup=process.env.MW1_STAGING_ADMIN_SETUP_TOKEN;
  const key='only-staging-internal-key';
  let controller:PlatformAdminController;
  let used=false,hasAdmin=false,created=0,writes:string[]=[];
@@ -34,12 +35,14 @@ describe('staging first-superadmin invitation security',()=>{
  beforeEach(()=>{
   process.env.MW1_STAGING_MODE='true';
   process.env.CHATPRO_INBOX_KEY=key;
+  delete process.env.MW1_STAGING_ADMIN_SETUP_TOKEN;
   used=false;hasAdmin=false;created=0;writes=[];
   controller=new PlatformAdminController({getClient:makeClient} as unknown as SupabaseService,new AccessAuthService());
  });
  afterAll(()=>{
   if(prevStaging===undefined)delete process.env.MW1_STAGING_MODE;else process.env.MW1_STAGING_MODE=prevStaging;
   if(prevKey===undefined)delete process.env.CHATPRO_INBOX_KEY;else process.env.CHATPRO_INBOX_KEY=prevKey;
+  if(previousSetup===undefined)delete process.env.MW1_STAGING_ADMIN_SETUP_TOKEN;else process.env.MW1_STAGING_ADMIN_SETUP_TOKEN=previousSetup;
  });
  test('rejects wrong internal key and short password before touching DB',async()=>{
   await expect(controller.activateStagingSuperadmin('wrong',{token:rawToken,password:'long-enough-password'})).rejects.toThrow();
@@ -50,6 +53,14 @@ describe('staging first-superadmin invitation security',()=>{
   process.env.MW1_STAGING_MODE='false';
   await expect(controller.activateStagingSuperadmin(key,{token:rawToken,password:'not-a-weak-password'})).rejects.toThrow(/staging/);
   expect(created).toBe(0);
+ });
+ test('operator code in staging is accepted only once and grants no production credentials',async()=>{
+  process.env.MW1_STAGING_ADMIN_SETUP_TOKEN=rawToken;
+  const result=await controller.activateStagingSuperadmin(key,{token:rawToken,password:'long-example-password-for-staging'});
+  expect(result.ok).toBe(true);
+  expect(used).toBe(false);
+  expect(writes).toEqual(['app_profiles','company_memberships','platform_admins']);
+  await expect(controller.activateStagingSuperadmin(key,{token:rawToken,password:'another-long-password'})).rejects.toThrow(/completada/);
  });
  test('one-time token creates password-protected profile, demo membership and platform grant',async()=>{
   const outcome=await controller.activateStagingSuperadmin(key,{token:rawToken,password:'not-a-weak-password'});
