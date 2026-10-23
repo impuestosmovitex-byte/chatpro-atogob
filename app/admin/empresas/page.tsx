@@ -474,7 +474,11 @@ export default function PlatformCompaniesPage() {
                     <td style={{padding:10}}>{lead.companyName}</td>
                     <td style={{padding:10}}>{lead.contactName}
                       <div><a href={'mailto:'+lead.contactEmail}>{lead.contactEmail}</a></div>
-                      {lead.contactPhone&&<div><a href={'tel:'+lead.contactPhone}>{lead.contactPhone}</a></div>}
+                      {lead.contactPhone&&<div style={{display:'flex',flexWrap:'wrap',gap:9,marginTop:4}}>
+                        <a href={'tel:'+lead.contactPhone}>{lead.contactPhone}</a>
+                        <a href={'https://wa.me/'+lead.contactPhone.replace(/[^0-9]/g,'')}
+                           target="_blank" rel="noopener noreferrer">Abrir WhatsApp ↗</a>
+                      </div>}
                       {lead.whatsappSetup&&<div style={{fontSize:11,color:'#667085'}}>WhatsApp: {({
                         business_app:'Usa WhatsApp Business',
                         cloud_api:'Ya utiliza API',
