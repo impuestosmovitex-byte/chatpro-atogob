@@ -25,7 +25,7 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ identifier, password, company:new URLSearchParams(window.location.search).get('company')||undefined }),
       });
 
       const data = (await response.json()) as {
