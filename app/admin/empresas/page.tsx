@@ -244,6 +244,7 @@ export default function PlatformCompaniesPage() {
   }
 
   function setValue<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setReviewedCompanyAccess(false);
     setForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -344,10 +345,11 @@ export default function PlatformCompaniesPage() {
                     value={form.name}
                     onChange={(event) => {
                       const name = event.target.value;
+                      setReviewedCompanyAccess(false);
                       setForm((current) => ({
                         ...current,
                         name,
-                        slug: current.slug ? current.slug : generateSlug(name),
+                        slug: generateSlug(name),
                       }));
                     }}
                     placeholder="Emprende Cosmoshogo"
