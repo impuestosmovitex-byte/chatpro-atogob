@@ -94,6 +94,26 @@ export default function AdminPlansPage(){
   const plan=plans.find(p=>p.planKey===selected)||initial(selected);
   const savedPlan=savedPlans.find(p=>p.planKey===selected)||initial(selected);
   const hasUnsavedChanges=JSON.stringify(plan)!==JSON.stringify(savedPlan);
+  const missingPublicationRequirements=[
+    ...(!Number.isSafeInteger(plan.priceCop)||!plan.priceCop||plan.priceCop<=0?['Definir un precio mensual válido.']:[]),
+    ...(!Number.isSafeInteger(plan.maxUsers)||!plan.maxUsers||plan.maxUsers<=0?['Definir los usuarios incluidos.']:[]),
+    ...(!Number.isSafeInteger(plan.maxWhatsappLines)||!plan.maxWhatsappLines||plan.maxWhatsappLines<=0?['Definir las líneas de WhatsApp incluidas.']:[]),
+    ...(!plan.whatsappEnabled?['Habilitar WhatsApp en las capacidades del plan.']:[]),
+    ...(plan.reviewStatus!=='ready_for_review'?['Cambiar Estado interno a «Listo para revisión».']:[]),
+    ...(hasUnsavedChanges?['Guardar los cambios después de completar lo anterior.']:[]),
+  ];
+  const publicationAvailable=authorized&&!saving&&!publishing&&missingPublicationRequirements.length===0;
+  function prepareForReview(){
+    const defaults=suggested[selected];
+    setPlans(old=>old.map(p=>p.planKey===selected?{
+      ...p,
+      priceCop:p.priceCop&&p.priceCop>0?p.priceCop:defaults.price,
+      maxUsers:p.maxUsers&&p.maxUsers>0?p.maxUsers:defaults.users,
+      maxWhatsappLines:p.maxWhatsappLines&&p.maxWhatsappLines>0?p.maxWhatsappLines:defaults.lines,
+      whatsappEnabled:true,reviewStatus:'ready_for_review',
+    }:p));
+    setNotice('Requisitos completados en el formulario. Se conserva tu precio si ya lo definiste. Ahora pulsa «Guardar borrador privado» y luego «Publicar precio en staging».');
+  }
   const publishedPlan=publishedPlans.find(p=>p.plan_key===selected);
   const savedDiffersFromPublished=!!publishedPlan && (
     plan.priceCop!==publishedPlan.price_cop||
@@ -128,7 +148,7 @@ export default function AdminPlansPage(){
     }finally{setSaving(false);}
   }
   async function publish(){
-    if(publishing||saving||!authorized||hasUnsavedChanges||plan.reviewStatus!=='ready_for_review')return;
+    if(!publicationAvailable)return;
     if(!window.confirm('¿Publicar el precio y los cupos guardados de este plan en la web de staging? No modifica contratos ni activa pagos.'))return;
     setPublishing(true);setError('');setNotice('');
     try{
@@ -278,6 +298,22 @@ export default function AdminPlansPage(){
             «Listo para revisión» no es un lanzamiento. Los cobros y la asignación
             de permisos requieren un flujo de pago verificado independiente.
           </p>
+          <section style={{background:'#f7f9fc',border:'1px solid #dbe3ef',padding:15,borderRadius:11,margin:'12px 0 18px'}}>
+            <strong>Requisitos para publicar este plan</strong>
+            {missingPublicationRequirements.length===0?
+              <p style={{color:'#17633b',fontSize:13}}>Todo listo. Puedes publicar este plan en staging con confirmación.</p>:
+              <ul style={{fontSize:13,color:'#725400',lineHeight:1.7,paddingLeft:21}}>
+                {missingPublicationRequirements.map(item=><li key={item}>{item}</li>)}
+              </ul>}
+            <button type="button" onClick={prepareForReview} disabled={saving||publishing}
+              style={{padding:'10px 13px',border:'1px solid #c3cddd',borderRadius:8,cursor:'pointer',background:'#fff',color:'#172235',fontWeight:700}}>
+              Completar requisitos sin cambiar mi precio
+            </button>
+            <p style={{fontSize:12,color:'#647188',marginBottom:0}}>
+              Completa los campos vacíos con los cupos sugeridos y activa WhatsApp.
+              Es una preparación local: no guarda ni publica por sí sola.
+            </p>
+          </section>
           <button type="submit" disabled={saving}
             style={{padding:'12px 20px',borderRadius:10,border:0,
               color:'white',background:'#172235',cursor:'pointer',
@@ -285,7 +321,7 @@ export default function AdminPlansPage(){
             {saving?'Guardando…':'Guardar borrador privado'}
           </button>
           <button type="button" onClick={()=>void publish()}
-            disabled={publishing||saving||hasUnsavedChanges||plan.reviewStatus!=='ready_for_review'}
+            disabled={!publicationAvailable}
             style={{padding:'12px 20px',borderRadius:10,marginLeft:12,border:'1px solid #172235',background:'white',color:'#172235',fontWeight:700,cursor:'pointer'}}>
             {publishing?'Publicando…':'Publicar precio en staging'}
           </button>
