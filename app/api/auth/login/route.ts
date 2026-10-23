@@ -104,6 +104,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const platformLogin=process.env.MW1_STAGING_MODE==='true' &&
+      body.company==='__platform__';
+    if(platformLogin){
+      if(!identifier)return NextResponse.json({ok:false,error:'Escribe el usuario administrador.'},{status:400});
+      const {apiBase,inboxKey}=config();
+      const response=await fetch(new URL('/access/platform-login',apiBase),{
+        method:'POST',headers:{'content-type':'application/json','x-chatpro-inbox-key':inboxKey},
+        body:JSON.stringify({identifier,password}),cache:'no-store',
+      });
+      const data=await response.json() as AccessResponse;
+      if(!response.ok||!data.ok||!data.session)
+        return NextResponse.json({ok:false,error:data.error||'Acceso de plataforma denegado.'},{status:response.status||401});
+      return responseWithSession(data.session);
+    }
+
     const { apiBase, inboxKey } = config();
     const companySlug = companyFrom(body);
 
