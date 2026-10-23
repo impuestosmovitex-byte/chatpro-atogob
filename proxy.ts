@@ -51,7 +51,13 @@ function matchesPath(pathname: string, allowedPath: string): boolean {
 }
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.has(pathname);
+  // Enrollment has to run before any user session exists. Its API still
+  // requires an exact staging Origin plus a 256-bit operator-issued code.
+  const isStagingEnrollment =
+    process.env.MW1_STAGING_MODE === 'true' &&
+    (pathname === '/activar-administrador' ||
+      pathname === '/api/staging-admin-setup');
+  return PUBLIC_PATHS.has(pathname) || isStagingEnrollment;
 }
 
 function canManagePlatform(roleKey: string): boolean {
