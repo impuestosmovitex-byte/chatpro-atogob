@@ -1024,7 +1024,7 @@ export class ChatAgentService {
     const normalizedCustomerText = normalized(input.customerText);
 
     const wantsBundle =
-      /\b(combo|pack|bundle|kit|duo|trio|promocion|oferta|paquete)\b/.test(
+      /\b(combo|conjunto|set|pack|bundle|kit|duo|trio|promocion|oferta|paquete)\b/.test(
         normalizedCustomerText,
       );
 
@@ -1204,6 +1204,8 @@ export class ChatAgentService {
               'similar significa que comparte categoría o estilo, pero no puedes asegurar que sea la misma referencia.',
               'none significa que ninguna fotografía del lote permite confirmar la referencia.',
               'No marques exact solo porque dos prendas pertenezcan a la misma categoría o tengan una forma común.',
+              'IMPORTANTE: si el cliente muestra una sola prenda (por ejemplo un vestido), NO selecciones un producto de catálogo que incluya vestido más chaqueta, combo, conjunto o varias prendas, aunque el vestido coincida. Ese artículo es diferente.',
+              'Si el cliente muestra claramente varias prendas como outfit o pide explícitamente un combo, entonces sí puedes considerar los conjuntos. Nunca anuncies el precio del conjunto como precio de la prenda individual.',
               'Si reconoces detalles estructurales distintos, estampado diferente, cortes diferentes o elementos incompatibles, no es exact.',
               'candidate_index empieza en 1. Usa null cuando match_type sea none.',
               `Empresa activa: ${profile.name}.`,
@@ -1649,7 +1651,7 @@ export class ChatAgentService {
   }
 
   private isBundleLikeProductTitle(title: string): boolean {
-    return /\b(combo|pack|bundle|kit|duo|trio|promocion|oferta|paquete|x\s*\d+|\d+\s*(unidades|prendas|productos|blusas?|vestidos?|pantalones?|camisetas?|tops?|enterizos?|faldas?|chaquetas?))\b/i.test(
+    return /\b(combo|conjunto|set|pack|bundle|kit|duo|trio|promocion|oferta|paquete|x\s*\d+|\d+\s*(unidades|prendas|productos|blusas?|vestidos?|pantalones?|camisetas?|tops?|enterizos?|faldas?|chaquetas?))\b/i.test(
       this.normalizeText(title),
     );
   }
@@ -2779,7 +2781,9 @@ export class ChatAgentService {
       '- Para add_visual_products_to_cart incluye todas las referencias visuales que el cliente pidió comprar en ese conjunto y usa exclusivamente su matched_product.url cuando match_type sea exact. Nunca omitas silenciosamente una referencia solicitada ni uses candidates como productos confirmados.',
       '- En cada item de add_visual_products_to_cart envía únicamente talla, color, medida u otras opciones realmente visibles o confirmadas por el cliente. Si una opción necesaria no está resuelta, envía option_values vacío o solo los valores conocidos; la herramienta validará si falta información.',
       '- add_visual_products_to_cart es atómica: si alguna referencia no puede resolverse a una variante única, el carrito no cambia. Pide una sola aclaración breve únicamente por los productos indicados en unresolved y después vuelve a ejecutar el lote completo.',
-      '- Si last_visual_reference.match_type es exact y matched_product existe, esa referencia fue validada contra el catálogo real, pero no significa que selectedProduct ya esté cargado. Para un solo producto usa select_product_by_url antes de consultar sus variantes.',
+      '- REGLA DE PRODUCTO INDIVIDUAL: cuando la imagen del cliente muestre solo un vestido, chaqueta, blusa u otra prenda, busca y ofrece primero esa referencia individual. No ofrezcas un conjunto, combo o paquete por el solo hecho de incluir esa prenda. Si no está confirmado el artículo individual, dilo y pide una referencia o enlace; no sustituyas su precio por el del conjunto.',
+       '- Solo presenta un conjunto/combo si la imagen incluye las prendas que lo componen, el cliente pregunta explícitamente por el conjunto o confirma que desea el combo. Nunca describas como individual un enlace/precio de un producto agrupado.',
+       '- Si last_visual_reference.match_type es exact y matched_product existe, esa referencia fue validada contra el catálogo real, pero no significa que selectedProduct ya esté cargado. Para un solo producto usa select_product_by_url antes de consultar sus variantes.',
       '- Si match_type es similar, no afirmes que encontraste la referencia exacta. Presenta como máximo las opciones reales incluidas en candidates y pregunta cuál corresponde.',
       '- Si match_type es none, explica brevemente que no pudiste confirmar la referencia exacta y ofrece buscar por nombre, enlace o categoría.',
       '- Nunca inventes un enlace ni presentes como disponible un producto externo que no exista en el catálogo de la empresa activa.',
