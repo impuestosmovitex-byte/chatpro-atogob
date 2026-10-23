@@ -5,6 +5,11 @@ import {PlatformSidebar} from '../../components/PlatformSidebar';
 import {MW1_COMMERCIAL_PROPOSAL,MW1_EXTRA_USER_PREVIEW_COP,MW1_EXTRA_CONNECTION_PREVIEW_COP} from '../../lib/mw1-commercial-proposal';
 
 type Key='inicial'|'pro'|'empresa';
+type PublishedPlan={
+ plan_key:Key;price_cop:number;max_users:number;max_whatsapp_lines:number;
+ extra_user_cop:number|null;extra_connection_cop:number|null;
+ public_summary:string|null;public_features:string[]|null;published_at:string;
+};
 type Plan={
   planKey:Key;priceCop:number|null;maxUsers:number|null;maxWhatsappLines:number|null;
   extraUserCop:number|null;extraConnectionCop:number|null;
@@ -49,6 +54,18 @@ export default function AdminPlansPage(){
   const [previewConnections,setPreviewConnections]=useState(3);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
+  const [publishedPlans,setPublishedPlans]=useState<PublishedPlan[]>([]);
+  const [publicationError,setPublicationError]=useState('');
+  const [publishedChecked,setPublishedChecked]=useState(false);
+  async function reloadPublished(){
+    const response=await fetch('/api/platform-admin/plan-published',{cache:'no-store'});
+    const data=await response.json() as {ok?:boolean;plans?:PublishedPlan[];error?:string};
+    if(!response.ok||!data.ok||!Array.isArray(data.plans))
+      throw new Error(data.error||'No fue posible verificar los precios publicados.');
+    setPublishedPlans(data.plans);
+    setPublicationError('');
+    setPublishedChecked(true);
+  }
   useEffect(()=>{
     let active=true;
     (async()=>{
@@ -66,6 +83,7 @@ export default function AdminPlansPage(){
           setPlans(loadedPlans);
           setSavedPlans(loadedPlans);
           setFeatureTexts(Object.fromEntries(loadedPlans.map(p=>[p.planKey,p.publicFeatures.join('\n')])) as Partial<Record<Key,string>>);
+          void reloadPublished().catch(e=>{setPublishedChecked(true);setPublicationError(e instanceof Error?e.message:'No se pudo verificar la publicación.');});
         }
       }catch(cause){
         if(active)setError(cause instanceof Error?cause.message:'Error consultando los planes.');
@@ -76,6 +94,16 @@ export default function AdminPlansPage(){
   const plan=plans.find(p=>p.planKey===selected)||initial(selected);
   const savedPlan=savedPlans.find(p=>p.planKey===selected)||initial(selected);
   const hasUnsavedChanges=JSON.stringify(plan)!==JSON.stringify(savedPlan);
+  const publishedPlan=publishedPlans.find(p=>p.plan_key===selected);
+  const savedDiffersFromPublished=!!publishedPlan && (
+    plan.priceCop!==publishedPlan.price_cop||
+    plan.maxUsers!==publishedPlan.max_users||
+    plan.maxWhatsappLines!==publishedPlan.max_whatsapp_lines||
+    plan.extraUserCop!==publishedPlan.extra_user_cop||
+    plan.extraConnectionCop!==publishedPlan.extra_connection_cop||
+    plan.publicSummary!==(publishedPlan.public_summary??'')||
+    JSON.stringify(plan.publicFeatures)!==JSON.stringify(publishedPlan.public_features??[])
+  );
   const update=<K extends keyof Plan>(field:K,value:Plan[K])=>{
     setPlans(old=>old.map(p=>p.planKey===selected?{...p,[field]:value}:p));
     setNotice('');
@@ -108,6 +136,7 @@ export default function AdminPlansPage(){
       const result=await response.json() as {ok?:boolean;error?:string;message?:string};
       if(!response.ok||!result.ok)throw new Error(result.error||'No se pudo publicar.');
       setNotice(result.message||'Precio publicado en el entorno de pruebas.');
+      void reloadPublished().catch(e=>setPublicationError(e instanceof Error?e.message:'No se pudo verificar la publicación.'));
     }catch(cause){setError(cause instanceof Error?cause.message:'No se pudo publicar.');}
     finally{setPublishing(false);}
   }
@@ -146,9 +175,23 @@ export default function AdminPlansPage(){
           <h2 style={{fontSize:22,marginBottom:6}}>{names[selected]}</h2>
           <p style={{fontSize:13,color:'#667085'}}>Referencia comercial: {suggested[selected].price.toLocaleString('es-CO')} COP al mes; {suggested[selected].users} usuarios y {suggested[selected].lines} conexiones. {suggested[selected].description}</p>
           <p style={{fontSize:12,color:'#926100'}}>Los nombres comerciales son nuevos; se mantienen las claves internas por seguridad. Las referencias no se guardan automáticamente.</p>
+          <section aria-label="Estado de publicación" style={{background:'#f2f5fa',border:'1px solid #dbe2ee',padding:15,borderRadius:11,margin:'14px 0'}}>
+            <strong>Lo que ve el cliente en la web de pruebas</strong>
+            {publicationError?<p role="alert" style={{color:'#a32c2c',fontSize:13}}>No se pudo verificar el estado: {publicationError}</p>
+            :!publishedChecked?<p style={{fontSize:13}}>Consultando publicación…</p>
+            :!publishedPlan?<p style={{fontSize:13}}>Este plan aún no tiene una publicación aprobada. La web muestra la propuesta de referencia.</p>
+            :<div style={{fontSize:13,lineHeight:1.7}}>
+              <p><strong>Publicado:</strong> {publishedPlan.price_cop.toLocaleString('es-CO')} COP/mes · {publishedPlan.max_users} usuarios · {publishedPlan.max_whatsapp_lines} conexiones.</p>
+              <p><strong>Última publicación:</strong> {new Date(publishedPlan.published_at).toLocaleString('es-CO')}</p>
+              {savedDiffersFromPublished?<p style={{color:'#986000'}}>El formulario no coincide con lo publicado. Guarda y vuelve a publicar si deseas actualizar lo que ve el cliente.</p>:<p style={{color:'#166236'}}>Los valores comerciales del formulario coinciden con la publicación.</p>}
+            </div>}
+            <Link href="/precios" style={{fontSize:13}}>Abrir precios públicos →</Link>
+          </section>
           <p style={{fontSize:13,color:'#667085',marginBottom:20}}>
-            Moneda: COP. No se mostrará ningún importe al público hasta aprobarlo
-            y construir la publicación controlada.
+            Moneda: COP. Los valores que ves aquí son borradores hasta que pulses
+            «Publicar precio en staging». Solo entonces se actualizan las tarifas,
+            cupos, descripción y beneficios en la página pública /precios.
+            Esto no modifica los permisos ni la facturación de clientes.
           </p>
           <div style={{display:'grid',gridTemplateColumns:
             'repeat(auto-fit,minmax(220px,1fr))',gap:17,marginBottom:20}}>
