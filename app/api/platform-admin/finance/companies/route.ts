@@ -19,7 +19,7 @@ async function handler(request:NextRequest,method:'GET'|'POST'){
   url.searchParams.set('month',month);
  }else{
   const origin=request.headers.get('origin');
-  if(origin&&origin!=='https://mw1-web-staging-staging.up.railway.app')
+  if(origin!=='https://mw1-web-staging-staging.up.railway.app')
    return response({ok:false,error:'Origen no autorizado.'},403);
   if(Number(request.headers.get('content-length')||0)>6000)
    return response({ok:false,error:'Solicitud demasiado grande.'},413);
