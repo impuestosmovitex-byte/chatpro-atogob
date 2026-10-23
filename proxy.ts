@@ -124,6 +124,23 @@ export async function proxy(request: NextRequest) {
     return secureResponse(NextResponse.redirect(loginUrl));
   }
 
+  // A platform session has no tenant id. Never let it visit company pages
+  // or their APIs. Tenant sessions cannot enter the platform.
+  const isPlatformPath=pathname==='/admin'||pathname.startsWith('/admin/')||
+    pathname==='/api/platform-admin'||pathname.startsWith('/api/platform-admin/');
+  if(isPlatformPath && session.type!=='platform'){
+    if(pathname.startsWith('/api/'))return secureResponse(NextResponse.json(
+      {ok:false,error:'Requiere sesión independiente de superadministrador.'},{status:403}));
+    return secureResponse(NextResponse.redirect(new URL('/login?mode=platform&next='+encodeURIComponent(pathname),request.url)));
+  }
+  if(session.type==='platform'){
+    if(isPlatformPath || pathname==='/api/auth/session'||pathname==='/api/auth/logout')
+      return secureResponse(NextResponse.next());
+    if(pathname.startsWith('/api/'))return secureResponse(NextResponse.json(
+      {ok:false,error:'Las cuentas de plataforma no acceden a datos de empresas.'},{status:403}));
+    return secureResponse(NextResponse.redirect(new URL('/admin',request.url)));
+  }
+
   if (isAutomationPath(pathname)) {
     let allowed = false;
 
