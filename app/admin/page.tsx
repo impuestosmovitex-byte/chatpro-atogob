@@ -4,6 +4,7 @@ const sections=[
  {href:'/admin/empresas',title:'Empresas',desc:'Crear empresas y sus propios usuarios, consultar módulos e integraciones.'},
  {href:'/admin/planes',title:'Planes y precios',desc:'Administrar borradores de Básico, Eco y Pro, aprobar y publicar tarifas.'},
  {href:'/admin/simulador-financiero',title:'Rentabilidad',desc:'Proyectar ingresos, infraestructura y costos de cada plan.'},
+ {href:'/admin/rentabilidad-empresas',title:'Rentabilidad por empresa',desc:'Registrar ingresos, cobros y costos mensuales de ATOGOB, Emprende con Maogo y otros clientes.'},
  {href:'/admin/consumo-ia',title:'Consumo de inteligencia artificial',desc:'Analizar los registros medidos por empresa; datos parciales.'},
  {href:'/admin/tarifas-ia',title:'Tarifas de OpenAI',desc:'Configurar precios verificados por modelo y tipo de tokens.'},
 ];
