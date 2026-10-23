@@ -1028,11 +1028,13 @@ export class ChatAgentService {
         normalizedCustomerText,
       );
 
-    const intentRanked = (
-      wantsBundle
-        ? ranked.filter((candidate) => candidate.bundleLike)
-        : ranked.filter((candidate) => !candidate.bundleLike)
-    ).slice(0, 12);
+    // The picture determines whether an outfit can be treated as an exact match.
+    // Text mentioning "combo" alone never establishes that every component is visible.
+    // Keep single garments as the initial candidates; if the shopper explicitly
+    // asks for a set, allow mixed candidates for visual comparison, but vision
+    // must confirm that the complete set appears in the customer's image.
+    const individualCandidates = ranked.filter((candidate) => !candidate.bundleLike);
+    const intentRanked = (wantsBundle ? ranked : individualCandidates).slice(0, 12);
 
     const top = intentRanked[0] ?? null;
     const second = intentRanked[1] ?? null;
@@ -1204,7 +1206,8 @@ export class ChatAgentService {
               'similar significa que comparte categoría o estilo, pero no puedes asegurar que sea la misma referencia.',
               'none significa que ninguna fotografía del lote permite confirmar la referencia.',
               'No marques exact solo porque dos prendas pertenezcan a la misma categoría o tengan una forma común.',
-              'IMPORTANTE: si el cliente muestra una sola prenda (por ejemplo un vestido), NO selecciones un producto de catálogo que incluya vestido más chaqueta, combo, conjunto o varias prendas, aunque el vestido coincida. Ese artículo es diferente.',
+              'REGLA OBLIGATORIA: para marcar exact un conjunto/combo deben verse claramente TODOS sus componentes en la foto enviada por el cliente. Si solo se ve un vestido y la ficha incluye vestido + chaqueta, descarta el conjunto, aunque el cliente haya escrito combo o conjunto.',
+              'Si se ve una sola prenda, solo puedes confirmar la ficha individual de esa prenda. Si no hay una coincidencia individual verificable, devuelve none o similar; no sustituyas por un combo.',
               'Si el cliente muestra claramente varias prendas como outfit o pide explícitamente un combo, entonces sí puedes considerar los conjuntos. Nunca anuncies el precio del conjunto como precio de la prenda individual.',
               'Si reconoces detalles estructurales distintos, estampado diferente, cortes diferentes o elementos incompatibles, no es exact.',
               'candidate_index empieza en 1. Usa null cuando match_type sea none.',
@@ -2782,7 +2785,7 @@ export class ChatAgentService {
       '- En cada item de add_visual_products_to_cart envía únicamente talla, color, medida u otras opciones realmente visibles o confirmadas por el cliente. Si una opción necesaria no está resuelta, envía option_values vacío o solo los valores conocidos; la herramienta validará si falta información.',
       '- add_visual_products_to_cart es atómica: si alguna referencia no puede resolverse a una variante única, el carrito no cambia. Pide una sola aclaración breve únicamente por los productos indicados en unresolved y después vuelve a ejecutar el lote completo.',
       '- REGLA DE PRODUCTO INDIVIDUAL: cuando la imagen del cliente muestre solo un vestido, chaqueta, blusa u otra prenda, busca y ofrece primero esa referencia individual. No ofrezcas un conjunto, combo o paquete por el solo hecho de incluir esa prenda. Si no está confirmado el artículo individual, dilo y pide una referencia o enlace; no sustituyas su precio por el del conjunto.',
-       '- Solo presenta un conjunto/combo si la imagen incluye las prendas que lo componen, el cliente pregunta explícitamente por el conjunto o confirma que desea el combo. Nunca describas como individual un enlace/precio de un producto agrupado.',
+       '- Para referencias de FOTO, solo presenta un conjunto/combo como coincidencia si están visibles todas las prendas que contiene. La palabra conjunto o combo en el mensaje NO anula esta regla. Si el cliente pregunta por un combo cuya foto muestra una sola prenda, explica que necesitas verificar las demás prendas antes de ofrecer esa ficha.',
        '- Si last_visual_reference.match_type es exact y matched_product existe, esa referencia fue validada contra el catálogo real, pero no significa que selectedProduct ya esté cargado. Para un solo producto usa select_product_by_url antes de consultar sus variantes.',
       '- Si match_type es similar, no afirmes que encontraste la referencia exacta. Presenta como máximo las opciones reales incluidas en candidates y pregunta cuál corresponde.',
       '- Si match_type es none, explica brevemente que no pudiste confirmar la referencia exacta y ofrece buscar por nombre, enlace o categoría.',
