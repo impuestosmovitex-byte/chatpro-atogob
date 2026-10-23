@@ -4,7 +4,11 @@ const json=(data:unknown,status:number)=>NextResponse.json(data,{status,headers:
 export async function POST(request:NextRequest){
  if(process.env.MW1_STAGING_MODE!=='true')
   return json({ok:false,error:'Disponible únicamente en MW1 staging.'},403);
- if(request.headers.get('origin')!==new URL(request.url).origin)
+ // Reverse proxies may expose an internal request URL different from the
+ // public browser origin. Allow only the explicitly approved staging domain.
+ const stagingOrigin='https://mw1-web-staging-staging.up.railway.app';
+ if(request.headers.get('origin')!==stagingOrigin ||
+    (request.headers.get('sec-fetch-site') && request.headers.get('sec-fetch-site')!=='same-origin'))
   return json({ok:false,error:'Solicitud no autorizada.'},403);
  if(Number(request.headers.get('content-length')||0)>1024)
   return json({ok:false,error:'Solicitud inválida.'},413);
