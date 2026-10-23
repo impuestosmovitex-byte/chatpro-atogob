@@ -52,6 +52,86 @@ export class PlatformAdminController {
     private readonly accessAuthService: AccessAuthService,
   ) {}
 
+  // Bootstrap exactly one staging platform administrator with an expiring,
+  // single-use invitation issued by the staging operator. No shared/default password.
+  @Post('staging-admin-activate')
+  async activateStagingSuperadmin(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Body() payload:unknown,
+  ) {
+    this.assertInternalKey(providedKey);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Disponible únicamente en staging.');
+    if(!payload||typeof payload!=='object'||Array.isArray(payload))
+      throw new BadRequestException('Solicitud inválida.');
+    const body=payload as Record<string,unknown>;
+    if(Object.keys(body).some(k=>!['token','password'].includes(k))||
+      typeof body.token!=='string'||!/^[0-9a-f]{64}$/.test(body.token)||
+      typeof body.password!=='string'||body.password.length<14||body.password.length>128)
+      throw new BadRequestException('Enlace o contraseña inválida.');
+    const client=this.supabaseService.getClient();
+    const {count:admins,error:adminError}=await client.from('platform_admins')
+      .select('user_id',{head:true,count:'exact'}).eq('active',true);
+    if(adminError||admins===null)
+      throw new BadRequestException('No se pudo comprobar el estado de administración.');
+    if(admins>0)throw new UnauthorizedException('El alta inicial ya fue completada.');
+    // UPDATE ... WHERE used_at IS NULL is the one-time atomic claim.
+    // If subsequent provisioning fails, the invitation stays consumed (fail closed).
+    const digest=createHash('sha256').update(body.token).digest('hex');
+    const {data:invite,error:inviteError}=await client.from('platform_staging_admin_invites')
+      .update({used_at:new Date().toISOString()})
+      .eq('token_sha256',digest).is('used_at',null)
+      .gt('expires_at',new Date().toISOString())
+      .select('id,login_identifier,company_slug').maybeSingle();
+    if(inviteError||!invite)throw new UnauthorizedException('Este enlace no es válido o ya caducó.');
+    const identifier=invite.login_identifier;
+    const password=body.password;
+    if(password.includes(identifier))
+      throw new BadRequestException('La contraseña no puede incluir la identificación.');
+    const {data:existing,error:existingError}=await client.from('app_profiles')
+      .select('user_id').eq('login_identifier',identifier).maybeSingle();
+    if(existingError||existing)
+      throw new BadRequestException('Este identificador ya está registrado.');
+    const {data:company,error:companyError}=await client.from('companies')
+      .select('id,slug').eq('slug',invite.company_slug).eq('status','active').maybeSingle();
+    if(companyError||!company)throw new BadRequestException('Empresa de demostración no disponible.');
+    const {data:role,error:roleError}=await client.from('app_roles')
+      .select('id').eq('key','owner').is('company_id',null).maybeSingle();
+    if(roleError||!role)throw new BadRequestException('Rol de propietario no disponible.');
+    let userId='';
+    try {
+      const {data:created,error:createError}=await client.auth.admin.createUser({
+        email:this.technicalEmail(company.slug,identifier),
+        password,email_confirm:true,
+        user_metadata:{full_name:'Administrador MW1',login_identifier:identifier},
+      });
+      if(createError||!created.user?.id)throw new Error('No se pudo crear la identidad.');
+      userId=created.user.id;
+      const {error:profileError}=await client.from('app_profiles').insert({
+        user_id:userId,full_name:'Administrador MW1',login_identifier:identifier,
+        email:this.technicalEmail(company.slug,identifier),
+        password_hash:this.accessAuthService.hash(password),active:true,
+      });
+      if(profileError)throw new Error('No se pudo preparar el acceso.');
+      const {error:membershipError}=await client.from('company_memberships').insert({
+        user_id:userId,company_id:company.id,role_id:role.id,active:true,
+      });
+      if(membershipError)throw new Error('No se pudo asociar la cuenta a staging.');
+      const {error:grantError}=await client.from('platform_admins').insert({user_id:userId,active:true});
+      if(grantError)throw new Error('No se pudo activar el superadministrador.');
+      return {ok:true,loginIdentifier:identifier,
+        message:'Usuario activado en MW1 staging. Ya puedes iniciar sesión.'};
+    } catch(err) {
+      if(userId){
+        await client.from('platform_admins').delete().eq('user_id',userId);
+        await client.from('company_memberships').delete().eq('user_id',userId);
+        await client.from('app_profiles').delete().eq('user_id',userId);
+        await client.auth.admin.deleteUser(userId);
+      }
+      throw new BadRequestException(err instanceof Error?err.message:'No se pudo activar la cuenta.');
+    }
+  }
+
   @Get('me')
   async me(
     @Headers('x-chatpro-inbox-key') providedKey = '',
