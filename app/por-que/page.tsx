@@ -6,105 +6,154 @@ import marketing from '../components/marketing/marketing.module.css';
 import styles from './por-que.module.css';
 
 export const metadata:Metadata={
- title:'¿Por qué MW1? | Conversaciones, ventas y atención con IA',
- description:'Organiza los mensajes de tu negocio, coordina a tus asesores y mejora la atención con ayuda de la IA. Conoce por qué usar MW1.',
+ title:'¿Por qué usar MW1? | Control de conversaciones, clientes e IA',
+ description:'Conoce cómo MW1 ayuda a centralizar mensajes, organizar asesores, dar seguimiento a clientes y automatizar la atención de tu empresa.',
 };
-const benefits:{icon:MarketingIconName;title:string;description:string}[]=[
- {icon:'whatsapp',title:'Tus canales en una sola bandeja',description:'Organiza en un mismo espacio los canales de atención conectados, sin obligar a tus asesores a saltar entre aplicaciones.'},
- {icon:'users',title:'Un equipo que trabaja con control',description:'Distribuye la atención, identifica quién gestiona las conversaciones y mantén un historial para hacer seguimiento a cada oportunidad.'},
- {icon:'bot',title:'IA para acompañar a tus clientes',description:'Ofrece respuestas sobre tus productos, horarios y condiciones configuradas, incluso cuando tu equipo no está disponible. El asesor puede tomar el control.'},
- {icon:'database',title:'Información más organizada',description:'Conserva contexto, contactos, notas y estados de atención. Reduce la dependencia de conversaciones aisladas y difíciles de rastrear.'},
- {icon:'workflow',title:'Menos tareas repetitivas',description:'Configura mensajes, reglas y seguimientos para que tu equipo dedique más tiempo a resolver consultas y cerrar oportunidades.'},
- {icon:'shopping',title:'De la conversación a la venta',description:'Comparte información de productos y catálogos dentro del flujo comercial. Enlaces de pago y gestión ampliada de pedidos forman parte de las integraciones previstas.'},
+const capabilities:{icon:MarketingIconName;title:string;description:string}[]=[
+ {icon:'whatsapp',title:'Todos tus canales en un solo lugar',description:'Tu equipo puede atender desde una bandeja unificada los canales que hayas conectado, sin saltar entre varias aplicaciones ni perder el hilo de cada conversación.'},
+ {icon:'users',title:'Control de asesores y equipos',description:'Organiza usuarios y responsabilidades, identifica quién atiende a cada cliente y facilita la supervisión del trabajo cotidiano.'},
+ {icon:'bot',title:'IA que apoya cuando no hay un asesor disponible',description:'La inteligencia artificial puede ayudar a responder preguntas habituales con la información configurada de tu negocio, y derivar consultas que necesitan intervención humana.'},
+ {icon:'workflow',title:'Automatizaciones y seguimiento',description:'Disminuye tareas repetitivas y da continuidad a oportunidades comerciales mediante reglas, mensajes y seguimiento, según las funciones habilitadas para tu empresa.'},
+ {icon:'database',title:'Información de clientes organizada',description:'Consulta conversaciones, contactos, notas y estados para tener contexto en futuras atenciones. Una buena organización reduce la dependencia de chats aislados.'},
+ {icon:'shopping',title:'Catálogo y apoyo a las ventas',description:'Consulta la información de productos conectados y comparte detalles útiles con el cliente. Los pedidos nativos y enlaces de pago automatizados están previstos para fases posteriores.'},
 ];
-const steps=[
- {number:'01',title:'El cliente escribe',description:'Llega un mensaje desde uno de los canales habilitados para tu negocio.'},
- {number:'02',title:'MW1 conserva el contexto',description:'Tu equipo consulta la conversación y la información del cliente desde una misma plataforma.'},
- {number:'03',title:'El asesor y la IA colaboran',description:'La IA puede resolver consultas configuradas y un humano interviene cuando haga falta.'},
- {number:'04',title:'Das seguimiento a la oportunidad',description:'Organiza el interés del cliente, las tareas pendientes y el siguiente paso comercial.'},
+const flow=[
+ {number:'01',title:'El cliente escribe',description:'Llega una consulta por alguno de tus canales conectados.'},
+ {number:'02',title:'La conversación queda organizada',description:'El equipo encuentra el contacto, sus mensajes y el contexto disponible.'},
+ {number:'03',title:'Responde la IA o tu asesor',description:'Las consultas repetitivas pueden recibir apoyo automático y los casos especiales pasan a atención humana.'},
+ {number:'04',title:'Tu equipo hace seguimiento',description:'Las tareas, el interés comercial y los siguientes pasos dejan de depender de la memoria de una sola persona.'},
 ];
 export default function PorQuePage(){
  return <main className={marketing.site}>
   <MarketingHeader/>
   <section className={styles.hero}>
    <div className={styles.heroText}>
-    <div className={marketing.eyebrow}>¿Por qué usar MW1?</div>
-    <h1>Que una conversación sin atender <span>no sea una venta perdida.</span></h1>
-    <p className={styles.lead}>Cada mensaje es una oportunidad. Cuando tus canales están separados, tus asesores no tienen contexto o nadie responde a tiempo, atender y vender se vuelve más difícil.</p>
-    <p className={styles.sublead}><strong>MW1 reúne la atención, el equipo y la IA en un solo lugar</strong> para que tu negocio tenga más organización, seguimiento y control.</p>
+    <div className={marketing.eyebrow}>¿Por qué utilizar MW1?</div>
+    <h1>Tu negocio no debería <span>perder oportunidades por no responder a tiempo.</span></h1>
+    <p className={styles.lead}>MW1 es una plataforma diseñada para integrar, gestionar y controlar los mensajes y canales de comunicación de tu empresa desde un solo lugar.</p>
+    <p className={styles.sublead}>Centraliza la atención, organiza a tus asesores y apóyate en inteligencia artificial para que las conversaciones no dependan de que estés conectado todo el día.</p>
     <div className={styles.actions}>
-     <Link href="/demo" className={marketing.primaryButton}>Conoce MW1 en una demo ↗</Link>
+     <Link href="/demo" className={marketing.primaryButton}>Solicitar una demostración ↗</Link>
      <Link href="/precios" className={marketing.secondaryButton}>Conocer los planes</Link>
     </div>
-    <span className={styles.heroDisclaimer}>Tu equipo mantiene el control. Las integraciones y funcionalidades dependen del plan y la configuración.</span>
+    <span className={styles.heroDisclaimer}>Disponibilidad según plan, canales conectados y configuración. MW1 apoya a tu equipo; no garantiza ventas ni resultados comerciales específicos.</span>
    </div>
-   <div className={styles.visual} aria-label="Ejemplo ilustrativo de atención unificada con IA">
-    <div className={styles.visualTop}><strong>MW1</strong><span>Ejemplo de conversación</span></div>
+   <div className={styles.visual} aria-label="Ejemplo ilustrativo de atención desde MW1">
+    <div className={styles.visualTop}><strong>MW1</strong><span>Atención unificada · Ejemplo</span></div>
     <div className={styles.visualTabs}><span>WhatsApp</span><span>Instagram</span><span>Messenger</span></div>
-    <div className={styles.chatBubbleClient}>Hola, quiero información del producto que vi. ¿Todavía lo tienen?</div>
-    <div className={styles.chatBubbleAgent}><span>Asistente MW1</span>¡Hola! Puedo ayudarte a revisar la información del catálogo conectado. ¿Qué talla buscas?</div>
-    <div className={styles.chatBubbleClient}>Quiero confirmar antes de comprar.</div>
-    <div className={styles.handoff}><MarketingIcon name="users"/> <span><strong>Asesor disponible</strong> · Puede continuar la atención con el contexto de esta conversación.</span></div>
-    <div className={styles.visualFooter}>Vista demostrativa · No es una conversación real</div>
+    <div className={styles.chatBubbleClient}>Hola, ¿todavía tienen disponible este producto? Necesito ayuda.</div>
+    <div className={styles.chatBubbleAgent}><span>Asistente MW1</span>¡Hola! Te ayudo con la información del catálogo conectado. ¿Qué referencia o talla buscas?</div>
+    <div className={styles.chatBubbleClient}>También quiero hablar con un asesor.</div>
+    <div className={styles.handoff}><MarketingIcon name="users"/> <span><strong>Atención humana</strong> · Tu equipo puede continuar la conversación con su contexto.</span></div>
+    <div className={styles.visualFooter}>Demostración ilustrativa · No es un chat real</div>
    </div>
   </section>
 
   <section className={styles.section} aria-labelledby="problem-heading">
    <div className={styles.intro}>
-    <p className={styles.kicker}>El problema no es recibir mensajes</p>
-    <h2 id="problem-heading">El reto es responderlos, administrarlos y convertirlos en oportunidades.</h2>
-    <p>Cuando la información puede perderse en cuentas individuales, no existe trazabilidad o las respuestas llegan tarde, el negocio asume riesgos comerciales y operativos. Centralizar la atención ayuda a tener más control; ninguna herramienta elimina por completo el riesgo de fraude.</p>
+    <p className={styles.kicker}>El reto de atender desde varias plataformas</p>
+    <h2 id="problem-heading">Recibir mensajes es fácil. Gestionarlos bien es lo que marca la diferencia.</h2>
+    <p>Cuando una empresa administra conversaciones desde cuentas separadas, puede perder el contexto de sus clientes, tardar en responder y dificultar la supervisión de su equipo. Los mensajes sin seguimiento también pueden convertirse en oportunidades desaprovechadas.</p>
+    <p style={{marginTop:14}}>Sin trazabilidad, es más difícil detectar usos indebidos, controlar accesos y entender cómo se están gestionando las consultas. Por eso MW1 busca que la información comercial esté más organizada y disponible para las personas autorizadas.</p>
    </div>
    <div className={styles.benefitGrid}>
-    {benefits.map(item=><article key={item.title} className={styles.benefitCard}>
+    {capabilities.map(item=><article className={styles.benefitCard} key={item.title}>
      <span className={styles.benefitIcon}><MarketingIcon name={item.icon}/></span>
      <h3>{item.title}</h3><p>{item.description}</p>
     </article>)}
    </div>
   </section>
 
-  <section className={styles.workflowSection} aria-labelledby="process-heading">
+  <section className={styles.workflowSection} aria-labelledby="workflow-heading">
    <div className={styles.section}>
     <div className={styles.intro}>
-     <p className={styles.kicker}>De mensaje a oportunidad comercial</p>
-     <h2 id="process-heading">Un flujo de atención más claro para tu equipo.</h2>
+     <p className={styles.kicker}>IA para tu equipo, no en lugar de tu equipo</p>
+     <h2 id="workflow-heading">Los clientes no siempre pueden esperar a que abra tu negocio.</h2>
+     <p>La IA puede ayudar con preguntas habituales fuera del horario de atención, mientras tu equipo se concentra en consultas que necesitan una respuesta personalizada. El objetivo es atender mejor sin perder el control humano.</p>
     </div>
     <div className={styles.steps}>
-     {steps.map(step=><div key={step.number} className={styles.step}>
-      <span>{step.number}</span><h3>{step.title}</h3><p>{step.description}</p>
+     {flow.map(item=><div key={item.number} className={styles.step}>
+      <span>{item.number}</span><h3>{item.title}</h3><p>{item.description}</p>
      </div>)}
     </div>
    </div>
   </section>
 
-  <section className={styles.section} aria-labelledby="payment-heading">
+  <section className={styles.section} aria-labelledby="control-heading">
+   <div className={styles.intro}>
+    <p className={styles.kicker}>Mucho más que responder mensajes</p>
+    <h2 id="control-heading">Organiza a tus asesores y toma decisiones con información.</h2>
+    <p>MW1 busca ayudarte a construir una operación más organizada: gestionar información de clientes, registrar usuarios y distribuir responsabilidades, consultar indicadores de atención y entender qué conversaciones necesitan seguimiento.</p>
+   </div>
+   <div className={styles.benefitGrid}>
+    <article className={styles.benefitCard}>
+     <span className={styles.benefitIcon}><MarketingIcon name="database"/></span>
+     <h3>Tu directorio comercial</h3>
+     <p>Conserva datos y notas para facilitar futuras atenciones. Su uso para campañas o comunicaciones comerciales debe respetar los permisos, las autorizaciones y la normativa aplicable.</p>
+    </article>
+    <article className={styles.benefitCard}>
+     <span className={styles.benefitIcon}><MarketingIcon name="users"/></span>
+     <h3>Roles y áreas de trabajo</h3>
+     <p>Distribuye accesos y responsabilidades entre las personas que atienden a tus clientes, de acuerdo con la configuración disponible en tu cuenta.</p>
+    </article>
+    <article className={styles.benefitCard}>
+     <span className={styles.benefitIcon}><MarketingIcon name="workflow"/></span>
+     <h3>Estadísticas y seguimiento</h3>
+     <p>Consulta los indicadores de atención disponibles para evaluar la actividad del equipo y detectar oportunidades de mejora. Algunas métricas requieren configuración y validación.</p>
+    </article>
+   </div>
+  </section>
+
+  <section className={styles.section} aria-labelledby="orders-heading">
    <div className={styles.paymentPanel}>
     <div>
-     <p className={styles.kicker}>El siguiente paso: facilitar el cierre</p>
-     <h2 id="payment-heading">Del “quiero pagar” a un enlace de pago seguro.</h2>
-     <p>Queremos que MW1 permita generar y compartir enlaces de pago desde el CRM utilizando la pasarela configurada por cada empresa. El cliente pagaría en un entorno seguro del proveedor y el negocio podría consultar el estado de la transacción.</p>
-     <p className={styles.pendingLabel}>Integración de pagos en desarrollo · No disponible todavía como cobro nativo desde MW1.</p>
-     <Link href="/demo" className={marketing.primaryButton}>Consultar integraciones y disponibilidad</Link>
+     <p className={styles.kicker}>La evolución de MW1 · Plan Pro</p>
+     <h2 id="orders-heading">Gestionar pedidos incluso sin tienda virtual.</h2>
+     <p>Queremos que un negocio pueda registrar pedidos recibidos por conversación, consultar cuáles están pendientes de preparación y acompañar su despacho desde MW1, incluso si no tiene página web propia.</p>
+     <p>También estamos diseñando el envío de enlaces de pago desde el chat mediante la pasarela que configure cada comercio. El cliente pagaría en una página segura del proveedor y el negocio recibiría la confirmación verificada.</p>
+     <p className={styles.pendingLabel}><strong>Funciones en desarrollo:</strong> pedidos nativos, preparación y despacho de pedidos, generación automática de enlaces de pago. No forman parte todavía de una capacidad entregada y verificada del Plan Pro.</p>
+     <Link href="/demo" className={marketing.primaryButton}>Conocer las funciones disponibles</Link>
     </div>
-    <div className={styles.paymentVisual} aria-label="Ejemplo ilustrativo del futuro flujo de enlaces de pago">
+    <div className={styles.paymentVisual} aria-label="Ilustración de un futuro pago por conversación">
      <div className={styles.paymentMessage}>Cliente: “Listo, quiero pagar”.</div>
      <div className={styles.paymentExample}>
       <span><MarketingIcon name="payment"/> Enlace de pago</span>
-      <strong>Pedido de ejemplo</strong>
-      <small>Total y referencia confirmados por la empresa</small>
+      <strong>Tu pedido · Ejemplo</strong>
+      <small>Importe confirmado por el comercio</small>
       <div className={styles.fakePayButton}>Continuar al pago ↗</div>
      </div>
-     <p>Ilustración de una función prevista. Este botón no cobra ni abre una pasarela.</p>
+     <p>Vista conceptual de una función prevista. No procesa pagos ni genera enlaces reales.</p>
     </div>
    </div>
   </section>
 
-  <section className={styles.cta}>
-   <p className={styles.kicker}>Tu negocio sigue creciendo. Tu atención también debe mejorar.</p>
-   <h2>Menos mensajes perdidos. Más contexto, atención y seguimiento.</h2>
-   <p>Conoce cómo MW1 puede adaptarse a los canales, el equipo y las necesidades de tu empresa.</p>
-   <div className={styles.actions}><Link className={marketing.primaryButton} href="/demo">Solicitar una demo</Link><Link href="/precios" className={marketing.secondaryButton}>Ver planes</Link></div>
+  <section className={styles.workflowSection} aria-labelledby="cost-heading">
+   <div className={styles.section}>
+    <div className={styles.intro}>
+     <p className={styles.kicker}>Piensa en el costo de atender a tus clientes</p>
+     <h2 id="cost-heading">¿Cuánto le cuesta a tu empresa responder cada conversación?</h2>
+     <p>Imagina un negocio que recibe entre 15 y 20 interesados por hora. La cantidad de asesores necesaria dependerá del volumen, la complejidad y los horarios. A eso se suman salarios, supervisión, tiempos de espera y oportunidades sin seguimiento.</p>
+     <p style={{marginTop:14}}>Una plataforma como MW1 puede ayudar a reducir trabajo repetitivo y aprovechar mejor los recursos de tu equipo. El ahorro real no es automático: depende de tus procesos, canales, implementación y uso de la IA.</p>
+     <p style={{marginTop:14}}>Con integraciones bien configuradas también puedes mejorar las prácticas de control y seguridad, aunque ninguna plataforma garantiza evitar sanciones, bloqueos o suspensiones de Meta o WhatsApp Business.</p>
+    </div>
+   </div>
   </section>
-  <footer className={marketing.footer}>MW1 · Atención organizada, IA y control para tu negocio</footer>
+
+  <section className={styles.section} aria-labelledby="night-heading">
+   <div className={styles.intro}>
+    <p className={styles.kicker}>Tu negocio no debería depender de que estés conectado las 24 horas</p>
+    <h2 id="night-heading">¿Cuántas veces le has escrito a una marca y nunca te respondió?</h2>
+    <p>Quizás te respondieron una primera vez, hiciste otra pregunta y nadie volvió a contestarte. O escribiste por la noche y tu consulta quedó olvidada hasta el día siguiente.</p>
+    <p style={{marginTop:14}}>Con MW1 puedes organizar mejor esas conversaciones, preparar respuestas para preguntas habituales y facilitar el seguimiento cuando regresen tus asesores. Porque una atención más oportuna también forma parte de la experiencia que los clientes esperan.</p>
+   </div>
+  </section>
+
+  <section className={styles.cta}>
+   <p className={styles.kicker}>Empieza a transformar la atención de tu negocio</p>
+   <h2>MW1 es más que un CRM. Es una forma de organizar tu empresa para seguir creciendo.</h2>
+   <p>Centraliza tus conversaciones, apoya a tus asesores con IA, automatiza tareas repetitivas y da seguimiento a cada oportunidad desde una misma plataforma.</p>
+   <div className={styles.actions}><Link href="/demo" className={marketing.primaryButton}>Quiero conocer MW1</Link><Link href="/precios" className={marketing.secondaryButton}>Ver planes y precios</Link></div>
+  </section>
+  <footer className={marketing.footer}>MW1 · Atención más organizada, inteligencia artificial y control para tu empresa</footer>
  </main>;
 }
