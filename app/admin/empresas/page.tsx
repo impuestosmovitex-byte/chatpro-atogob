@@ -24,6 +24,13 @@ type OnboardingStatus={
   integrations:Array<{key:string;label:string;status:string;meaning:string}>;
 };
 
+type CompanyOwner={
+ companyId:string;companyName:string;companySlug:string;userId:string;
+ name:string;identifier:string;contactEmail:string;contactPhone:string;
+ emailVerified:boolean;active:boolean;
+};
+type OwnerEdit={identifier:string;password:string;contactEmail:string;contactPhone:string};
+type OwnerField=keyof OwnerEdit;
 type Company = {
   readiness?:OnboardingStatus;
   id: string;
@@ -127,6 +134,11 @@ export default function PlatformCompaniesPage() {
   const [leadMessage,setLeadMessage]=useState('');
   const [reviewedCompanyAccess,setReviewedCompanyAccess]=useState(false);
   const [preparedFromLead,setPreparedFromLead]=useState<string|null>(null);
+  const [owners,setOwners]=useState<CompanyOwner[]>([]);
+  const [ownerEdits,setOwnerEdits]=useState<Record<string,OwnerEdit>>({});
+  const [ownerBusy,setOwnerBusy]=useState<string|null>(null);
+  const [ownerMessage,setOwnerMessage]=useState<Record<string,string>>({});
+
 
   async function load() {
     setLoading(true);
@@ -167,6 +179,64 @@ export default function PlatformCompaniesPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  async function loadOwners(){
+    try{
+      const response=await fetch('/api/platform-admin/companies/owners',{cache:'no-store'});
+      if(!response.ok)return;
+      const payload=await response.json() as {ok?:boolean;owners?:CompanyOwner[]};
+      if(!payload.ok)return;
+      const entries=payload.owners||[];
+      setOwners(entries);
+      setOwnerEdits(Object.fromEntries(entries.map(o=>[o.userId,{
+        identifier:o.identifier,password:'',contactEmail:o.contactEmail,
+        contactPhone:o.contactPhone,
+      }])));
+    }catch{/* Existing company directory remains available if owners endpoint is unavailable. */}
+  }
+
+  function ownerChange(userId:string,key:OwnerField,value:string){
+    setOwnerEdits(current=>({...current,[userId]:{...current[userId],[key]:value}}));
+    setOwnerMessage(current=>({...current,[userId]:''}));
+  }
+
+  async function saveOwner(company:Company,owner:CompanyOwner){
+    const draft=ownerEdits[owner.userId];
+    if(!draft||ownerBusy)return;
+    const payload:Record<string,string>={companyId:company.id,userId:owner.userId};
+    if(draft.identifier.trim()!==owner.identifier)payload.identifier=draft.identifier.trim();
+    if(draft.password)payload.password=draft.password;
+    if(draft.contactEmail.trim()!==owner.contactEmail)payload.contactEmail=draft.contactEmail.trim();
+    if(draft.contactPhone.trim()!==owner.contactPhone)payload.contactPhone=draft.contactPhone.trim();
+    if(Object.keys(payload).length===2){
+      setOwnerMessage(current=>({...current,[owner.userId]:'No hay cambios pendientes.'}));return;
+    }
+    if(draft.password&&draft.password.length<12){
+      setOwnerMessage(current=>({...current,[owner.userId]:'Usa una contraseña de al menos 12 caracteres, con letras y números.'}));return;
+    }
+    if(!window.confirm('¿Confirmas que deseas actualizar el acceso de '+owner.name+
+       '? Si cambias la contraseña, la anterior dejará de funcionar.')){
+      return;
+    }
+    setOwnerBusy(owner.userId);
+    try{
+      const response=await fetch('/api/platform-admin/companies/owners',{
+        method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),
+      });
+      const result=await response.json() as {ok?:boolean;error?:string};
+      if(!response.ok||!result.ok)throw new Error(result.error||'No se pudo actualizar el acceso.');
+      setOwnerMessage(current=>({...current,[owner.userId]:
+        'Acceso actualizado. Entrega la contraseña nueva al propietario por un canal seguro.'}));
+      await loadOwners();
+    }catch(error){
+      setOwnerMessage(current=>({...current,[owner.userId]:
+        error instanceof Error?error.message:'No se pudo actualizar el acceso.'}));
+    }finally{setOwnerBusy(null);}
+  }
+
+  useEffect(()=>{
+    if(authorized===true)void loadOwners();
+  },[authorized]);
 
   useEffect(()=>{
     if(authorized!==true)return;
@@ -550,6 +620,60 @@ export default function PlatformCompaniesPage() {
                             {company.readiness.notes.map((note,index)=><li key={index}>{note}</li>)}
                           </ul>:null}
                       </div>
+                      {owners.filter(owner=>owner.companyId===company.id).map(owner=>{
+                        const draft=ownerEdits[owner.userId];
+                        return <div key={owner.userId} style={{gridColumn:'1 / -1',
+                          background:'#fffdf5',border:'1px solid #edd891',borderRadius:12,
+                          padding:16,marginTop:10}}>
+                          <h4 style={{margin:'0 0 5px',fontSize:15}}>Acceso del propietario · {owner.name}</h4>
+                          <p style={{fontSize:12,color:'#63718a',lineHeight:1.65,margin:'0 0 12px'}}>
+                            Cambia su código de acceso o establece una contraseña nueva si la olvidó.
+                            No se puede consultar la clave anterior. Estos cambios no modifican
+                            el plan, los límites ni las integraciones de la empresa.
+                          </p>
+                          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12}}>
+                            <label style={{fontSize:12,fontWeight:750}}>Código de acceso
+                              <input style={{...inputStyle,marginTop:5}}
+                                maxLength={60} value={draft?.identifier??owner.identifier}
+                                onChange={e=>ownerChange(owner.userId,'identifier',e.target.value)}/>
+                            </label>
+                            <label style={{fontSize:12,fontWeight:750}}>Nueva contraseña (si deseas cambiarla)
+                              <input style={{...inputStyle,marginTop:5}} type="password"
+                                autoComplete="new-password" minLength={12} maxLength={128}
+                                value={draft?.password??''}
+                                placeholder="Mín. 12, letras y números"
+                                onChange={e=>ownerChange(owner.userId,'password',e.target.value)}/>
+                            </label>
+                            <label style={{fontSize:12,fontWeight:750}}>Correo para recuperación
+                              <input style={{...inputStyle,marginTop:5}} type="email"
+                                value={draft?.contactEmail??owner.contactEmail}
+                                placeholder="correo@empresa.com"
+                                onChange={e=>ownerChange(owner.userId,'contactEmail',e.target.value)}/>
+                            </label>
+                            <label style={{fontSize:12,fontWeight:750}}>Celular de recuperación
+                              <input style={{...inputStyle,marginTop:5}} type="tel"
+                                value={draft?.contactPhone??owner.contactPhone}
+                                placeholder="+573001234567"
+                                onChange={e=>ownerChange(owner.userId,'contactPhone',e.target.value)}/>
+                            </label>
+                          </div>
+                          <p style={{fontSize:11,color:'#7c651c',lineHeight:1.5,margin:'10px 0'}}>
+                            {owner.emailVerified?'Correo verificado para recuperación.':
+                              'Correo no verificado: todavía no permite recuperar contraseñas automáticamente.'}
+                            {' '}El celular requiere verificación con SMS/WhatsApp antes de habilitar ese mecanismo.
+                          </p>
+                          {ownerMessage[owner.userId]&&<p role="status"
+                            style={{fontSize:12,padding:9,background:'#eef5ff',borderRadius:8}}>
+                            {ownerMessage[owner.userId]}
+                          </p>}
+                          <button type="button" disabled={ownerBusy!==null||!draft}
+                            onClick={()=>void saveOwner(company,owner)}
+                            style={{background:'#f4bf00',padding:'11px 16px',fontWeight:800,
+                              border:0,borderRadius:10,color:'#172235',cursor:'pointer'}}>
+                            {ownerBusy===owner.userId?'Guardando…':'Guardar cambios de acceso'}
+                          </button>
+                        </div>;
+                      })}
                     </div>
                   </article>
                 ))}
