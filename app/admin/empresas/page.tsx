@@ -321,7 +321,10 @@ export default function PlatformCompaniesPage() {
 
   function prepareCompanyFromLead(lead:DemoLead){
     // Draft only. No credentials, plan assignment, subscriptions or companies are created.
-    const pilotPlan=resolvePilotPlan(lead.planInterest);
+    // Marketing forms submit commercial keys; the legacy 'pro' DB key means Eco.
+    // Interpret inbound lead choices as commercial values, not stored DB entitlements.
+    const pilotPlan=(['basico','eco','pro'].includes(lead.planInterest)
+      ? lead.planInterest as PilotPlan : resolvePilotPlan(lead.planInterest));
     const base=pilotPlan?formWithPilotPlan(pilotPlan):initialForm;
     setForm({...base,name:lead.companyName,slug:generateSlug(lead.companyName)});
     setReviewedCompanyAccess(false);
