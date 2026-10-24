@@ -56,7 +56,7 @@ type LinkedCompany={
 type DemoLead={
   id:string;companyName:string;contactName:string;contactEmail:string;
   planInterest:string;status:string;createdAt:string;
-  requestType:'trial'|'demo';contactPhone:string|null;whatsappSetup:string|null;trialDays:number|null;trialActivatedAt:string|null;
+  requestType:'trial'|'demo';contactPhone:string|null;whatsappSetup:string|null;trialDays:number|null;trialActivatedAt:string|null;requestedUsers:number|null;requestedConnections:number|null;
   internalNote:string;followUpOn:string|null;
 };
 
@@ -743,7 +743,7 @@ export default function PlatformCompaniesPage() {
                       } as Record<string,string>)[lead.whatsappSetup]??'Por revisar'}</div>}
                     </td>
                     <td style={{padding:10}}>{lead.requestType==='trial'?'Prueba guiada 14 días':'Demo'}</td>
-                    <td style={{padding:10}}>{{inicial:'Básico',basico:'Básico',eco:'Eco',pro:'Pro',empresa:'Pro (clave antigua)',sin_definir:'Por definir'}[lead.planInterest]??lead.planInterest}</td>
+                    <td style={{padding:10}}>{{inicial:'Básico',basico:'Básico',eco:'Eco',pro:'Pro',empresa:'Pro (clave antigua)',sin_definir:'Por definir'}[lead.planInterest]??lead.planInterest}<div style={{fontSize:11,color:'#667085',marginTop:5}}>{lead.requestedUsers?lead.requestedUsers+' usuarios':''}{lead.requestedUsers&&lead.requestedConnections?' · ':''}{lead.requestedConnections?lead.requestedConnections+' conexiones':''}</div></td>
                     <td style={{padding:10,minWidth:210}}>
                       <div style={{display:'grid',gap:7}}>
                         <select aria-label={'Estado de '+lead.companyName} style={{...inputStyle,padding:7}}
