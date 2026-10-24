@@ -223,7 +223,7 @@ export function AppSidebar({
   }> = [
     ...baseNavigation.filter(
       (item) =>
-        !demoNavigation && effectiveCapabilities[item.capability] &&
+        effectiveCapabilities[item.capability] &&
         (item.href !== '/leads' || isServiceTenant),
     ),
     ...(ordersEnabled ? [
@@ -236,7 +236,7 @@ export function AppSidebar({
       ...(demoNavigation ? [{ href: '/catalogo/importar', label: 'Importar catálogo', icon: '⇧' },{ href: '/catalogo/imagenes', label: 'Fotos del catálogo', icon: '▧' }] : []),
       { href: '/pedidos/avisos', label: 'Avisos de pedidos', icon: '◉' },
     ] : []),
-    ...(!demoNavigation && effectiveCapabilities.configuration
+    ...(effectiveCapabilities.configuration
       ? [
           {
             href: '/configuracion',
