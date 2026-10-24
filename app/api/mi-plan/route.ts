@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../lib/inbox-auth';
+import { getInboxSession, INBOX_SESSION_COOKIE } from '../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
