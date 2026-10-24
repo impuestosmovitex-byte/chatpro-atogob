@@ -107,20 +107,21 @@
 /* The platform login is a separate privileged mode, not a link on client pages. */
 .platformShell {
   background:
-    radial-gradient(circle at 15% 15%, #253553 0, transparent 38%),
-    #111c31;
+    radial-gradient(circle at 15% 10%, #fff6d6 0, transparent 31%),
+    radial-gradient(circle at 90% 90%, #edf3fc 0, transparent 27%),
+    #f5f7fb;
 }
 .platformShell .card {
-  border-color: #44506b;
+  border-color: #e5e8ef;
 }
 .platformShell .mark {
-  background: #172235;
-  color: #f4bf00;
+  background: #f4bf00;
+  color: #172235;
 }
 .platformShell .eyebrow {
-  color: #60728e;
+  color: #886b11;
 }
 .platformShell .form button {
-  background: #172235;
-  color: #fff;
+  background: #f4bf00;
+  color: #172235;
 }
