@@ -40,8 +40,9 @@ export default function DemoPage() {
             <p>Recibe una asesoría para configurar MW1 según los canales y las necesidades de tu empresa.</p>
             {process.env.MW1_STAGING_MODE==='true'?<DemoRequestForm/>:
               <p>Las solicitudes en línea se habilitarán cuando finalicemos las pruebas de seguridad y privacidad.</p>}
-            <div style={{ marginTop: 22 }}>
-              <Link href="/login" className={styles.primaryButton}>Ya soy cliente</Link>
+            <div style={{ marginTop: 22, display:'flex', gap:12, flexWrap:'wrap', alignItems:'center' }}>
+              <Link href="/prueba-gratis" className={styles.primaryButton}>Solicitar 14 días de prueba</Link>
+              <Link href="/login" className={styles.secondaryButton}>Ya soy cliente</Link>
             </div>
           </article>
         </div>
