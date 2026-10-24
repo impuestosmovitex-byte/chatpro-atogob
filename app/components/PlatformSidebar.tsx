@@ -7,6 +7,7 @@ const links=[
  {href:'/admin',label:'Resumen MW1',icon:'▦'},
  {href:'/admin/empresas',label:'Empresas',icon:'▤'},
  {href:'/admin/planes',label:'Planes y precios',icon:'◇'},
+ {href:'/admin/solicitudes-suscripcion',label:'Solicitudes de suscripción',icon:'▤'},
  {href:'/admin/simulador-financiero',label:'Simulador financiero',icon:'▥'},
  {href:'/admin/rentabilidad-empresas',label:'Rentabilidad por empresa',icon:'◉'},
  {href:'/admin/consumo-ia',label:'Consumo de IA',icon:'◎'},
