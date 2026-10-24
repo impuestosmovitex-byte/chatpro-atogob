@@ -12,7 +12,7 @@ export type PlanCardOption={
 };
 const pesos=(n:number)=>new Intl.NumberFormat('es-CO').format(n);
 export default function PlansInteractive({plans}:{plans:PlanCardOption[]}){
- const [selected,setSelected]=useState<string|null>(null);
+ const [selected,setSelected]=useState<string>(plans[0]?.key||'basico');
  const selectPlan=(key:string)=>{setSelected(key);window.requestAnimationFrame(()=>document.getElementById('mw1-plan-calculator')?.scrollIntoView({behavior:'smooth',block:'center'}));};
  return <>
   <div className={styles.priceGrid}>
@@ -53,13 +53,7 @@ export default function PlansInteractive({plans}:{plans:PlanCardOption[]}){
    })}
   </div>
   <div id="mw1-plan-calculator" style={{scrollMarginTop:110}}>
-   {selected?<PublicPlanSimulator selectedPlanKey={selected} onSelectPlan={setSelected} options={plans.map(p=>({key:p.key,name:p.name,price:p.price,users:p.users,connections:p.connections,extraUserCop:p.extraUserCop,extraConnectionCop:p.extraConnectionCop}))}/>:
-    <section style={{margin:'38px auto 0',maxWidth:1100,padding:'34px clamp(20px,4vw,45px)',border:'1px solid #dce2eb',borderRadius:20,background:'#fff'}}>
-     <h3 style={{fontSize:30,marginBottom:10}}>Diseña tu plan</h3>
-     <p style={{color:'#586477',fontSize:16}}>Elige Básico, Eco o Pro para ajustar los usuarios y las conexiones y conocer el valor estimado.</p>
-     <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:22}}>{plans.map(p=><button key={p.key} type="button" onClick={()=>selectPlan(p.key)} style={{background:'#f4bf00',color:'#172235',border:'1px solid #e0b400',borderRadius:10,padding:'13px 26px',fontWeight:800,cursor:'pointer'}}>{p.name}</button>)}</div>
-     <p style={{fontSize:12,color:'#667085',marginTop:18}}>Ningún plan ha sido seleccionado. Los precios son orientativos y no generan cobros.</p>
-    </section>}
+   <PublicPlanSimulator selectedPlanKey={selected} onSelectPlan={setSelected} options={plans.map(p=>({key:p.key,name:p.name,price:p.price,users:p.users,connections:p.connections,extraUserCop:p.extraUserCop,extraConnectionCop:p.extraConnectionCop}))}/>
   </div>
  </>;
 }
