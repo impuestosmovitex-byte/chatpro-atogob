@@ -326,7 +326,11 @@ export default function PlatformCompaniesPage() {
     const pilotPlan=(['basico','eco','pro'].includes(lead.planInterest)
       ? lead.planInterest as PilotPlan : resolvePilotPlan(lead.planInterest));
     const base=pilotPlan?formWithPilotPlan(pilotPlan):initialForm;
-    setForm({...base,name:lead.companyName,slug:generateSlug(lead.companyName)});
+    // The lead's connection count may include Instagram/Messenger; it is NOT a WhatsApp line limit.
+    // Pre-fill only users; keep WhatsApp limits at the plan preset until an admin checks channels.
+    const requestedSeats=Number.isInteger(lead.requestedUsers)&&lead.requestedUsers!==null&&lead.requestedUsers>=1&&lead.requestedUsers<=20
+      ?String(lead.requestedUsers):base.maxUsers;
+    setForm({...base,name:lead.companyName,slug:generateSlug(lead.companyName),maxUsers:requestedSeats});
     setReviewedCompanyAccess(false);
     setPreparedFromLead(lead.id);
     setSuccess(pilotPlan
@@ -428,7 +432,7 @@ export default function PlatformCompaniesPage() {
               <p style={{ color: '#667085', marginTop: -6 }}>
                 La empresa inicia sin chats, clientes, productos ni credenciales de otra empresa.
               </p>
-              {preparedFromLead&&<p style={{background:'#fff6d5',padding:12,borderRadius:10,color:'#49390c',fontSize:13}}>Alta preparada a partir de una solicitud calificada. No se ha creado la empresa ni iniciado la prueba.</p>}
+              {preparedFromLead&&<p style={{background:'#fff6d5',padding:12,borderRadius:10,color:'#49390c',fontSize:13}}>Alta preparada desde una solicitud. Revisa usuarios y conexiones antes de aprobar: las conexiones comerciales no equivalen necesariamente a líneas de WhatsApp. No se ha creado la empresa ni iniciado la prueba.</p>}
 
               <div style={{ display: 'grid', gap: 14 }}>
                 <label>
