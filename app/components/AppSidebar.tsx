@@ -123,9 +123,9 @@ export function AppSidebar({
 
         setRoleKey(normalizedRoleKey);
         // Start independent tenant reads together instead of waiting for commerce first.
-        const capabilitiesRequest = fetch('/api/auth/capabilities', { cache: 'no-store' });
+        const capabilitiesRequest = fetch('/api/auth/capabilities', { cache: 'no-store' }).catch(() => null);
         const companiesRequest = session.userId
-          ? fetch('/api/auth/companies', { cache: 'no-store' })
+          ? fetch('/api/auth/companies', { cache: 'no-store' }).catch(() => null)
           : null;
         const isDemo = window.location.hostname === 'mw1-web-staging-staging.up.railway.app';
         if (alive) setDemoNavigation(isDemo);
@@ -144,6 +144,7 @@ export function AppSidebar({
 
         try {
           const capabilitiesResponse = await capabilitiesRequest;
+          if (!capabilitiesResponse) throw new Error('No se pudieron consultar permisos.');
           const capabilitiesData = (await capabilitiesResponse.json()) as {
             ok?: boolean;
             capabilities?: Capabilities;
