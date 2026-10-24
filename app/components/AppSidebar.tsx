@@ -122,6 +122,11 @@ export function AppSidebar({
           session.roleKey?.trim().toLowerCase() || '';
 
         setRoleKey(normalizedRoleKey);
+        // Start independent tenant reads together instead of waiting for commerce first.
+        const capabilitiesRequest = fetch('/api/auth/capabilities', { cache: 'no-store' });
+        const companiesRequest = session.userId
+          ? fetch('/api/auth/companies', { cache: 'no-store' })
+          : null;
         const isDemo = window.location.hostname === 'mw1-web-staging-staging.up.railway.app';
         if (alive) setDemoNavigation(isDemo);
         if (session.userId && (normalizedRoleKey === 'owner' || normalizedRoleKey === 'admin')) {
@@ -138,10 +143,7 @@ export function AppSidebar({
         setActiveSlug(session.companySlug?.trim().toLowerCase() || '');
 
         try {
-          const capabilitiesResponse = await fetch(
-            '/api/auth/capabilities',
-            { cache: 'no-store' },
-          );
+          const capabilitiesResponse = await capabilitiesRequest;
           const capabilitiesData = (await capabilitiesResponse.json()) as {
             ok?: boolean;
             capabilities?: Capabilities;
@@ -163,9 +165,8 @@ export function AppSidebar({
 
         if (!session.userId) return;
 
-        const companiesResponse = await fetch('/api/auth/companies', {
-          cache: 'no-store',
-        });
+        const companiesResponse = await companiesRequest;
+        if (!companiesResponse) return;
         const companiesData = (await companiesResponse.json()) as {
           ok?: boolean;
           companies?: CompanyOption[];
