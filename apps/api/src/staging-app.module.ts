@@ -7,6 +7,7 @@ import { PlatformAdminController } from './platform-admin.controller';
 import { StagingDemoRequestsController } from './staging-demo-requests.controller';
 import { SupabaseService } from './supabase.service';
 import { StagingInboxController } from './staging-inbox.controller';
+import { StagingIntegrationsController } from './staging-integrations.controller';
 import { StagingSalesAssistantController, StagingSalesAssistantService } from './staging-sales-assistant.controller';
 
 @Controller()
@@ -25,6 +26,7 @@ class StagingHealthController {
   controllers: [
     StagingHealthController,
     StagingInboxController,
+    StagingIntegrationsController,
     AccessController,
     AccessCapabilitiesController,
     PlatformAdminController,
