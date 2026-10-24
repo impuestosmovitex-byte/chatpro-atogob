@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { AppSidebar } from '../components/AppSidebar';
 import styles from './page.module.css';
 
@@ -82,6 +83,7 @@ export default function UsuariosPage() {
   const [error, setError] = useState('');
   const [resetUserId, setResetUserId] = useState('');
   const [resetPassword, setResetPassword] = useState('');
+  const [seatLimit, setSeatLimit] = useState<number | null>(null);
 
   const isFirstUser = users.length === 0;
   const availableRoles = useMemo(
@@ -109,6 +111,8 @@ export default function UsuariosPage() {
       }
 
       const nextUsers = data.users || [];
+      // Seat limit is informational until plan lookup succeeds.
+      fetch('/api/mi-plan', {cache:'no-store'}).then(r=>r.json()).then(p=>{if(p.ok && Number.isInteger(p.plan?.max_users))setSeatLimit(p.plan.max_users)}).catch(()=>{});
       const nextRoles = data.roles || [];
       const defaultRole =
         nextUsers.length === 0
@@ -165,7 +169,10 @@ export default function UsuariosPage() {
       const data = (await response.json()) as ResponseData;
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudo crear el usuario.');
+        const raw = String(data.message || data.error || '');
+        throw new Error(response.status===400 && (/máximo de usuarios|límite de usuarios|plan contratado/i.test(raw))
+          ? 'Alcanzaste el límite de usuarios de tu plan. Consulta Mi plan y facturación para solicitar más cupos.'
+          : (raw && !/^(Bad Request|Internal Server Error)$/i.test(raw) ? raw : 'No se pudo crear el usuario. Revisa los datos e inténtalo de nuevo.'));
       }
 
       setMessage(data.message || 'Usuario creado correctamente.');
@@ -290,16 +297,15 @@ export default function UsuariosPage() {
           </div>
         </header>
 
-        {error ? <div className={styles.error}>{error}</div> : null}
+        {error ? <div className={styles.error}>{error} {(/límite de usuarios|máximo de usuarios/i.test(error)) ? <Link href="/configuracion/mi-plan" style={{display:'inline-block',marginLeft:10,fontWeight:800}}>Ver mi plan y solicitar más usuarios →</Link> : null}</div> : null}
         {message ? <div className={styles.success}>{message}</div> : null}
 
         <div className={styles.grid}>
           <section className={styles.createCard}>
             <div className={styles.sectionHeading}>
               <p>{isFirstUser ? 'Configuración inicial' : 'Nuevo acceso'}</p>
-              <h2>
-                {isFirstUser ? 'Crear propietario inicial' : 'Crear usuario'}
-              </h2>
+              <h2>{isFirstUser ? 'Crear propietario inicial' : 'Crear usuario'}</h2>
+              {seatLimit!==null && <p>Usuarios: {users.filter(u=>u.active).length} de {seatLimit} permitidos. {users.filter(u=>u.active).length>=seatLimit ? <Link href="/configuracion/mi-plan">Solicitar más cupos →</Link> : null}</p>}
             </div>
 
             <form onSubmit={createUser} className={styles.form}>
