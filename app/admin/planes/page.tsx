@@ -100,6 +100,8 @@ export default function AdminPlansPage(){
     ...(!Number.isSafeInteger(plan.maxWhatsappLines)||!plan.maxWhatsappLines||plan.maxWhatsappLines<=0?['Definir las líneas de WhatsApp incluidas.']:[]),
     ...(!plan.whatsappEnabled?['Habilitar WhatsApp en las capacidades del plan.']:[]),
     ...(plan.reviewStatus!=='ready_for_review'?['Cambiar Estado interno a «Listo para revisión».']:[]),
+    ...(plan.extraUserCop===null||!Number.isSafeInteger(plan.extraUserCop)||plan.extraUserCop<0?['Definir el precio mensual por usuario adicional (puede ser cero).']:[]),
+    ...(plan.extraConnectionCop===null||!Number.isSafeInteger(plan.extraConnectionCop)||plan.extraConnectionCop<0?['Definir el precio mensual por conexión adicional (puede ser cero).']:[]),
     ...(hasUnsavedChanges?['Guardar los cambios después de completar lo anterior.']:[]),
   ];
   const publicationAvailable=authorized&&!saving&&!publishing&&missingPublicationRequirements.length===0;
@@ -149,7 +151,7 @@ export default function AdminPlansPage(){
   }
   async function publish(){
     if(!publicationAvailable)return;
-    if(!window.confirm('¿Publicar el precio y los cupos guardados de este plan en la web de staging? No modifica contratos ni activa pagos.'))return;
+    if(!window.confirm(`Vas a publicar en staging el plan ${names[selected]}:\n\nPrecio mensual: ${plan.priceCop?.toLocaleString('es-CO')} COP\nUsuarios incluidos: ${plan.maxUsers}\nConexiones incluidas: ${plan.maxWhatsappLines}\nUsuario adicional/mes: ${plan.extraUserCop?.toLocaleString('es-CO')} COP\nConexión adicional/mes: ${plan.extraConnectionCop?.toLocaleString('es-CO')} COP\n\nEstos precios serán visibles para los clientes. No activan cobros ni cambian contratos. ¿Confirmas la publicación?`))return;
     setPublishing(true);setError('');setNotice('');
     try{
       const response=await fetch('/api/platform-admin/plan-publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({planKey:selected})});
