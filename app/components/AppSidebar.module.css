@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   color: #17191f;
-  background: linear-gradient(180deg, #fffdf7 0%, #fffaf0 100%);
+  background: #fffaf0;
   border-right: 1px solid #eee9dc;
 }
 
@@ -55,7 +55,7 @@
 
 .item.active {
   color: #17191f;
-  background: #ffe69a;
+  background: #f4bf00;
 }
 
 .item.disabled {
@@ -170,7 +170,7 @@
 
 .mobileNavActive {
   color: #121316;
-  background: #f5d887;
+  background: #f4bf00;
 }
 
 .mobileCompanyBackdrop,
@@ -382,3 +382,8 @@
     display: none;
   }
 }
+
+/* Consistent MW1 branding for all company workspaces. */
+.brandWord { color:#172235; font-weight:900; }
+.brandWord > span { color:#aa8200; }
+.item:focus-visible, .logout:focus-visible { outline:3px solid #f4bf00;outline-offset:2px; }
