@@ -93,6 +93,6 @@ export class StagingMyPlanController {
       .select('id,request_type,requested_plan_key,additional_users,note,status,created_at')
       .eq('company_id',company.id).order('created_at',{ascending:false}).limit(10);
     return {ok:true,company:{name:company.name},plan,activeUsers:count??0,
-      requests:requests??[],availablePlans:publishedPlans??[],subscription:billingSubscription??null,transactions:billingTransactions??[],billing:{status:'not_integrated',historyAvailable:Boolean(billingTransactions?.length),onlineCancellationAvailable:false}};
+      requests:requests??[],availablePlans:publishedPlans??[],subscription:billingSubscription??null,transactions:billingTransactions??[],billing:{status:'not_integrated',historyAvailable:Boolean(billingTransactions?.length),onlineCancellationAvailable:false,provider:'mercadopago',checkoutAvailable:false,conditions:['published_plan','test_credentials','verified_webhook','successful_end_to_end_test']}};
   }
 }
