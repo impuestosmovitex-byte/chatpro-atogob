@@ -1,3 +1,168 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import styles from './AppSidebar.module.css';
+
+type AppSidebarProps = {
+  companyName?: string;
+  hideMobileNavigation?: boolean;
+};
+
+type CompanyOption = {
+  id: string;
+  slug: string;
+  name: string;
+  roleKey: string;
+  roleName: string;
+};
+
+type Session = {
+  companySlug?: string;
+  companyName?: string;
+  roleKey?: string;
+  userId?: string | null;
+};
+
+type Capabilities = {
+  inbox: boolean;
+  clients: boolean;
+  automations: boolean;
+  statistics: boolean;
+  configuration: boolean;
+  testAgent: boolean;
+  health: boolean;
+};
+
+const baseNavigation: Array<{
+  href: string;
+  label: string;
+  icon: string;
+  exact?: boolean;
+  capability: keyof Capabilities;
+}> = [
+  {
+    href: '/',
+    label: 'Bandeja',
+    icon: '▣',
+    exact: true,
+    capability: 'inbox',
+  },
+  {
+    href: '/clientes',
+    label: 'Clientes',
+    icon: '♙',
+    capability: 'clients',
+  },
+  {
+    href: '/leads',
+    label: 'Leads',
+    icon: '◎',
+    capability: 'clients',
+  },
+  {
+    href: '/ia',
+    label: 'IA',
+    icon: '✦',
+    capability: 'configuration',
+  },
+  {
+    href: '/automatizaciones',
+    label: 'Automatizaciones',
+    icon: '⚡',
+    capability: 'automations',
+  },
+  {
+    href: '/estadisticas',
+    label: 'Estadísticas',
+    icon: '▥',
+    capability: 'statistics',
+  },
+];
+
+function isActive(pathname: string, href: string, exact?: boolean): boolean {
+  if (exact) return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export function AppSidebar({
+  companyName = 'Empresa',
+  hideMobileNavigation = false,
+}: AppSidebarProps) {
+  const pathname = usePathname();
+  const [roleKey, setRoleKey] = useState('');
+  const [ordersEnabled, setOrdersEnabled] = useState(false);
+  const [demoNavigation, setDemoNavigation] = useState(false);
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [activeCompany, setActiveCompany] = useState(companyName);
+  const [activeSlug, setActiveSlug] = useState('');
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [changingCompany, setChangingCompany] = useState(false);
+  const [mobileCompanyOpen, setMobileCompanyOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      try {
+        const sessionResponse = await fetch('/api/auth/session', {
+          cache: 'no-store',
+        });
+        const sessionData = (await sessionResponse.json()) as {
+          session?: Session;
+        };
+
+        if (!alive || !sessionResponse.ok || !sessionData.session) return;
+
+        const session = sessionData.session;
+        const normalizedRoleKey =
+          session.roleKey?.trim().toLowerCase() || '';
+
+        setRoleKey(normalizedRoleKey);
+        const isDemo = window.location.hostname === 'mw1-web-staging-staging.up.railway.app';
+        if (alive) setDemoNavigation(isDemo);
+        if (session.userId && (normalizedRoleKey === 'owner' || normalizedRoleKey === 'admin')) {
+          try {
+            const commerce = await fetch('/api/native-commerce/access', { cache: 'no-store' });
+            if (alive) setOrdersEnabled(commerce.ok);
+          } catch {
+            if (alive) setOrdersEnabled(false);
+          }
+        } else if (alive) {
+          setOrdersEnabled(false);
+        }
+        setActiveCompany(session.companyName?.trim() || companyName);
+        setActiveSlug(session.companySlug?.trim().toLowerCase() || '');
+
+        try {
+          const capabilitiesResponse = await fetch(
+            '/api/auth/capabilities',
+            { cache: 'no-store' },
+          );
+          const capabilitiesData = (await capabilitiesResponse.json()) as {
+            ok?: boolean;
+            capabilities?: Capabilities;
+          };
+
+          if (
+            alive &&
+            capabilitiesResponse.ok &&
+            capabilitiesData.ok &&
+            capabilitiesData.capabilities
+          ) {
+            setCapabilities(capabilitiesData.capabilities);
+          }
+        } catch {
+          // Fail closed: a capability lookup failure must not expose modules
+          // or pretend that the signed-in user has administrative privileges.
+          if (alive) setCapabilities(null);
+        }
+
+        if (!session.userId) return;
+
         const companiesResponse = await fetch('/api/auth/companies', {
           cache: 'no-store',
         });
