@@ -710,6 +710,7 @@ export default function PlatformCompaniesPage() {
             </p>
             {leadMessage&&<p role="status" style={{fontSize:13,padding:12,borderRadius:10,background:'#edf4ff'}}>{leadMessage}</p>}
             {demoLoading?<p>Cargando solicitudes…</p>:null}
+            <p style={{fontSize:13,color:'#58677b',margin:'12px 0'}}>Flujo seguro: solicitud recibida → seguimiento y validación → preparar datos → confirmar propietario y permisos → crear la empresa. Guardar un seguimiento no activa la prueba ni realiza cobros.</p>
             {demoRequests.length===0?<p>Sin solicitudes registradas.</p>:
               <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
@@ -739,7 +740,7 @@ export default function PlatformCompaniesPage() {
                       } as Record<string,string>)[lead.whatsappSetup]??'Por revisar'}</div>}
                     </td>
                     <td style={{padding:10}}>{lead.requestType==='trial'?'Prueba guiada 14 días':'Demo'}</td>
-                    <td style={{padding:10}}>{{inicial:'Básico',pro:'Eco',empresa:'Pro',sin_definir:'Por definir'}[lead.planInterest]??lead.planInterest}</td>
+                    <td style={{padding:10}}>{{inicial:'Básico',basico:'Básico',eco:'Eco',pro:'Pro',empresa:'Pro (clave antigua)',sin_definir:'Por definir'}[lead.planInterest]??lead.planInterest}</td>
                     <td style={{padding:10,minWidth:210}}>
                       <div style={{display:'grid',gap:7}}>
                         <select aria-label={'Estado de '+lead.companyName} style={{...inputStyle,padding:7}}
