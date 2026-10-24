@@ -13,6 +13,8 @@ const PUBLIC_PATHS = new Set([
   '/integraciones',
   '/por-que',
   '/prueba-gratis',
+  '/recuperar-acceso',
+  '/api/auth/recovery',
   '/api/marketing/demo-request',
   '/api/auth/login',
   '/api/auth/logout',
