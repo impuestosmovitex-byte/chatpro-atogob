@@ -20,7 +20,7 @@ export function MarketingHeader() {
 
         <div className={styles.navActions}>
           <Link href="/login" className={styles.secondaryButton}>Iniciar sesión</Link>
-          <Link href="/prueba-gratis" className={styles.primaryButton}>Prueba de 14 días</Link>
+          <Link href="/demo" className={styles.primaryButton}>Solicitar demostración</Link>
           <details className={styles.mobileMenu}>
             <summary aria-label="Abrir navegación">
               <span aria-hidden="true">☰</span>
@@ -30,7 +30,7 @@ export function MarketingHeader() {
               <Link href="/por-que">¿Por qué MW1?</Link>
               <Link href="/precios">Planes</Link>
               <Link href="/demo">Demo</Link>
-              <Link href="/prueba-gratis">Prueba de 14 días</Link>
+              <Link href="/demo">Solicitar demostración</Link>
               <Link href="/integraciones">Integraciones</Link>
               <Link href="/login">Iniciar sesión</Link>
             </nav>
