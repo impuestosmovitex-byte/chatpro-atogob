@@ -8,6 +8,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
   const[contactName,setContactName]=useState('');
   const[contactEmail,setContactEmail]=useState('');
   const[planInterest,setPlanInterest]=useState('sin_definir');
+  const planLabels:Record<string,string>={basico:'Básico',eco:'Eco',pro:'Pro'};
   const[consent,setConsent]=useState(false);
   const[contactPhone,setContactPhone]=useState('');
   const[whatsappSetup,setWhatsappSetup]=useState('unsure');
@@ -61,6 +62,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
         value={contactEmail} onChange={event=>setContactEmail(event.target.value)}
         placeholder="correo@empresa.com"/>
     </label>
+    {isTrial&&planLabels[planInterest]&&<p role="status" className={styles.caption}>Seleccionaste el plan <strong>{planLabels[planInterest]}</strong>. Puedes cambiarlo aquí antes de enviar tu solicitud.</p>}
     <label>Plan de interés
       <select value={planInterest} onChange={event=>setPlanInterest(event.target.value)}>
         <option value="sin_definir">No estoy seguro</option>
