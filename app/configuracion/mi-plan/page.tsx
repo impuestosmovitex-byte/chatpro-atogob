@@ -110,6 +110,7 @@ export default function MiPlan(){
        <p>Próximo cobro: {data.subscription.next_billing_at?new Date(data.subscription.next_billing_at).toLocaleDateString('es-CO'):'Sin fecha confirmada'}</p>
        <p>Cancelación al finalizar el período: {data.subscription.cancel_at_period_end?'Registrada':'No registrada'}</p>
       </>}
+      <p style={{marginTop:17,padding:'12px 14px',background:'#fff8e3',borderRadius:9,fontSize:13,color:'#755600'}}><strong>Estado de integración:</strong> Mercado Pago en preparación. Antes de aceptar tarjetas se deben publicar las tarifas, configurar credenciales de prueba, verificar las notificaciones y superar las pruebas de renovación. No compartas datos bancarios en este sistema.</p>
       <p style={{marginTop:17,fontSize:13,color:'#657184'}}>La renovación automática todavía no está operativa en este piloto. Nunca ingreses datos bancarios en el chat o soporte.</p>
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
