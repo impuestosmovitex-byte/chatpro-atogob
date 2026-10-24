@@ -88,7 +88,7 @@ export class StagingMyPlanController {
     const {data:billingTransactions} = await db.from('mw1_billing_transactions')
       .select('id,amount_cop,currency,status,due_at,paid_at,created_at')
       .eq('company_id',company.id).order('created_at',{ascending:false}).limit(12);
-    const { data: publishedPlans } = await db.from('platform_published_plan_prices').select('plan_key,price_cop,max_users,max_whatsapp_lines').order('price_cop',{ascending:true});
+    const { data: publishedPlans } = await db.from('platform_published_plan_prices').select('plan_key,price_cop,max_users,max_whatsapp_lines,extra_user_cop,extra_connection_cop,public_summary,public_features').order('price_cop',{ascending:true});
     const { data: requests } = await db.from('mw1_subscription_requests')
       .select('id,request_type,requested_plan_key,additional_users,note,status,created_at')
       .eq('company_id',company.id).order('created_at',{ascending:false}).limit(10);
