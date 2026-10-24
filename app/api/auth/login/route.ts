@@ -120,11 +120,15 @@ export async function POST(request: NextRequest) {
     }
 
     const { apiBase, inboxKey } = config();
-    const companySlug = companyFrom(body);
+    const companySlug = process.env.MW1_STAGING_MODE === 'true' && !cleanCompany(body.company)
+      ? ''
+      : companyFrom(body);
 
     if (identifier) {
-      const target = new URL(`${apiBase}/access/login`);
-      target.searchParams.set('company', companySlug);
+      const target = new URL(companySlug
+        ? `${apiBase}/access/login`
+        : `${apiBase}/access/staging-user-login`);
+      if (companySlug) target.searchParams.set('company', companySlug);
 
       const accessResponse = await fetch(target, {
         method: 'POST',
