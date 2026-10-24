@@ -149,6 +149,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const session = await currentSession(request);
   if (!session) return unauthorized();
+  if (process.env.MW1_STAGING_MODE === 'true') {
+    return NextResponse.json({
+      ok:false,code:'STAGING_INBOX_DISABLED',
+      error:'El envío de mensajes aún no está habilitado en este entorno de pruebas.',
+    },{status:503,headers:{'Cache-Control':'no-store'}});
+  }
 
   try {
     const { apiBase, inboxKey } = config();
