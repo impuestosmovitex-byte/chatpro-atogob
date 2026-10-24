@@ -52,5 +52,7 @@ jobs:
         run: node scripts/test-staging-catalog-sources.cjs
       - name: Verify visual follow-up selection (offline)
         run: node scripts/test-visual-refinement.cjs
+      - name: Verify business login and isolated platform access
+        run: node scripts/test-mw1-login-separation.cjs
       - name: Build web
         run: npm run build
