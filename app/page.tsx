@@ -1381,7 +1381,7 @@ export default function Home() {
       if (presenceResponse.status===503 &&
         (data as AdvisorPresenceResponse & {code?:string}).code==='STAGING_INBOX_DISABLED'){
         setPresence({status:'offline'});
-        setStagingNotice('Acceso empresarial validado. Este entorno sirve para comprobar altas y permisos; la bandeja, la atención en vivo y las conexiones de canales aún no están habilitadas en staging.');
+        setStagingNotice('Tu empresa está conectada al entorno de pruebas. La bandeja permite consultar conversaciones guardadas en staging; todavía no está habilitado enviar mensajes, atender en vivo ni conectar canales reales.');
         return;
       }
       if (!presenceResponse.ok || !data.ok || !data.advisor)
@@ -1627,7 +1627,7 @@ export default function Home() {
         setHasMoreSessions(false);
         nextSessionsOffsetRef.current=0;
         setNextSessionsOffset(0);
-        setStagingNotice('Acceso empresarial validado. Este entorno sirve para comprobar altas y permisos; la bandeja, la atención en vivo y las conexiones de canales aún no están habilitadas en staging.');
+        setStagingNotice('Tu empresa está conectada al entorno de pruebas. La bandeja permite consultar conversaciones guardadas en staging; todavía no está habilitado enviar mensajes, atender en vivo ni conectar canales reales.');
         setError('');
         return;
       }
