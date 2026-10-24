@@ -79,10 +79,11 @@ export class StagingMyPlanController {
     const {count,error:countError} = await db.from('company_memberships')
       .select('id',{head:true,count:'exact'}).eq('company_id',company.id).eq('active',true);
     if(countError) throw new ForbiddenException('No se pudo consultar el equipo.');
+    const { data: publishedPlans } = await db.from('platform_published_plan_prices').select('plan_key,price_cop,max_users,max_whatsapp_lines').order('price_cop',{ascending:true});
     const { data: requests } = await db.from('mw1_subscription_requests')
       .select('id,request_type,requested_plan_key,note,status,created_at')
       .eq('company_id',company.id).order('created_at',{ascending:false}).limit(10);
     return {ok:true,company:{name:company.name},plan,activeUsers:count??0,
-      requests:requests??[],billing:{status:'not_integrated',historyAvailable:false,onlineCancellationAvailable:false}};
+      requests:requests??[],availablePlans:publishedPlans??[],billing:{status:'not_integrated',historyAvailable:false,onlineCancellationAvailable:false}};
   }
 }
