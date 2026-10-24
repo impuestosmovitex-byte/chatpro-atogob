@@ -33,13 +33,13 @@ export default function MiPlan(){
   <section style={{flex:1,padding:'clamp(18px,3vw,42px)',width:'100%',maxWidth:1280,minWidth:0}}>
    <p style={{color:'#977313',fontWeight:800,fontSize:12}}>CONFIGURACIÓN / MI PLAN</p>
    <h1 style={{fontSize:30,margin:'12px 0'}}>Mi plan y facturación</h1>
-   <p style={{color:'#657184',marginBottom:24}}>Consulta tu plan, solicita cambios y revisa la renovación automática desde una sola página.</p>
+   <p style={{color:'#657184',marginBottom:24}}>Consulta tu plan actual, administra tu suscripción y revisa tus pagos.</p>
    {!data?<p>Cargando información del plan…</p>:!data.ok?<p role="alert" style={{color:'#a82e35'}}>{data.error||'No se pudo cargar.'}</p>:
    <div style={{display:'grid',gap:20,maxWidth:1060}}>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
-      <strong style={{color:'#886b11'}}>PLAN REGISTRADO</strong>
+      <strong style={{color:'#886b11'}}>MI PLAN</strong>
       <h2 style={{fontSize:28,margin:'12px 0'}}>{commercialName(data.plan?.plan_key??'')}</h2>
-      <p style={{color:'#657184',fontSize:12}}>Nombre comercial del plan · Identificador interno: {data.plan?.plan_key}</p>
+
       <p>Usuarios activos: {data.activeUsers} de {data.plan?.max_users}</p>
       <p>Líneas de WhatsApp permitidas: {data.plan?.max_whatsapp_lines}</p>
       <p style={{marginTop:15,fontWeight:700}}>Características habilitadas para tu empresa</p>
@@ -50,7 +50,7 @@ export default function MiPlan(){
         .filter((x):x is string=>Boolean(x)).map(x=><li key={x}>{x}</li>)}
       </ul>
       <p style={{fontSize:12,color:'#657184'}}>Estos módulos corresponden a los permisos registrados. Su uso requiere las conexiones y configuraciones correspondientes.</p>
-      <p style={{marginTop:15}}>Módulos autorizados: {[
+      <p style={{display:'none'}}>Módulos autorizados: {[
        data.plan?.ai_enabled&&'IA',data.plan?.whatsapp_enabled&&'WhatsApp',
        data.plan?.instagram_enabled&&'Instagram',data.plan?.messenger_enabled&&'Messenger',
        data.plan?.automations_enabled&&'Automatizaciones',data.plan?.statistics_enabled&&'Estadísticas'
@@ -58,21 +58,6 @@ export default function MiPlan(){
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
      <h2>Gestionar mi plan</h2>
-     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:12,margin:'18px 0'}}>
-      {MW1_COMMERCIAL_PROPOSAL.map(p=>{const published=data.availablePlans?.find(x=>x.plan_key===p.legacyKey);return <div key={p.legacyKey} style={{padding:15,border:'1px solid #e7e1d1',borderRadius:12,background:p.legacyKey===data.plan?.plan_key?'#fff9e6':'#fff'}}>
-       <strong>{p.name}</strong>{p.legacyKey===data.plan?.plan_key&&<span style={{fontSize:12,color:'#866900',marginLeft:8}}>Plan actual</span>}
-       <p style={{fontWeight:700,margin:'8px 0'}}>{published?cop(published.price_cop):'Tarifa pendiente de publicación'}</p>
-       <p style={{fontSize:13,color:'#657184'}}>{published?published.max_users:p.users} usuarios · {published?published.max_whatsapp_lines:p.connections} conexiones</p>
-       <p style={{fontSize:12,color:'#657184',marginTop:6}}>{published?.public_summary?.trim()||p.summary}</p>
-       <ul style={{paddingLeft:18,margin:'10px 0',fontSize:12,lineHeight:1.7}}>
-        {(published?.public_features?.length?published.public_features:p.highlights).slice(0,expandedPlans.includes(p.legacyKey)?20:3).map(item=><li key={item}>{item}</li>)}
-       </ul>
-       <button type="button" aria-expanded={expandedPlans.includes(p.legacyKey)} onClick={()=>togglePlan(p.legacyKey)} style={{padding:'7px 0',background:'none',border:0,color:'#755900',fontWeight:700,cursor:'pointer'}}>
-        {expandedPlans.includes(p.legacyKey)?'Ver menos':'Ver más características'} →
-       </button>
-       {!published&&<p style={{fontSize:11,color:'#8a6d12',marginTop:7}}>Características de referencia. Pendientes de publicación comercial y disponibilidad operativa.</p>}
-      </div>})}
-     </div>
      <p style={{margin:'10px 0 14px'}}>La solicitud queda pendiente de revisión. No modifica el plan ni genera cobros automáticamente.</p>
      <label htmlFor="plan-target" style={{display:'block',marginBottom:8,fontWeight:700}}>Selecciona otro plan</label>
      <select id="plan-target" value={targetPlan} onChange={e=>setTargetPlan(e.target.value)} style={{padding:'12px 14px',marginRight:12,borderRadius:9,border:'1px solid #c9cfd8',minWidth:210,maxWidth:'100%'}}>
