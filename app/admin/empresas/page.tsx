@@ -24,6 +24,10 @@ type OnboardingStatus={
   integrations:Array<{key:string;label:string;status:string;meaning:string}>;
 };
 
+type RecoveryHelpRequest={
+ id:string;companySlug:string;identifier:string;
+ method:'email'|'phone';contact:string;status:string;createdAt:string;
+};
 type CompanyOwner={
  companyId:string;companyName:string;companySlug:string;userId:string;
  name:string;identifier:string;contactEmail:string;contactPhone:string;
@@ -138,6 +142,9 @@ export default function PlatformCompaniesPage() {
   const [ownerEdits,setOwnerEdits]=useState<Record<string,OwnerEdit>>({});
   const [ownerBusy,setOwnerBusy]=useState<string|null>(null);
   const [ownerMessage,setOwnerMessage]=useState<Record<string,string>>({});
+  const [recoveryHelp,setRecoveryHelp]=useState<RecoveryHelpRequest[]>([]);
+  const [recoveryHelpError,setRecoveryHelpError]=useState('');
+
 
 
   async function load() {
@@ -237,6 +244,19 @@ export default function PlatformCompaniesPage() {
   useEffect(()=>{
     if(authorized===true)void loadOwners();
   },[authorized]);
+  useEffect(()=>{
+    if(authorized!==true)return;
+    fetch('/api/auth/recovery',{cache:'no-store'})
+      .then(async response=>{
+        if(!response.ok)throw new Error('No se pudo consultar recuperación.');
+        return response.json();
+      })
+      .then((result:{ok?:boolean;requests?:RecoveryHelpRequest[]})=>{
+        if(result.ok)setRecoveryHelp(result.requests||[]);
+      })
+      .catch(()=>setRecoveryHelpError('No se pudieron cargar solicitudes de recuperación.'));
+  },[authorized]);
+
 
   useEffect(()=>{
     if(authorized!==true)return;
@@ -756,6 +776,33 @@ export default function PlatformCompaniesPage() {
               </div>}
           </section>
         ):null}
+        {authorized===true&&<section style={{...cardStyle,marginTop:24}}>
+          <h2 style={{marginTop:0}}>Recuperación asistida de accesos</h2>
+          <p style={{fontSize:13,color:'#63718a',lineHeight:1.7}}>
+            Estas solicitudes pueden enviarse desde el acceso del cliente usando correo o celular.
+            <strong> Ninguno de esos datos está verificado por el formulario.</strong> Antes de cambiar
+            una contraseña, confirma la identidad del propietario por un canal independiente.
+            Después utiliza «Acceso del propietario» en la empresa correspondiente.
+            No envíes contraseñas por mensajes públicos.
+          </p>
+          {recoveryHelpError&&<p role="alert" style={{fontSize:12,color:'#ac3434'}}>{recoveryHelpError}</p>}
+          {!recoveryHelp.length?<p style={{fontSize:13,color:'#64748b'}}>No hay solicitudes de recuperación registradas.</p>:
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',fontSize:12,borderCollapse:'collapse'}}>
+                <thead><tr style={{textAlign:'left',borderBottom:'1px solid #ddd'}}>
+                  <th style={{padding:8}}>Empresa</th><th style={{padding:8}}>Código</th>
+                  <th style={{padding:8}}>Contacto declarado</th><th style={{padding:8}}>Fecha</th>
+                </tr></thead>
+                <tbody>{recoveryHelp.map(item=><tr key={item.id} style={{borderBottom:'1px solid #eee'}}>
+                  <td style={{padding:8}}>{item.companySlug}</td>
+                  <td style={{padding:8}}>{item.identifier}</td>
+                  <td style={{padding:8}}>{item.method==='email'?'Correo':'Celular'}: {item.contact}
+                    <p style={{fontSize:11,color:'#8b6111'}}>No verificado</p></td>
+                  <td style={{padding:8}}>{new Date(item.createdAt).toLocaleString('es-CO')}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>}
+        </section>}
       </main>
     </div>
   );
