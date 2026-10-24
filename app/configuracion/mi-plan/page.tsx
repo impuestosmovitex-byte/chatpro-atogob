@@ -28,7 +28,7 @@ export default function MiPlan(){
   <section style={{flex:1,padding:'36px 42px',maxWidth:1080}}>
    <p style={{color:'#977313',fontWeight:800,fontSize:12}}>CONFIGURACIÓN / MI PLAN</p>
    <h1 style={{fontSize:30,margin:'12px 0'}}>Mi plan y facturación</h1>
-   <p style={{color:'#657184',marginBottom:24}}>Consulta los límites registrados de tu empresa. La facturación electrónica y la gestión de suscripciones todavía no están integradas en el piloto.</p>
+   <p style={{color:'#657184',marginBottom:24}}>Consulta tu plan, solicita cambios y revisa la renovación automática desde una sola página.</p>
    {!data?<p>Cargando información del plan…</p>:!data.ok?<p role="alert" style={{color:'#a82e35'}}>{data.error||'No se pudo cargar.'}</p>:
    <div style={{display:'grid',gap:18}}>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
@@ -43,23 +43,7 @@ export default function MiPlan(){
       ].filter(Boolean).join(', ')||'Sin módulos adicionales'}.</p>
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
-     <h2>Renovación automática</h2>
-     <p style={{margin:'10px 0'}}><Link href="/configuracion/metodo-pago" style={{color:'#806400',fontWeight:800}}>Ver cómo registrar tu tarjeta de forma segura →</Link></p>
-     {!data.subscription ? <p style={{marginTop:10}}>La renovación automática aún no está configurada para esta empresa. El registro seguro de tarjetas se habilitará con la pasarela de pagos, sin almacenar tarjetas en MW1.</p> : <>
-      <p>Proveedor: {data.subscription.provider==='mercadopago'?'Mercado Pago':'Wompi'}</p>
-      <p>Estado: {({awaiting_authorization:'Pendiente de autorización',pending:'Pendiente',active:'Activa',past_due:'Pago vencido',grace_period:'Período de gracia',paused:'Pausada',cancelled:'Cancelada',expired:'Vencida'} as Record<string,string>)[data.subscription.status]||'Por verificar'}</p>
-      <p>Periodicidad: {data.subscription.billing_cycle==='monthly'?'Mensual':'Anual'}</p>
-      <p>Próxima renovación: {data.subscription.next_billing_at?new Date(data.subscription.next_billing_at).toLocaleDateString('es-CO'):'No programada'}</p>
-      <p>Cancelación al finalizar el período: {data.subscription.cancel_at_period_end?'Solicitada':'No registrada'}</p>
-     </>}
-    </article>
-    <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
-     <h2>Pagos y suscripción</h2>
-     <p style={{marginTop:10}}>Aún no hay una pasarela de suscripciones ni historial de pagos verificado conectado a este piloto. No se puede confirmar aquí si el plan está pagado.</p>
-     <p style={{marginTop:10}}>Los cambios de plan, las cancelaciones y las facturas estarán disponibles cuando esté implementado el sistema de facturación.</p>
-    </article>
-    <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
-     <h2>Solicitar un cambio de plan</h2>
+     <h2>Gestionar mi plan</h2>
      <p style={{margin:'10px 0 14px'}}>La solicitud queda pendiente de revisión. No modifica el plan ni genera cobros automáticamente.</p>
      <label htmlFor="plan-target" style={{display:'block',marginBottom:8}}>Plan publicado</label>
      <select id="plan-target" value={targetPlan} onChange={e=>setTargetPlan(e.target.value)} style={{padding:10,marginRight:12,borderRadius:8}}>
@@ -75,6 +59,27 @@ export default function MiPlan(){
      <p style={{margin:'8px 0'}}>Puedes solicitar revisión de cancelación. No se interrumpe el servicio al enviar esta solicitud.</p>
      <button disabled={working} onClick={()=>void submitRequest('cancel_renewal')} style={{padding:11,border:'1px solid #c9cdd3',borderRadius:8,background:'#fff'}}>Solicitar cancelación</button>
      {notice&&<p role="status" style={{marginTop:14}}>{notice}</p>}
+    </article>
+    <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
+      <p style={{fontSize:12,color:'#977313',fontWeight:800}}>MÉTODO DE PAGO</p>
+      <h2 style={{fontSize:23,margin:'8px 0'}}>Tarjeta y renovación automática</h2>
+      {!data.subscription ? <>
+       <p style={{margin:'12px 0'}}>Aún no tienes un método de pago vinculado a una suscripción de MW1.</p>
+       <p style={{color:'#657184',lineHeight:1.6}}>Cuando activemos Mercado Pago podrás autorizar tu tarjeta en su sitio seguro. MW1 no almacenará el número completo ni el CVV.</p>
+       <button type="button" disabled style={{marginTop:14,padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#67561e',fontWeight:800,cursor:'not-allowed'}}>Registrar tarjeta · Próximamente</button>
+      </> : <>
+       <p style={{marginTop:12}}>Proveedor: {data.subscription.provider==='mercadopago'?'Mercado Pago':'Wompi'}</p>
+       <p>Estado de suscripción: {({awaiting_authorization:'Pendiente de autorización',pending:'Pendiente',active:'Activa',past_due:'Pago vencido',grace_period:'Período de gracia',paused:'Pausada',cancelled:'Cancelada',expired:'Vencida'} as Record<string,string>)[data.subscription.status]||'Por verificar'}</p>
+       <p>Renovación: {data.subscription.billing_cycle==='monthly'?'Mensual':'Anual'}</p>
+       <p>Próximo cobro: {data.subscription.next_billing_at?new Date(data.subscription.next_billing_at).toLocaleDateString('es-CO'):'Sin fecha confirmada'}</p>
+       <p>Cancelación al finalizar el período: {data.subscription.cancel_at_period_end?'Registrada':'No registrada'}</p>
+      </>}
+      <p style={{marginTop:17,fontSize:13,color:'#657184'}}>La renovación automática todavía no está operativa en este piloto. Nunca ingreses datos bancarios en el chat o soporte.</p>
+    </article>
+    <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
+      <h2>Historial de pagos</h2>
+      {(data.transactions??[]).length===0?<p style={{marginTop:10,color:'#657184'}}>Todavía no hay pagos de suscripción verificados.</p>:(data.transactions??[]).map(t=><p key={t.id} style={{padding:'10px 0',borderBottom:'1px solid #eee'}}>{t.amount_cop.toLocaleString('es-CO',{style:'currency',currency:'COP'})} · {({approved:'Aprobado',pending:'Pendiente',rejected:'Rechazado',refunded:'Reembolsado',chargeback:'Contracargo'} as Record<string,string>)[t.status]||'Por verificar'}</p>)}
+      <p style={{marginTop:12,color:'#657184',fontSize:13}}>Las facturas y cobros automáticos se habilitarán cuando la pasarela esté verificada.</p>
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
      <h2>Mis solicitudes</h2>
