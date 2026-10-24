@@ -96,6 +96,12 @@ export default function LoginPage() {
                 : 'Ingresa con las credenciales de tu empresa. Si necesitas acceso, comunícate con su administrador.'}
           </p>
 
+          {!platformLogin&&<p className={styles.copy} style={{margin:'6px 0 4px'}}>
+            <a href={'/recuperar-acceso'+(typeof window!=='undefined'&&
+              new URLSearchParams(window.location.search).get('company')
+              ? '?company='+encodeURIComponent(new URLSearchParams(window.location.search).get('company')||'')
+              :'')}>¿Olvidaste tu contraseña?</a>
+          </p>}
           {error ? <p className={styles.error}>{error}</p> : null}
           <button type="submit" disabled={loading || !password}>
             {loading ? 'Ingresando…' : 'Ingresar'}
