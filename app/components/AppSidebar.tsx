@@ -156,21 +156,9 @@ export function AppSidebar({
             setCapabilities(capabilitiesData.capabilities);
           }
         } catch {
-          const fullAccess =
-            normalizedRoleKey === 'owner' ||
-            normalizedRoleKey === 'admin';
-
-          if (alive) {
-            setCapabilities({
-              inbox: true,
-              clients: true,
-              automations: fullAccess,
-              statistics: fullAccess,
-              configuration: fullAccess,
-              testAgent: fullAccess,
-              health: fullAccess,
-            });
-          }
+          // Fail closed: a capability lookup failure must not expose modules
+          // or pretend that the signed-in user has administrative privileges.
+          if (alive) setCapabilities(null);
         }
 
         if (!session.userId) return;
@@ -204,13 +192,13 @@ export function AppSidebar({
 
   const fullAccess = roleKey === 'owner' || roleKey === 'admin';
   const effectiveCapabilities: Capabilities = capabilities ?? {
-    inbox: true,
-    clients: true,
-    automations: fullAccess,
-    statistics: fullAccess,
-    configuration: fullAccess,
-    testAgent: fullAccess,
-    health: fullAccess,
+    inbox: false,
+    clients: false,
+    automations: false,
+    statistics: false,
+    configuration: false,
+    testAgent: false,
+    health: false,
   };
 
   const isServiceTenant = activeSlug === 'emprende-con-maogo';
