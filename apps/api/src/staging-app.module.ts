@@ -6,6 +6,7 @@ import { NativeCommerceController } from './native-commerce.controller';
 import { PlatformAdminController } from './platform-admin.controller';
 import { StagingDemoRequestsController } from './staging-demo-requests.controller';
 import { SupabaseService } from './supabase.service';
+import { StagingInboxController } from './staging-inbox.controller';
 import { StagingSalesAssistantController, StagingSalesAssistantService } from './staging-sales-assistant.controller';
 
 @Controller()
@@ -23,6 +24,7 @@ class StagingHealthController {
 @Module({
   controllers: [
     StagingHealthController,
+    StagingInboxController,
     AccessController,
     AccessCapabilitiesController,
     PlatformAdminController,
