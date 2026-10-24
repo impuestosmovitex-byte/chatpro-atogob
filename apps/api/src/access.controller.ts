@@ -270,6 +270,43 @@ export class AccessController {
     };
   }
 
+  // Staging-only: resolve tenant after verifying the user's password.
+  // Never reveal which company owns an identifier to unauthenticated callers.
+  @Post('staging-user-login')
+  async stagingUserLogin(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Body() body: LoginBody,
+  ) {
+    this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE !== 'true') {
+      throw new UnauthorizedException('Acceso no disponible.');
+    }
+    const identifier = this.normalizeIdentifier(body?.identifier);
+    const password = this.requiredText(body?.password, 'Escribe la contraseña.');
+    const client = this.supabaseService.getClient();
+    const { data: profile, error: profileError } = await client
+      .from('app_profiles')
+      .select('user_id,password_hash,active')
+      .eq('login_identifier', identifier).maybeSingle();
+    if (profileError || !profile?.active || !profile.password_hash ||
+        !this.accessAuthService.verify(password, profile.password_hash) ||
+        await this.isPlatformAdmin(profile.user_id)) {
+      throw new UnauthorizedException('Código o contraseña incorrectos.');
+    }
+    const { data: memberships, error: membershipsError } = await client
+      .from('company_memberships').select('company_id')
+      .eq('user_id', profile.user_id).eq('active', true);
+    if (membershipsError || !memberships || memberships.length !== 1) {
+      throw new UnauthorizedException('Elige tu empresa desde un enlace de acceso específico.');
+    }
+    const { data: company, error: companyError } = await client
+      .from('companies').select('slug,status').eq('id', memberships[0].company_id).maybeSingle();
+    if (companyError || company?.status !== 'active') {
+      throw new UnauthorizedException('Empresa no disponible.');
+    }
+    return this.login(providedKey, company.slug, {identifier,password});
+  }
+
   // The platform operator signs in without any tenant association.
   @Post('platform-login')
   async platformLogin(
