@@ -3,6 +3,7 @@ import {useState} from 'react';
 
 type Status={ok?:boolean;configured?:boolean;verified?:boolean;reason?:string;error?:string};
 const descriptions:Record<string,string>={
+ authenticated:'Mercado Pago aceptó la credencial para una consulta de lectura. El entorno de pruebas aún debe confirmarse antes de habilitar cualquier cobro.',
  authenticated_environment_unverified:'Mercado Pago aceptó la credencial para una consulta de lectura. Esto no confirma que sea de prueba: las credenciales APP_USR pueden ser de prueba o de producción. Los cobros seguirán bloqueados.',
  missing_token:'No hay credencial de Mercado Pago configurada en la API de staging.',
  unrecognized_token_format:'La credencial tiene un formato no reconocido. Confirma que provenga de Credenciales de prueba de MW1 CRM.',
@@ -34,7 +35,7 @@ export default function MercadoPagoAdminPage(){
    </button>
    {status&&<div role="status" style={{marginTop:17,padding:14,borderRadius:9,background:'#f6f7fa',fontSize:14,lineHeight:1.6}}>
     <strong>{status.verified?'Conexión autenticada':status.error?'No se pudo completar la consulta':'Integración pendiente de validación'}</strong>
-    <p style={{margin:'7px 0 0'}}>{status.error||descriptions[status.reason||'']||'La verificación todavía no está disponible.'}</p>
+    <p style={{margin:'7px 0 0'}}>{status.error||descriptions[status.reason||'']||(status.verified?'La autenticación fue aceptada. Aún no hay cobros habilitados.':'No se pudo confirmar la credencial.')}</p>
    </div>}
   </section>
   <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
