@@ -45,6 +45,11 @@ export class StagingDemoRequestsController {
     if(isTrial&&(!/^\+?[0-9]{7,19}$/.test(contactPhone)||
       !['business_app','cloud_api','new_number','unsure'].includes(whatsappSetup)))
       throw new BadRequestException('Indica un número de contacto y cómo usas WhatsApp.');
+    const requestedUsers=data.requestedUsers==null?null:Number(data.requestedUsers);
+    const requestedConnections=data.requestedConnections==null?null:Number(data.requestedConnections);
+    if((requestedUsers!==null&&(!Number.isInteger(requestedUsers)||requestedUsers<1||requestedUsers>20))||
+       (requestedConnections!==null&&(!Number.isInteger(requestedConnections)||requestedConnections<1||requestedConnections>10)))
+      throw new BadRequestException('La cantidad de usuarios o conexiones es inválida.');
     const visitorDigest=clean(data.visitorDigest,64);
     if(companyName.length<2||companyName.length>100||
       contactName.length<2||contactName.length>100||
@@ -66,7 +71,7 @@ export class StagingDemoRequestsController {
       visitor_digest:visitorDigest,consent_at:new Date().toISOString(),
       status:'new',source:isTrial?'web_trial':'web_demo',
       ...(isTrial?{contact_phone:contactPhone,whatsapp_setup:whatsappSetup,
-        trial_requested_days:14}:{}),
+        trial_requested_days:14,requested_users:requestedUsers,requested_connections:requestedConnections}:{}),
     });
     if(error)throw new BadRequestException('No fue posible registrar la solicitud.');
     // No user account, company, plan or WhatsApp message is created.
