@@ -25,12 +25,12 @@ export default function MiPlan(){
  useEffect(()=>{let active=true;fetch('/api/mi-plan',{cache:'no-store'}).then(r=>r.json()).then(d=>{if(active)setData(d)}).catch(()=>{if(active)setData({error:'No se pudo consultar el plan.'})});return()=>{active=false}},[]);
  return <main style={{display:'flex',minHeight:'100vh',background:'#f6f7f9',color:'#172235'}}>
   <AppSidebar companyName={data?.company?.name||'Empresa'}/>
-  <section style={{flex:1,padding:'36px 42px',maxWidth:1080}}>
+  <section style={{flex:1,padding:'clamp(18px,3vw,42px)',width:'100%',maxWidth:1280,minWidth:0}}>
    <p style={{color:'#977313',fontWeight:800,fontSize:12}}>CONFIGURACIÓN / MI PLAN</p>
    <h1 style={{fontSize:30,margin:'12px 0'}}>Mi plan y facturación</h1>
    <p style={{color:'#657184',marginBottom:24}}>Consulta tu plan, solicita cambios y revisa la renovación automática desde una sola página.</p>
    {!data?<p>Cargando información del plan…</p>:!data.ok?<p role="alert" style={{color:'#a82e35'}}>{data.error||'No se pudo cargar.'}</p>:
-   <div style={{display:'grid',gap:18}}>
+   <div style={{display:'grid',gap:20,maxWidth:1060}}>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
       <strong style={{color:'#886b11'}}>PLAN REGISTRADO</strong>
       <h2 style={{fontSize:28,margin:'12px 0'}}>{data.plan?.plan_key?.toUpperCase()}</h2>
@@ -45,16 +45,22 @@ export default function MiPlan(){
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
      <h2>Gestionar mi plan</h2>
      <p style={{margin:'10px 0 14px'}}>La solicitud queda pendiente de revisión. No modifica el plan ni genera cobros automáticamente.</p>
-     <label htmlFor="plan-target" style={{display:'block',marginBottom:8}}>Plan publicado</label>
-     <select id="plan-target" value={targetPlan} onChange={e=>setTargetPlan(e.target.value)} style={{padding:10,marginRight:12,borderRadius:8}}>
+     <label htmlFor="plan-target" style={{display:'block',marginBottom:8,fontWeight:700}}>Selecciona otro plan</label>
+     <select id="plan-target" value={targetPlan} onChange={e=>setTargetPlan(e.target.value)} style={{padding:'12px 14px',marginRight:12,borderRadius:9,border:'1px solid #c9cfd8',minWidth:210,maxWidth:'100%'}}>
       <option value="">Seleccionar plan</option>
       {(data.availablePlans??[]).filter(x=>x.plan_key!==data.plan?.plan_key).map(x=><option value={x.plan_key} key={x.plan_key}>{x.plan_key.toUpperCase()} — {x.price_cop.toLocaleString('es-CO',{style:'currency',currency:'COP'})}</option>)}
      </select>
      <button disabled={!targetPlan||working} onClick={()=>void submitRequest('change_plan')} style={{padding:11,border:0,borderRadius:8,background:'#f4bf00',fontWeight:800}}>Solicitar cambio</button>
+     {(data.availablePlans??[]).length===0&&<p style={{fontSize:13,color:'#8a6d12',marginTop:10}}>Los precios de los planes aún no están publicados. Esta opción se habilitará cuando haya tarifas disponibles.</p>}
+     <hr style={{margin:'25px 0',border:0,borderTop:'1px solid #ebedf0'}}/>
      <h3 style={{marginTop:24}}>Solicitar usuarios adicionales</h3>
      <p>Solicita cupos adicionales sin cambiar de plan. El precio queda pendiente de cotización; no se genera ningún cobro automáticamente.</p>
-     <input aria-label="Cantidad de usuarios adicionales" type="number" min={1} max={100} value={extraSeats} onChange={e=>setExtraSeats(Number(e.target.value))} />
-     <button type="button" disabled={working||extraSeats<1||extraSeats>100||!Number.isInteger(extraSeats)} onClick={()=>void submitRequest('extra_users')}>Solicitar usuarios</button>
+     <div style={{display:'flex',flexWrap:'wrap',gap:12,alignItems:'center',marginTop:12}}>
+     <label htmlFor="additional-seats" style={{fontWeight:700}}>Cantidad</label>
+     <input id="additional-seats" aria-label="Cantidad de usuarios adicionales" type="number" min={1} max={100} value={extraSeats} onChange={e=>setExtraSeats(Number(e.target.value))} style={{width:86,padding:'12px',borderRadius:9,border:'1px solid #c9cfd8',fontSize:15}} />
+     <button type="button" disabled={working||extraSeats<1||extraSeats>100||!Number.isInteger(extraSeats)} onClick={()=>void submitRequest('extra_users')} style={{padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#172235',fontWeight:800,cursor:'pointer'}}>Solicitar usuarios</button>
+     </div>
+     <hr style={{margin:'25px 0',border:0,borderTop:'1px solid #ebedf0'}}/>
      <h3 style={{marginTop:24}}>Cancelación de renovación</h3>
      <p style={{margin:'8px 0'}}>Puedes solicitar revisión de cancelación. No se interrumpe el servicio al enviar esta solicitud.</p>
      <button disabled={working} onClick={()=>void submitRequest('cancel_renewal')} style={{padding:11,border:'1px solid #c9cdd3',borderRadius:8,background:'#fff'}}>Solicitar cancelación</button>
