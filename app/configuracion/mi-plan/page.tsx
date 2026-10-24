@@ -44,6 +44,7 @@ export default function MiPlan(){
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
      <h2>Renovación automática</h2>
+     <p style={{margin:'10px 0'}}><Link href="/configuracion/metodo-pago" style={{color:'#806400',fontWeight:800}}>Ver cómo registrar tu tarjeta de forma segura →</Link></p>
      {!data.subscription ? <p style={{marginTop:10}}>La renovación automática aún no está configurada para esta empresa. El registro seguro de tarjetas se habilitará con la pasarela de pagos, sin almacenar tarjetas en MW1.</p> : <>
       <p>Proveedor: {data.subscription.provider==='mercadopago'?'Mercado Pago':'Wompi'}</p>
       <p>Estado: {({awaiting_authorization:'Pendiente de autorización',pending:'Pendiente',active:'Activa',past_due:'Pago vencido',grace_period:'Período de gracia',paused:'Pausada',cancelled:'Cancelada',expired:'Vencida'} as Record<string,string>)[data.subscription.status]||'Por verificar'}</p>
