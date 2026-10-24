@@ -502,14 +502,18 @@ export class UsersController {
       ? await client.from('advisor_service_areas').select('user_id, area_id').eq('company_id', companyId).in('user_id', userIds)
       : { data: [], error: null };
 
-    if (mappings.error) {
+    // The staging database may not yet contain the optional advisor/area mapping table.
+    // Only tolerate PostgreSQL's undefined_table condition, never hide other DB errors.
+    const mappingTableAbsent = process.env.MW1_STAGING_MODE === 'true' &&
+      mappings.error?.code === '42P01';
+    if (mappings.error && !mappingTableAbsent) {
       throw new BadRequestException(
         `No se pudieron consultar las áreas asignadas: ${mappings.error.message}`,
       );
     }
 
     const areaIdsByUser = new Map<string, string[]>();
-    for (const item of mappings.data ?? []) {
+    for (const item of mappingTableAbsent ? [] : (mappings.data ?? [])) {
       const list = areaIdsByUser.get(item.user_id) ?? [];
       list.push(item.area_id);
       areaIdsByUser.set(item.user_id, list);
