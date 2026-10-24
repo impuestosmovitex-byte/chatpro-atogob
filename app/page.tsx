@@ -1226,6 +1226,7 @@ export default function Home() {
   const [transferTargetUserId, setTransferTargetUserId] = useState("");
   const [internalTestLoading, setInternalTestLoading] = useState(false);
   const [error, setError] = useState("");
+  const [stagingNotice,setStagingNotice]=useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactTags, setContactTags] = useState("");
@@ -1377,6 +1378,12 @@ export default function Home() {
       const data = (await readJson(
         presenceResponse,
       )) as AdvisorPresenceResponse;
+      if (presenceResponse.status===503 &&
+        (data as AdvisorPresenceResponse & {code?:string}).code==='STAGING_INBOX_DISABLED'){
+        setPresence({status:'offline'});
+        setStagingNotice('Acceso empresarial validado. Este entorno sirve para comprobar altas y permisos; la bandeja, la atención en vivo y las conexiones de canales aún no están habilitadas en staging.');
+        return;
+      }
       if (!presenceResponse.ok || !data.ok || !data.advisor)
         throw new Error(data.error || "No se pudo cargar la disponibilidad.");
       setPresence(data.advisor);
@@ -1609,6 +1616,16 @@ export default function Home() {
         return;
       }
 
+      if (response.status===503 &&
+        (data as ApiList & {code?:string}).code==='STAGING_INBOX_DISABLED'){
+        setSessions([]);
+        setHasMoreSessions(false);
+        nextSessionsOffsetRef.current=0;
+        setNextSessionsOffset(0);
+        setStagingNotice('Acceso empresarial validado. Este entorno sirve para comprobar altas y permisos; la bandeja, la atención en vivo y las conexiones de canales aún no están habilitadas en staging.');
+        setError('');
+        return;
+      }
       if (!response.ok || !data.ok) {
         throw new Error(data.error || "No se pudo cargar la bandeja.");
       }
@@ -4254,6 +4271,12 @@ export default function Home() {
           </div>
         ) : null}
 
+        {stagingNotice ? <div role="status" style={{
+          background:'#eef3fc',border:'1px solid #cddcf1',color:'#233c59',
+          padding:'14px 17px',borderRadius:12,fontSize:13,lineHeight:1.6,
+          marginBottom:14,
+        }}><strong>Modo de incorporación MW1:</strong> {stagingNotice}
+        </div> : null}
         {error ? <div className="error-banner">{error}</div> : null}
         {actionMessage ? (
           <div className="success-banner">{actionMessage}</div>
