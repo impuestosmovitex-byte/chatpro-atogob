@@ -41,7 +41,7 @@ export class StagingSubscriptionAdminController {
    .select('user_id').eq('user_id',userId).eq('active',true).maybeSingle();
   if(adminError||!admin)throw new ForbiddenException('Acceso reservado a superadministradores.');
   const {data:requests,error}=await db.from('mw1_subscription_requests')
-   .select('id,company_id,requested_by,request_type,requested_plan_key,note,status,created_at,reviewed_at')
+   .select('id,company_id,requested_by,request_type,requested_plan_key,additional_users,note,status,created_at,reviewed_at')
    .order('created_at',{ascending:false}).limit(100);
   if(error)throw new ForbiddenException('No se pudieron consultar las solicitudes.');
   const companyIds=[...new Set((requests??[]).map(r=>r.company_id))];
