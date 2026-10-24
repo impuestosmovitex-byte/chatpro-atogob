@@ -72,8 +72,9 @@ export class StagingDemoRequestsController {
       contact_email:contactEmail,plan_interest:legacyPlanKey,
       visitor_digest:visitorDigest,consent_at:new Date().toISOString(),
       status:'new',source:isTrial?'web_trial':'web_demo',
+      requested_users:requestedUsers,requested_connections:requestedConnections,
       ...(isTrial?{contact_phone:contactPhone,whatsapp_setup:whatsappSetup,
-        trial_requested_days:14,requested_users:requestedUsers,requested_connections:requestedConnections}:{}),
+        trial_requested_days:14}:{}),
     });
     if(error)throw new BadRequestException('No fue posible registrar la solicitud.');
     // No user account, company, plan or WhatsApp message is created.
