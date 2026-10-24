@@ -1,5 +1,7 @@
 'use client';
 import Link from 'next/link';
+import {useState} from 'react';
+import PublicPlanSimulator from './PublicPlanSimulator';
 import styles from '../components/marketing/marketing.module.css';
 
 export type PlanCardOption={
@@ -10,12 +12,14 @@ export type PlanCardOption={
 };
 const pesos=(n:number)=>new Intl.NumberFormat('es-CO').format(n);
 export default function PlansInteractive({plans}:{plans:PlanCardOption[]}){
+ const [selected,setSelected]=useState<string|null>(null);
+ const selectPlan=(key:string)=>{setSelected(key);window.requestAnimationFrame(()=>document.getElementById('mw1-plan-calculator')?.scrollIntoView({behavior:'smooth',block:'center'}));};
  return <>
   <div className={styles.priceGrid}>
    {plans.map(plan=>{
     return <article key={plan.key} className={styles.priceCard}
      style={{borderColor:'#e6bb19',background:'#fffdf5',
-      boxShadow:plan.featured?'0 0 0 2px #172235, 0 15px 40px rgba(244,191,0,.13)':'0 7px 22px rgba(244,191,0,.07)',
+      boxShadow:'0 7px 22px rgba(244,191,0,.07)',
       display:'flex',flexDirection:'column',gap:0}}>
      <span className={styles.priceLabel}>{plan.eyebrow}</span>
      <h3>{plan.name}</h3>
@@ -36,17 +40,26 @@ export default function PlansInteractive({plans}:{plans:PlanCardOption[]}){
       <ul style={{minHeight:0}}>{plan.conditional.map(x=><li key={x}>{x}</li>)}</ul>
      </details>
      <div style={{marginTop:'auto',display:'grid',gap:9}}>
-      <Link href={`/prueba-gratis?plan=${plan.key}`} className={styles.primaryButton}
-       style={{display:'flex',width:'100%',background:'#f4bf00',color:'#172235',fontWeight:850}}>
-       Elegir plan {plan.name}
-      </Link>
+      <button type="button" onClick={()=>selectPlan(plan.key)} className={styles.primaryButton}
+       style={{display:'flex',justifyContent:'center',width:'100%',background:'#f4bf00',color:'#172235',fontWeight:850,border:0,cursor:'pointer'}}>
+       Elegir plan
+      </button>
       <p style={{fontSize:12,color:'#68758b',marginTop:4,lineHeight:1.5}}>
-       Continúa a la solicitud de prueba, sin pago automático. <Link href={`/demo?plan=${plan.key}`}
+       Selecciona y ajusta el plan antes de solicitar la prueba. <Link href={`/demo?plan=${plan.key}`}
         style={{textDecoration:'underline',textUnderlineOffset:3}}>Prefiero una demo</Link>
       </p>
      </div>
     </article>;
    })}
+  </div>
+  <div id="mw1-plan-calculator" style={{scrollMarginTop:110}}>
+   {selected?<PublicPlanSimulator selectedPlanKey={selected} onSelectPlan={setSelected} options={plans.map(p=>({key:p.key,name:p.name,price:p.price,users:p.users,connections:p.connections,extraUserCop:p.extraUserCop,extraConnectionCop:p.extraConnectionCop}))}/>:
+    <section style={{margin:'38px auto 0',maxWidth:1100,padding:'34px clamp(20px,4vw,45px)',border:'1px solid #dce2eb',borderRadius:20,background:'#fff'}}>
+     <h3 style={{fontSize:30,marginBottom:10}}>Diseña tu plan</h3>
+     <p style={{color:'#586477',fontSize:16}}>Elige Básico, Eco o Pro para ajustar los usuarios y las conexiones y conocer el valor estimado.</p>
+     <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:22}}>{plans.map(p=><button key={p.key} type="button" onClick={()=>selectPlan(p.key)} style={{background:'#f4bf00',color:'#172235',border:'1px solid #e0b400',borderRadius:10,padding:'13px 26px',fontWeight:800,cursor:'pointer'}}>{p.name}</button>)}</div>
+     <p style={{fontSize:12,color:'#667085',marginTop:18}}>Ningún plan ha sido seleccionado. Los precios son orientativos y no generan cobros.</p>
+    </section>}
   </div>
  </>;
 }
