@@ -64,14 +64,14 @@ export class PlatformAdminController {
     if (process.env.MW1_STAGING_MODE !== 'true') throw new UnauthorizedException('Solo staging.');
     const token = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
     if (!token) return {ok:false,configured:false,verified:false,reason:'missing_token'};
-    if (!token.startsWith('TEST-')) return {ok:false,configured:true,verified:false,reason:'not_test_token'};
+    if (!/^(TEST-|APP_USR-)/.test(token)) return {ok:false,configured:true,verified:false,reason:'unrecognized_token_format'};
     try {
       const response = await fetch('https://api.mercadopago.com/users/me', {
         headers: {Authorization: 'Bearer ' + token},
         signal: AbortSignal.timeout(9000),
       });
       return {ok:response.ok,configured:true,verified:response.ok,
-        reason:response.ok?'authenticated':response.status===401?'invalid_token':'provider_error'};
+        reason:response.ok?'authenticated_environment_unverified':response.status===401?'invalid_token':'provider_error'};
     } catch {
       return {ok:false,configured:true,verified:false,reason:'network_error'};
     }
