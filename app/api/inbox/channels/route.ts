@@ -38,6 +38,13 @@ export async function GET(request: NextRequest) {
     request.cookies.get(INBOX_SESSION_COOKIE)?.value,
   );
 
+  if (process.env.MW1_STAGING_MODE === 'true' && session?.type === 'user') {
+    return NextResponse.json({
+      ok:false,code:'STAGING_INBOX_DISABLED',
+      error:'La conexión de canales reales no está habilitada en este entorno de pruebas.',
+    },{status:503,headers:{'Cache-Control':'no-store'}});
+  }
+
   if (!session) {
     return NextResponse.json(
       { ok: false, error: 'Sesión requerida.' },
