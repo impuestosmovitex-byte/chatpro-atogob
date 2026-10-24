@@ -36,7 +36,11 @@ export default function LoginPage() {
       };
 
       if (!response.ok || !data.ok) {
-        setError(data.error || 'No se pudo iniciar sesión.');
+        const genericAuthError = !data.error || /^(Unauthorized|No autorizado\.?|Forbidden)$/i.test(data.error);
+        setError(response.status===401 || genericAuthError
+          ? 'No pudimos validar el código de acceso o la contraseña. Verifica los datos e inténtalo de nuevo.'
+          : data.error || 'No se pudo iniciar sesión.');
+
         return;
       }
 
@@ -44,7 +48,7 @@ export default function LoginPage() {
       const safeDestination = destination && destination.startsWith('/') && !destination.startsWith('//')
         ? destination
         : '/';
-      router.replace(platformLogin && safeDestination==='/' ? '/admin' : staging && safeDestination==='/' ? '/pedidos' : safeDestination);
+      router.replace(platformLogin && safeDestination==='/' ? '/admin' : safeDestination);
       router.refresh();
     } catch {
       setError('No se pudo conectar con Chat Pro. Intenta nuevamente.');
@@ -54,11 +58,11 @@ export default function LoginPage() {
   }
 
   return (
-    <main className={styles.shell}>
+    <main className={`${styles.shell} ${platformLogin?styles.platformShell:''}`}>
       <section className={styles.card}>
         <div className={styles.mark}>MW1</div>
-        <p className={styles.eyebrow}>MW1</p>
-        <h1>{platformLogin?'Administración general MW1':'Iniciar sesión'}</h1>
+        <p className={styles.eyebrow}>{platformLogin?'ACCESO PRIVADO · PLATAFORMA':'MW1 · ACCESO EMPRESARIAL'}</p>
+        <h1>{platformLogin?'Administración de MW1':'Accede a tu empresa'}</h1>
         <p className={styles.copy}>
           Ingresa tu identificación o código de acceso y tu contraseña.
         </p>
@@ -71,7 +75,7 @@ export default function LoginPage() {
             onChange={(event) => setIdentifier(event.target.value)}
             autoComplete="username"
             autoFocus
-            placeholder={platformLogin?'Identificación del superadministrador':staging ? 'MW1DEMO' : 'Ejemplo: 1020304050'}
+            placeholder={platformLogin?'Identificación de administrador':'Tu código de acceso'}
           />
 
           <label htmlFor="password">Contraseña</label>
@@ -85,12 +89,13 @@ export default function LoginPage() {
           />
 
           <p className={styles.copy}>
-            {platformLogin ? 'Acceso independiente de las empresas. Aquí se administran los planes y las compañías de MW1.' : staging
-              ? 'Cuenta de empresa de demostración. No uses claves de ATOGOB.'
-              : 'Para configurar la primera cuenta de la empresa, deja vacía la identificación y usa la contraseña principal actual.'}
+            {platformLogin
+              ? 'Área privada y separada de las cuentas de clientes. Solo personal autorizado de MW1.'
+              : staging
+                ? 'Usa las credenciales de tu empresa. Este acceso no permite administrar la plataforma.'
+                : 'Ingresa con las credenciales de tu empresa. Si necesitas acceso, comunícate con su administrador.'}
           </p>
 
-          {staging?<p className={styles.copy}>{platformLogin?<a href="/login?company=mw1-demo-mercado">Entrar como usuario de empresa demo</a>:<a href="/login?mode=platform&next=%2Fadmin">Entrar como superadministrador MW1</a>}</p>:null}
           {error ? <p className={styles.error}>{error}</p> : null}
           <button type="submit" disabled={loading || !password}>
             {loading ? 'Ingresando…' : 'Ingresar'}
