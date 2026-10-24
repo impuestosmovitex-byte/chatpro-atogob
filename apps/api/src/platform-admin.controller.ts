@@ -929,6 +929,77 @@ export class PlatformAdminController {
       passwordChanged:changePassword,emailVerified:false};
   }
 
+  // Public request endpoint called only by server-to-server internal key.
+  // It NEVER changes a code, password, email verification or membership.
+  @Post('recovery-requests')
+  async requestAccountRecovery(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Body() value:unknown,
+  ){
+    this.assertInternalKey(providedKey);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Disponible únicamente en staging.');
+    if(!value||typeof value!=='object'||Array.isArray(value))
+      throw new BadRequestException('Datos inválidos.');
+    const data=value as Record<string,unknown>;
+    const company=typeof data.companySlug==='string'?data.companySlug.trim().toLowerCase():'';
+    const identifier=typeof data.identifier==='string'?data.identifier.trim().toUpperCase():'';
+    const method=data.method;
+    const contact=typeof data.contact==='string'?data.contact.trim():'';
+    const digest=typeof data.visitorDigest==='string'?data.visitorDigest:'';
+    if(!/^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$/.test(company)||
+      !/^[A-Z0-9._-]{3,60}$/.test(identifier)||
+      (method!=='email'&&method!=='phone')||
+      !/^[a-f0-9]{64}$/.test(digest)||
+      (method==='email'?(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)||contact.length>254)
+        : !/^[+]?[0-9]{7,19}$/.test(contact.replace(/[\s()-]/g,''))))
+      throw new BadRequestException('Revisa los datos de recuperación.');
+    const db=this.supabaseService.getClient();
+    const {count,error:rateError}=await db.from('platform_access_recovery_requests')
+      .select('id',{count:'exact',head:true}).eq('visitor_digest',digest)
+      .gte('created_at',new Date(Date.now()-3600000).toISOString());
+    if(rateError)throw new BadRequestException('No fue posible procesar la solicitud.');
+    const generic={ok:true,message:'Solicitud recibida. Un asesor deberá verificar tu identidad antes de restablecer el acceso. No se modificó la contraseña.'};
+    if((count??0)>=3)return generic;
+    const {data:companyRow}=await db.from('companies').select('id').eq('slug',company)
+      .eq('status','active').maybeSingle();
+    if(!companyRow?.id)return generic;
+    const {data:profile}=await db.from('app_profiles').select('user_id,active')
+      .eq('login_identifier',identifier).maybeSingle();
+    if(!profile?.active)return generic;
+    const {data:member}=await db.from('company_memberships').select('id,active')
+      .eq('company_id',companyRow.id).eq('user_id',profile.user_id).maybeSingle();
+    if(!member?.active)return generic;
+    const {error}=await db.from('platform_access_recovery_requests').insert({
+      company_slug:company,login_identifier:identifier,
+      contact_method:method,contact_value:method==='email'?contact.toLowerCase():contact.replace(/[\s()-]/g,''),
+      visitor_digest:digest,
+    });
+    if(error)throw new BadRequestException('No se pudo registrar la solicitud.');
+    return generic;
+  }
+
+  @Get('recovery-requests')
+  async listAccountRecoveryRequests(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') actorId = '',
+  ){
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(actorId);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Disponible únicamente en staging.');
+    const {data,error}=await this.supabaseService.getClient()
+      .from('platform_access_recovery_requests')
+      .select('id,company_slug,login_identifier,contact_method,contact_value,status,created_at')
+      .order('created_at',{ascending:false}).limit(70);
+    if(error)throw new BadRequestException('No se pudieron consultar las solicitudes de recuperación.');
+    return {ok:true,requests:(data??[]).map(r=>({
+      id:r.id,companySlug:r.company_slug,identifier:r.login_identifier,
+      method:r.contact_method,contact:r.contact_value,status:r.status,
+      createdAt:r.created_at,
+    }))};
+  }
+
   @Post('companies')
   async createCompany(
     @Headers('x-chatpro-inbox-key') providedKey = '',
