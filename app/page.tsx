@@ -1521,6 +1521,11 @@ export default function Home() {
       const data =
         (await readJson(response)) as TransferTargetsResponse;
 
+      if(response.status===503 &&
+        (data as TransferTargetsResponse & {code?:string}).code==='STAGING_INBOX_DISABLED'){
+        setAdvisorFilters([]);
+        return;
+      }
       if (!response.ok || !data.ok) {
         throw new Error(
           data.error || "No se pudieron cargar los asesores.",
