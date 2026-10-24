@@ -7,14 +7,15 @@ type Data={ok?:boolean;error?:string;company?:{name:string};plan?:Plan;activeUse
 export default function MiPlan(){
  const [data,setData]=useState<Data|null>(null);
  const [targetPlan,setTargetPlan]=useState('');
+ const [extraSeats,setExtraSeats]=useState(1);
  const [notice,setNotice]=useState('');
  const [working,setWorking]=useState(false);
- async function submitRequest(type:'change_plan'|'cancel_renewal'){
+ async function submitRequest(type:'change_plan'|'cancel_renewal'|'extra_users'){
   if(working)return;
   if(type==='cancel_renewal'&&!window.confirm('¿Registrar una solicitud de cancelación de renovación? No cancela el servicio inmediatamente.'))return;
   setWorking(true);setNotice('');
   try{
-   const r=await fetch('/api/mi-plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,planKey:type==='change_plan'?targetPlan:undefined})});
+   const r=await fetch('/api/mi-plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,planKey:type==='change_plan'?targetPlan:undefined,additionalUsers:type==='extra_users'?extraSeats:undefined})});
    const result=await r.json();
    setNotice(result.message||result.error||'No se pudo registrar la solicitud.');
    if(r.ok){const updated=await fetch('/api/mi-plan',{cache:'no-store'}).then(x=>x.json());setData(updated)}
@@ -55,6 +56,10 @@ export default function MiPlan(){
       {(data.availablePlans??[]).filter(x=>x.plan_key!==data.plan?.plan_key).map(x=><option value={x.plan_key} key={x.plan_key}>{x.plan_key.toUpperCase()} — {x.price_cop.toLocaleString('es-CO',{style:'currency',currency:'COP'})}</option>)}
      </select>
      <button disabled={!targetPlan||working} onClick={()=>void submitRequest('change_plan')} style={{padding:11,border:0,borderRadius:8,background:'#f4bf00',fontWeight:800}}>Solicitar cambio</button>
+     <h3 style={{marginTop:24}}>Solicitar usuarios adicionales</h3>
+     <p>Solicita cupos adicionales sin cambiar de plan. El precio queda pendiente de cotización; no se genera ningún cobro automáticamente.</p>
+     <input aria-label="Cantidad de usuarios adicionales" type="number" min={1} max={100} value={extraSeats} onChange={e=>setExtraSeats(Number(e.target.value))} />
+     <button type="button" disabled={working||extraSeats<1||extraSeats>100||!Number.isInteger(extraSeats)} onClick={()=>void submitRequest('extra_users')}>Solicitar usuarios</button>
      <h3 style={{marginTop:24}}>Cancelación de renovación</h3>
      <p style={{margin:'8px 0'}}>Puedes solicitar revisión de cancelación. No se interrumpe el servicio al enviar esta solicitud.</p>
      <button disabled={working} onClick={()=>void submitRequest('cancel_renewal')} style={{padding:11,border:'1px solid #c9cdd3',borderRadius:8,background:'#fff'}}>Solicitar cancelación</button>
@@ -62,7 +67,7 @@ export default function MiPlan(){
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
      <h2>Mis solicitudes</h2>
-     {(data.requests??[]).length===0?<p style={{marginTop:10}}>No hay solicitudes registradas.</p>:(data.requests??[]).map(x=><p key={x.id} style={{padding:'12px 0',borderBottom:'1px solid #eee'}}>{x.request_type==='change_plan'?'Cambio a '+x.requested_plan_key:'Cancelar renovación'} — {x.status==='pending'?'Pendiente de revisión':x.status}</p>)}
+     {(data.requests??[]).length===0?<p style={{marginTop:10}}>No hay solicitudes registradas.</p>:(data.requests??[]).map(x=><p key={x.id} style={{padding:'12px 0',borderBottom:'1px solid #eee'}}>{x.request_type==='change_plan'?'Cambio a '+x.requested_plan_key:x.request_type==='extra_users'?'Solicitud de usuarios adicionales':'Cancelar renovación'} — {x.status==='pending'?'Pendiente de revisión':x.status}</p>)}
     </article>
    </div>}
    <p style={{marginTop:25}}><Link href="/configuracion" style={{color:'#755a00'}}>← Volver a configuración</Link></p>
