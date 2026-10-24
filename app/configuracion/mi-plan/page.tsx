@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {AppSidebar} from '../../components/AppSidebar';
 type Plan={plan_key:string;max_users:number;max_whatsapp_lines:number;ai_enabled:boolean;whatsapp_enabled:boolean;instagram_enabled:boolean;messenger_enabled:boolean;automations_enabled:boolean;statistics_enabled:boolean};
-type Data={ok?:boolean;error?:string;company?:{name:string};plan?:Plan;activeUsers?:number;availablePlans?:Array<{plan_key:string;price_cop:number;max_users:number}>;requests?:Array<{id:string;request_type:string;requested_plan_key:string|null;status:string;created_at:string}>};
+type Data={ok?:boolean;error?:string;company?:{name:string};plan?:Plan;activeUsers?:number;subscription?:{provider:string;billing_cycle:string;status:string;currency:string;amount_cop:number|null;next_billing_at:string|null;current_period_end:string|null;cancel_at_period_end:boolean}|null;transactions?:Array<{id:string;amount_cop:number;currency:string;status:string;paid_at:string|null;created_at:string}>;availablePlans?:Array<{plan_key:string;price_cop:number;max_users:number}>;requests?:Array<{id:string;request_type:string;requested_plan_key:string|null;status:string;created_at:string}>};
 export default function MiPlan(){
  const [data,setData]=useState<Data|null>(null);
  const [targetPlan,setTargetPlan]=useState('');
@@ -41,6 +41,16 @@ export default function MiPlan(){
        data.plan?.instagram_enabled&&'Instagram',data.plan?.messenger_enabled&&'Messenger',
        data.plan?.automations_enabled&&'Automatizaciones',data.plan?.statistics_enabled&&'Estadísticas'
       ].filter(Boolean).join(', ')||'Sin módulos adicionales'}.</p>
+    </article>
+    <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
+     <h2>Renovación automática</h2>
+     {!data.subscription ? <p style={{marginTop:10}}>La renovación automática aún no está configurada para esta empresa. El registro seguro de tarjetas se habilitará con la pasarela de pagos, sin almacenar tarjetas en MW1.</p> : <>
+      <p>Proveedor: {data.subscription.provider==='mercadopago'?'Mercado Pago':'Wompi'}</p>
+      <p>Estado: {({awaiting_authorization:'Pendiente de autorización',pending:'Pendiente',active:'Activa',past_due:'Pago vencido',grace_period:'Período de gracia',paused:'Pausada',cancelled:'Cancelada',expired:'Vencida'} as Record<string,string>)[data.subscription.status]||'Por verificar'}</p>
+      <p>Periodicidad: {data.subscription.billing_cycle==='monthly'?'Mensual':'Anual'}</p>
+      <p>Próxima renovación: {data.subscription.next_billing_at?new Date(data.subscription.next_billing_at).toLocaleDateString('es-CO'):'No programada'}</p>
+      <p>Cancelación al finalizar el período: {data.subscription.cancel_at_period_end?'Solicitada':'No registrada'}</p>
+     </>}
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
      <h2>Pagos y suscripción</h2>
