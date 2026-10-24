@@ -50,11 +50,6 @@ export default function MiPlan(){
         .filter((x):x is string=>Boolean(x)).map(x=><li key={x}>{x}</li>)}
       </ul>
       <p style={{fontSize:12,color:'#657184'}}>Estos módulos corresponden a los permisos registrados. Su uso requiere las conexiones y configuraciones correspondientes.</p>
-      <p style={{display:'none'}}>Módulos autorizados: {[
-       data.plan?.ai_enabled&&'IA',data.plan?.whatsapp_enabled&&'WhatsApp',
-       data.plan?.instagram_enabled&&'Instagram',data.plan?.messenger_enabled&&'Messenger',
-       data.plan?.automations_enabled&&'Automatizaciones',data.plan?.statistics_enabled&&'Estadísticas'
-      ].filter(Boolean).join(', ')||'Sin módulos adicionales'}.</p>
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
      <h2>Gestionar mi plan</h2>
