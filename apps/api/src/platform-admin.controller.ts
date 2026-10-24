@@ -782,6 +782,148 @@ export class PlatformAdminController {
     return {ok:true,message:'Precio y cupos publicados en staging. No se activaron suscripciones ni se modificaron clientes.'};
   }
 
+  // Private staging owner credential management. This does not change tenant entitlements.
+  @Get('companies/owners')
+  async listCompanyOwners(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') userId = '',
+  ) {
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(userId);
+    if (process.env.MW1_STAGING_MODE !== 'true')
+      throw new UnauthorizedException('Disponible únicamente en MW1 staging.');
+    const db = this.supabaseService.getClient();
+    const { data: companies, error: ce } = await db.from('companies')
+      .select('id,slug,name').order('name', { ascending: true });
+    if (ce) throw new BadRequestException('No se pudieron consultar las empresas.');
+    const ids = (companies ?? []).map(item => item.id);
+    if (!ids.length) return { ok: true, owners: [] };
+    const { data: members, error: me } = await db.from('company_memberships')
+      .select('company_id,user_id,role_id,active').in('company_id', ids).eq('active', true);
+    if (me) throw new BadRequestException('No se pudieron consultar los propietarios.');
+    const roleIds = [...new Set((members ?? []).map(m=>m.role_id))];
+    const { data: roles, error: re } = roleIds.length
+      ? await db.from('app_roles').select('id,key,company_id').in('id', roleIds)
+      : { data: [], error: null };
+    if (re) throw new BadRequestException('No se pudieron consultar los roles.');
+    const ownerRoles = new Map((roles ?? [])
+      .filter(r=>r.key==='owner').map(r=>[r.id,r.company_id] as const));
+    const owners = (members ?? []).filter(m=>ownerRoles.has(m.role_id)
+      && (!ownerRoles.get(m.role_id) || ownerRoles.get(m.role_id)===m.company_id));
+    const userIds=[...new Set(owners.map(m=>m.user_id))];
+    const { data: profiles, error: pe } = userIds.length
+      ? await db.from('app_profiles').select(
+          'user_id,full_name,login_identifier,contact_email,recovery_phone,recovery_email_verified_at,active'
+        ).in('user_id',userIds)
+      : { data: [], error: null };
+    if (pe) throw new BadRequestException('No se pudieron consultar los perfiles.');
+    const byUser = new Map((profiles ?? []).map(p=>[p.user_id,p]));
+    const byCompany = new Map((companies ?? []).map(p=>[p.id,p]));
+    return { ok: true, owners: owners.map(m=>{
+      const p=byUser.get(m.user_id);
+      const company=byCompany.get(m.company_id);
+      return {companyId:m.company_id,companyName:company?.name??'',companySlug:company?.slug??'',
+        userId:m.user_id,name:p?.full_name??'Propietario',
+        identifier:p?.login_identifier??'',contactEmail:p?.contact_email??'',
+        contactPhone:p?.recovery_phone??'',emailVerified:Boolean(p?.recovery_email_verified_at),
+        active:Boolean(p?.active)};
+    }).filter(item=>item.active) };
+  }
+
+  @Post('companies/owner-access')
+  async manageCompanyOwnerAccess(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Query('user') actorId = '',
+    @Body() body: unknown,
+  ) {
+    this.assertInternalKey(providedKey);
+    await this.assertPlatformAdmin(actorId);
+    if (process.env.MW1_STAGING_MODE !== 'true')
+      throw new UnauthorizedException('Disponible únicamente en MW1 staging.');
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      throw new BadRequestException('Solicitud inválida.');
+    const value=body as Record<string,unknown>;
+    const allowed=['companyId','userId','identifier','password','contactEmail','contactPhone'];
+    if(Object.keys(value).some(k=>!allowed.includes(k)))
+      throw new BadRequestException('Campo no permitido.');
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if(typeof value.companyId!=='string'||!uuid.test(value.companyId)||
+      typeof value.userId!=='string'||!uuid.test(value.userId))
+      throw new BadRequestException('Empresa o propietario inválido.');
+    const changeId=Object.prototype.hasOwnProperty.call(value,'identifier');
+    const changePassword=Object.prototype.hasOwnProperty.call(value,'password');
+    const changeEmail=Object.prototype.hasOwnProperty.call(value,'contactEmail');
+    const changePhone=Object.prototype.hasOwnProperty.call(value,'contactPhone');
+    if(!changeId&&!changePassword&&!changeEmail&&!changePhone)
+      throw new BadRequestException('No hay cambios para guardar.');
+    const identifier=changeId?this.normalizeIdentifier(value.identifier):null;
+    const password=changePassword?value.password:null;
+    if(changePassword && (typeof password!=='string'||password.length<12||password.length>128||
+      !/[a-z]/i.test(password)||!/[0-9]/.test(password)))
+      throw new BadRequestException('La nueva contraseña debe tener 12 a 128 caracteres, letras y números.');
+    const email=changeEmail
+      ?(typeof value.contactEmail==='string'?value.contactEmail.trim().toLowerCase():''):null;
+    if(changeEmail && (typeof value.contactEmail!=='string'||(email!==''&&
+      (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email!)||email!.length>254))))
+      throw new BadRequestException('Correo de recuperación inválido.');
+    const phone=changePhone
+      ?(typeof value.contactPhone==='string'?value.contactPhone.replace(/[\s()-]/g,'').trim():''):null;
+    if(changePhone && (typeof value.contactPhone!=='string'||(phone!==''&&
+      !/^[+]?[0-9]{7,19}$/.test(phone!))))
+      throw new BadRequestException('Celular de recuperación inválido.');
+    const db=this.supabaseService.getClient();
+    const {data:company,error:ce}=await db.from('companies').select('id')
+      .eq('id',value.companyId).maybeSingle();
+    if(ce||!company)throw new BadRequestException('Empresa de staging no encontrada.');
+    const {data:membership,error:me}=await db.from('company_memberships')
+      .select('role_id,active').eq('company_id',company.id).eq('user_id',value.userId).maybeSingle();
+    if(me||!membership?.active)throw new UnauthorizedException('Propietario no autorizado para esta empresa.');
+    const {data:role,error:re}=await db.from('app_roles').select('key,company_id')
+      .eq('id',membership.role_id).maybeSingle();
+    if(re||role?.key!=='owner'||(role.company_id&&role.company_id!==company.id))
+      throw new UnauthorizedException('Este usuario no es propietario de esa empresa.');
+    const {data:platformAdmin,error:ae}=await db.from('platform_admins')
+      .select('active').eq('user_id',value.userId).maybeSingle();
+    if(ae||platformAdmin?.active)
+      throw new UnauthorizedException('No se administran credenciales de la plataforma aquí.');
+    const {data:profile,error:pe}=await db.from('app_profiles')
+      .select('user_id,login_identifier,contact_email,active')
+      .eq('user_id',value.userId).maybeSingle();
+    if(pe||!profile?.active)throw new UnauthorizedException('Perfil de propietario inactivo.');
+    if(identifier && identifier!==profile.login_identifier){
+      const {data:duplicate,error:de}=await db.from('app_profiles')
+        .select('user_id').eq('login_identifier',identifier).maybeSingle();
+      if(de||duplicate)throw new BadRequestException('Ese código ya pertenece a otro usuario.');
+    }
+    const changedIdentifier=Boolean(identifier && identifier!==profile.login_identifier);
+    const updates:Record<string,unknown>={updated_at:new Date().toISOString()};
+    if(changeId)updates.login_identifier=identifier;
+    if(changePassword)updates.password_hash=this.accessAuthService.hash(password as string);
+    if(changeEmail){
+      updates.contact_email=email||null;
+      if(email!==String(profile.contact_email??''))updates.recovery_email_verified_at=null;
+    }
+    if(changePhone)updates.recovery_phone=phone||null;
+    // Supabase Auth holds a secondary copy: update it before application login hash.
+    // The signed MW1 login validates app_profiles.password_hash.
+    if(changePassword){
+      const {error:authError}=await db.auth.admin.updateUserById(value.userId,
+        {password:password as string});
+      if(authError)throw new BadRequestException('No se pudo actualizar la contraseña de acceso.');
+    }
+    const {error:ue}=await db.from('app_profiles').update(updates).eq('user_id',value.userId);
+    if(ue)throw new BadRequestException('No se pudieron guardar los cambios del propietario. Verifica antes de reintentar.');
+    const {error:logError}=await db.from('platform_access_audit').insert({
+      company_id:company.id,target_user_id:value.userId,actor_user_id:actorId,
+      changed_identifier:changedIdentifier,changed_password:changePassword,
+      changed_contact_email:changeEmail,changed_contact_phone:changePhone,
+    });
+    if(logError)throw new BadRequestException('Datos actualizados, pero el registro de auditoría falló. Comprueba el perfil.');
+    return {ok:true,message:'Acceso del propietario actualizado. Comunica la nueva contraseña por un canal seguro.',
+      identifier:identifier??profile.login_identifier,
+      passwordChanged:changePassword,emailVerified:false};
+  }
+
   @Post('companies')
   async createCompany(
     @Headers('x-chatpro-inbox-key') providedKey = '',
