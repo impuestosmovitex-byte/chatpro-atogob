@@ -11,7 +11,7 @@ export class StagingMyPlanController {
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
     @Query('company') slug = '',
-    @Body() body: { type?: string; planKey?: string; note?: string },
+    @Body() body: { type?: string; planKey?: string; additionalUsers?: number; note?: string },
   ) {
     if (!process.env.CHATPRO_INBOX_KEY || key !== process.env.CHATPRO_INBOX_KEY || !userId)
       throw new UnauthorizedException();
@@ -27,7 +27,7 @@ export class StagingMyPlanController {
     if(!role || role.key!=='owner' || (role.company_id && role.company_id!==company.id))
       throw new ForbiddenException('Solo el propietario puede solicitar cambios de suscripción.');
     const type=body?.type;
-    if(type!=='change_plan' && type!=='cancel_renewal') throw new BadRequestException('Solicitud no válida.');
+    if(type!=='change_plan' && type!=='cancel_renewal' && type!=='extra_users') throw new BadRequestException('Solicitud no válida.');
     let planKey: string|null=null;
     if(type==='change_plan'){
       planKey=String(body?.planKey??'').trim().toLowerCase();
@@ -39,10 +39,13 @@ export class StagingMyPlanController {
         .select('plan_key').eq('company_id',company.id).maybeSingle();
       if(existing?.plan_key===planKey) throw new BadRequestException('Ya tienes este plan asignado.');
     }
+    const extraUsers=type==='extra_users' ? Number(body?.additionalUsers) : null;
+    if(type==='extra_users' && (!Number.isInteger(extraUsers)||extraUsers!<1||extraUsers!>100))
+      throw new BadRequestException('Indica una cantidad de usuarios adicionales entre 1 y 100.');
     const note=String(body?.note??'').trim().slice(0,500);
     const {data,error}=await db.from('mw1_subscription_requests')
       .insert({company_id:company.id,requested_by:userId,request_type:type,
-        requested_plan_key:planKey,note:note||null})
+        requested_plan_key:planKey,additional_users:extraUsers,note:note||null})
       .select('id,status').single();
     if(error){
       if(error.code==='23505') throw new BadRequestException('Ya tienes una solicitud pendiente.');
@@ -81,7 +84,7 @@ export class StagingMyPlanController {
     if(countError) throw new ForbiddenException('No se pudo consultar el equipo.');
     const { data: publishedPlans } = await db.from('platform_published_plan_prices').select('plan_key,price_cop,max_users,max_whatsapp_lines').order('price_cop',{ascending:true});
     const { data: requests } = await db.from('mw1_subscription_requests')
-      .select('id,request_type,requested_plan_key,note,status,created_at')
+      .select('id,request_type,requested_plan_key,additional_users,note,status,created_at')
       .eq('company_id',company.id).order('created_at',{ascending:false}).limit(10);
     return {ok:true,company:{name:company.name},plan,activeUsers:count??0,
       requests:requests??[],availablePlans:publishedPlans??[],billing:{status:'not_integrated',historyAvailable:false,onlineCancellationAvailable:false}};
