@@ -3,9 +3,9 @@ import {useState} from 'react';
 
 type Status={ok?:boolean;configured?:boolean;verified?:boolean;reason?:string;error?:string};
 const descriptions:Record<string,string>={
- authenticated:'Mercado Pago aceptó la credencial de prueba.',
+ authenticated_environment_unverified:'Mercado Pago aceptó la credencial para una consulta de lectura. Esto no confirma que sea de prueba: las credenciales APP_USR pueden ser de prueba o de producción. Los cobros seguirán bloqueados.',
  missing_token:'No hay credencial de Mercado Pago configurada en la API de staging.',
- not_test_token:'La credencial configurada no tiene formato TEST-. Por seguridad, staging no la utilizará ni realizará solicitudes con ella. Revisa que hayas copiado el Access Token de prueba, no una clave de producción.',
+ unrecognized_token_format:'La credencial tiene un formato no reconocido. Confirma que provenga de Credenciales de prueba de MW1 CRM.',
  invalid_token:'Mercado Pago rechazó la credencial de prueba. Revísala en Developers.',
  provider_error:'Mercado Pago no pudo validar la credencial. Revisa la integración.',
  network_error:'No fue posible conectarse a Mercado Pago desde staging.',
