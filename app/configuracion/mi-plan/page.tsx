@@ -10,6 +10,8 @@ type Data={ok?:boolean;error?:string;company?:{name:string};plan?:Plan;activeUse
 export default function MiPlan(){
  const [data,setData]=useState<Data|null>(null);
  const [targetPlan,setTargetPlan]=useState('');
+ const [expandedPlans,setExpandedPlans]=useState<string[]>([]);
+ const togglePlan=(key:string)=>setExpandedPlans(old=>old.includes(key)?old.filter(x=>x!==key):[...old,key]);
  const [extraSeats,setExtraSeats]=useState(1);
  const [notice,setNotice]=useState('');
  const [working,setWorking]=useState(false);
@@ -53,7 +55,14 @@ export default function MiPlan(){
        <strong>{p.name}</strong>{p.legacyKey===data.plan?.plan_key&&<span style={{fontSize:12,color:'#866900',marginLeft:8}}>Plan actual</span>}
        <p style={{fontWeight:700,margin:'8px 0'}}>{published?cop(published.price_cop):'Tarifa pendiente de publicación'}</p>
        <p style={{fontSize:13,color:'#657184'}}>{published?published.max_users:p.users} usuarios · {published?published.max_whatsapp_lines:p.connections} conexiones</p>
-       <p style={{fontSize:12,color:'#657184',marginTop:6}}>{p.summary}</p>
+       <p style={{fontSize:12,color:'#657184',marginTop:6}}>{published?.public_summary?.trim()||p.summary}</p>
+       <ul style={{paddingLeft:18,margin:'10px 0',fontSize:12,lineHeight:1.7}}>
+        {(published?.public_features?.length?published.public_features:p.highlights).slice(0,expandedPlans.includes(p.legacyKey)?20:3).map(item=><li key={item}>{item}</li>)}
+       </ul>
+       <button type="button" aria-expanded={expandedPlans.includes(p.legacyKey)} onClick={()=>togglePlan(p.legacyKey)} style={{padding:'7px 0',background:'none',border:0,color:'#755900',fontWeight:700,cursor:'pointer'}}>
+        {expandedPlans.includes(p.legacyKey)?'Ver menos':'Ver más características'} →
+       </button>
+       {!published&&<p style={{fontSize:11,color:'#8a6d12',marginTop:7}}>Características de referencia. Pendientes de publicación comercial y disponibilidad operativa.</p>}
       </div>})}
      </div>
      <p style={{margin:'10px 0 14px'}}>La solicitud queda pendiente de revisión. No modifica el plan ni genera cobros automáticamente.</p>
