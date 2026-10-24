@@ -53,27 +53,34 @@ export default function MiPlan(){
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
      <h2>Gestionar mi plan</h2>
-     <p style={{margin:'10px 0 14px'}}>La solicitud queda pendiente de revisión. No modifica el plan ni genera cobros automáticamente.</p>
-     <label htmlFor="plan-target" style={{display:'block',marginBottom:8,fontWeight:700}}>Selecciona otro plan</label>
-     <select id="plan-target" value={targetPlan} onChange={e=>setTargetPlan(e.target.value)} style={{padding:'12px 14px',marginRight:12,borderRadius:9,border:'1px solid #c9cfd8',minWidth:210,maxWidth:'100%'}}>
-      <option value="">Seleccionar plan</option>
-      {(data.availablePlans??[]).filter(x=>x.plan_key!==data.plan?.plan_key).map(x=><option value={x.plan_key} key={x.plan_key}>{commercialName(x.plan_key)} — {cop(x.price_cop)}</option>)}
-     </select>
-     <button disabled={!targetPlan||working} onClick={()=>void submitRequest('change_plan')} style={{padding:11,border:0,borderRadius:8,background:'#f4bf00',fontWeight:800}}>Solicitar cambio</button>
-     {(data.availablePlans??[]).length===0&&<p style={{fontSize:13,color:'#8a6d12',marginTop:10}}>Los precios de los planes todavía no están publicados por MW1. El superadministrador debe revisarlos y publicarlos antes de recibir solicitudes de cambio.</p>}
-     <hr style={{margin:'25px 0',border:0,borderTop:'1px solid #ebedf0'}}/>
-     <h3 style={{marginTop:24}}>Solicitar usuarios adicionales</h3>
-     <p>Solicita cupos adicionales sin cambiar de plan. No se genera ningún cobro automáticamente.</p>
-     {(()=>{const price=data.availablePlans?.find(x=>x.plan_key===data.plan?.plan_key)?.extra_user_cop;return <p style={{fontSize:13,color:'#657184',margin:'8px 0'}}>{typeof price==='number'&&price>0?`Tarifa publicada por usuario adicional: ${cop(price)}. Referencia para ${extraSeats} cupo(s): ${cop(price*extraSeats)} por período, antes de confirmar condiciones comerciales.`:'Tarifa por usuario adicional pendiente de publicación y cotización.'}</p>})()}
-     <div style={{display:'flex',flexWrap:'wrap',gap:12,alignItems:'center',marginTop:12}}>
-     <label htmlFor="additional-seats" style={{fontWeight:700}}>Cantidad</label>
-     <input id="additional-seats" aria-label="Cantidad de usuarios adicionales" type="number" min={1} max={100} value={extraSeats} onChange={e=>setExtraSeats(Number(e.target.value))} style={{width:86,padding:'12px',borderRadius:9,border:'1px solid #c9cfd8',fontSize:15}} />
-     <button type="button" disabled={working||extraSeats<1||extraSeats>100||!Number.isInteger(extraSeats)} onClick={()=>void submitRequest('extra_users')} style={{padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#172235',fontWeight:800,cursor:'pointer'}}>Solicitar usuarios</button>
-     </div>
-     <hr style={{margin:'25px 0',border:0,borderTop:'1px solid #ebedf0'}}/>
-     <h3 style={{marginTop:24}}>Cancelación de renovación</h3>
-     <p style={{margin:'8px 0'}}>Puedes solicitar revisión de cancelación. No se interrumpe el servicio al enviar esta solicitud.</p>
-     <button disabled={working} onClick={()=>void submitRequest('cancel_renewal')} style={{padding:11,border:'1px solid #c9cdd3',borderRadius:8,background:'#fff'}}>Solicitar cancelación</button>
+     <details style={{border:'1px solid #e7e1d1',borderRadius:12,padding:16,marginTop:15}}>
+      <summary style={{cursor:'pointer',fontWeight:750,fontSize:16}}>Cambiar de plan</summary>
+      <p style={{color:'#657184',fontSize:13,margin:'12px 0'}}>Selecciona el plan que deseas contratar. La solicitud no modifica tu plan actual.</p>
+      <label htmlFor="plan-target" style={{display:'block',marginBottom:8,fontWeight:700}}>Nuevo plan</label>
+      <div style={{display:'flex',flexWrap:'wrap',gap:10,alignItems:'center'}}>
+       <select id="plan-target" value={targetPlan} onChange={e=>setTargetPlan(e.target.value)} style={{padding:'12px 14px',borderRadius:9,border:'1px solid #c9cfd8',minWidth:210,maxWidth:'100%'}}>
+        <option value="">Seleccionar plan</option>
+        {(data.availablePlans??[]).filter(x=>x.plan_key!==data.plan?.plan_key).map(x=><option value={x.plan_key} key={x.plan_key}>{commercialName(x.plan_key)} — {cop(x.price_cop)}</option>)}
+       </select>
+       <button type="button" disabled={!targetPlan||working} onClick={()=>void submitRequest('change_plan')} style={{padding:'12px 16px',border:0,borderRadius:9,background:'#f4bf00',fontWeight:800}}>Solicitar cambio</button>
+      </div>
+      {(data.availablePlans??[]).length===0&&<p style={{fontSize:13,color:'#8a6d12',marginTop:12}}>No hay tarifas publicadas para solicitar un cambio de plan.</p>}
+     </details>
+     <details style={{border:'1px solid #e7e1d1',borderRadius:12,padding:16,marginTop:12}}>
+      <summary style={{cursor:'pointer',fontWeight:750,fontSize:16}}>Agregar usuarios</summary>
+      <p style={{color:'#657184',fontSize:13,margin:'12px 0'}}>Solicita cupos adicionales sin cambiar de plan.</p>
+      {(()=>{const price=data.availablePlans?.find(x=>x.plan_key===data.plan?.plan_key)?.extra_user_cop;return <p style={{fontSize:13,color:'#657184',margin:'8px 0'}}>{typeof price==='number'&&price>=0?`Valor de referencia: ${cop(price*extraSeats)} por período para ${extraSeats} cupo(s). No se cobra automáticamente.`:'Precio pendiente de cotización.'}</p>})()}
+      <div style={{display:'flex',flexWrap:'wrap',gap:12,alignItems:'center'}}>
+       <label htmlFor="additional-seats" style={{fontWeight:700}}>Cantidad</label>
+       <input id="additional-seats" type="number" min={1} max={100} value={extraSeats} onChange={e=>setExtraSeats(Number(e.target.value))} style={{width:86,padding:12,borderRadius:9,border:'1px solid #c9cfd8',fontSize:15}}/>
+       <button type="button" disabled={working||!Number.isInteger(extraSeats)||extraSeats<1||extraSeats>100} onClick={()=>void submitRequest('extra_users')} style={{padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#172235',fontWeight:800}}>Solicitar usuarios</button>
+      </div>
+     </details>
+     <details style={{border:'1px solid #e7e1d1',borderRadius:12,padding:16,marginTop:12}}>
+      <summary style={{cursor:'pointer',fontWeight:750,fontSize:16}}>Cancelar renovación</summary>
+      <p style={{color:'#657184',fontSize:13,margin:'12px 0'}}>La solicitud será revisada. No suspende inmediatamente el servicio ni genera un reembolso.</p>
+      <button type="button" disabled={working} onClick={()=>void submitRequest('cancel_renewal')} style={{padding:'11px 15px',border:'1px solid #c9cdd3',borderRadius:8,background:'#fff'}}>Solicitar cancelación</button>
+     </details>
      {notice&&<p role="status" style={{marginTop:14}}>{notice}</p>}
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
