@@ -82,11 +82,17 @@ export class StagingMyPlanController {
     const {count,error:countError} = await db.from('company_memberships')
       .select('id',{head:true,count:'exact'}).eq('company_id',company.id).eq('active',true);
     if(countError) throw new ForbiddenException('No se pudo consultar el equipo.');
+    const {data:billingSubscription} = await db.from('mw1_billing_subscriptions')
+      .select('provider,billing_cycle,status,currency,amount_cop,next_billing_at,current_period_end,cancel_at_period_end')
+      .eq('company_id',company.id).maybeSingle();
+    const {data:billingTransactions} = await db.from('mw1_billing_transactions')
+      .select('id,amount_cop,currency,status,due_at,paid_at,created_at')
+      .eq('company_id',company.id).order('created_at',{ascending:false}).limit(12);
     const { data: publishedPlans } = await db.from('platform_published_plan_prices').select('plan_key,price_cop,max_users,max_whatsapp_lines').order('price_cop',{ascending:true});
     const { data: requests } = await db.from('mw1_subscription_requests')
       .select('id,request_type,requested_plan_key,additional_users,note,status,created_at')
       .eq('company_id',company.id).order('created_at',{ascending:false}).limit(10);
     return {ok:true,company:{name:company.name},plan,activeUsers:count??0,
-      requests:requests??[],availablePlans:publishedPlans??[],billing:{status:'not_integrated',historyAvailable:false,onlineCancellationAvailable:false}};
+      requests:requests??[],availablePlans:publishedPlans??[],subscription:billingSubscription??null,transactions:billingTransactions??[],billing:{status:'not_integrated',historyAvailable:Boolean(billingTransactions?.length),onlineCancellationAvailable:false}};
   }
 }
