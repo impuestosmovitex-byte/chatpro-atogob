@@ -118,6 +118,20 @@ export class UsersController {
       );
     }
 
+    // Enforce the tenant's purchased seat limit before provisioning a new auth user.
+    const { data: entitlement, error: entitlementError } = await client
+      .from('company_entitlements')
+      .select('max_users')
+      .eq('company_id', company.id)
+      .maybeSingle();
+    if (entitlementError || !entitlement ||
+        !Number.isInteger(entitlement.max_users) || entitlement.max_users < 1) {
+      throw new BadRequestException('No se pudo validar el límite de usuarios del plan.');
+    }
+    if ((count ?? 0) >= entitlement.max_users) {
+      throw new BadRequestException('Se alcanzó el máximo de usuarios del plan contratado.');
+    }
+
     if ((count ?? 0) === 0 && role.key !== 'owner') {
       throw new BadRequestException(
         'El primer usuario de la empresa debe tener el rol Propietario.',
