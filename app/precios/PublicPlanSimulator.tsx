@@ -28,7 +28,7 @@ export default function PublicPlanSimulator({options,selectedPlanKey,onSelectPla
    </div>
    <div style={{background:'#f5f7fa',borderRadius:14,padding:20,display:'flex',justifyContent:'space-between',alignItems:'center',gap:15,flexWrap:'wrap'}}>
     <div><small style={{color:'#667085'}}>Suscripción mensual orientativa</small><div style={{fontSize:38,fontWeight:900}}>{pesos(total)} <small style={{fontSize:13,fontWeight:500}}>/ mes</small></div></div>
-    <Link href={`/prueba-gratis?plan=${plan.key}`} style={{background:'#f4bf00',borderRadius:12,padding:'13px 18px',fontWeight:800}}>Solicitar este plan</Link>
+    <Link href={`/prueba-gratis?plan=${plan.key}&users=${users}&connections=${connections}`} style={{background:'#f4bf00',borderRadius:12,padding:'13px 18px',fontWeight:800}}>Solicitar este plan</Link>
    </div>
    <p style={{fontSize:12,color:'#667085',marginTop:14,lineHeight:1.6}}>Precios en evaluación. Los importes adicionales mostrados son orientativos y quedan sujetos a confirmación comercial. Los cargos Meta/WhatsApp se pagan aparte; disponibilidad y cupos de IA sujetos a confirmación.</p>
  </section>;
