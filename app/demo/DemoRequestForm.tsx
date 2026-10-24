@@ -9,12 +9,18 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
   const[contactEmail,setContactEmail]=useState('');
   const[planInterest,setPlanInterest]=useState('sin_definir');
   const planLabels:Record<string,string>={basico:'Básico',eco:'Eco',pro:'Pro'};
+  const[requestedUsers,setRequestedUsers]=useState<number|null>(null);
+  const[requestedConnections,setRequestedConnections]=useState<number|null>(null);
   const[consent,setConsent]=useState(false);
   const[contactPhone,setContactPhone]=useState('');
   const[whatsappSetup,setWhatsappSetup]=useState('unsure');
   const[website,setWebsite]=useState('');
   useEffect(()=>{
-    const requested=new URLSearchParams(window.location.search).get('plan');
+    const params=new URLSearchParams(window.location.search);
+    const requested=params.get('plan');
+    const users=Number(params.get('users')),connections=Number(params.get('connections'));
+    if(Number.isInteger(users)&&users>=1&&users<=20)setRequestedUsers(users);
+    if(Number.isInteger(connections)&&connections>=1&&connections<=10)setRequestedConnections(connections);
     if(requested&&['basico','eco','pro'].includes(requested))
       setPlanInterest(requested);
   },[]);
@@ -29,7 +35,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     try{
       const response=await fetch('/api/marketing/demo-request',{
         method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({companyName,contactName,contactEmail,planInterest,consent,website,requestType:mode,contactPhone,whatsappSetup}),
+        body:JSON.stringify({companyName,contactName,contactEmail,planInterest,consent,website,requestType:mode,contactPhone,whatsappSetup,requestedUsers:isTrial?requestedUsers:null,requestedConnections:isTrial?requestedConnections:null}),
       });
       const data=await response.json() as {ok?:boolean;error?:string};
       if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo registrar.');
@@ -63,6 +69,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
         placeholder="correo@empresa.com"/>
     </label>
     {isTrial&&planLabels[planInterest]&&<p role="status" className={styles.caption}>Seleccionaste el plan <strong>{planLabels[planInterest]}</strong>. Puedes cambiarlo aquí antes de enviar tu solicitud.</p>}
+    {isTrial&&(requestedUsers!==null||requestedConnections!==null)&&<p role="status" className={styles.caption}>Tu configuración solicitada: <strong>{requestedUsers??'Por confirmar'} usuarios</strong> y <strong>{requestedConnections??'Por confirmar'} conexiones</strong>. Son valores para revisión comercial, no cupos activados.</p>}
     <label>Plan de interés
       <select value={planInterest} onChange={event=>setPlanInterest(event.target.value)}>
         <option value="sin_definir">No estoy seguro</option>
