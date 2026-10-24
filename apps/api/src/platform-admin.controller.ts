@@ -806,7 +806,8 @@ export class PlatformAdminController {
       ? await db.from('app_roles').select('id,key,company_id').in('id', roleIds)
       : { data: [], error: null };
     if (re) throw new BadRequestException('No se pudieron consultar los roles.');
-    const ownerRoles = new Map((roles ?? [])
+    const roleRows=(roles ?? []) as Array<{id:string;key:string;company_id:string|null}>;
+    const ownerRoles = new Map<string,string|null>(roleRows
       .filter(r=>r.key==='owner').map(r=>[r.id,r.company_id] as const));
     const owners = (members ?? []).filter(m=>ownerRoles.has(m.role_id)
       && (!ownerRoles.get(m.role_id) || ownerRoles.get(m.role_id)===m.company_id));
@@ -817,8 +818,12 @@ export class PlatformAdminController {
         ).in('user_id',userIds)
       : { data: [], error: null };
     if (pe) throw new BadRequestException('No se pudieron consultar los perfiles.');
-    const byUser = new Map((profiles ?? []).map(p=>[p.user_id,p]));
-    const byCompany = new Map((companies ?? []).map(p=>[p.id,p]));
+    const profileRows=(profiles ?? []) as Array<{
+      user_id:string;full_name:string;login_identifier:string|null;contact_email:string|null;
+      recovery_phone:string|null;recovery_email_verified_at:string|null;active:boolean;
+    }>;
+    const byUser = new Map(profileRows.map(p=>[p.user_id,p] as const));
+    const byCompany = new Map((companies ?? []).map(p=>[p.id,p] as const));
     return { ok: true, owners: owners.map(m=>{
       const p=byUser.get(m.user_id);
       const company=byCompany.get(m.company_id);
