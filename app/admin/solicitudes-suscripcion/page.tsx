@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
-import {PlatformSidebar} from '../../../components/PlatformSidebar';
+import {PlatformSidebar} from '../../components/PlatformSidebar';
 type RequestRow={id:string;company_id:string;company:{name:string;slug:string}|null;request_type:string;requested_plan_key:string|null;status:string;created_at:string;note:string|null};
 export default function SolicitudesSuscripcion(){
  const [items,setItems]=useState<RequestRow[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
