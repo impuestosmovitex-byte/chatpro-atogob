@@ -321,10 +321,9 @@ export default function PlatformCompaniesPage() {
 
   function prepareCompanyFromLead(lead:DemoLead){
     // Draft only. No credentials, plan assignment, subscriptions or companies are created.
-    // Marketing forms submit commercial keys; the legacy 'pro' DB key means Eco.
-    // Interpret inbound lead choices as commercial values, not stored DB entitlements.
-    const pilotPlan=(['basico','eco','pro'].includes(lead.planInterest)
-      ? lead.planInterest as PilotPlan : resolvePilotPlan(lead.planInterest));
+    // Saved leads use legacy DB keys: 'inicial' = Básico, 'pro' = Eco, 'empresa' = Pro.
+    // The public form is normalized by the staging API before a lead is stored.
+    const pilotPlan=resolvePilotPlan(lead.planInterest);
     const base=pilotPlan?formWithPilotPlan(pilotPlan):initialForm;
     // The lead's connection count may include Instagram/Messenger; it is NOT a WhatsApp line limit.
     // Pre-fill only users; keep WhatsApp limits at the plan preset until an admin checks channels.
@@ -747,7 +746,7 @@ export default function PlatformCompaniesPage() {
                       } as Record<string,string>)[lead.whatsappSetup]??'Por revisar'}</div>}
                     </td>
                     <td style={{padding:10}}>{lead.requestType==='trial'?'Prueba guiada 14 días':'Demo'}</td>
-                    <td style={{padding:10}}>{{inicial:'Básico',basico:'Básico',eco:'Eco',pro:'Pro',empresa:'Pro (clave antigua)',sin_definir:'Por definir'}[lead.planInterest]??lead.planInterest}<div style={{fontSize:11,color:'#667085',marginTop:5}}>{lead.requestedUsers?lead.requestedUsers+' usuarios':''}{lead.requestedUsers&&lead.requestedConnections?' · ':''}{lead.requestedConnections?lead.requestedConnections+' conexiones':''}</div></td>
+                    <td style={{padding:10}}>{{inicial:'Básico',basico:'Básico',eco:'Eco',pro:'Eco',empresa:'Pro',sin_definir:'Por definir'}[lead.planInterest]??lead.planInterest}<div style={{fontSize:11,color:'#667085',marginTop:5}}>{lead.requestedUsers?lead.requestedUsers+' usuarios':''}{lead.requestedUsers&&lead.requestedConnections?' · ':''}{lead.requestedConnections?lead.requestedConnections+' conexiones':''}</div></td>
                     <td style={{padding:10,minWidth:210}}>
                       <div style={{display:'grid',gap:7}}>
                         <select aria-label={'Estado de '+lead.companyName} style={{...inputStyle,padding:7}}
