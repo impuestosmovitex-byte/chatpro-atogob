@@ -6,7 +6,7 @@ import {MW1_COMMERCIAL_PROPOSAL} from '../../lib/mw1-commercial-proposal';
 const commercialName=(key:string)=>MW1_COMMERCIAL_PROPOSAL.find(p=>p.legacyKey===key)?.name||key.toUpperCase();
 const cop=(value:number)=>value.toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0});
 type Plan={plan_key:string;max_users:number;max_whatsapp_lines:number;ai_enabled:boolean;whatsapp_enabled:boolean;instagram_enabled:boolean;messenger_enabled:boolean;automations_enabled:boolean;statistics_enabled:boolean};
-type Data={ok?:boolean;error?:string;company?:{name:string};plan?:Plan;activeUsers?:number;subscription?:{provider:string;billing_cycle:string;status:string;currency:string;amount_cop:number|null;next_billing_at:string|null;current_period_end:string|null;cancel_at_period_end:boolean}|null;transactions?:Array<{id:string;amount_cop:number;currency:string;status:string;paid_at:string|null;created_at:string}>;availablePlans?:Array<{plan_key:string;price_cop:number;max_users:number}>;requests?:Array<{id:string;request_type:string;requested_plan_key:string|null;status:string;created_at:string}>};
+type Data={ok?:boolean;error?:string;company?:{name:string};plan?:Plan;activeUsers?:number;subscription?:{provider:string;billing_cycle:string;status:string;currency:string;amount_cop:number|null;next_billing_at:string|null;current_period_end:string|null;cancel_at_period_end:boolean}|null;transactions?:Array<{id:string;amount_cop:number;currency:string;status:string;paid_at:string|null;created_at:string}>;availablePlans?:Array<{plan_key:string;price_cop:number;max_users:number;max_whatsapp_lines:number;extra_user_cop:number|null;public_summary:string|null;public_features:string[]|null}>;requests?:Array<{id:string;request_type:string;requested_plan_key:string|null;status:string;created_at:string}>};
 export default function MiPlan(){
  const [data,setData]=useState<Data|null>(null);
  const [targetPlan,setTargetPlan]=useState('');
@@ -66,7 +66,8 @@ export default function MiPlan(){
      {(data.availablePlans??[]).length===0&&<p style={{fontSize:13,color:'#8a6d12',marginTop:10}}>Los precios de los planes todavía no están publicados por MW1. El superadministrador debe revisarlos y publicarlos antes de recibir solicitudes de cambio.</p>}
      <hr style={{margin:'25px 0',border:0,borderTop:'1px solid #ebedf0'}}/>
      <h3 style={{marginTop:24}}>Solicitar usuarios adicionales</h3>
-     <p>Solicita cupos adicionales sin cambiar de plan. El precio queda pendiente de cotización; no se genera ningún cobro automáticamente.</p>
+     <p>Solicita cupos adicionales sin cambiar de plan. No se genera ningún cobro automáticamente.</p>
+     {(()=>{const price=data.availablePlans?.find(x=>x.plan_key===data.plan?.plan_key)?.extra_user_cop;return <p style={{fontSize:13,color:'#657184',margin:'8px 0'}}>{typeof price==='number'&&price>0?`Tarifa publicada por usuario adicional: ${cop(price)}. Referencia para ${extraSeats} cupo(s): ${cop(price*extraSeats)} por período, antes de confirmar condiciones comerciales.`:'Tarifa por usuario adicional pendiente de publicación y cotización.'}</p>})()}
      <div style={{display:'flex',flexWrap:'wrap',gap:12,alignItems:'center',marginTop:12}}>
      <label htmlFor="additional-seats" style={{fontWeight:700}}>Cantidad</label>
      <input id="additional-seats" aria-label="Cantidad de usuarios adicionales" type="number" min={1} max={100} value={extraSeats} onChange={e=>setExtraSeats(Number(e.target.value))} style={{width:86,padding:'12px',borderRadius:9,border:'1px solid #c9cfd8',fontSize:15}} />
