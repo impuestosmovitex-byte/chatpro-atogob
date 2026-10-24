@@ -2,6 +2,9 @@
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {AppSidebar} from '../../components/AppSidebar';
+import {MW1_COMMERCIAL_PROPOSAL} from '../../lib/mw1-commercial-proposal';
+const commercialName=(key:string)=>MW1_COMMERCIAL_PROPOSAL.find(p=>p.legacyKey===key)?.name||key.toUpperCase();
+const cop=(value:number)=>value.toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0});
 type Plan={plan_key:string;max_users:number;max_whatsapp_lines:number;ai_enabled:boolean;whatsapp_enabled:boolean;instagram_enabled:boolean;messenger_enabled:boolean;automations_enabled:boolean;statistics_enabled:boolean};
 type Data={ok?:boolean;error?:string;company?:{name:string};plan?:Plan;activeUsers?:number;subscription?:{provider:string;billing_cycle:string;status:string;currency:string;amount_cop:number|null;next_billing_at:string|null;current_period_end:string|null;cancel_at_period_end:boolean}|null;transactions?:Array<{id:string;amount_cop:number;currency:string;status:string;paid_at:string|null;created_at:string}>;availablePlans?:Array<{plan_key:string;price_cop:number;max_users:number}>;requests?:Array<{id:string;request_type:string;requested_plan_key:string|null;status:string;created_at:string}>};
 export default function MiPlan(){
@@ -33,7 +36,8 @@ export default function MiPlan(){
    <div style={{display:'grid',gap:20,maxWidth:1060}}>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
       <strong style={{color:'#886b11'}}>PLAN REGISTRADO</strong>
-      <h2 style={{fontSize:28,margin:'12px 0'}}>{data.plan?.plan_key?.toUpperCase()}</h2>
+      <h2 style={{fontSize:28,margin:'12px 0'}}>{commercialName(data.plan?.plan_key??'')}</h2>
+      <p style={{color:'#657184',fontSize:12}}>Nombre comercial del plan · Identificador interno: {data.plan?.plan_key}</p>
       <p>Usuarios activos: {data.activeUsers} de {data.plan?.max_users}</p>
       <p>Líneas de WhatsApp permitidas: {data.plan?.max_whatsapp_lines}</p>
       <p style={{marginTop:15}}>Módulos autorizados: {[
@@ -44,14 +48,22 @@ export default function MiPlan(){
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
      <h2>Gestionar mi plan</h2>
+     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:12,margin:'18px 0'}}>
+      {MW1_COMMERCIAL_PROPOSAL.map(p=>{const published=data.availablePlans?.find(x=>x.plan_key===p.legacyKey);return <div key={p.legacyKey} style={{padding:15,border:'1px solid #e7e1d1',borderRadius:12,background:p.legacyKey===data.plan?.plan_key?'#fff9e6':'#fff'}}>
+       <strong>{p.name}</strong>{p.legacyKey===data.plan?.plan_key&&<span style={{fontSize:12,color:'#866900',marginLeft:8}}>Plan actual</span>}
+       <p style={{fontWeight:700,margin:'8px 0'}}>{published?cop(published.price_cop):'Tarifa pendiente de publicación'}</p>
+       <p style={{fontSize:13,color:'#657184'}}>{published?published.max_users:p.users} usuarios · {published?published.max_whatsapp_lines:p.connections} conexiones</p>
+       <p style={{fontSize:12,color:'#657184',marginTop:6}}>{p.summary}</p>
+      </div>})}
+     </div>
      <p style={{margin:'10px 0 14px'}}>La solicitud queda pendiente de revisión. No modifica el plan ni genera cobros automáticamente.</p>
      <label htmlFor="plan-target" style={{display:'block',marginBottom:8,fontWeight:700}}>Selecciona otro plan</label>
      <select id="plan-target" value={targetPlan} onChange={e=>setTargetPlan(e.target.value)} style={{padding:'12px 14px',marginRight:12,borderRadius:9,border:'1px solid #c9cfd8',minWidth:210,maxWidth:'100%'}}>
       <option value="">Seleccionar plan</option>
-      {(data.availablePlans??[]).filter(x=>x.plan_key!==data.plan?.plan_key).map(x=><option value={x.plan_key} key={x.plan_key}>{x.plan_key.toUpperCase()} — {x.price_cop.toLocaleString('es-CO',{style:'currency',currency:'COP'})}</option>)}
+      {(data.availablePlans??[]).filter(x=>x.plan_key!==data.plan?.plan_key).map(x=><option value={x.plan_key} key={x.plan_key}>{commercialName(x.plan_key)} — {cop(x.price_cop)}</option>)}
      </select>
      <button disabled={!targetPlan||working} onClick={()=>void submitRequest('change_plan')} style={{padding:11,border:0,borderRadius:8,background:'#f4bf00',fontWeight:800}}>Solicitar cambio</button>
-     {(data.availablePlans??[]).length===0&&<p style={{fontSize:13,color:'#8a6d12',marginTop:10}}>Los precios de los planes aún no están publicados. Esta opción se habilitará cuando haya tarifas disponibles.</p>}
+     {(data.availablePlans??[]).length===0&&<p style={{fontSize:13,color:'#8a6d12',marginTop:10}}>Los precios de los planes todavía no están publicados por MW1. El superadministrador debe revisarlos y publicarlos antes de recibir solicitudes de cambio.</p>}
      <hr style={{margin:'25px 0',border:0,borderTop:'1px solid #ebedf0'}}/>
      <h3 style={{marginTop:24}}>Solicitar usuarios adicionales</h3>
      <p>Solicita cupos adicionales sin cambiar de plan. El precio queda pendiente de cotización; no se genera ningún cobro automáticamente.</p>
