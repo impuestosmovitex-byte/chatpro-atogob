@@ -24,11 +24,16 @@ export function assertStagingIsolation(env: NodeJS.ProcessEnv = process.env): vo
     }
   }
 
-  // Intentionally reject third-party credentials in staging. These integrations
-  // will be tested later with separately approved sandbox resources.
+  // Only a sandbox Mercado Pago credential may be present in staging.
+  // Production Mercado Pago tokens and all other external channel/store/AI
+  // credentials remain forbidden. This does not enable billing or messaging.
+  const mpToken = env.MERCADOPAGO_ACCESS_TOKEN?.trim() || '';
+  if (mpToken && !mpToken.startsWith('TEST-')) {
+    throw new Error('STAGING BLOCKED: Mercado Pago must use a sandbox TEST token.');
+  }
   const forbidden = Object.keys(env).filter((name) =>
     /^(SHOPIFY_|META_|WHATSAPP_|OPENAI_|TIKTOK_|TELEGRAM_|WOMPI_|MERCADOPAGO_|MERCADO_PAGO_)/i.test(name) &&
-    Boolean(env[name]?.trim()),
+    name !== 'MERCADOPAGO_ACCESS_TOKEN' && Boolean(env[name]?.trim()),
   );
   if (forbidden.length) {
     throw new Error('STAGING BLOCKED: external messaging, store or AI credentials are configured.');
