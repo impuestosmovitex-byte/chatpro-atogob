@@ -9,6 +9,7 @@ import { SupabaseService } from './supabase.service';
 import { StagingInboxController } from './staging-inbox.controller';
 import { StagingIntegrationsController } from './staging-integrations.controller';
 import { UsersController } from './users.controller';
+import { StagingMyPlanController } from './staging-my-plan.controller';
 import { StagingSalesAssistantController, StagingSalesAssistantService } from './staging-sales-assistant.controller';
 
 @Controller()
@@ -29,6 +30,7 @@ class StagingHealthController {
     StagingInboxController,
     StagingIntegrationsController,
     UsersController,
+    StagingMyPlanController,
     AccessController,
     AccessCapabilitiesController,
     PlatformAdminController,
