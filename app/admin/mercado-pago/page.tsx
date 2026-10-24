@@ -25,7 +25,7 @@ export default function MercadoPagoAdminPage(){
  return <main style={{maxWidth:860,margin:'0 auto',padding:'30px 22px',color:'#172235'}}>
   <p style={{fontSize:12,fontWeight:800,color:'#8e6b0c'}}>CONFIGURACIÓN / PASARELA DE PAGOS</p>
   <h1 style={{fontSize:30,margin:'10px 0'}}>Mercado Pago</h1>
-  <p style={{color:'#586477',lineHeight:1.7}}>Comprueba la credencial de prueba desde el superadministrador, sin mostrar claves ni generar cobros.</p>
+  <p style={{color:'#586477',lineHeight:1.7}}>Comprueba la credencial desde el superadministrador, sin mostrar claves ni generar cobros. El estado de la conexión no autoriza pagos.</p>
   <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:24}}>
    <h2 style={{fontSize:19}}>Conexión de staging</h2>
    <p style={{color:'#586477',fontSize:14}}>Proveedor: Mercado Pago · Suscripciones · Entorno de pruebas</p>
