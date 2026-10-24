@@ -42,6 +42,14 @@ export default function MiPlan(){
       <p style={{color:'#657184',fontSize:12}}>Nombre comercial del plan · Identificador interno: {data.plan?.plan_key}</p>
       <p>Usuarios activos: {data.activeUsers} de {data.plan?.max_users}</p>
       <p>Líneas de WhatsApp permitidas: {data.plan?.max_whatsapp_lines}</p>
+      <p style={{marginTop:15,fontWeight:700}}>Características habilitadas para tu empresa</p>
+      <ul style={{paddingLeft:19,margin:'8px 0',lineHeight:1.7}}>
+       {[data.plan?.whatsapp_enabled&&'WhatsApp',data.plan?.instagram_enabled&&'Instagram',
+         data.plan?.messenger_enabled&&'Messenger',data.plan?.ai_enabled&&'Inteligencia artificial',
+         data.plan?.automations_enabled&&'Automatizaciones',data.plan?.statistics_enabled&&'Estadísticas']
+        .filter((x):x is string=>Boolean(x)).map(x=><li key={x}>{x}</li>)}
+      </ul>
+      <p style={{fontSize:12,color:'#657184'}}>Estos módulos corresponden a los permisos registrados. Su uso requiere las conexiones y configuraciones correspondientes.</p>
       <p style={{marginTop:15}}>Módulos autorizados: {[
        data.plan?.ai_enabled&&'IA',data.plan?.whatsapp_enabled&&'WhatsApp',
        data.plan?.instagram_enabled&&'Instagram',data.plan?.messenger_enabled&&'Messenger',
