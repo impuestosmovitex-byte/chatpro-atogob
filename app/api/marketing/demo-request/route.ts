@@ -35,6 +35,8 @@ export async function POST(request:NextRequest){
     requestType:requestData.requestType==='trial'?'trial':'demo',
     contactPhone:requestData.contactPhone,
     whatsappSetup:requestData.whatsappSetup,
+    requestedUsers:requestData.requestedUsers,
+    requestedConnections:requestData.requestedConnections,
     visitorDigest:digest,
   };
   try{
