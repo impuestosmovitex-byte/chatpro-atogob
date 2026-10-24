@@ -34,7 +34,7 @@ export default function InicioPage() {
             y aumenta tus resultados automatizando procesos clave de tu empresa.
           </p>
           <div className={styles.heroActions}>
-            <Link href="/prueba-gratis" className={styles.primaryButton}>Solicitar 14 días gratis <span aria-hidden="true">↗</span></Link>
+            <Link href="/demo" className={styles.primaryButton}>Solicitar demostración <span aria-hidden="true">↗</span></Link>
             <Link href="/precios" className={styles.secondaryButton}>Ver planes</Link>
           </div>
           <p className={styles.heroFootnote}>Atención más organizada. Tu negocio mantiene el control.</p>
@@ -129,7 +129,7 @@ export default function InicioPage() {
           <h2>Empieza hoy y descubre cómo MW1 puede ayudarte a atender mejor y vender más.</h2>
           <p>Organiza tus conversaciones, automatiza respuestas y mejora el seguimiento comercial desde un solo lugar.</p>
           <div className={styles.homeCtaActions}>
-            <Link href="/prueba-gratis" className={styles.primaryButton}>Solicitar 14 días gratis <span aria-hidden="true">↗</span></Link>
+            <Link href="/demo" className={styles.primaryButton}>Solicitar demostración <span aria-hidden="true">↗</span></Link>
             <Link href="/demo" className={styles.secondaryButton}>Ver cómo funciona</Link>
           </div>
         </div>
