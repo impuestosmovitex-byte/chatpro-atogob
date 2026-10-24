@@ -31,6 +31,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
   async function submit(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
     if(sending||!consent)return;
+    if(isTrial&&planInterest==='pro'){setError('El plan Pro no incluye prueba gratuita de 14 días. Solicita una demostración personalizada.');return;}
     setError('');setSending(true);
     try{
       const response=await fetch('/api/marketing/demo-request',{
@@ -68,6 +69,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
         value={contactEmail} onChange={event=>setContactEmail(event.target.value)}
         placeholder="correo@empresa.com"/>
     </label>
+    {isTrial&&planInterest==='pro'&&<p role="alert" className={styles.error}>Pro no incluye prueba gratuita de 14 días. Para conocerlo, utiliza la opción de demostración.</p>}
     {isTrial&&planLabels[planInterest]&&<p role="status" className={styles.caption}>Seleccionaste el plan <strong>{planLabels[planInterest]}</strong>. Puedes cambiarlo aquí antes de enviar tu solicitud.</p>}
     {isTrial&&(requestedUsers!==null||requestedConnections!==null)&&<p role="status" className={styles.caption}>Tu configuración solicitada: <strong>{requestedUsers??'Por confirmar'} usuarios</strong> y <strong>{requestedConnections??'Por confirmar'} conexiones</strong>. Son valores para revisión comercial, no cupos activados.</p>}
     <label>Plan de interés
@@ -105,7 +107,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
         comercial y coordinar, si corresponde, la prueba guiada. Enviarla no crea una cuenta, no activa un plan ni genera cargos.</span>
     </label>
     {error&&<p role="alert" className={styles.error}>{error}</p>}
-    <button type="submit" disabled={sending||!consent}>
+    <button type="submit" disabled={sending||!consent||(isTrial&&planInterest==='pro')}>
       {sending?'Enviando…':isTrial?'Solicitar mis 14 días de prueba':'Solicitar asesoría de MW1'}
     </button>
   </form>;
