@@ -10,6 +10,7 @@ import { StagingInboxController } from './staging-inbox.controller';
 import { StagingIntegrationsController } from './staging-integrations.controller';
 import { UsersController } from './users.controller';
 import { StagingMyPlanController } from './staging-my-plan.controller';
+import { StagingSubscriptionAdminController } from './staging-subscription-admin.controller';
 import { StagingSalesAssistantController, StagingSalesAssistantService } from './staging-sales-assistant.controller';
 
 @Controller()
@@ -31,6 +32,7 @@ class StagingHealthController {
     StagingIntegrationsController,
     UsersController,
     StagingMyPlanController,
+    StagingSubscriptionAdminController,
     AccessController,
     AccessCapabilitiesController,
     PlatformAdminController,
