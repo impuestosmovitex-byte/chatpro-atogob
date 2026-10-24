@@ -892,7 +892,7 @@ export class PlatformAdminController {
     if(ae||platformAdmin?.active)
       throw new UnauthorizedException('No se administran credenciales de la plataforma aquí.');
     const {data:profile,error:pe}=await db.from('app_profiles')
-      .select('user_id,login_identifier,contact_email,active')
+      .select('user_id,login_identifier,contact_email,recovery_phone,recovery_email_verified_at,active')
       .eq('user_id',value.userId).maybeSingle();
     if(pe||!profile?.active)throw new UnauthorizedException('Perfil de propietario inactivo.');
     if(identifier && identifier!==profile.login_identifier){
@@ -901,12 +901,16 @@ export class PlatformAdminController {
       if(de||duplicate)throw new BadRequestException('Ese código ya pertenece a otro usuario.');
     }
     const changedIdentifier=Boolean(identifier && identifier!==profile.login_identifier);
+    const changedEmail=changeEmail&&email!==String(profile.contact_email??'');
+    const changedPhone=changePhone&&phone!==String(profile.recovery_phone??'');
+    if(!changedIdentifier&&!changePassword&&!changedEmail&&!changedPhone)
+      throw new BadRequestException('No se detectaron cambios.');
     const updates:Record<string,unknown>={updated_at:new Date().toISOString()};
     if(changeId)updates.login_identifier=identifier;
     if(changePassword)updates.password_hash=this.accessAuthService.hash(password as string);
     if(changeEmail){
       updates.contact_email=email||null;
-      if(email!==String(profile.contact_email??''))updates.recovery_email_verified_at=null;
+      if(changedEmail)updates.recovery_email_verified_at=null;
     }
     if(changePhone)updates.recovery_phone=phone||null;
     // Supabase Auth holds a secondary copy: update it before application login hash.
@@ -921,12 +925,12 @@ export class PlatformAdminController {
     const {error:logError}=await db.from('platform_access_audit').insert({
       company_id:company.id,target_user_id:value.userId,actor_user_id:actorId,
       changed_identifier:changedIdentifier,changed_password:changePassword,
-      changed_contact_email:changeEmail,changed_contact_phone:changePhone,
+      changed_contact_email:changedEmail,changed_contact_phone:changedPhone,
     });
     if(logError)throw new BadRequestException('Datos actualizados, pero el registro de auditoría falló. Comprueba el perfil.');
     return {ok:true,message:'Acceso del propietario actualizado. Comunica la nueva contraseña por un canal seguro.',
       identifier:identifier??profile.login_identifier,
-      passwordChanged:changePassword,emailVerified:false};
+      passwordChanged:changePassword,emailVerified:changedEmail?false:Boolean(profile.recovery_email_verified_at)};
   }
 
   // Public request endpoint called only by server-to-server internal key.
