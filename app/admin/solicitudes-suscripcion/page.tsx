@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {PlatformSidebar} from '../../components/PlatformSidebar';
-type RequestRow={id:string;company_id:string;company:{name:string;slug:string}|null;request_type:string;requested_plan_key:string|null;status:string;created_at:string;note:string|null};
+type RequestRow={id:string;company_id:string;company:{name:string;slug:string}|null;request_type:string;requested_plan_key:string|null;additional_users?:number|null;status:string;created_at:string;note:string|null};
 export default function SolicitudesSuscripcion(){
  const [items,setItems]=useState<RequestRow[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
  const [notes,setNotes]=useState<Record<string,string>>({}),[processing,setProcessing]=useState(''),[notice,setNotice]=useState('');
@@ -31,7 +31,7 @@ export default function SolicitudesSuscripcion(){
     <div style={{display:'grid',gap:12}}>
     {items.map(x=><article key={x.id} style={{padding:18,background:'#fff',border:'1px solid #e6e1d5',borderRadius:12}}>
       <strong>{x.company?.name||'Empresa no encontrada'}</strong>
-      <p style={{margin:'8px 0'}}>{x.request_type==='change_plan'?'Solicitud de cambio al plan '+(x.requested_plan_key||'sin especificar'):'Solicitud de cancelación de renovación'}</p>
+      <p style={{margin:'8px 0'}}>{x.request_type==='change_plan'?'Solicitud de cambio al plan '+(x.requested_plan_key||'sin especificar'):x.request_type==='extra_users'?'Solicitud de '+(x.additional_users||0)+' usuarios adicionales':'Solicitud de cancelación de renovación'}</p>
       <p style={{color:'#657184'}}>Estado: {x.status==='pending'?'Pendiente de revisión':x.status==='approved'?'Aprobada':x.status==='rejected'?'Rechazada':'Retirada'} · {new Date(x.created_at).toLocaleString('es-CO')}</p>
       {x.note&&<p style={{marginTop:8}}>Nota: {x.note}</p>}
       {x.status==='pending'&&<div style={{marginTop:14,display:'grid',gap:10,maxWidth:650}}>
