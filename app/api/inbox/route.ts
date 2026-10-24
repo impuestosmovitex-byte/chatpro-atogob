@@ -72,6 +72,12 @@ async function proxyResponse(response: Response) {
 export async function GET(request: NextRequest) {
   const session = await currentSession(request);
   if (!session) return unauthorized();
+  if (process.env.MW1_STAGING_MODE === 'true') {
+    return NextResponse.json({
+      ok: false, code: 'STAGING_INBOX_DISABLED',
+      error: 'Este entorno de MW1 valida empresas y accesos. La bandeja de mensajes y las integraciones reales todavía no están habilitadas aquí.',
+    }, {status:503,headers:{'Cache-Control':'no-store'}});
+  }
 
   try {
     const { apiBase, inboxKey } = config();
