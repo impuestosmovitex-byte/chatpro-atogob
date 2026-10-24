@@ -45,7 +45,7 @@ export default function PlansInteractive({plans}:{plans:PlanCardOption[]}){
        Elegir plan
       </button>
       <p style={{fontSize:12,color:'#68758b',marginTop:4,lineHeight:1.5}}>
-       Selecciona y ajusta el plan antes de solicitar la prueba. <Link href={`/demo?plan=${plan.key}`}
+       Selecciona y ajusta el plan antes de solicitar una demostración. <Link href={`/demo?plan=${plan.key}`}
         style={{textDecoration:'underline',textUnderlineOffset:3}}>Prefiero una demo</Link>
       </p>
      </div>
