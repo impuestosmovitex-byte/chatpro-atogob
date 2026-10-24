@@ -42,6 +42,8 @@ export class StagingDemoRequestsController {
     const contactPhone=clean(data.contactPhone,20).replace(/[\s()-]/g,'');
     const whatsappSetup=clean(data.whatsappSetup,24);
     const isTrial=requestType==='trial';
+    if(isTrial&&!['inicial','pro'].includes(legacyPlanKey))
+      throw new BadRequestException('La prueba gratuita de 14 días solo está disponible para los planes Básico y Eco. Solicita una asesoría para Pro.');
     if(isTrial&&(!/^\+?[0-9]{7,19}$/.test(contactPhone)||
       !['business_app','cloud_api','new_number','unsure'].includes(whatsappSetup)))
       throw new BadRequestException('Indica un número de contacto y cómo usas WhatsApp.');
