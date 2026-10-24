@@ -57,6 +57,10 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const session = await sessionFor(request);
   if (!session) return forbidden();
+  if (process.env.MW1_STAGING_MODE === 'true') return NextResponse.json({
+    ok:false,code:'STAGING_INBOX_DISABLED',
+    error:'La disponibilidad de asesores requiere habilitar el CRM operativo de MW1.',
+  },{status:503,headers:{'Cache-Control':'no-store'}});
   const company = session.companySlug;
   try {
     const { apiBase, inboxKey } = config();
