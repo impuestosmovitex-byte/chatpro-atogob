@@ -97,7 +97,7 @@ export default function MercadoPagoAdminPage(){
    {audit?.plans?.map(p=><div key={p.planKey} style={{borderTop:'1px solid #e5e7eb',padding:'12px 0',fontSize:13}}>
     <strong>{({inicial:'Básico',pro:'Eco',empresa:'Pro'} as Record<string,string>)[p.planKey]||p.planKey}</strong>
     <p>Mes 1: ${p.firstMonthCop.toLocaleString('es-CO')} · Mes 2: ${p.secondMonthCop.toLocaleString('es-CO')} · Mes 3+: ${p.thirdMonthCop.toLocaleString('es-CO')}</p>
-    <p style={{color:'#84601d'}}>{p.blockers.length?'Bloqueos: '+p.blockers.join(', '):'Precondiciones básicas satisfechas; faltan pruebas de cobros y renovaciones.'}</p>
+    <p style={{color:'#84601d'}}>{p.blockers.length?'Bloqueos: '+p.blockers.map(code=>({test_buyer_not_identified:'Comprador de prueba',payer_email_not_verified:'Correo de prueba para suscripciones',test_credentials_not_confirmed:'Credenciales de prueba por confirmar',webhook_secret_missing:'Firma de webhook',test_checkout_disabled:'Checkout bloqueado',provider_renewal_amount_mismatch:'Importe de renovación incorrecto',unknown_plan:'Plan desconocido'} as Record<string,string>)[code]||code).join(' · '):'Precondiciones básicas satisfechas; faltan pruebas de cobros y renovaciones.'}</p>
    </div>)}
   </section>
   <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:24}}>
