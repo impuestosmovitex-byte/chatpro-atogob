@@ -1,3 +1,4 @@
+import {StagingMercadoPagoWebhookController} from './staging-mercadopago-webhook.controller';
 import { Controller, Get, Module } from '@nestjs/common';
 import { AccessAuthService } from './access-auth.service';
 import { AccessCapabilitiesController } from './access-capabilities.controller';
@@ -28,6 +29,7 @@ class StagingHealthController {
 @Module({
   controllers: [
     StagingHealthController,
+    StagingMercadoPagoWebhookController,
     StagingInboxController,
     StagingIntegrationsController,
     UsersController,
