@@ -349,7 +349,7 @@ export class AccessController {
     const { data: profileData, error: profileError } = await this.supabaseService
       .getClient()
       .from('app_profiles')
-      .select('user_id, full_name, login_identifier, password_hash')
+      .select('user_id, full_name, login_identifier, password_hash, active')
       .eq('login_identifier', identifier)
       .maybeSingle();
 
@@ -366,6 +366,7 @@ export class AccessController {
 
 
     if (
+      profileData?.active !== true ||
       !profile?.password_hash ||
       !this.accessAuthService.verify(password, profile.password_hash)
     ) {
