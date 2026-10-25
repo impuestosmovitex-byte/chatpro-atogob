@@ -473,6 +473,25 @@ export default function IntegracionesPage() {
           </button>
         </header>
 
+        <section aria-label="Guía de primera conexión" style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:14,padding:20,margin:'16px 0 20px'}}>
+          <h2 style={{margin:'0 0 8px',fontSize:18}}>Primeros pasos para activar tu empresa</h2>
+          <p style={{margin:'0 0 12px',color:'#475569',fontSize:14}}>Elige un canal y conéctalo a tu propia empresa. Puedes empezar por WhatsApp y añadir los demás después. No compartas contraseñas de Meta ni códigos de seguridad con asesores.</p>
+          <ol style={{margin:'0 0 14px',paddingLeft:22,lineHeight:1.8,fontSize:14}}>
+            <li>Accede a Meta Business con una cuenta que tenga permisos sobre el número, la página y la cuenta de Instagram.</li>
+            <li>Selecciona WhatsApp, Instagram o Messenger en las tarjetas de abajo y utiliza su opción de conexión.</li>
+            <li>Comprueba el estado del canal conectado y realiza una conversación de prueba antes de activar automatizaciones.</li>
+          </ol>
+          <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+            {(['whatsapp','instagram','messenger'] as const).map(channel=>{
+              const item=integrations.find(i=>i.key===channel);
+              const active=item?.status==='active'&&item.connectionReady;
+              return <span key={channel} style={{background:active?'#e7f5eb':'#f1f5f9',borderRadius:20,padding:'6px 12px',fontSize:13}}>
+                {channel==='whatsapp'?'WhatsApp':channel==='instagram'?'Instagram':'Messenger'}: {loading?'Revisando':active?'Conectado':item?.status==='error'?'Requiere revisión':'Pendiente'}
+              </span>;
+            })}
+          </div>
+          <p style={{margin:'12px 0 0',fontSize:12,color:'#64748b'}}>Este estado pertenece solo a {companyName}. No conecta ni modifica las cuentas de otra empresa.</p>
+        </section>
         {message ? <p className={styles.error}>{message}</p> : null}
 
         <section className={styles.grid}>
