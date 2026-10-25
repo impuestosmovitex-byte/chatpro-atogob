@@ -76,8 +76,15 @@ export class PlatformAdminController {
         headers: {Authorization: 'Bearer ' + token},
         signal: AbortSignal.timeout(9000),
       });
-      return {ok:response.ok,configured:true,verified:response.ok,
-        reason:response.ok?'authenticated_environment_unverified':response.status===401?'invalid_token':'provider_error',sandboxSetup};
+      if (!response.ok) return {ok:false,configured:true,verified:false,
+        reason:response.status===401?'invalid_token':'provider_error',sandboxSetup};
+      const account=await response.json() as {id?:number|string};
+      const expected=process.env.MW1_MP_EXPECTED_TEST_SELLER_ID?.trim();
+      const matched=Boolean(expected && String(account?.id??'')===expected);
+      return {ok:true,configured:true,verified:true,
+        sellerIdentityConfirmed:matched,
+        reason:matched?'authenticated_test_seller_identity_matched':'authenticated_seller_identity_unconfirmed',
+        sandboxSetup};
     } catch {
       return {ok:false,configured:true,verified:false,reason:'network_error',sandboxSetup};
     }
