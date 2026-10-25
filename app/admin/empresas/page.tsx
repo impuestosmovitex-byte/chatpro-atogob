@@ -328,12 +328,15 @@ export default function PlatformCompaniesPage() {
     // The lead's connection count may include Instagram/Messenger; it is NOT a WhatsApp line limit.
     // Pre-fill only users; keep WhatsApp limits at the plan preset until an admin checks channels.
     const requestedSeats=Number.isInteger(lead.requestedUsers)&&lead.requestedUsers!==null&&lead.requestedUsers>=1&&lead.requestedUsers<=20
-      ?String(lead.requestedUsers):base.maxUsers;
-    setForm({...base,name:lead.companyName,slug:generateSlug(lead.companyName),maxUsers:requestedSeats});
+      ?lead.requestedUsers:null;
+    // A lead's request is not a purchased seat allocation. Never silently expand a published plan.
+    const includedSeats=pilotPlan?MW1_PILOT_PRESETS[pilotPlan].users:null;
+    const proposedSeats=requestedSeats===null?base.maxUsers:String(includedSeats===null?requestedSeats:Math.min(requestedSeats,includedSeats));
+    setForm({...base,name:lead.companyName,slug:generateSlug(lead.companyName),maxUsers:proposedSeats});
     setReviewedCompanyAccess(false);
     setPreparedFromLead(lead.id);
     setSuccess(pilotPlan
-      ?'Propuesta '+MW1_PILOT_PRESETS[pilotPlan].name+' cargada. Comprueba módulos, capacidad y propietario antes de crear la cuenta.'
+      ?'Propuesta '+MW1_PILOT_PRESETS[pilotPlan].name+' cargada. '+(requestedSeats!==null&&includedSeats!==null&&requestedSeats>includedSeats?'Solicitó '+requestedSeats+' usuarios, pero el plan incluye '+includedSeats+'. Los adicionales requieren aprobación y cobro por separado. ':'')+'Comprueba módulos, capacidad y propietario antes de crear la cuenta.'
       :'El interesado no eligió un plan. Revísalo antes de crear la cuenta.');
     setError('');
     document.getElementById('mw1-new-company-form')?.scrollIntoView({behavior:'smooth',block:'start'});
