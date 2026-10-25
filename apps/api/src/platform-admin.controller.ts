@@ -62,18 +62,24 @@ export class PlatformAdminController {
     this.assertInternalKey(providedKey);
     await this.assertPlatformAdmin(userId);
     if (process.env.MW1_STAGING_MODE !== 'true') throw new UnauthorizedException('Solo staging.');
+    const sandboxSetup={
+      testBuyerConfigured:Boolean(process.env.MW1_MP_TEST_PAYER_EMAIL?.trim()),
+      sandboxCredentialsConfirmed:process.env.MW1_MP_SANDBOX_CREDENTIALS_CONFIRMED==='true',
+      sandboxCheckoutEnabled:process.env.MW1_MP_TEST_CHECKOUT_ENABLED==='true',
+      paymentsOperational:false,
+    };
     const token = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
-    if (!token) return {ok:false,configured:false,verified:false,reason:'missing_token'};
-    if (!/^(TEST-|APP_USR-)/.test(token)) return {ok:false,configured:true,verified:false,reason:'unrecognized_token_format'};
+    if (!token) return {ok:false,configured:false,verified:false,reason:'missing_token',sandboxSetup};
+    if (!/^(TEST-|APP_USR-)/.test(token)) return {ok:false,configured:true,verified:false,reason:'unrecognized_token_format',sandboxSetup};
     try {
       const response = await fetch('https://api.mercadopago.com/users/me', {
         headers: {Authorization: 'Bearer ' + token},
         signal: AbortSignal.timeout(9000),
       });
       return {ok:response.ok,configured:true,verified:response.ok,
-        reason:response.ok?'authenticated_environment_unverified':response.status===401?'invalid_token':'provider_error'};
+        reason:response.ok?'authenticated_environment_unverified':response.status===401?'invalid_token':'provider_error',sandboxSetup};
     } catch {
-      return {ok:false,configured:true,verified:false,reason:'network_error'};
+      return {ok:false,configured:true,verified:false,reason:'network_error',sandboxSetup};
     }
   }
 
