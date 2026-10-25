@@ -17,6 +17,14 @@ const descriptions:Record<string,string>={
 export default function MercadoPagoAdminPage(){
  const [status,setStatus]=useState<Status|null>(null);
  const [busy,setBusy]=useState(false);
+ const [audit,setAudit]=useState<{ok?:boolean;plans?:Array<{planKey:string;firstMonthCop:number;secondMonthCop:number;thirdMonthCop:number;blockers:string[]}>;error?:string}|null>(null);
+ async function runAudit(){
+  setAudit(null);
+  try{const r=await fetch('/api/platform-admin/mercadopago-events?audit=1',{cache:'no-store'});
+  const body=await r.json();setAudit(r.ok?body:{ok:false,error:body.error||'No se pudo ejecutar el diagnóstico.'});}
+  catch{setAudit({ok:false,error:'No se pudo consultar la auditoría.'});}
+ }
+
  const [diagnostics,setDiagnostics]=useState<{ok?:boolean;checks?:Record<string,boolean>;counts?:Record<string,number>;error?:string}|null>(null);
  async function checkDiagnostics(){
   try{const response=await fetch('/api/platform-admin/mercadopago-events?diagnostic=1',{cache:'no-store'});
@@ -80,6 +88,17 @@ export default function MercadoPagoAdminPage(){
     {Object.entries(diagnostics.counts??{}).map(([name,n])=><p key={name} style={{margin:0}}>{name}: {n}</p>)}
     <p style={{color:'#8a6516'}}>Esta revisión no habilita pagos ni confirma transacciones.</p>
    </div>}
+  </section>
+  <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
+   <h2 style={{fontSize:19}}>Auditoría de los 3 planes</h2>
+   <p style={{fontSize:13,color:'#586477'}}>Revisa precios, promoción y requisitos en una sola consulta. No crea suscripciones ni cobra tarjetas.</p>
+   <button type="button" onClick={()=>void runAudit()} style={{padding:'10px 14px',background:'#fff',border:'1px solid #c9cfd8',borderRadius:8}}>Auditar planes y preparación</button>
+   {audit?.error&&<p role="alert">{audit.error}</p>}
+   {audit?.plans?.map(p=><div key={p.planKey} style={{borderTop:'1px solid #e5e7eb',padding:'12px 0',fontSize:13}}>
+    <strong>{({inicial:'Básico',pro:'Eco',empresa:'Pro'} as Record<string,string>)[p.planKey]||p.planKey}</strong>
+    <p>Mes 1: ${p.firstMonthCop.toLocaleString('es-CO')} · Mes 2: ${p.secondMonthCop.toLocaleString('es-CO')} · Mes 3+: ${p.thirdMonthCop.toLocaleString('es-CO')}</p>
+    <p style={{color:'#84601d'}}>{p.blockers.length?'Bloqueos: '+p.blockers.join(', '):'Precondiciones básicas satisfechas; faltan pruebas de cobros y renovaciones.'}</p>
+   </div>)}
   </section>
   <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:24}}>
    <h2 style={{fontSize:19}}>Conexión de staging</h2>
