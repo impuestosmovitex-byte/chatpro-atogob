@@ -129,6 +129,7 @@ export default function PlatformCompaniesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [createdCompanySlug,setCreatedCompanySlug]=useState('');
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [demoRequests,setDemoRequests]=useState<DemoLead[]>([]);
   const [demoLoading,setDemoLoading]=useState(false);
@@ -365,6 +366,7 @@ export default function PlatformCompaniesPage() {
     setSaving(true);
     setError('');
     setSuccess('');
+    setCreatedCompanySlug('');
 
     try {
       const response = await fetch('/api/platform-admin/companies', {
@@ -379,7 +381,7 @@ export default function PlatformCompaniesPage() {
       const data = (await response.json()) as {
         ok?: boolean;
         error?: string;
-        company?: { name?: string };
+        company?: { name?: string; slug?: string };
       };
 
       if (!response.ok || !data.ok) {
@@ -388,6 +390,7 @@ export default function PlatformCompaniesPage() {
       }
 
       setSuccess(`${data.company?.name || 'La empresa'} quedó creada y aislada.`);
+      setCreatedCompanySlug(data.company?.slug || '');
       setForm(initialForm);
       setReviewedCompanyAccess(false);
       setPreparedFromLead(null);
@@ -424,6 +427,10 @@ export default function PlatformCompaniesPage() {
         {success ? (
           <div style={{ ...cardStyle, borderColor: '#b9e3c5', background: '#f4fff7', marginBottom: 18 }}>
             {success}
+            {createdCompanySlug&&<div style={{marginTop:12,fontSize:14}}>
+              <p style={{margin:'0 0 8px'}}>Siguiente paso: comprueba el acceso con el código y contraseña del propietario que acabas de crear. No compartas la contraseña por mensajes.</p>
+              <Link href={'/login?company='+encodeURIComponent(createdCompanySlug)} style={{fontWeight:700}}>Abrir inicio de sesión de esta empresa →</Link>
+            </div>}
           </div>
         ) : null}
 
