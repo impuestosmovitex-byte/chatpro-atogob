@@ -1,4 +1,4 @@
-import {Controller,Headers,Post,Query,ServiceUnavailableException,UnauthorizedException,Body} from '@nestjs/common';
+import {Controller,Headers,Post,Get,Query,ServiceUnavailableException,UnauthorizedException,ForbiddenException,Body} from '@nestjs/common';
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {SupabaseService} from './supabase.service';
 
@@ -9,6 +9,26 @@ import {SupabaseService} from './supabase.service';
 @Controller('staging-mercadopago')
 export class StagingMercadoPagoWebhookController {
  constructor(private readonly supabase:SupabaseService){}
+ @Get('reconciliation-preview')
+ async reconciliationPreview(
+  @Headers('x-chatpro-inbox-key') key='',
+  @Query('user') userId='',
+ ){
+  if(process.env.MW1_STAGING_MODE!=='true'||!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY||!userId)
+   throw new UnauthorizedException();
+  const db=this.supabase.getClient();
+  const {data:admin}=await db.from('platform_admins').select('user_id').eq('user_id',userId).eq('active',true).maybeSingle();
+  if(!admin)throw new ForbiddenException('Solo superadministrador.');
+  const {data:events,error}=await db.from('mw1_mp_webhook_inbox')
+   .select('id,provider_data_id,provider_event_type,reconciliation_status,received_at')
+   .order('received_at',{ascending:false}).limit(30);
+  if(error)throw new ServiceUnavailableException('No se pudo consultar la cola.');
+  // Does not call provider or modify the database. Unknown provider IDs from
+  // simulated webhooks are not treated as financial facts.
+  return {ok:true,events:events??[],automaticReconciliation:false,
+    paymentActivationEnabled:false,mode:'read_only'};
+ }
+
  @Post('webhook')
  async receive(
   @Headers('x-signature') signature='',
