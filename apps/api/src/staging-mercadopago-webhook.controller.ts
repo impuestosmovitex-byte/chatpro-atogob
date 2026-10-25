@@ -14,6 +14,38 @@ import {SupabaseService} from './supabase.service';
 @Controller('staging-mercadopago')
 export class StagingMercadoPagoWebhookController {
  constructor(private readonly supabase:SupabaseService){}
+ @Get('integration-diagnostics')
+ async integrationDiagnostics(
+  @Headers('x-chatpro-inbox-key') key='',
+  @Query('user') userId='',
+ ){
+  if(process.env.MW1_STAGING_MODE!=='true'||!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY)
+   throw new UnauthorizedException();
+  const db=this.supabase.getClient();
+  const {data:admin}=await db.from('platform_admins').select('user_id')
+   .eq('user_id',userId).eq('active',true).maybeSingle();
+  if(!admin)throw new ForbiddenException('Solo superadministrador.');
+  const [intents,events,subs,txs]=await Promise.all([
+   db.from('mw1_checkout_intents').select('id',{count:'exact',head:true}),
+   db.from('mw1_mp_webhook_inbox').select('id',{count:'exact',head:true}),
+   db.from('mw1_billing_subscriptions').select('id',{count:'exact',head:true}),
+   db.from('mw1_billing_transactions').select('id',{count:'exact',head:true})
+  ]);
+  if(intents.error||events.error||subs.error||txs.error)
+   throw new ServiceUnavailableException('No fue posible consultar los diagnósticos.');
+  return {ok:true,environment:'staging',checks:{
+   tokenConfigured:!!process.env.MERCADOPAGO_ACCESS_TOKEN?.trim(),
+   webhookSignatureSecretConfigured:!!process.env.MW1_MP_WEBHOOK_SECRET?.trim(),
+   buyerConfigured:!!process.env.MW1_MP_TEST_PAYER_EMAIL?.trim(),
+   sandboxConfirmed:process.env.MW1_MP_SANDBOX_CREDENTIALS_CONFIRMED==='true',
+   checkoutEnabled:process.env.MW1_MP_TEST_CHECKOUT_ENABLED==='true',
+   recordingEnabled:process.env.MW1_MP_VERIFIED_RECORDING_ENABLED==='true',
+   tenantActivationEnabled:process.env.MW1_MP_TENANT_ACTIVATION_ENABLED==='true'
+  },counts:{checkoutIntents:intents.count??0,signedEvents:events.count??0,
+   billingSubscriptions:subs.count??0,billingTransactions:txs.count??0},
+   realChargesEnabled:false,diagnosticOnly:true};
+ }
+
  @Get('reconciliation-preview')
  async reconciliationPreview(
   @Headers('x-chatpro-inbox-key') key='',
