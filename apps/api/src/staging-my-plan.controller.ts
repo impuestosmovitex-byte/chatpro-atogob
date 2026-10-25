@@ -5,6 +5,39 @@ import { SupabaseService } from './supabase.service';
 export class StagingMyPlanController {
   constructor(private readonly supabase: SupabaseService) {}
 
+  @Get('checkout-readiness')
+  async checkoutReadiness(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+  ) {
+    if (process.env.MW1_STAGING_MODE !== 'true' ||
+      !process.env.CHATPRO_INBOX_KEY || key !== process.env.CHATPRO_INBOX_KEY || !userId)
+      throw new UnauthorizedException();
+    const db=this.supabase.getClient();
+    const {data:company}=await db.from('companies').select('id,status').eq('id',companyId).eq('slug',slug).maybeSingle();
+    if (!company || company.status!=='active') throw new ForbiddenException();
+    const {data:member}=await db.from('company_memberships').select('role_id').eq('company_id',company.id).eq('user_id',userId).eq('active',true).maybeSingle();
+    if (!member) throw new ForbiddenException();
+    const {data:role}=await db.from('app_roles').select('key,company_id').eq('id',member.role_id).maybeSingle();
+    if (!role || role.key!=='owner' || (role.company_id && role.company_id!==company.id))
+      throw new ForbiddenException('Solo el propietario puede contratar.');
+    const {data:entitlement}=await db.from('company_entitlements').select('plan_key').eq('company_id',company.id).maybeSingle();
+    const {data:published}=entitlement?.plan_key
+      ?await db.from('platform_published_plan_prices').select('plan_key,price_cop').eq('plan_key',entitlement.plan_key).maybeSingle()
+      :{data:null};
+    const reasons:string[]=[];
+    if (!published || !Number.isSafeInteger(published.price_cop) || published.price_cop<=0) reasons.push('Precio del plan pendiente de publicación.');
+    if (!process.env.MERCADOPAGO_ACCESS_TOKEN?.trim()) reasons.push('Credencial de Mercado Pago no configurada.');
+    reasons.push('Checkout de autorización y notificaciones de pago pendientes de pruebas.');
+    return {ok:true,provider:'mercadopago',planKey:entitlement?.plan_key??null,
+      publishedMonthlyCop:published?.price_cop??null,
+      firstMonthCop:published?.price_cop??null,
+      secondMonthCop:published && Number.isSafeInteger(published.price_cop) ? Math.round(published.price_cop/2):null,
+      checkoutEnabled:false,reasons};
+  }
+
   @Post('request')
   async requestChange(
     @Headers('x-chatpro-inbox-key') key = '',
