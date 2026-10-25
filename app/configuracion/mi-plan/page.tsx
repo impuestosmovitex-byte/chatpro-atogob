@@ -15,7 +15,7 @@ export default function MiPlan(){
  const [extraSeats,setExtraSeats]=useState(1);
  const [notice,setNotice]=useState('');
  const [working,setWorking]=useState(false);
- const [checkoutCheck,setCheckoutCheck]=useState<{ok?:boolean;checkoutEnabled?:boolean;firstMonthCop?:number|null;secondMonthCop?:number|null;reasons?:string[];error?:string}|null>(null);
+ const [checkoutCheck,setCheckoutCheck]=useState<{ok?:boolean;checkoutEnabled?:boolean;firstMonthCop?:number|null;secondMonthCop?:number|null;thirdMonthCop?:number|null;reasons?:string[];error?:string}|null>(null);
  const [checkingCheckout,setCheckingCheckout]=useState(false);
  async function checkCheckout(){
   setCheckingCheckout(true);setCheckoutCheck(null);
@@ -101,7 +101,7 @@ export default function MiPlan(){
        <button type="button" onClick={()=>void checkCheckout()} disabled={checkingCheckout} style={{marginTop:14,padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#172235',fontWeight:800,cursor:checkingCheckout?'wait':'pointer'}}>{checkingCheckout?'Comprobando…':'Consultar estado de contratación'}</button>
        {checkoutCheck&&<div role="status" style={{marginTop:14,padding:14,borderRadius:9,background:'#f6f7fa',fontSize:13,lineHeight:1.7}}>
         <strong>{checkoutCheck.checkoutEnabled?'Contratación disponible':'Registro de tarjeta pendiente de habilitación'}</strong>
-        {typeof checkoutCheck.firstMonthCop==='number'&&<p>Primer mes: {cop(checkoutCheck.firstMonthCop)} · Segundo mes: {cop(checkoutCheck.secondMonthCop??0)}</p>}
+        {typeof checkoutCheck.firstMonthCop==='number'&&<p>Primer mes: {cop(checkoutCheck.firstMonthCop)} · Segundo mes (50 %): {cop(checkoutCheck.secondMonthCop??0)} · Tercer mes y siguientes: {cop(checkoutCheck.thirdMonthCop??checkoutCheck.firstMonthCop)}</p>}
         {checkoutCheck.error&&<p>{checkoutCheck.error}</p>}
         {checkoutCheck.reasons?.map((reason,i)=><p key={i} style={{margin:'5px 0'}}>• {reason}</p>)}
        </div>
