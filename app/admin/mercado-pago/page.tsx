@@ -17,6 +17,27 @@ const descriptions:Record<string,string>={
 export default function MercadoPagoAdminPage(){
  const [status,setStatus]=useState<Status|null>(null);
  const [busy,setBusy]=useState(false);
+ const [eventRows,setEventRows]=useState<Array<{id:string;provider_event_type:string;reconciliation_status:string;received_at:string}>>([]);
+ const [eventError,setEventError]=useState('');
+ const [checkingEvent,setCheckingEvent]=useState<string|null>(null);
+ const [eventResult,setEventResult]=useState('');
+ async function loadEvents(){
+  setEventError('');
+  try{const response=await fetch('/api/platform-admin/mercadopago-events',{cache:'no-store'});
+   const data=await response.json();
+   if(!response.ok||!data.ok){setEventError(data.error||'No fue posible consultar eventos.');return;}
+   setEventRows(Array.isArray(data.events)?data.events:[]);
+  }catch{setEventError('No se pudo consultar la cola de eventos.');}
+ }
+ async function checkEvent(id:string){
+  setCheckingEvent(id);setEventResult('');
+  try{const response=await fetch('/api/platform-admin/mercadopago-events?event='+encodeURIComponent(id),{cache:'no-store'});
+   const result=await response.json();
+   setEventResult(result.ok?'Estado de suscripción verificado con Mercado Pago: '+result.status+'. Pago no confirmado.':'No se pudo conciliar: '+(result.reason||result.error||'pendiente'));
+  }catch{setEventResult('Falló la verificación con Mercado Pago.');}
+  finally{setCheckingEvent(null);}
+ }
+
  const [published,setPublished]=useState<Array<{plan_key:string;price_cop:number}>>([]);
  useEffect(()=>{let live=true;void fetch('/api/platform-admin/plan-published',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(data=>{if(live&&Array.isArray(data?.plans))setPublished(data.plans.filter((p:unknown)=>Boolean(p)&&typeof p==='object'&&Number.isSafeInteger((p as {price_cop?:number}).price_cop)));}).catch(()=>{});return()=>{live=false};},[]);
  async function verify(){
@@ -54,6 +75,19 @@ export default function MercadoPagoAdminPage(){
    ].map(([name,ready])=><p key={String(name)} style={{fontSize:14,margin:'9px 0'}}><strong>{ready?'Configurado':'Pendiente'}</strong> · {name}</p>)}
    <p style={{fontSize:13,color:'#765c19'}}>Estos controles no autorizan cobros reales ni sustituyen la verificación de los pagos y webhooks.</p>
   </section>}
+  <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
+   <h2 style={{fontSize:19}}>Notificaciones recibidas</h2>
+   <p style={{fontSize:13,color:'#586477'}}>Consulta y contrasta suscripciones sin generar cargos ni activar planes.</p>
+   <button type="button" onClick={()=>void loadEvents()} style={{padding:'10px 15px',borderRadius:8,border:'1px solid #d8dde7',background:'#fff',fontWeight:750}}>Consultar notificaciones</button>
+   {eventError&&<p role="alert">{eventError}</p>}
+   {eventRows.length===0&&!eventError&&<p style={{fontSize:13,color:'#657184'}}>Pulsa consultar para ver las notificaciones disponibles.</p>}
+   {eventRows.map(item=><div key={item.id} style={{borderTop:'1px solid #e8ebf0',padding:'12px 0',fontSize:13}}>
+    <strong>{item.provider_event_type}</strong> · {item.reconciliation_status}
+    <p style={{color:'#657184',margin:'4px 0'}}>{new Date(item.received_at).toLocaleString('es-CO')}</p>
+    {item.provider_event_type==='subscription_preapproval'&&<button type="button" disabled={checkingEvent!==null} onClick={()=>void checkEvent(item.id)} style={{border:'1px solid #d8dde7',borderRadius:7,padding:'7px 12px',background:'#fff'}}>{checkingEvent===item.id?'Comprobando…':'Verificar con Mercado Pago'}</button>}
+   </div>)}
+   {eventResult&&<p role="status" style={{fontSize:13,color:'#475569'}}>{eventResult}</p>}
+  </section>
   <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
    <h2 style={{fontSize:19}}>Facturación y renovaciones</h2>
    <p style={{fontSize:14,lineHeight:1.7,color:'#586477'}}>Los cobros, autorizaciones de tarjeta, suscripciones automáticas y la promoción del segundo mes al 50 % aún no están habilitados. Antes deben verificarse los precios publicados, webhooks y pruebas de cobros recurrentes.</p>
