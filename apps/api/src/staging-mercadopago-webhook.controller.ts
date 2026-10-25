@@ -1,3 +1,4 @@
+import {evaluateMW1ActivationReadiness} from './mw1-billing-activation-readiness';
 import {getMercadoPagoPaymentReadOnly,validateMW1Payment} from './mw1-mercadopago-payment-verification';
 import {getMPSubscriptionInvoiceReadOnly,validateMPSubscriptionInvoice,extractAccreditedInvoicePayment} from './mw1-mercadopago-invoice-verification';
 import {fetchProviderPreapprovalReadOnly,validateProviderPreapproval} from './mw1-mercadopago-reconciliation';
@@ -151,6 +152,43 @@ export class StagingMercadoPagoWebhookController {
   if(error)throw new ServiceUnavailableException('No fue posible registrar el pago verificado.');
   return {ok:true,result:data,providerPaymentId:expected.paymentId,
    paymentConfirmed:true,tenantActivated:false};
+ }
+
+ @Get('activation-readiness')
+ async activationReadiness(
+  @Headers('x-chatpro-inbox-key') key='',
+  @Query('user') userId='',
+  @Query('subscription') subscriptionId='',
+ ){
+  if(process.env.MW1_STAGING_MODE!=='true'||!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY)
+   throw new UnauthorizedException();
+  if(!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(userId)||!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(subscriptionId))
+   throw new ForbiddenException('Identificadores inválidos.');
+  const db=this.supabase.getClient();
+  const {data:admin,error:adminError}=await db.from('platform_admins')
+   .select('user_id').eq('user_id',userId).eq('active',true).maybeSingle();
+  if(adminError||!admin)throw new ForbiddenException('Solo superadministrador.');
+  const {data:sub,error:subError}=await db.from('mw1_billing_subscriptions')
+   .select('id,company_id,provider_subscription_id,status,verified_paid_cycles,authorization_confirmed_at')
+   .eq('id',subscriptionId).maybeSingle();
+  if(subError||!sub)throw new ForbiddenException('Suscripción no encontrada.');
+  const {count,error:countError}=await db.from('mw1_billing_transactions')
+   .select('id',{count:'exact',head:true}).eq('subscription_id',subscriptionId).eq('company_id',sub.company_id).eq('status','approved');
+  if(countError)throw new ServiceUnavailableException('No se pudieron comprobar las transacciones.');
+  const readiness=evaluateMW1ActivationReadiness({
+   subscriptionId:sub.id,companyId:sub.company_id,
+   providerSubscriptionId:sub.provider_subscription_id,
+   subscriptionStatus:sub.status,verifiedPaidCycles:sub.verified_paid_cycles,
+   approvedPaymentCount:count??0,
+   providerAuthorizationConfirmed:!!sub.authorization_confirmed_at
+  });
+  const {data:entitlement,error:entitlementError}=await db.from('company_entitlements')
+   .select('plan_key').eq('company_id',sub.company_id).maybeSingle();
+  if(entitlementError)throw new ServiceUnavailableException('No se pudieron leer permisos.');
+  return {ok:true,subscriptionId:sub.id,eligible:readiness.eligible,
+   reasons:readiness.reasons,verifiedPaidCycles:sub.verified_paid_cycles,
+   approvedPayments:count??0,currentEntitlementPlan:entitlement?.plan_key??null,
+   tenantActivated:false,changesApplied:false};
  }
 
  @Post('webhook')
