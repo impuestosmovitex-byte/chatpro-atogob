@@ -1060,6 +1060,16 @@ export class PlatformAdminController {
       1,
       'líneas de WhatsApp',
     );
+    // Commercial plans have fixed included seats. Extras require a separate
+    // approved billing entitlement; the creation form cannot grant them for free.
+    const includedSeats: Record<string, number> = { inicial: 2, pro: 3, empresa: 3 };
+    if (Object.prototype.hasOwnProperty.call(includedSeats, planKey) &&
+        maxUsers > includedSeats[planKey]) {
+      throw new BadRequestException(
+        'El plan incluye ' + includedSeats[planKey] +
+        ' usuarios. Los adicionales deben contratarse y aprobarse por separado.',
+      );
+    }
     const ownerFullName = this.requiredText(
       body.ownerFullName,
       'Escribe el nombre del propietario.',
