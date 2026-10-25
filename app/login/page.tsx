@@ -45,9 +45,11 @@ export default function LoginPage() {
       }
 
       const destination = new URLSearchParams(window.location.search).get('next');
-      const safeDestination = destination && destination.startsWith('/') && !destination.startsWith('//')
-        ? destination
-        : '/';
+      const allowedReturn = destination && destination.startsWith('/') &&
+        !destination.startsWith('//') && !destination.includes('\\\\') &&
+        !destination.startsWith('/admin') && !destination.startsWith('/api/') &&
+        !destination.startsWith('/login');
+      const safeDestination = allowedReturn ? destination : '/';
       router.replace(platformLogin && safeDestination==='/' ? '/admin' : safeDestination);
       router.refresh();
     } catch {
