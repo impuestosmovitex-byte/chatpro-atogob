@@ -352,8 +352,11 @@ export class StagingMercadoPagoWebhookController {
    throw new UnauthorizedException('Firma inválida o vencida.');
   const id=String(queryDataId).toLowerCase();
   const type=(body&&typeof body==='object'&&'type' in body)?String((body as {type:unknown}).type):'';
-  if(!['subscription_preapproval','subscription_authorized_payment','payment'].includes(type))
-    return {ok:true,ignored:true};
+  if(!['subscription_preapproval','subscription_authorized_payment','payment'].includes(type)){
+    // Log only a fixed diagnostic marker; never log request IDs, signatures or payloads.
+    console.info('mw1_mp_webhook:ignored_event_type');
+    return {ok:true,ignored:true,persisted:false};
+  }
   // Deliberately no database mutation until provider GET reconciliation and
   // duplicate-payment idempotency have been implemented and verified.
   const db=this.supabase.getClient();
@@ -361,7 +364,12 @@ export class StagingMercadoPagoWebhookController {
     provider_request_id:requestId,provider_data_id:id,provider_event_type:type,
     signature_verified:true,reconciliation_status:'pending'
   },{onConflict:'provider_request_id',ignoreDuplicates:true});
-  if(error)throw new ServiceUnavailableException('No se pudo registrar el evento validado.');
-  return {ok:true,received:true,signatureVerified:true,paymentConfirmed:false,processed:false};
+  if(error){
+    console.error('mw1_mp_webhook:database_write_failed');
+    throw new ServiceUnavailableException('No se pudo registrar el evento validado.');
+  }
+  // Diagnostic markers without financial or personal data.
+  console.info('mw1_mp_webhook:signed_event_recorded');
+  return {ok:true,received:true,signatureVerified:true,persisted:true,paymentConfirmed:false,processed:false};
  }
 }
