@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import {calculateIntroductoryMonths} from '../../lib/mw1-subscription-pricing';
 
-type Status={ok?:boolean;configured?:boolean;verified?:boolean;reason?:string;error?:string};
+type Status={ok?:boolean;configured?:boolean;verified?:boolean;reason?:string;error?:string;sandboxSetup?:{testBuyerConfigured:boolean;sandboxCredentialsConfirmed:boolean;sandboxCheckoutEnabled:boolean;paymentsOperational:boolean}};
 const descriptions:Record<string,string>={
  authenticated:'Mercado Pago aceptó la credencial para una consulta de lectura. El entorno de pruebas aún debe confirmarse antes de habilitar cualquier cobro.',
  authenticated_environment_unverified:'Mercado Pago aceptó la credencial para una consulta de lectura. Esto no confirma que sea de prueba: las credenciales APP_USR pueden ser de prueba o de producción. Los cobros seguirán bloqueados.',
@@ -41,6 +41,17 @@ export default function MercadoPagoAdminPage(){
     <p style={{margin:'7px 0 0'}}>{status.error||descriptions[status.reason||'']||(status.verified?'La autenticación fue aceptada. Aún no hay cobros habilitados.':'No se pudo confirmar la credencial.')}</p>
    </div>}
   </section>
+  {status?.sandboxSetup&&<section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
+   <h2 style={{fontSize:19}}>Preparación de pagos de prueba</h2>
+   <p style={{fontSize:13,color:'#586477',lineHeight:1.6}}>Estado de configuración en Railway staging. Una credencial autenticada no confirma que sea de prueba.</p>
+   {[
+    ['Comprador de prueba configurado',status.sandboxSetup.testBuyerConfigured],
+    ['Credenciales de pruebas confirmadas',status.sandboxSetup.sandboxCredentialsConfirmed],
+    ['Checkout de prueba habilitado',status.sandboxSetup.sandboxCheckoutEnabled],
+    ['Pagos operativos',status.sandboxSetup.paymentsOperational],
+   ].map(([name,ready])=><p key={String(name)} style={{fontSize:14,margin:'9px 0'}}><strong>{ready?'Configurado':'Pendiente'}</strong> · {name}</p>)}
+   <p style={{fontSize:13,color:'#765c19'}}>Estos controles no autorizan cobros reales ni sustituyen la verificación de los pagos y webhooks.</p>
+  </section>}
   <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
    <h2 style={{fontSize:19}}>Facturación y renovaciones</h2>
    <p style={{fontSize:14,lineHeight:1.7,color:'#586477'}}>Los cobros, autorizaciones de tarjeta, suscripciones automáticas y la promoción del segundo mes al 50 % aún no están habilitados. Antes deben verificarse los precios publicados, webhooks y pruebas de cobros recurrentes.</p>
