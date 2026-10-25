@@ -1,5 +1,6 @@
 import {Controller,Headers,Post,Query,ServiceUnavailableException,UnauthorizedException,Body} from '@nestjs/common';
 import {createHmac,timingSafeEqual} from 'node:crypto';
+import {SupabaseService} from './supabase.service';
 
 /**
  * Staging-only receiver. Validates provider signature and explicitly does NOT
@@ -7,8 +8,9 @@ import {createHmac,timingSafeEqual} from 'node:crypto';
  */
 @Controller('staging-mercadopago')
 export class StagingMercadoPagoWebhookController {
+ constructor(private readonly supabase:SupabaseService){}
  @Post('webhook')
- receive(
+ async receive(
   @Headers('x-signature') signature='',
   @Headers('x-request-id') requestId='',
   @Query('data.id') queryDataId='',
@@ -36,6 +38,12 @@ export class StagingMercadoPagoWebhookController {
     return {ok:true,ignored:true};
   // Deliberately no database mutation until provider GET reconciliation and
   // duplicate-payment idempotency have been implemented and verified.
+  const db=this.supabase.getClient();
+  const {error}=await db.from('mw1_mp_webhook_inbox').upsert({
+    provider_request_id:requestId,provider_data_id:id,provider_event_type:type,
+    signature_verified:true,reconciliation_status:'pending'
+  },{onConflict:'provider_request_id',ignoreDuplicates:true});
+  if(error)throw new ServiceUnavailableException('No se pudo registrar el evento validado.');
   return {ok:true,received:true,signatureVerified:true,paymentConfirmed:false,processed:false};
  }
 }
