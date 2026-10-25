@@ -9,7 +9,7 @@ export function assessMW1RenewalSafety(input:{
  const providerAmountValid=Number.isSafeInteger(input.providerAmountCop)&&input.providerAmountCop>0;
  const amountMatches=providerAmountValid&&input.providerAmountCop===expected.amountCop;
  const parsed=input.nextPaymentDate?Date.parse(input.nextPaymentDate):NaN;
- const validNextPaymentDate=Number.isFinite(parsed)&&parsed>Date.now();
+ const validNextPaymentDate=Number.isFinite(parsed)&&parsed>(input.now??new Date()).getTime();
  const hoursBeforeCharge=validNextPaymentDate?(parsed-(input.now??new Date()).getTime())/3600000:null;
  const safeLeadTime=hoursBeforeCharge!==null&&hoursBeforeCharge>=72;
  const reasons:string[]=[];
