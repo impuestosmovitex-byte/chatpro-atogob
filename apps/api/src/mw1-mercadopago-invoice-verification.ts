@@ -15,5 +15,5 @@ export function validateMPSubscriptionInvoice(value:unknown,expected:{invoiceId:
  if(String(invoice.id??'')!==expected.invoiceId)throw new Error('Invoice ID mismatch.');
  if(String(invoice.preapproval_id??'')!==expected.subscriptionId)throw new Error('Invoice subscription mismatch.');
  return {invoiceId:expected.invoiceId,subscriptionId:expected.subscriptionId,
-  status:String(invoice.payment?.toString?.()??invoice.status??'unknown'),paymentConfirmed:false};
+  status:String(invoice.status??'unknown'),paymentConfirmed:false};
 }
