@@ -1,3 +1,4 @@
+import {buildMW1PreapprovalPayload,parseMW1PreapprovalResponse} from './mw1-mercadopago-preapproval';
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, Post, Query, UnauthorizedException } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 
@@ -94,6 +95,57 @@ export class StagingMyPlanController {
       .eq('company_id',company.id).order('created_at',{ascending:false}).limit(1).maybeSingle();
     if(error)throw new BadRequestException('No se pudo consultar la contratación.');
     return {ok:true,intent:intent??null,cardRegistrationEnabled:false,provider:'mercadopago'};
+  }
+
+  @Post('checkout-authorize')
+  async authorizeCheckout(
+    @Headers('x-chatpro-inbox-key') key='',
+    @Headers('x-chatpro-user-id') userId='',
+    @Headers('x-chatpro-company-id') companyId='',
+    @Query('company') slug='',
+    @Body() body:{payerEmail?:string},
+  ){
+    if(process.env.MW1_STAGING_MODE!=='true'||!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY||!userId)throw new UnauthorizedException();
+    // An APP_USR prefix alone cannot establish sandbox safety.
+    if(process.env.MW1_MP_TEST_CHECKOUT_ENABLED!=='true'||process.env.MW1_MP_SANDBOX_CREDENTIALS_CONFIRMED!=='true')
+      throw new ForbiddenException('Autorización de prueba bloqueada hasta verificar credenciales y pagos.');
+    const email=String(body?.payerEmail??'').trim().toLowerCase();
+    if(!email||email!==String(process.env.MW1_MP_TEST_PAYER_EMAIL??'').trim().toLowerCase())
+      throw new ForbiddenException('Solo se permite el comprador de prueba autorizado.');
+    const token=process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
+    if(!token)throw new ForbiddenException('Mercado Pago no está configurado.');
+    const db=this.supabase.getClient();
+    const {data:company}=await db.from('companies').select('id,status').eq('id',companyId).eq('slug',slug).maybeSingle();
+    if(!company||company.status!=='active')throw new ForbiddenException();
+    const {data:member}=await db.from('company_memberships').select('role_id').eq('company_id',company.id).eq('user_id',userId).eq('active',true).maybeSingle();
+    if(!member)throw new ForbiddenException();
+    const {data:role}=await db.from('app_roles').select('key,company_id').eq('id',member.role_id).maybeSingle();
+    if(!role||role.key!=='owner'||(role.company_id&&role.company_id!==company.id))throw new ForbiddenException();
+    const {data:intent}=await db.from('mw1_checkout_intents').select('id,status,plan_key,monthly_amount_cop,expires_at')
+      .eq('company_id',company.id).eq('status','awaiting_checkout').maybeSingle();
+    if(!intent||new Date(intent.expires_at).getTime()<=Date.now())throw new BadRequestException('Prepara nuevamente tu contratación.');
+    const {data:price}=await db.from('platform_published_plan_prices').select('price_cop').eq('plan_key',intent.plan_key).maybeSingle();
+    if(!price||price.price_cop!==intent.monthly_amount_cop)throw new BadRequestException('El precio cambió. Prepara nuevamente tu contratación.');
+    const publicBase=process.env.MW1_STAGING_PUBLIC_URL?.trim();
+    if(!publicBase||new URL(publicBase).protocol!=='https:')throw new ForbiddenException('URL pública de staging no configurada.');
+    const payload=buildMW1PreapprovalPayload({intentId:intent.id,payerEmail:email,monthlyAmountCop:intent.monthly_amount_cop,
+      planName:intent.plan_key,backUrl:new URL('/configuracion/mi-plan',publicBase).toString()});
+    // Idempotency key protects against duplicate provider requests; never activate company from browser return.
+    let response:Response;
+    try{
+      response=await fetch('https://api.mercadopago.com/preapproval',{method:'POST',headers:{
+        Authorization:'Bearer '+token,'Content-Type':'application/json','X-Idempotency-Key':intent.id
+      },body:JSON.stringify(payload),signal:AbortSignal.timeout(12000)});
+    }catch{throw new BadRequestException('No se pudo contactar a Mercado Pago. Consulta el estado antes de reintentar.');}
+    if(!response.ok)throw new BadRequestException('Mercado Pago no aceptó la solicitud de prueba.');
+    let result:{providerSubscriptionId:string;authorizationUrl:string;paymentVerified:boolean};
+    try{result=parseMW1PreapprovalResponse(await response.json());}
+    catch{throw new BadRequestException('Respuesta no válida. No reintentes sin verificar la suscripción en Mercado Pago.');}
+    const {error}=await db.from('mw1_checkout_intents').update({
+      status:'provider_pending',provider_subscription_id:result.providerSubscriptionId
+    }).eq('id',intent.id).eq('status','awaiting_checkout');
+    if(error)throw new BadRequestException('La solicitud existe en Mercado Pago; consulta soporte antes de reintentar.');
+    return {ok:true,authorizationUrl:result.authorizationUrl,subscriptionStatus:'pending',paymentVerified:false};
   }
 
   @Post('request')
