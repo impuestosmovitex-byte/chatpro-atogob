@@ -33,7 +33,7 @@ export default function MercadoPagoAdminPage(){
   setCheckingEvent(id);setEventResult('');
   try{const response=await fetch('/api/platform-admin/mercadopago-events?event='+encodeURIComponent(id),{cache:'no-store'});
    const result=await response.json();
-   setEventResult(result.ok?'Estado de suscripción verificado con Mercado Pago: '+result.status+'. Pago no confirmado.':'No se pudo conciliar: '+(result.reason||result.error||'pendiente'));
+   setEventResult(result.ok?(result.paymentConfirmed?'Pago acreditado comprobado con Mercado Pago. Aún no se ha registrado ni activado el plan.':'Evento comprobado con Mercado Pago; pago todavía no confirmado.'):'No se pudo conciliar: '+(result.reason||result.error||'pendiente'));
   }catch{setEventResult('Falló la verificación con Mercado Pago.');}
   finally{setCheckingEvent(null);}
  }
@@ -84,7 +84,7 @@ export default function MercadoPagoAdminPage(){
    {eventRows.map(item=><div key={item.id} style={{borderTop:'1px solid #e8ebf0',padding:'12px 0',fontSize:13}}>
     <strong>{item.provider_event_type}</strong> · {item.reconciliation_status}
     <p style={{color:'#657184',margin:'4px 0'}}>{new Date(item.received_at).toLocaleString('es-CO')}</p>
-    {item.provider_event_type==='subscription_preapproval'&&<button type="button" disabled={checkingEvent!==null} onClick={()=>void checkEvent(item.id)} style={{border:'1px solid #d8dde7',borderRadius:7,padding:'7px 12px',background:'#fff'}}>{checkingEvent===item.id?'Comprobando…':'Verificar con Mercado Pago'}</button>}
+    {['subscription_preapproval','subscription_authorized_payment'].includes(item.provider_event_type)&&<button type="button" disabled={checkingEvent!==null} onClick={()=>void checkEvent(item.id)} style={{border:'1px solid #d8dde7',borderRadius:7,padding:'7px 12px',background:'#fff'}}>{checkingEvent===item.id?'Comprobando…':'Verificar con Mercado Pago'}</button>}
    </div>)}
    {eventResult&&<p role="status" style={{fontSize:13,color:'#475569'}}>{eventResult}</p>}
   </section>
