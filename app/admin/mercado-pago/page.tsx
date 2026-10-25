@@ -66,7 +66,16 @@ export default function MercadoPagoAdminPage(){
    <button type="button" onClick={()=>void checkDiagnostics()} style={{padding:'10px 14px',background:'#fff',border:'1px solid #c9cfd8',borderRadius:8}}>Revisar preparación</button>
    {diagnostics?.error&&<p role="alert">{diagnostics.error}</p>}
    {diagnostics?.ok&&<div style={{fontSize:13,marginTop:12,lineHeight:1.9}}>
-    {Object.entries(diagnostics.checks??{}).map(([name,ready])=><p key={name} style={{margin:0}}>{ready?'Configurado':'Pendiente'} · {name}</p>)}
+    {Object.entries(diagnostics.checks??{}).map(([name,ready])=><p key={name} style={{margin:0}}>{ready?'Configurado':'Pendiente'} · {({
+    tokenConfigured:'Credencial de Mercado Pago',
+    webhookSignatureSecretConfigured:'Firma de seguridad del webhook',
+    buyerAccountIdentified:'Comprador de prueba identificado (User ID)',
+    payerEmailVerified:'Correo del pagador para suscripciones',
+    sandboxConfirmed:'Credenciales confirmadas para prueba de suscripciones',
+    checkoutEnabled:'Checkout de prueba',
+    recordingEnabled:'Registro de pagos verificados',
+    tenantActivationEnabled:'Activación de empresa'
+   } as Record<string,string>)[name]||name}</p>)}
     <p style={{fontWeight:700,marginTop:10}}>Registros</p>
     {Object.entries(diagnostics.counts??{}).map(([name,n])=><p key={name} style={{margin:0}}>{name}: {n}</p>)}
     <p style={{color:'#8a6516'}}>Esta revisión no habilita pagos ni confirma transacciones.</p>
@@ -87,7 +96,7 @@ export default function MercadoPagoAdminPage(){
    <h2 style={{fontSize:19}}>Preparación de pagos de prueba</h2>
    <p style={{fontSize:13,color:'#586477',lineHeight:1.6}}>Estado de configuración en Railway staging. Una credencial autenticada no confirma que sea de prueba.</p>
    {[
-    ['Comprador de prueba configurado',status.sandboxSetup.testBuyerConfigured],
+    ['Correo del pagador de prueba configurado',status.sandboxSetup.testBuyerConfigured],
     ['Credenciales de pruebas confirmadas',status.sandboxSetup.sandboxCredentialsConfirmed],
     ['Checkout de prueba habilitado',status.sandboxSetup.sandboxCheckoutEnabled],
     ['Pagos operativos',status.sandboxSetup.paymentsOperational],
