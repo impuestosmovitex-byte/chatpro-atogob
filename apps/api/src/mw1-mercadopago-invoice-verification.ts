@@ -17,3 +17,20 @@ export function validateMPSubscriptionInvoice(value:unknown,expected:{invoiceId:
  return {invoiceId:expected.invoiceId,subscriptionId:expected.subscriptionId,
   status:String(invoice.status??'unknown'),paymentConfirmed:false};
 }
+
+/** Require accredited invoice payment plus matching amount before payment lookup. */
+export function extractAccreditedInvoicePayment(value:unknown,expected:{
+ invoiceId:string;subscriptionId:string;amountCop:number;
+}){
+ validateMPSubscriptionInvoice(value,{invoiceId:expected.invoiceId,subscriptionId:expected.subscriptionId});
+ const invoice=value as Record<string,unknown>;
+ const payment=invoice.payment;
+ if(!payment||typeof payment!=='object'||Array.isArray(payment))throw new Error('Invoice without payment.');
+ const p=payment as Record<string,unknown>;
+ if(p.status!=='approved'||p.status_detail!=='accredited')throw new Error('Invoice payment not accredited.');
+ if(invoice.currency_id!=='COP'||Number(invoice.transaction_amount)!==expected.amountCop)
+  throw new Error('Invoice amount mismatch.');
+ const paymentId=String(p.id??'');
+ if(!/^[0-9]{1,30}$/.test(paymentId))throw new Error('Invalid invoice payment identifier.');
+ return {paymentId,subscriptionId:expected.subscriptionId,amountCop:expected.amountCop};
+}
