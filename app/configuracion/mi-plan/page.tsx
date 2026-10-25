@@ -104,7 +104,7 @@ export default function MiPlan(){
         {typeof checkoutCheck.firstMonthCop==='number'&&<p>Primer mes: {cop(checkoutCheck.firstMonthCop)} · Segundo mes (50 %): {cop(checkoutCheck.secondMonthCop??0)} · Tercer mes y siguientes: {cop(checkoutCheck.thirdMonthCop??checkoutCheck.firstMonthCop)}</p>}
         {checkoutCheck.error&&<p>{checkoutCheck.error}</p>}
         {checkoutCheck.reasons?.map((reason,i)=><p key={i} style={{margin:'5px 0'}}>• {reason}</p>)}
-       </div>
+       </div>}
       </> : <>
        <p style={{marginTop:12}}>Proveedor: {data.subscription.provider==='mercadopago'?'Mercado Pago':'Wompi'}</p>
        <p>Estado de suscripción: {({awaiting_authorization:'Pendiente de autorización',pending:'Pendiente',active:'Activa',past_due:'Pago vencido',grace_period:'Período de gracia',paused:'Pausada',cancelled:'Cancelada',expired:'Vencida'} as Record<string,string>)[data.subscription.status]||'Por verificar'}</p>
