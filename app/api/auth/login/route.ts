@@ -39,9 +39,13 @@ function config() {
 }
 
 function cleanCompany(value: unknown): string {
-  return typeof value === 'string'
-    ? value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
-    : '';
+  if(typeof value!=='string')return '';
+  const raw=value.trim().toLowerCase();
+  // Never silently rewrite an invalid company name into another tenant's slug.
+  if(!raw)return '';
+  if(!/^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/.test(raw))
+    throw new Error('Identificador de empresa inválido.');
+  return raw;
 }
 
 function companyFrom(body: LoginBody): string {
