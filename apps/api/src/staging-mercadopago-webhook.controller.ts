@@ -1,4 +1,5 @@
-import {getMPSubscriptionInvoiceReadOnly,validateMPSubscriptionInvoice} from './mw1-mercadopago-invoice-verification';
+import {getMercadoPagoPaymentReadOnly} from './mw1-mercadopago-payment-verification';
+import {getMPSubscriptionInvoiceReadOnly,validateMPSubscriptionInvoice,extractAccreditedInvoicePayment} from './mw1-mercadopago-invoice-verification';
 import {fetchProviderPreapprovalReadOnly,validateProviderPreapproval} from './mw1-mercadopago-reconciliation';
 import {Controller,Headers,Post,Get,Query,ServiceUnavailableException,UnauthorizedException,ForbiddenException,Body} from '@nestjs/common';
 import {createHmac,timingSafeEqual} from 'node:crypto';
@@ -56,8 +57,23 @@ export class StagingMercadoPagoWebhookController {
      .select('id,provider_subscription_id').eq('provider_subscription_id',providerSubscriptionId).maybeSingle();
     if(!intent)return {ok:false,reason:'invoice_not_linked_to_mw1_checkout',paymentConfirmed:false};
     const checked=validateMPSubscriptionInvoice(invoice,{invoiceId:event.provider_data_id,subscriptionId:intent.provider_subscription_id});
-    return {ok:true,invoiceId:checked.invoiceId,subscriptionId:checked.subscriptionId,
+    // A paid invoice still requires a separate provider payment GET.
+    try{
+     const expected=extractAccreditedInvoicePayment(invoice,{invoiceId:checked.invoiceId,
+       subscriptionId:checked.subscriptionId,amountCop:Number((invoice as Record<string,unknown>).transaction_amount)});
+     const payment=await getMercadoPagoPaymentReadOnly(token,expected.paymentId);
+     if(!payment||typeof payment!=='object'||Array.isArray(payment))
+       throw new Error('Payment missing.');
+     const p=payment as Record<string,unknown>;
+     if(String(p.id)!==expected.paymentId||p.status!=='approved'||p.status_detail!=='accredited'||
+        p.currency_id!=='COP'||Number(p.transaction_amount)!==expected.amountCop)
+       throw new Error('Payment verification did not match invoice.');
+     return {ok:true,invoiceId:checked.invoiceId,subscriptionId:checked.subscriptionId,
+       invoiceStatus:checked.status,paymentConfirmed:true,recordUpdated:false};
+    }catch{
+     return {ok:true,invoiceId:checked.invoiceId,subscriptionId:checked.subscriptionId,
       invoiceStatus:checked.status,paymentConfirmed:false,recordUpdated:false};
+    }
    }catch{return {ok:false,reason:'invoice_reconciliation_failed',paymentConfirmed:false,recordUpdated:false};}
   }
   if(!event?.signature_verified||event.provider_event_type!=='subscription_preapproval')
