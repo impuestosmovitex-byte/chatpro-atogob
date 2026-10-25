@@ -191,6 +191,59 @@ export class StagingMercadoPagoWebhookController {
    tenantActivated:false,changesApplied:false};
  }
 
+ @Post('activate-verified-subscription')
+ async activateVerifiedSubscription(
+  @Headers('x-chatpro-inbox-key') key='',
+  @Body() input:unknown,
+ ){
+  if(process.env.MW1_STAGING_MODE!=='true'||process.env.MW1_MP_TENANT_ACTIVATION_ENABLED!=='true')
+   throw new ForbiddenException('Activación automática deshabilitada.');
+  if(!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY)
+   throw new UnauthorizedException();
+  if(!input||typeof input!=='object'||Array.isArray(input))
+   throw new ForbiddenException('Solicitud inválida.');
+  const values=input as Record<string,unknown>;
+  const userId=String(values.userId??''),subscriptionId=String(values.subscriptionId??'');
+  if(!/^[0-9a-f-]{36}$/i.test(userId)||!/^[0-9a-f-]{36}$/i.test(subscriptionId))
+   throw new ForbiddenException('Identificadores inválidos.');
+  const db=this.supabase.getClient();
+  const {data:admin}=await db.from('platform_admins').select('user_id')
+   .eq('user_id',userId).eq('active',true).maybeSingle();
+  if(!admin)throw new ForbiddenException('Solo superadministrador.');
+  const {data:sub,error:subError}=await db.from('mw1_billing_subscriptions')
+   .select('id,company_id,provider_subscription_id,plan_key,amount_cop,status,verified_paid_cycles,authorization_confirmed_at')
+   .eq('id',subscriptionId).maybeSingle();
+  if(subError||!sub||!sub.provider_subscription_id)
+   throw new ForbiddenException('Suscripción inválida.');
+  const {count,error:countError}=await db.from('mw1_billing_transactions')
+   .select('id',{count:'exact',head:true}).eq('subscription_id',subscriptionId)
+   .eq('company_id',sub.company_id).eq('status','approved');
+  if(countError)throw new ServiceUnavailableException('No se pudo validar el historial de pagos.');
+  const readiness=evaluateMW1ActivationReadiness({
+   subscriptionId:sub.id,companyId:sub.company_id,
+   providerSubscriptionId:sub.provider_subscription_id,
+   subscriptionStatus:sub.status,verifiedPaidCycles:sub.verified_paid_cycles,
+   approvedPaymentCount:count??0,
+   providerAuthorizationConfirmed:!!sub.authorization_confirmed_at
+  });
+  if(!readiness.eligible)throw new ForbiddenException('Suscripción sin requisitos de activación.');
+  const token=process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
+  if(!token)throw new ServiceUnavailableException('Mercado Pago no configurado.');
+  const {data:intent}=await db.from('mw1_checkout_intents')
+   .select('id,company_id,provider_subscription_id,monthly_amount_cop')
+   .eq('company_id',sub.company_id).eq('provider_subscription_id',sub.provider_subscription_id).maybeSingle();
+  if(!intent||intent.monthly_amount_cop!==sub.amount_cop)
+   throw new ForbiddenException('Contratación no coincide.');
+  const remote=await fetchProviderPreapprovalReadOnly(token,sub.provider_subscription_id);
+  const verified=validateProviderPreapproval(remote,{
+   providerSubscriptionId:sub.provider_subscription_id,intentId:intent.id,monthlyAmountCop:intent.monthly_amount_cop
+  });
+  if(verified.status!=='authorized')throw new ForbiddenException('Mercado Pago aún no autorizó la suscripción.');
+  const {data:result,error}=await db.rpc('mw1_activate_paid_subscription_internal',{p_subscription_id:subscriptionId});
+  if(error)throw new ServiceUnavailableException('No fue posible activar el plan verificado.');
+  return {ok:true,result,providerAuthorizationConfirmed:true};
+ }
+
  @Post('webhook')
  async receive(
   @Headers('x-signature') signature='',
