@@ -36,7 +36,8 @@ export class StagingMercadoPagoWebhookController {
   return {ok:true,environment:'staging',checks:{
    tokenConfigured:!!process.env.MERCADOPAGO_ACCESS_TOKEN?.trim(),
    webhookSignatureSecretConfigured:!!process.env.MW1_MP_WEBHOOK_SECRET?.trim(),
-   buyerConfigured:!!process.env.MW1_MP_TEST_PAYER_EMAIL?.trim(),
+   buyerAccountIdentified:process.env.MW1_MP_TEST_BUYER_ID==='3791682864',
+   payerEmailVerified:!!process.env.MW1_MP_TEST_PAYER_EMAIL?.trim(),
    sandboxConfirmed:process.env.MW1_MP_SANDBOX_CREDENTIALS_CONFIRMED==='true',
    checkoutEnabled:process.env.MW1_MP_TEST_CHECKOUT_ENABLED==='true',
    recordingEnabled:process.env.MW1_MP_VERIFIED_RECORDING_ENABLED==='true',
