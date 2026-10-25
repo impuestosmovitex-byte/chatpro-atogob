@@ -15,6 +15,15 @@ export default function MiPlan(){
  const [extraSeats,setExtraSeats]=useState(1);
  const [notice,setNotice]=useState('');
  const [working,setWorking]=useState(false);
+ const [checkoutCheck,setCheckoutCheck]=useState<{ok?:boolean;checkoutEnabled?:boolean;firstMonthCop?:number|null;secondMonthCop?:number|null;reasons?:string[];error?:string}|null>(null);
+ const [checkingCheckout,setCheckingCheckout]=useState(false);
+ async function checkCheckout(){
+  setCheckingCheckout(true);setCheckoutCheck(null);
+  try{const response=await fetch('/api/mi-plan/checkout-readiness',{cache:'no-store'});const body=await response.json();setCheckoutCheck(response.ok?body:{ok:false,error:body.error||'No se pudo comprobar la contratación.'});}
+  catch{setCheckoutCheck({ok:false,error:'No se pudo consultar el estado de contratación.'});}
+  finally{setCheckingCheckout(false);}
+ }
+
  async function submitRequest(type:'change_plan'|'cancel_renewal'|'extra_users'){
   if(working)return;
   if(type==='cancel_renewal'&&!window.confirm('¿Registrar una solicitud de cancelación de renovación? No cancela el servicio inmediatamente.'))return;
@@ -89,7 +98,13 @@ export default function MiPlan(){
       {!data.subscription ? <>
        <p style={{margin:'12px 0'}}>Aún no tienes un método de pago vinculado a una suscripción de MW1.</p>
        <p style={{color:'#657184',lineHeight:1.6}}>Cuando activemos Mercado Pago podrás autorizar tu tarjeta en su sitio seguro. MW1 no almacenará el número completo ni el CVV.</p>
-       <button type="button" disabled style={{marginTop:14,padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#67561e',fontWeight:800,cursor:'not-allowed'}}>Registrar tarjeta · Próximamente</button>
+       <button type="button" onClick={()=>void checkCheckout()} disabled={checkingCheckout} style={{marginTop:14,padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#172235',fontWeight:800,cursor:checkingCheckout?'wait':'pointer'}}>{checkingCheckout?'Comprobando…':'Consultar estado de contratación'}</button>
+       {checkoutCheck&&<div role="status" style={{marginTop:14,padding:14,borderRadius:9,background:'#f6f7fa',fontSize:13,lineHeight:1.7}}>
+        <strong>{checkoutCheck.checkoutEnabled?'Contratación disponible':'Registro de tarjeta pendiente de habilitación'}</strong>
+        {typeof checkoutCheck.firstMonthCop==='number'&&<p>Primer mes: {cop(checkoutCheck.firstMonthCop)} · Segundo mes: {cop(checkoutCheck.secondMonthCop??0)}</p>}
+        {checkoutCheck.error&&<p>{checkoutCheck.error}</p>}
+        {checkoutCheck.reasons?.map((reason,i)=><p key={i} style={{margin:'5px 0'}}>• {reason}</p>)}
+       </div>
       </> : <>
        <p style={{marginTop:12}}>Proveedor: {data.subscription.provider==='mercadopago'?'Mercado Pago':'Wompi'}</p>
        <p>Estado de suscripción: {({awaiting_authorization:'Pendiente de autorización',pending:'Pendiente',active:'Activa',past_due:'Pago vencido',grace_period:'Período de gracia',paused:'Pausada',cancelled:'Cancelada',expired:'Vencida'} as Record<string,string>)[data.subscription.status]||'Por verificar'}</p>
