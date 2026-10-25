@@ -17,6 +17,13 @@ const descriptions:Record<string,string>={
 export default function MercadoPagoAdminPage(){
  const [status,setStatus]=useState<Status|null>(null);
  const [busy,setBusy]=useState(false);
+ const [diagnostics,setDiagnostics]=useState<{ok?:boolean;checks?:Record<string,boolean>;counts?:Record<string,number>;error?:string}|null>(null);
+ async function checkDiagnostics(){
+  try{const response=await fetch('/api/platform-admin/mercadopago-events?diagnostic=1',{cache:'no-store'});
+   const data=await response.json();setDiagnostics(response.ok?data:{ok:false,error:data.error||'Error de diagnóstico'});
+  }catch{setDiagnostics({ok:false,error:'No se pudo consultar el diagnóstico.'});}
+ }
+
  const [eventRows,setEventRows]=useState<Array<{id:string;provider_event_type:string;reconciliation_status:string;received_at:string}>>([]);
  const [eventError,setEventError]=useState('');
  const [checkingEvent,setCheckingEvent]=useState<string|null>(null);
@@ -53,6 +60,18 @@ export default function MercadoPagoAdminPage(){
   <p style={{fontSize:12,fontWeight:800,color:'#8e6b0c'}}>CONFIGURACIÓN / PASARELA DE PAGOS</p>
   <h1 style={{fontSize:30,margin:'10px 0'}}>Mercado Pago</h1>
   <p style={{color:'#586477',lineHeight:1.7}}>Comprueba la credencial desde el superadministrador, sin mostrar claves ni generar cobros. El estado de la conexión no autoriza pagos.</p>
+  <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
+   <h2 style={{fontSize:19}}>Diagnóstico de contratación · staging</h2>
+   <p style={{fontSize:13,color:'#586477'}}>Comprueba requisitos y registros sin mostrar secretos ni realizar cobros.</p>
+   <button type="button" onClick={()=>void checkDiagnostics()} style={{padding:'10px 14px',background:'#fff',border:'1px solid #c9cfd8',borderRadius:8}}>Revisar preparación</button>
+   {diagnostics?.error&&<p role="alert">{diagnostics.error}</p>}
+   {diagnostics?.ok&&<div style={{fontSize:13,marginTop:12,lineHeight:1.9}}>
+    {Object.entries(diagnostics.checks??{}).map(([name,ready])=><p key={name} style={{margin:0}}>{ready?'Configurado':'Pendiente'} · {name}</p>)}
+    <p style={{fontWeight:700,marginTop:10}}>Registros</p>
+    {Object.entries(diagnostics.counts??{}).map(([name,n])=><p key={name} style={{margin:0}}>{name}: {n}</p>)}
+    <p style={{color:'#8a6516'}}>Esta revisión no habilita pagos ni confirma transacciones.</p>
+   </div>}
+  </section>
   <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:24}}>
    <h2 style={{fontSize:19}}>Conexión de staging</h2>
    <p style={{color:'#586477',fontSize:14}}>Proveedor: Mercado Pago · Suscripciones · Entorno de pruebas</p>
