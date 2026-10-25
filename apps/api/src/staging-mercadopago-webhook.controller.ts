@@ -1,3 +1,4 @@
+import {getMPSubscriptionInvoiceReadOnly,validateMPSubscriptionInvoice} from './mw1-mercadopago-invoice-verification';
 import {fetchProviderPreapprovalReadOnly,validateProviderPreapproval} from './mw1-mercadopago-reconciliation';
 import {Controller,Headers,Post,Get,Query,ServiceUnavailableException,UnauthorizedException,ForbiddenException,Body} from '@nestjs/common';
 import {createHmac,timingSafeEqual} from 'node:crypto';
@@ -43,6 +44,22 @@ export class StagingMercadoPagoWebhookController {
   if(!admin)throw new ForbiddenException('Solo superadministrador.');
   if(!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(eventId))throw new ForbiddenException('Evento inválido.');
   const {data:event}=await db.from('mw1_mp_webhook_inbox').select('provider_data_id,provider_event_type,signature_verified').eq('id',eventId).maybeSingle();
+  if(event?.signature_verified&&event.provider_event_type==='subscription_authorized_payment'){
+   const token=process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
+   if(!token)throw new ServiceUnavailableException('Mercado Pago no configurado.');
+   try{
+    const invoice=await getMPSubscriptionInvoiceReadOnly(token,event.provider_data_id);
+    if(!invoice||typeof invoice!=='object'||!('preapproval_id' in invoice))
+     return {ok:false,reason:'invoice_has_no_subscription_reference',paymentConfirmed:false};
+    const providerSubscriptionId=String((invoice as {preapproval_id:unknown}).preapproval_id??'');
+    const {data:intent}=await db.from('mw1_checkout_intents')
+     .select('id,provider_subscription_id').eq('provider_subscription_id',providerSubscriptionId).maybeSingle();
+    if(!intent)return {ok:false,reason:'invoice_not_linked_to_mw1_checkout',paymentConfirmed:false};
+    const checked=validateMPSubscriptionInvoice(invoice,{invoiceId:event.provider_data_id,subscriptionId:intent.provider_subscription_id});
+    return {ok:true,invoiceId:checked.invoiceId,subscriptionId:checked.subscriptionId,
+      invoiceStatus:checked.status,paymentConfirmed:false,recordUpdated:false};
+   }catch{return {ok:false,reason:'invoice_reconciliation_failed',paymentConfirmed:false,recordUpdated:false};}
+  }
   if(!event?.signature_verified||event.provider_event_type!=='subscription_preapproval')
    return {ok:false,reason:'not_supported_for_read_only_subscription_check',paymentConfirmed:false};
   const {data:intent}=await db.from('mw1_checkout_intents').select('id,provider_subscription_id,monthly_amount_cop')
