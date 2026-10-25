@@ -5,7 +5,7 @@ const slug='empresa-a';
 function fixture({active=true,membershipActive=true,roleCompany='company-a',company='company-a',membershipCompany='company-a'}={}){
  const calls:Array<{table:string;filters:Record<string,unknown>}>=[];
  const rows:Record<string,any>={
-  companies:company==='company-a'?{id:'company-a',name:'Empresa A',slug}:null,
+  companies:company==='company-a'?{id:'company-a',name:'Empresa A',slug,status:'active'}:null,
   app_profiles:{user_id:'user-1',full_name:'Prueba',login_identifier:'OWNER01',password_hash:'stored',active},
   company_memberships:{company_id:membershipCompany, user_id:'user-1',role_id:'role-1',active:membershipActive},
   app_roles:{id:'role-1',key:'owner',name:'Propietario',company_id:roleCompany},
