@@ -125,33 +125,21 @@ export default function MiPlan(){
       <p style={{fontSize:12,color:'#977313',fontWeight:800}}>MÉTODO DE PAGO</p>
       <h2 style={{fontSize:23,margin:'8px 0'}}>Tarjeta y renovación automática</h2>
       {!data.subscription ? <>
-       <p style={{margin:'12px 0'}}>Aún no tienes un método de pago vinculado a una suscripción de MW1.</p>
-       <p style={{color:'#657184',lineHeight:1.6}}>Cuando activemos Mercado Pago podrás autorizar tu tarjeta en su sitio seguro. MW1 no almacenará el número completo ni el CVV.</p>
-       <button type="button" onClick={()=>void checkCheckout()} disabled={checkingCheckout} style={{marginTop:14,padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#172235',fontWeight:800,cursor:checkingCheckout?'wait':'pointer'}}>{checkingCheckout?'Comprobando…':'Consultar estado de contratación'}</button>
-       <button type="button" onClick={()=>void prepareIntent()} disabled={preparingIntent} style={{margin:'12px 0 0 10px',padding:'12px 18px',border:'1px solid #d3d9e1',borderRadius:9,background:'#fff',fontWeight:750,cursor:preparingIntent?'wait':'pointer'}}>{preparingIntent?'Preparando…':'Preparar mi contratación'}</button>
-       <div style={{marginTop:16,padding:16,border:'1px dashed #d1d9e5',borderRadius:10}}>
-        <strong>Autorización Mercado Pago · Solo pruebas</strong>
-        <p style={{fontSize:13,color:'#586477',lineHeight:1.5}}>El botón solo funcionará cuando se habiliten las credenciales y el comprador de prueba autorizados. No ingreses tarjetas ni correos de clientes reales.</p>
-        <input type="email" value={testPayerEmail} onChange={e=>setTestPayerEmail(e.target.value)} placeholder="Correo del comprador de prueba" aria-label="Correo del comprador de prueba" style={{padding:11,border:'1px solid #d1d9e5',borderRadius:8,maxWidth:330,width:'100%'}}/>
-        <button type="button" onClick={()=>void authorizeSandbox()} disabled={!testPayerEmail||authorizing} style={{margin:'10px 0 0',display:'block',padding:'11px 15px',border:0,borderRadius:8,background:'#f4bf00',fontWeight:800,cursor:'pointer'}}>{authorizing?'Verificando entorno…':'Abrir autorización de prueba'}</button>
-        {authorizationNotice&&<p role="status" style={{fontSize:13}}>{authorizationNotice}</p>}
-       </div>
-       {intentMessage&&<p role="status" style={{fontSize:13,color:'#586477'}}>{intentMessage}</p>}
-       {checkoutCheck&&<div role="status" style={{marginTop:14,padding:14,borderRadius:9,background:'#f6f7fa',fontSize:13,lineHeight:1.7}}>
-        <strong>{checkoutCheck.checkoutEnabled?'Contratación disponible':'Registro de tarjeta pendiente de habilitación'}</strong>
-        {typeof checkoutCheck.firstMonthCop==='number'&&<p>Primer mes: {cop(checkoutCheck.firstMonthCop)} · Segundo mes (50 %): {cop(checkoutCheck.secondMonthCop??0)} · Tercer mes y siguientes: {cop(checkoutCheck.thirdMonthCop??checkoutCheck.firstMonthCop)}</p>}
-        {checkoutCheck.error&&<p>{checkoutCheck.error}</p>}
-        {checkoutCheck.reasons?.map((reason,i)=><p key={i} style={{margin:'5px 0'}}>• {reason}</p>)}
-       </div>}
-      </> : <>
+       <p style={{margin:'12px 0',color:'#586477'}}>Agrega una tarjeta para pagar tu plan y renovar automáticamente cada mes.</p>
+       {(()=>{const p=data.availablePlans?.find(p=>p.plan_key===data.plan?.plan_key);return p?<div style={{background:'#f7f8fa',borderRadius:12,padding:16,margin:'16px 0'}}>
+        <strong style={{fontSize:16}}>Plan {commercialName(p.plan_key)}</strong>
+        <p style={{fontSize:22,fontWeight:800,margin:'8px 0'}}>{cop(p.price_cop)} <span style={{fontSize:13,fontWeight:400,color:'#657184'}}>/ mes</span></p>
+        <p style={{fontSize:13,color:'#586477'}}>Primer mes {cop(p.price_cop)} · Segundo mes {cop(Math.round(p.price_cop/2))} (50 % de descuento) · Desde el tercer mes {cop(p.price_cop)}</p>
+       </div>:<p style={{color:'#755600'}}>El precio de tu plan debe estar publicado antes de suscribirte.</p>;})()}
+       <button type="button" disabled aria-describedby="mw1-payment-status" style={{width:'100%',maxWidth:400,padding:'14px 18px',border:0,borderRadius:10,background:'#e9d99f',color:'#615124',fontWeight:800,cursor:'not-allowed'}}>Agregar tarjeta y suscribirme</button>
+       <p id="mw1-payment-status" style={{fontSize:13,color:'#657184',marginTop:10}}>Pago seguro mediante Mercado Pago. Esta opción estará disponible cuando finalicen las pruebas de seguridad y renovación.</p>
+            </> : <>
        <p style={{marginTop:12}}>Proveedor: {data.subscription.provider==='mercadopago'?'Mercado Pago':'Wompi'}</p>
        <p>Estado de suscripción: {({awaiting_authorization:'Pendiente de autorización',pending:'Pendiente',active:'Activa',past_due:'Pago vencido',grace_period:'Período de gracia',paused:'Pausada',cancelled:'Cancelada',expired:'Vencida'} as Record<string,string>)[data.subscription.status]||'Por verificar'}</p>
        <p>Renovación: {data.subscription.billing_cycle==='monthly'?'Mensual':'Anual'}</p>
        <p>Próximo cobro: {data.subscription.next_billing_at?new Date(data.subscription.next_billing_at).toLocaleDateString('es-CO'):'Sin fecha confirmada'}</p>
        <p>Cancelación al finalizar el período: {data.subscription.cancel_at_period_end?'Registrada':'No registrada'}</p>
       </>}
-      <p style={{marginTop:17,padding:'12px 14px',background:'#fff8e3',borderRadius:9,fontSize:13,color:'#755600'}}><strong>Estado de integración:</strong> Mercado Pago en preparación. Antes de aceptar tarjetas se deben publicar las tarifas, configurar credenciales de prueba, verificar las notificaciones y superar las pruebas de renovación. No compartas datos bancarios en este sistema.</p>
-      <p style={{marginTop:17,fontSize:13,color:'#657184'}}>La renovación automática todavía no está operativa en este piloto. Nunca ingreses datos bancarios en el chat o soporte.</p>
     </article>
     <article style={{background:'white',padding:25,borderRadius:15,border:'1px solid #e7e1d1'}}>
       <h2>Historial de pagos</h2>
