@@ -54,13 +54,13 @@ export class StagingMercadoPagoWebhookController {
      return {ok:false,reason:'invoice_has_no_subscription_reference',paymentConfirmed:false};
     const providerSubscriptionId=String((invoice as {preapproval_id:unknown}).preapproval_id??'');
     const {data:intent}=await db.from('mw1_checkout_intents')
-     .select('id,provider_subscription_id').eq('provider_subscription_id',providerSubscriptionId).maybeSingle();
+     .select('id,provider_subscription_id,monthly_amount_cop').eq('provider_subscription_id',providerSubscriptionId).maybeSingle();
     if(!intent)return {ok:false,reason:'invoice_not_linked_to_mw1_checkout',paymentConfirmed:false};
     const checked=validateMPSubscriptionInvoice(invoice,{invoiceId:event.provider_data_id,subscriptionId:intent.provider_subscription_id});
     // A paid invoice still requires a separate provider payment GET.
     try{
      const expected=extractAccreditedInvoicePayment(invoice,{invoiceId:checked.invoiceId,
-       subscriptionId:checked.subscriptionId,amountCop:Number((invoice as Record<string,unknown>).transaction_amount)});
+       subscriptionId:checked.subscriptionId,amountCop:intent.monthly_amount_cop});
      const payment=await getMercadoPagoPaymentReadOnly(token,expected.paymentId);
      if(!payment||typeof payment!=='object'||Array.isArray(payment))
        throw new Error('Payment missing.');
