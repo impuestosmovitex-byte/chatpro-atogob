@@ -22,3 +22,24 @@ export function buildMW1PreapprovalPayload(input:MW1PreapprovalInput){
    status:'pending',
  };
 }
+
+/** Validate provider response before storing ids or showing authorization links.
+ * Never treat an init_point or a browser return as payment confirmation.
+ */
+export function parseMW1PreapprovalResponse(value:unknown){
+ if(!value||typeof value!=='object')throw new Error('Respuesta de Mercado Pago inválida.');
+ const data=value as Record<string,unknown>;
+ const id=typeof data.id==='string'?data.id.trim():'';
+ if(!/^[a-zA-Z0-9_-]{8,120}$/.test(id))throw new Error('Suscripción sin identificador válido.');
+ const raw=typeof data.init_point==='string'?data.init_point:'';
+ if(!raw)throw new Error('Mercado Pago no devolvió enlace de autorización.');
+ let url:URL;
+ try{url=new URL(raw)}catch{throw new Error('Enlace de autorización inválido.');}
+ const host=url.hostname.toLowerCase();
+ if(url.protocol!=='https:'||url.username||url.password||
+   !(host==='mercadopago.com'||host.endsWith('.mercadopago.com')||
+     host==='mercadopago.com.co'||host.endsWith('.mercadopago.com.co')||
+     host==='mercadolibre.com'||host.endsWith('.mercadolibre.com')))
+   throw new Error('El enlace no pertenece a Mercado Pago.');
+ return {providerSubscriptionId:id,authorizationUrl:url.toString(),paymentVerified:false};
+}
