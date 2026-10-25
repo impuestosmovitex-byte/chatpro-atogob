@@ -1,3 +1,4 @@
+import {auditBillingContract} from './mw1-billing-contract-audit';
 import {assessMW1RenewalSafety} from './mw1-billing-renewal-safety';
 import {evaluateMW1ActivationReadiness} from './mw1-billing-activation-readiness';
 import {getMercadoPagoPaymentReadOnly,validateMW1Payment} from './mw1-mercadopago-payment-verification';
@@ -45,6 +46,29 @@ export class StagingMercadoPagoWebhookController {
   },counts:{checkoutIntents:intents.count??0,signedEvents:events.count??0,
    billingSubscriptions:subs.count??0,billingTransactions:txs.count??0},
    realChargesEnabled:false,diagnosticOnly:true};
+ }
+
+ @Get('contract-audit')
+ async contractAudit(@Headers('x-chatpro-inbox-key') key='',@Query('user') userId=''){
+  if(process.env.MW1_STAGING_MODE!=='true'||!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY)
+   throw new UnauthorizedException();
+  const db=this.supabase.getClient();
+  const {data:admin}=await db.from('platform_admins').select('user_id').eq('user_id',userId).eq('active',true).maybeSingle();
+  if(!admin)throw new ForbiddenException('Solo superadministrador.');
+  const {data:plans,error}=await db.from('platform_published_plan_prices')
+   .select('plan_key,price_cop').in('plan_key',['inicial','pro','empresa']);
+  if(error)throw new ServiceUnavailableException('Tarifas no disponibles.');
+  const audits=(plans??[]).map(plan=>auditBillingContract({
+   planKey:plan.plan_key,baseAmountCop:plan.price_cop,
+   verifiedPaidCycles:0,introductoryDiscountUsed:false,providerNextAmountCop:null,
+   payerEmailConfigured:!!process.env.MW1_MP_TEST_PAYER_EMAIL?.trim(),
+   buyerIdConfigured:/^[0-9]+$/.test(process.env.MW1_MP_TEST_BUYER_ID?.trim()??''),
+   sandboxConfirmed:process.env.MW1_MP_SANDBOX_CREDENTIALS_CONFIRMED==='true',
+   webhookSecretConfigured:!!process.env.MW1_MP_WEBHOOK_SECRET?.trim(),
+   checkoutEnabled:process.env.MW1_MP_TEST_CHECKOUT_ENABLED==='true'
+  }));
+  return {ok:true,mode:'simulation_only',plans:audits,
+   notes:'No se crea ninguna suscripción ni se consulta una tarjeta. Los importes son una simulación contractual.'};
  }
 
  @Get('reconciliation-preview')
