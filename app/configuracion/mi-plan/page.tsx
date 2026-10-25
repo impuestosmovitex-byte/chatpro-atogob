@@ -17,6 +17,23 @@ export default function MiPlan(){
  const [working,setWorking]=useState(false);
  const [checkoutCheck,setCheckoutCheck]=useState<{ok?:boolean;checkoutEnabled?:boolean;firstMonthCop?:number|null;secondMonthCop?:number|null;thirdMonthCop?:number|null;reasons?:string[];error?:string}|null>(null);
  const [checkingCheckout,setCheckingCheckout]=useState(false);
+ const [testPayerEmail,setTestPayerEmail]=useState('');
+ const [authorizing,setAuthorizing]=useState(false);
+ const [authorizationNotice,setAuthorizationNotice]=useState('');
+ async function authorizeSandbox(){
+  if(authorizing)return;
+  setAuthorizing(true);setAuthorizationNotice('');
+  try{
+   const response=await fetch('/api/mi-plan/checkout-authorize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payerEmail:testPayerEmail})});
+   const result=await response.json();
+   if(!response.ok||!result.ok){setAuthorizationNotice(result.message||result.error||'Autorización de prueba no disponible.');return;}
+   if(typeof result.authorizationUrl==='string'&&result.authorizationUrl.startsWith('https://')){
+    window.location.assign(result.authorizationUrl);
+   }else setAuthorizationNotice('Mercado Pago no devolvió un enlace válido.');
+  }catch{setAuthorizationNotice('No se pudo preparar la autorización.');}
+  finally{setAuthorizing(false);}
+ }
+
  const [preparingIntent,setPreparingIntent]=useState(false);
  const [intentMessage,setIntentMessage]=useState('');
  async function prepareIntent(){
@@ -112,6 +129,13 @@ export default function MiPlan(){
        <p style={{color:'#657184',lineHeight:1.6}}>Cuando activemos Mercado Pago podrás autorizar tu tarjeta en su sitio seguro. MW1 no almacenará el número completo ni el CVV.</p>
        <button type="button" onClick={()=>void checkCheckout()} disabled={checkingCheckout} style={{marginTop:14,padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#172235',fontWeight:800,cursor:checkingCheckout?'wait':'pointer'}}>{checkingCheckout?'Comprobando…':'Consultar estado de contratación'}</button>
        <button type="button" onClick={()=>void prepareIntent()} disabled={preparingIntent} style={{margin:'12px 0 0 10px',padding:'12px 18px',border:'1px solid #d3d9e1',borderRadius:9,background:'#fff',fontWeight:750,cursor:preparingIntent?'wait':'pointer'}}>{preparingIntent?'Preparando…':'Preparar mi contratación'}</button>
+       <div style={{marginTop:16,padding:16,border:'1px dashed #d1d9e5',borderRadius:10}}>
+        <strong>Autorización Mercado Pago · Solo pruebas</strong>
+        <p style={{fontSize:13,color:'#586477',lineHeight:1.5}}>El botón solo funcionará cuando se habiliten las credenciales y el comprador de prueba autorizados. No ingreses tarjetas ni correos de clientes reales.</p>
+        <input type="email" value={testPayerEmail} onChange={e=>setTestPayerEmail(e.target.value)} placeholder="Correo del comprador de prueba" aria-label="Correo del comprador de prueba" style={{padding:11,border:'1px solid #d1d9e5',borderRadius:8,maxWidth:330,width:'100%'}}/>
+        <button type="button" onClick={()=>void authorizeSandbox()} disabled={!testPayerEmail||authorizing} style={{margin:'10px 0 0',display:'block',padding:'11px 15px',border:0,borderRadius:8,background:'#f4bf00',fontWeight:800,cursor:'pointer'}}>{authorizing?'Verificando entorno…':'Abrir autorización de prueba'}</button>
+        {authorizationNotice&&<p role="status" style={{fontSize:13}}>{authorizationNotice}</p>}
+       </div>
        {intentMessage&&<p role="status" style={{fontSize:13,color:'#586477'}}>{intentMessage}</p>}
        {checkoutCheck&&<div role="status" style={{marginTop:14,padding:14,borderRadius:9,background:'#f6f7fa',fontSize:13,lineHeight:1.7}}>
         <strong>{checkoutCheck.checkoutEnabled?'Contratación disponible':'Registro de tarjeta pendiente de habilitación'}</strong>
