@@ -1,3 +1,4 @@
+import {assessMW1RenewalSafety} from './mw1-billing-renewal-safety';
 import {evaluateMW1ActivationReadiness} from './mw1-billing-activation-readiness';
 import {getMercadoPagoPaymentReadOnly,validateMW1Payment} from './mw1-mercadopago-payment-verification';
 import {getMPSubscriptionInvoiceReadOnly,validateMPSubscriptionInvoice,extractAccreditedInvoicePayment} from './mw1-mercadopago-invoice-verification';
@@ -242,6 +243,42 @@ export class StagingMercadoPagoWebhookController {
   const {data:result,error}=await db.rpc('mw1_activate_paid_subscription_internal',{p_subscription_id:subscriptionId});
   if(error)throw new ServiceUnavailableException('No fue posible activar el plan verificado.');
   return {ok:true,result,providerAuthorizationConfirmed:true};
+ }
+
+ @Get('renewal-safety')
+ async renewalSafety(
+  @Headers('x-chatpro-inbox-key') key='',
+  @Query('user') userId='',
+  @Query('subscription') subscriptionId='',
+ ){
+  if(process.env.MW1_STAGING_MODE!=='true'||!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY)
+   throw new UnauthorizedException();
+  if(!/^[0-9a-f-]{36}$/i.test(userId)||!/^[0-9a-f-]{36}$/i.test(subscriptionId))
+   throw new ForbiddenException('Identificadores inválidos.');
+  const db=this.supabase.getClient();
+  const {data:admin}=await db.from('platform_admins').select('user_id').eq('user_id',userId).eq('active',true).maybeSingle();
+  if(!admin)throw new ForbiddenException('Solo superadministrador.');
+  const {data:sub,error}=await db.from('mw1_billing_subscriptions')
+   .select('provider_subscription_id,base_monthly_amount_cop,amount_cop,verified_paid_cycles,introductory_discount_used')
+   .eq('id',subscriptionId).maybeSingle();
+  if(error||!sub?.provider_subscription_id)throw new ForbiddenException('Suscripción no encontrada.');
+  const token=process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
+  if(!token)throw new ServiceUnavailableException('Mercado Pago no configurado.');
+  const remote=await fetchProviderPreapprovalReadOnly(token,sub.provider_subscription_id);
+  if(!remote||typeof remote!=='object'||Array.isArray(remote))
+   throw new ServiceUnavailableException('Respuesta del proveedor inválida.');
+  const p=remote as Record<string,unknown>, recurring=p.auto_recurring;
+  if(String(p.id??'')!==sub.provider_subscription_id||!recurring||typeof recurring!=='object'||Array.isArray(recurring))
+   throw new ForbiddenException('La suscripción no coincide con Mercado Pago.');
+  const amount=Number((recurring as Record<string,unknown>).transaction_amount);
+  const result=assessMW1RenewalSafety({
+   baseMonthlyAmountCop:sub.base_monthly_amount_cop??sub.amount_cop,
+   verifiedPaidCycles:sub.verified_paid_cycles,
+   introductoryDiscountUsed:sub.introductory_discount_used,
+   providerAmountCop:amount,
+   nextPaymentDate:typeof p.next_payment_date==='string'?p.next_payment_date:null
+  });
+  return {ok:true,...result,renewalWritesEnabled:false};
  }
 
  @Post('webhook')
