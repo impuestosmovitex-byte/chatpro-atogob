@@ -8,13 +8,14 @@ export async function GET(request:NextRequest){
  const base=process.env.CHATPRO_API_URL?.trim(),key=process.env.CHATPRO_INBOX_KEY?.trim();
  if(!base||!key)return NextResponse.json({ok:false,error:'Servicio no configurado.'},{status:503});
  const diagnostic=request.nextUrl.searchParams.get('diagnostic')==='1';
+ const audit=request.nextUrl.searchParams.get('audit')==='1';
  const event=request.nextUrl.searchParams.get('event');
  const subscription=request.nextUrl.searchParams.get('subscription');
- if((event&&subscription)||(diagnostic&&(event||subscription)))return NextResponse.json({ok:false,error:'Consulta ambigua.'},{status:400});
+ if((event&&subscription)||((diagnostic||audit)&&(event||subscription))||(diagnostic&&audit))return NextResponse.json({ok:false,error:'Consulta ambigua.'},{status:400});
  if(subscription&&!/^[0-9a-f-]{36}$/i.test(subscription))return NextResponse.json({ok:false,error:'Suscripción inválida.'},{status:400});
  if(event&&!/^[0-9a-f-]{36}$/i.test(event))return NextResponse.json({ok:false,error:'Evento inválido.'},{status:400});
  try{
-  const target=new URL(diagnostic?'/staging-mercadopago/integration-diagnostics':subscription?'/staging-mercadopago/activation-readiness':event?'/staging-mercadopago/reconciliation-check':'/staging-mercadopago/reconciliation-preview',base);
+  const target=new URL(audit?'/staging-mercadopago/contract-audit':diagnostic?'/staging-mercadopago/integration-diagnostics':subscription?'/staging-mercadopago/activation-readiness':event?'/staging-mercadopago/reconciliation-check':'/staging-mercadopago/reconciliation-preview',base);
   target.searchParams.set('user',session.userId);
   if(event)target.searchParams.set('event',event);
   if(subscription)target.searchParams.set('subscription',subscription);
