@@ -31,8 +31,12 @@ export class StagingMyPlanController {
     const reasons:string[]=[];
     if (!published || !Number.isSafeInteger(published.price_cop) || published.price_cop<=0) reasons.push('Precio del plan pendiente de publicación.');
     if (!process.env.MERCADOPAGO_ACCESS_TOKEN?.trim()) reasons.push('Credencial de Mercado Pago no configurada.');
-    if(process.env.MW1_MP_TEST_CHECKOUT_ENABLED!=='true') reasons.push('El checkout de prueba sigue bloqueado hasta validar el entorno y las notificaciones de pago.');
-    reasons.push('La autorización y las notificaciones de pago requieren pruebas de extremo a extremo.');
+    if(!/^[0-9]+$/.test(process.env.MW1_MP_TEST_BUYER_ID?.trim()??'')) reasons.push('Cuenta compradora de prueba sin identificar.');
+    if(!process.env.MW1_MP_TEST_PAYER_EMAIL?.trim()) reasons.push('Correo de pagador de prueba pendiente de validación.');
+    if(process.env.MW1_MP_SANDBOX_CREDENTIALS_CONFIRMED!=='true') reasons.push('Credenciales de prueba sin confirmar para suscripciones.');
+    if(!process.env.MW1_MP_WEBHOOK_SECRET?.trim()) reasons.push('Firma del webhook sin configurar.');
+    if(process.env.MW1_MP_TEST_CHECKOUT_ENABLED!=='true') reasons.push('El checkout de prueba permanece bloqueado.');
+    reasons.push('Faltan pruebas completas de cobro inicial y renovación con descuento.');
     return {ok:true,provider:'mercadopago',planKey:entitlement?.plan_key??null,
       publishedMonthlyCop:published?.price_cop??null,
       firstMonthCop:published?.price_cop??null,
