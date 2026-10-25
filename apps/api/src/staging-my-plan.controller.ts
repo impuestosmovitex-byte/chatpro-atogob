@@ -35,6 +35,8 @@ export class StagingMyPlanController {
       publishedMonthlyCop:published?.price_cop??null,
       firstMonthCop:published?.price_cop??null,
       secondMonthCop:published && Number.isSafeInteger(published.price_cop) ? Math.round(published.price_cop/2):null,
+      thirdMonthCop:published?.price_cop??null,
+      recurrence:'monthly',promotion:'second_month_50_percent_once',
       checkoutEnabled:false,reasons};
   }
 
