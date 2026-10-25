@@ -1,4 +1,4 @@
-import {getMercadoPagoPaymentReadOnly} from './mw1-mercadopago-payment-verification';
+import {getMercadoPagoPaymentReadOnly,validateMW1Payment} from './mw1-mercadopago-payment-verification';
 import {getMPSubscriptionInvoiceReadOnly,validateMPSubscriptionInvoice,extractAccreditedInvoicePayment} from './mw1-mercadopago-invoice-verification';
 import {fetchProviderPreapprovalReadOnly,validateProviderPreapproval} from './mw1-mercadopago-reconciliation';
 import {Controller,Headers,Post,Get,Query,ServiceUnavailableException,UnauthorizedException,ForbiddenException,Body} from '@nestjs/common';
@@ -93,6 +93,64 @@ export class StagingMercadoPagoWebhookController {
   }catch{
    return {ok:false,reason:'provider_reconciliation_failed',paymentConfirmed:false,recordUpdated:false};
   }
+ }
+
+ @Post('record-verified-invoice')
+ async recordVerifiedInvoice(
+  @Headers('x-chatpro-inbox-key') key='',
+  @Body() input:unknown,
+ ){
+  // Explicit kill switch. No automatic charges, tenant activation or webhook-driven writes.
+  if(process.env.MW1_STAGING_MODE!=='true'||process.env.MW1_MP_VERIFIED_RECORDING_ENABLED!=='true')
+   throw new ForbiddenException('El registro financiero está deshabilitado.');
+  if(!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY)
+   throw new UnauthorizedException();
+  if(!input||typeof input!=='object'||Array.isArray(input))throw new ForbiddenException('Solicitud inválida.');
+  const params=input as Record<string,unknown>;
+  const userId=String(params.userId??''),eventId=String(params.eventId??'');
+  if(!/^[0-9a-f-]{36}$/i.test(eventId)||!/^[0-9a-f-]{36}$/i.test(userId))
+   throw new ForbiddenException('Identificadores inválidos.');
+  const db=this.supabase.getClient();
+  const {data:admin,error:adminError}=await db.from('platform_admins').select('user_id').eq('user_id',userId).eq('active',true).maybeSingle();
+  if(adminError||!admin)throw new ForbiddenException('Solo superadministrador.');
+  const {data:event}=await db.from('mw1_mp_webhook_inbox').select('provider_data_id,provider_event_type,signature_verified')
+    .eq('id',eventId).maybeSingle();
+  if(!event?.signature_verified||event.provider_event_type!=='subscription_authorized_payment')
+   throw new ForbiddenException('No es una factura con notificación firmada.');
+  const token=process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
+  if(!token)throw new ServiceUnavailableException('Mercado Pago no configurado.');
+  const invoice=await getMPSubscriptionInvoiceReadOnly(token,event.provider_data_id);
+  if(!invoice||typeof invoice!=='object'||Array.isArray(invoice))
+   throw new ForbiddenException('Factura inválida.');
+  const providerSubscriptionId=String((invoice as Record<string,unknown>).preapproval_id??'');
+  const {data:intent}=await db.from('mw1_checkout_intents')
+   .select('id,company_id,provider_subscription_id,monthly_amount_cop')
+   .eq('provider_subscription_id',providerSubscriptionId).maybeSingle();
+  if(!intent)throw new ForbiddenException('Contratación no encontrada.');
+  const {data:subscription}=await db.from('mw1_billing_subscriptions')
+   .select('id,company_id,provider_subscription_id,amount_cop')
+   .eq('company_id',intent.company_id).eq('provider_subscription_id',providerSubscriptionId).maybeSingle();
+  if(!subscription||subscription.company_id!==intent.company_id)
+   throw new ForbiddenException('Suscripción no asociada a la empresa.');
+  // First cycle only. Discounted renewals need an independently verified expected amount.
+  if(subscription.amount_cop!==intent.monthly_amount_cop)
+   throw new ForbiddenException('Importe contractual distinto del esperado.');
+  const expected=extractAccreditedInvoicePayment(invoice,{invoiceId:event.provider_data_id,
+   subscriptionId:providerSubscriptionId,amountCop:intent.monthly_amount_cop});
+  const payment=await getMercadoPagoPaymentReadOnly(token,expected.paymentId);
+  validateMW1Payment(payment,{paymentId:expected.paymentId,
+   providerSubscriptionId,amountCop:intent.monthly_amount_cop});
+  const paidAt=(payment&&typeof payment==='object'&&'date_approved' in payment)
+    ?String((payment as {date_approved:unknown}).date_approved??''):'';
+  if(!paidAt||!Number.isFinite(Date.parse(paidAt)))
+   throw new ForbiddenException('El proveedor no confirmó la fecha de acreditación.');
+  const {data,error}=await db.rpc('mw1_record_verified_payment_internal',{
+   p_subscription_id:subscription.id,p_provider_payment_id:expected.paymentId,
+   p_amount_cop:expected.amountCop,p_paid_at:new Date(paidAt).toISOString()
+  });
+  if(error)throw new ServiceUnavailableException('No fue posible registrar el pago verificado.');
+  return {ok:true,result:data,providerPaymentId:expected.paymentId,
+   paymentConfirmed:true,tenantActivated:false};
  }
 
  @Post('webhook')
