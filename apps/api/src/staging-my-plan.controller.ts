@@ -30,7 +30,8 @@ export class StagingMyPlanController {
     const reasons:string[]=[];
     if (!published || !Number.isSafeInteger(published.price_cop) || published.price_cop<=0) reasons.push('Precio del plan pendiente de publicación.');
     if (!process.env.MERCADOPAGO_ACCESS_TOKEN?.trim()) reasons.push('Credencial de Mercado Pago no configurada.');
-    reasons.push('Checkout de autorización y notificaciones de pago pendientes de pruebas.');
+    if(process.env.MW1_MP_TEST_CHECKOUT_ENABLED!=='true') reasons.push('El checkout de prueba sigue bloqueado hasta validar el entorno y las notificaciones de pago.');
+    reasons.push('La autorización y las notificaciones de pago requieren pruebas de extremo a extremo.');
     return {ok:true,provider:'mercadopago',planKey:entitlement?.plan_key??null,
       publishedMonthlyCop:published?.price_cop??null,
       firstMonthCop:published?.price_cop??null,
@@ -71,6 +72,28 @@ export class StagingMyPlanController {
     const {data:intent,error}=await db.from('mw1_checkout_intents').insert({company_id:company.id,requested_by:userId,plan_key:entitlement.plan_key,monthly_amount_cop:published.price_cop}).select('id,status,monthly_amount_cop,plan_key,expires_at').single();
     if(error||!intent)throw new BadRequestException('No se pudo preparar la contratación. Vuelve a consultar el estado.');
     return {ok:true,intent,checkoutEnabled:false,message:'Solicitud preparada. Mercado Pago todavía no ha habilitado la autorización de tarjeta.'};
+  }
+
+  @Get('checkout-intent')
+  async getCheckoutIntent(
+    @Headers('x-chatpro-inbox-key') key='',
+    @Headers('x-chatpro-user-id') userId='',
+    @Headers('x-chatpro-company-id') companyId='',
+    @Query('company') slug='',
+  ){
+    if(process.env.MW1_STAGING_MODE!=='true'||!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY||!userId)throw new UnauthorizedException();
+    const db=this.supabase.getClient();
+    const {data:company}=await db.from('companies').select('id,status').eq('id',companyId).eq('slug',slug).maybeSingle();
+    if(!company||company.status!=='active')throw new ForbiddenException();
+    const {data:member}=await db.from('company_memberships').select('role_id').eq('company_id',company.id).eq('user_id',userId).eq('active',true).maybeSingle();
+    if(!member)throw new ForbiddenException();
+    const {data:role}=await db.from('app_roles').select('key,company_id').eq('id',member.role_id).maybeSingle();
+    if(!role||!['owner','admin'].includes(role.key)||(role.company_id&&role.company_id!==company.id))throw new ForbiddenException();
+    const {data:intent,error}=await db.from('mw1_checkout_intents')
+      .select('id,plan_key,monthly_amount_cop,currency,status,created_at,expires_at')
+      .eq('company_id',company.id).order('created_at',{ascending:false}).limit(1).maybeSingle();
+    if(error)throw new BadRequestException('No se pudo consultar la contratación.');
+    return {ok:true,intent:intent??null,cardRegistrationEnabled:false,provider:'mercadopago'};
   }
 
   @Post('request')
