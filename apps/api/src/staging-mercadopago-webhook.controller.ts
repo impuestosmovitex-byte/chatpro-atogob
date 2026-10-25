@@ -36,6 +36,6 @@ export class StagingMercadoPagoWebhookController {
     return {ok:true,ignored:true};
   // Deliberately no database mutation until provider GET reconciliation and
   // duplicate-payment idempotency have been implemented and verified.
-  return {ok:true,received:true,processed:false};
+  return {ok:true,received:true,signatureVerified:true,paymentConfirmed:false,processed:false};
  }
 }
