@@ -17,6 +17,18 @@ export default function MiPlan(){
  const [working,setWorking]=useState(false);
  const [checkoutCheck,setCheckoutCheck]=useState<{ok?:boolean;checkoutEnabled?:boolean;firstMonthCop?:number|null;secondMonthCop?:number|null;thirdMonthCop?:number|null;reasons?:string[];error?:string}|null>(null);
  const [checkingCheckout,setCheckingCheckout]=useState(false);
+ const [preparingIntent,setPreparingIntent]=useState(false);
+ const [intentMessage,setIntentMessage]=useState('');
+ async function prepareIntent(){
+  setPreparingIntent(true);setIntentMessage('');
+  try{
+   const response=await fetch('/api/mi-plan/checkout-intent',{method:'POST'});
+   const result=await response.json();
+   setIntentMessage(result.message||result.error||'No se pudo preparar la contratación.');
+  }catch{setIntentMessage('No se pudo preparar la contratación.');}
+  finally{setPreparingIntent(false);}
+ }
+
  async function checkCheckout(){
   setCheckingCheckout(true);setCheckoutCheck(null);
   try{const response=await fetch('/api/mi-plan/checkout-readiness',{cache:'no-store'});const body=await response.json();setCheckoutCheck(response.ok?body:{ok:false,error:body.error||'No se pudo comprobar la contratación.'});}
@@ -99,6 +111,8 @@ export default function MiPlan(){
        <p style={{margin:'12px 0'}}>Aún no tienes un método de pago vinculado a una suscripción de MW1.</p>
        <p style={{color:'#657184',lineHeight:1.6}}>Cuando activemos Mercado Pago podrás autorizar tu tarjeta en su sitio seguro. MW1 no almacenará el número completo ni el CVV.</p>
        <button type="button" onClick={()=>void checkCheckout()} disabled={checkingCheckout} style={{marginTop:14,padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#172235',fontWeight:800,cursor:checkingCheckout?'wait':'pointer'}}>{checkingCheckout?'Comprobando…':'Consultar estado de contratación'}</button>
+       <button type="button" onClick={()=>void prepareIntent()} disabled={preparingIntent} style={{margin:'12px 0 0 10px',padding:'12px 18px',border:'1px solid #d3d9e1',borderRadius:9,background:'#fff',fontWeight:750,cursor:preparingIntent?'wait':'pointer'}}>{preparingIntent?'Preparando…':'Preparar mi contratación'}</button>
+       {intentMessage&&<p role="status" style={{fontSize:13,color:'#586477'}}>{intentMessage}</p>}
        {checkoutCheck&&<div role="status" style={{marginTop:14,padding:14,borderRadius:9,background:'#f6f7fa',fontSize:13,lineHeight:1.7}}>
         <strong>{checkoutCheck.checkoutEnabled?'Contratación disponible':'Registro de tarjeta pendiente de habilitación'}</strong>
         {typeof checkoutCheck.firstMonthCop==='number'&&<p>Primer mes: {cop(checkoutCheck.firstMonthCop)} · Segundo mes (50 %): {cop(checkoutCheck.secondMonthCop??0)} · Tercer mes y siguientes: {cop(checkoutCheck.thirdMonthCop??checkoutCheck.firstMonthCop)}</p>}
