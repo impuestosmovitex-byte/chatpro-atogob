@@ -1,5 +1,6 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
+import {calculateIntroductoryMonths} from '../../lib/mw1-subscription-pricing';
 
 type Status={ok?:boolean;configured?:boolean;verified?:boolean;reason?:string;error?:string};
 const descriptions:Record<string,string>={
@@ -14,6 +15,8 @@ const descriptions:Record<string,string>={
 export default function MercadoPagoAdminPage(){
  const [status,setStatus]=useState<Status|null>(null);
  const [busy,setBusy]=useState(false);
+ const [published,setPublished]=useState<Array<{plan_key:string;price_cop:number}>>([]);
+ useEffect(()=>{let live=true;void fetch('/api/platform-admin/plan-published',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(data=>{if(live&&Array.isArray(data?.plans))setPublished(data.plans.filter((p:unknown)=>Boolean(p)&&typeof p==='object'&&Number.isSafeInteger((p as {price_cop?:number}).price_cop)));}).catch(()=>{});return()=>{live=false};},[]);
  async function verify(){
   setBusy(true);setStatus(null);
   try{
@@ -41,6 +44,15 @@ export default function MercadoPagoAdminPage(){
   <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
    <h2 style={{fontSize:19}}>Facturación y renovaciones</h2>
    <p style={{fontSize:14,lineHeight:1.7,color:'#586477'}}>Los cobros, autorizaciones de tarjeta, suscripciones automáticas y la promoción del segundo mes al 50 % aún no están habilitados. Antes deben verificarse los precios publicados, webhooks y pruebas de cobros recurrentes.</p>
+   <div style={{margin:'15px 0',padding:15,background:'#f6f7fa',borderRadius:10}}>
+    <strong style={{fontSize:14}}>Simulación de promoción (sin cobros)</strong>
+    {published.length===0?<p style={{fontSize:13,color:'#725b1f'}}>Aún no hay tarifas comerciales publicadas. Revisa «Planes y precios» y publícalas únicamente después de su aprobación.</p>:
+     published.map(plan=>{const months=calculateIntroductoryMonths(plan.price_cop);return <div key={plan.plan_key} style={{borderTop:'1px solid #e2e6ec',padding:'12px 0',fontSize:13}}>
+      <strong>{({'inicial':'Básico','pro':'Eco','empresa':'Pro'} as Record<string,string>)[plan.plan_key]||plan.plan_key}</strong>
+      <p style={{margin:'5px 0'}}>Mes 1: {months[0].toLocaleString('es-CO')} COP · Mes 2: {months[1].toLocaleString('es-CO')} COP · Mes 3 en adelante: {months[2].toLocaleString('es-CO')} COP</p>
+     </div>})
+    }
+   </div>
    <p style={{fontSize:13,color:'#7a601e'}}>No pegues el Access Token ni datos de tarjetas en esta pantalla.</p>
   </section>
  </main>;
