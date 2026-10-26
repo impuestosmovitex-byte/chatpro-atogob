@@ -73,7 +73,7 @@ export default function LoginPage() {
         <p className={styles.eyebrow}>{platformLogin?'ACCESO PRIVADO · PLATAFORMA':'MW1 · ACCESO EMPRESARIAL'}</p>
         <h1>{platformLogin?'Administración de MW1':'Accede a tu empresa'}</h1>
         <p className={styles.copy}>
-          {companySlug?'Estás ingresando a una empresa de pruebas.':'Ingresa tu identificación y contraseña para acceder a MW1.'}
+          {companySlug?'Ingresa con las credenciales de tu empresa.':'Ingresa tu identificación y contraseña para acceder a MW1.'}
         </p>
 
         <form className={styles.form} onSubmit={submit}>
@@ -97,9 +97,7 @@ export default function LoginPage() {
             required
           />
 
-          {staging&&!platformLogin&&!companySlug&&<p className={styles.copy} style={{margin:'4px 0 6px',padding:10,background:'#fff8e6',borderRadius:8}}>
-            Esta página es para empresas piloto. Si tu empresa ya opera en MW1, <a href="https://chatpro-web-production.up.railway.app/login">ingresa al sistema actual</a>.
-          </p>}
+
           {!platformLogin&&<p className={styles.copy} style={{margin:'6px 0 4px'}}>
             <a href={'/recuperar-acceso'+(typeof window!=='undefined'&&
               new URLSearchParams(window.location.search).get('company')
@@ -112,7 +110,9 @@ export default function LoginPage() {
           </button>
         </form>
         {staging&&<p className={styles.copy} style={{margin:'14px 0 0',fontSize:12,textAlign:'center'}}>
-          {platformLogin?<a href="/login">Acceso empresarial</a>:<a href="/login?mode=platform&next=%2Fadmin">Administración de MW1</a>}
+          {platformLogin?<a href="/login">Acceso empresarial</a>:companySlug
+            ?<span>Entorno piloto · <a href="/login?mode=platform&next=%2Fadmin">Administración de MW1</a></span>
+            :<span>¿Ya eres cliente? <a href="https://chatpro-web-production.up.railway.app/login">Entrar al MW1 actual</a> · <a href="/login?mode=platform&next=%2Fadmin">Administración</a></span>}
         </p>}
       </section>
     </main>
