@@ -47,13 +47,13 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     }finally{setSending(false);}
   }
   if(success)return <div role="status" className={styles.success}>
-    <strong>{isTrial?'Recibimos tu solicitud de prueba de 14 días':'Solicitud registrada para revisión'}</strong>
-    <p>{isTrial?'Nuestro equipo revisará tu número, el plan y la conexión de canales. Los 14 días comenzarán únicamente después de que confirmemos y activemos la cuenta. Aún no se han creado usuarios ni iniciado cobros.':'El equipo de MW1 revisará tu solicitud antes de crear cualquier cuenta o activar un servicio.'}</p>
+    <strong>{isTrial?'Recibimos tu solicitud de prueba de 14 días':'Solicitud recibida para coordinar tu demostración'}</strong>
+    <p>{isTrial?'Nuestro equipo revisará tu número, el plan y la conexión de canales. Los 14 días comenzarán únicamente después de que confirmemos y activemos la cuenta. Aún no se han creado usuarios ni iniciado cobros.':'Un asesor de MW1 te contactará para acordar el día y la hora. La reunión todavía no está confirmada. No se ha creado ninguna cuenta ni generado ningún cobro.'}</p>
   </div>;
   return <form onSubmit={event=>void submit(event)} className={styles.form}>
     <p className={styles.caption}>{isTrial
       ?'Solicita 14 días de prueba guiada del plan que elijas. No necesitas tarjeta. La prueba no empieza al enviar este formulario; primero coordinaremos la activación contigo.'
-      :'Solicita una demostración con un asesor para revisar tus canales, tu plan y la integración. No se realiza ningún cobro al enviar este formulario.'}</p>
+      :'Solicita una reunión con un asesor de MW1. Te contactaremos por WhatsApp o correo para acordar el día y la hora. Este formulario no reserva automáticamente un horario ni genera cobros.'}</p>
     <label>Empresa
       <input required minLength={2} maxLength={100} autoComplete="organization"
         value={companyName} onChange={event=>setCompanyName(event.target.value)}
@@ -107,7 +107,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     </label>
     {error&&<p role="alert" className={styles.error}>{error}</p>}
     <button type="submit" disabled={sending||!consent}>
-      {sending?'Enviando…':isTrial?'Solicitar mis 14 días de prueba':'Solicitar asesoría de MW1'}
+      {sending?'Enviando…':isTrial?'Solicitar mis 14 días de prueba':'Solicitar cita para demostración'}
     </button>
   </form>;
 }
