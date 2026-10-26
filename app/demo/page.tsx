@@ -35,8 +35,8 @@ export default function DemoPage() {
             </div>
           </article>
 
-          <article className={styles.demoCard}>
-            <h3>Solicitar una demo personalizada</h3>
+          <article id="agendar-demostracion" className={styles.demoCard} style={{scrollMarginTop:110}}>
+            <h3>Agendar una demostración de MW1</h3>
             <p>Primero conocemos tu negocio y te mostramos MW1. Si decides contratar, recibirás las instrucciones de pago por un enlace seguro y te acompañaremos en la configuración de canales, usuarios e IA.</p>
             {process.env.MW1_STAGING_MODE==='true'?<DemoRequestForm/>:
               <p>Las solicitudes en línea se habilitarán cuando finalicemos las pruebas de seguridad y privacidad.</p>}
