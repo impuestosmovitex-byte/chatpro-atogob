@@ -615,6 +615,15 @@ export default function PlatformCompaniesPage() {
                   </div>
                 </article>)}
               </div>}
+              <section aria-label="Incorporación de clientes nuevos" style={{background:'#fffdf5',border:'1px solid #e9d895',borderRadius:12,padding:16,margin:'18px 0'}}>
+                <h3 style={{fontSize:17,margin:'0 0 8px'}}>Incorporar una empresa nueva</h3>
+                <p style={{color:'#536179',fontSize:13,lineHeight:1.6,margin:'0 0 12px'}}>Tras la demostración, verifica el primer pago con el proveedor. Luego crea una empresa distinta, asigna su propietario y acompáñalo a conectar sus propios canales. Ningún dato de una empresa existente se reutiliza.</p>
+                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                  <a href="#mw1-new-company-form" style={{padding:'10px 13px',borderRadius:9,background:'#f4bf00',color:'#172235',textDecoration:'none',fontWeight:800,fontSize:13}}>Crear empresa y propietario</a>
+                  <Link href="/admin/solicitudes-suscripcion" style={{padding:'10px 13px',border:'1px solid #d3dae6',borderRadius:9,color:'#172235',textDecoration:'none',fontWeight:700,fontSize:13}}>Ver solicitudes</Link>
+                </div>
+                <p style={{fontSize:12,color:'#85610a',margin:'12px 0 0'}}>No crea cuentas, no verifica pagos ni modifica integraciones automáticamente. Requiere confirmación del superadministrador.</p>
+              </section>
               <h3 style={{fontSize:17,margin:'20px 0 8px'}}>Empresas en pruebas de MW1</h3>
               {!loading && companies.length === 0 ? <p>No hay empresas todavía.</p> : null}
 
