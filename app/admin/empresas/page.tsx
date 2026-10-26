@@ -429,7 +429,8 @@ export default function PlatformCompaniesPage() {
             {success}
             {createdCompanySlug&&<div style={{marginTop:12,fontSize:14}}>
               <p style={{margin:'0 0 8px'}}>Siguiente paso: comprueba el acceso con el código y contraseña del propietario que acabas de crear. No compartas la contraseña por mensajes.</p>
-              <Link href={'/login?company='+encodeURIComponent(createdCompanySlug)} style={{fontWeight:700}}>Abrir inicio de sesión de esta empresa →</Link>
+              <Link href={'/login?company='+encodeURIComponent(createdCompanySlug)+'&next=%2Fconfiguracion%2Fintegraciones'} style={{fontWeight:700}}>Verificar acceso del propietario e iniciar conexión de canales →</Link>
+              <p style={{fontSize:12,color:'#64748b',margin:'8px 0 0'}}>Este enlace abre la sesión empresarial real. El propietario debe identificarse con sus propias credenciales; el superadministrador no accede a los mensajes ni se hace pasar por él.</p>
             </div>}
           </div>
         ) : null}
