@@ -1107,6 +1107,24 @@ export class PlatformAdminController {
       throw new BadRequestException('Ya existe una empresa con ese identificador.');
     }
 
+    // A live MW1 customer must never be recreated as a separate staging
+    // tenant just because it lives in another database.
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      const { data: operationalCompany, error: operationalError } = await client
+        .from('platform_external_tenant_registry')
+        .select('company_slug')
+        .eq('company_slug', slug)
+        .maybeSingle();
+      if (operationalError) {
+        throw new BadRequestException('No se pudo comprobar el directorio de empresas operativas.');
+      }
+      if (operationalCompany) {
+        throw new BadRequestException(
+          'Esta empresa ya existe en MW1 operativo. No crees una copia de pruebas: consulta su ficha en el directorio.',
+        );
+      }
+    }
+
     const { data: existingProfile, error: existingProfileError } = await client
       .from('app_profiles')
       .select('user_id')
