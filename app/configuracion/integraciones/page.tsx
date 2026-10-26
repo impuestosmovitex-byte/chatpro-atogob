@@ -44,6 +44,7 @@ type ResponseData = {
   error?: string;
   company?: { name?: string };
   integrations?: Integration[];
+  stagingReadOnly?: boolean;
 };
 
 
@@ -179,6 +180,7 @@ export default function IntegracionesPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selectedKey, setSelectedKey] = useState('');
   const [loading, setLoading] = useState(true);
+  const [stagingReadOnly, setStagingReadOnly] = useState(false);
   const [message, setMessage] = useState('');
   const [shopDomain, setShopDomain] = useState('');
   const [whatsappForm, setWhatsappForm] = useState({
@@ -223,6 +225,7 @@ export default function IntegracionesPage() {
 
         setCompanyName(data.company?.name || 'Empresa');
         setIntegrations(data.integrations);
+        setStagingReadOnly(data.stagingReadOnly === true);
         setSelectedKey(data.integrations[0]?.key || '');
 
         const connectedShopify = data.integrations.find(
@@ -526,7 +529,11 @@ export default function IntegracionesPage() {
           </div>
 
           {selected ? (
-            <aside className={styles.detail}>
+            stagingReadOnly ? <aside className={styles.detail}>
+              <div className={styles.detailTop}><span className={styles.largeIcon}>{icon(selected.key)}</span><h2>{selected.name}</h2></div>
+              <p className={styles.description}>{selected.description}</p>
+              <div className={styles.notice}>Este entorno de prueba muestra los canales disponibles, pero las autorizaciones de conexión siguen deshabilitadas hasta configurar y validar la aplicación de Meta/Shopify de staging. No utilices credenciales ni tokens de ATOGOB producción.</div>
+            </aside> : <aside className={styles.detail}>
               <div className={styles.detailTop}>
                 <span className={styles.largeIcon}>{icon(selected.key)}</span>
                 <div>
