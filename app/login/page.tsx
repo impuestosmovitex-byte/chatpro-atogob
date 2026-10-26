@@ -12,22 +12,29 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [staging, setStaging] = useState(false);
   const [platformLogin,setPlatformLogin]=useState(false);
+  const [companySlug,setCompanySlug]=useState('');
 
   useEffect(() => {
     setStaging(window.location.hostname === 'mw1-web-staging-staging.up.railway.app');
-    setPlatformLogin(new URLSearchParams(window.location.search).get('mode')==='platform');
+    const params=new URLSearchParams(window.location.search);
+    setPlatformLogin(params.get('mode')==='platform');
+    setCompanySlug(params.get('company')||'');
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    if(staging&&!platformLogin&&!companySlug){
+      setError('Selecciona una empresa de pruebas con su enlace de acceso. Para ATOGOB operativo utiliza el acceso a MW1 producción que aparece arriba.');
+      return;
+    }
     setLoading(true);
 
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ identifier, password, company:platformLogin?'__platform__':new URLSearchParams(window.location.search).get('company')||undefined }),
+        body: JSON.stringify({ identifier, password, company:platformLogin?'__platform__':companySlug||undefined }),
       });
 
       const data = (await response.json()) as {
@@ -90,6 +97,12 @@ export default function LoginPage() {
             required
           />
 
+          {staging&&!platformLogin&&<section style={{border:'1px solid #d9e2f0',borderRadius:12,padding:14,margin:'8px 0 18px',background:'#f8fafc'}}>
+            <strong style={{display:'block',marginBottom:7}}>¿Dónde deseas ingresar?</strong>
+            <p className={styles.copy} style={{margin:'0 0 10px'}}>Clientes operativos como ATOGOB ingresan en MW1 producción. Esta dirección es exclusivamente para probar las mejoras antes de publicarlas.</p>
+            <a href="https://chatpro-web-production.up.railway.app/login" style={{fontWeight:750}}>Ingresar a MW1 operativo (ATO GOB y otros clientes) →</a>
+            {companySlug&&<p className={styles.copy} style={{margin:'10px 0 0'}}>Estás ingresando a la empresa de pruebas: <strong>{companySlug}</strong>.</p>}
+          </section>}
           <p className={styles.copy}>
             {platformLogin
               ? 'Área privada y separada de las cuentas de clientes. Solo personal autorizado de MW1.'
@@ -112,7 +125,7 @@ export default function LoginPage() {
             ¿Administras la plataforma? <a href="/login?mode=platform&next=%2Fadmin" style={{fontWeight:700}}>Acceso de superadministrador MW1</a>.
           </p>}
           {error ? <p className={styles.error}>{error}</p> : null}
-          <button type="submit" disabled={loading || !password}>
+          <button type="submit" disabled={loading || !password || (staging&&!platformLogin&&!companySlug)}>
             {loading ? 'Ingresando…' : 'Ingresar'}
           </button>
         </form>
