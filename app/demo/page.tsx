@@ -37,17 +37,25 @@ export default function DemoPage() {
 
           <article className={styles.demoCard}>
             <h3>Solicitar una demo personalizada</h3>
-            <p>Recibe una asesoría para configurar MW1 según los canales y las necesidades de tu empresa.</p>
+            <p>Primero conocemos tu negocio y te mostramos MW1. Si decides contratar, recibirás las instrucciones de pago por un enlace seguro y te acompañaremos en la configuración de canales, usuarios e IA.</p>
             {process.env.MW1_STAGING_MODE==='true'?<DemoRequestForm/>:
               <p>Las solicitudes en línea se habilitarán cuando finalicemos las pruebas de seguridad y privacidad.</p>}
             <div style={{ marginTop: 22, display:'flex', gap:12, flexWrap:'wrap', alignItems:'center' }}>
-              <Link href="/prueba-gratis" className={styles.primaryButton}>Solicitar 14 días de prueba</Link>
+              <Link href="/precios" className={styles.primaryButton}>Consultar planes y acompañamiento</Link>
               <Link href="/login" className={styles.secondaryButton}>Ya soy cliente</Link>
             </div>
           </article>
         </div>
       </section>
 
+      <section className={styles.section} aria-label="Cómo empezar con MW1">
+        <div className={styles.sectionIntroCentered}>
+          <div className={styles.eyebrow}>Implementación acompañada</div>
+          <h2>Tu empresa comienza con una demostración, no con un cobro automático.</h2>
+          <p>1. Solicitas una demo · 2. Un asesor te ayuda a elegir tu plan · 3. Pagas por un enlace seguro del proveedor · 4. Recibes el acceso del propietario y conectas tus canales con nuestro acompañamiento.</p>
+          <p>La primera contratación y activación son supervisadas. Las renovaciones automáticas todavía no están disponibles.</p>
+        </div>
+      </section>
       <footer className={styles.footer}>MW1 · Demo del producto</footer>
     </main>
   );
