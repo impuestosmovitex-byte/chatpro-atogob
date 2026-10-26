@@ -73,7 +73,7 @@ export default function LoginPage() {
         <p className={styles.eyebrow}>{platformLogin?'ACCESO PRIVADO · PLATAFORMA':'MW1 · ACCESO EMPRESARIAL'}</p>
         <h1>{platformLogin?'Administración de MW1':'Accede a tu empresa'}</h1>
         <p className={styles.copy}>
-          Ingresa tu identificación o código de acceso y tu contraseña.
+          {companySlug?'Estás ingresando a una empresa de pruebas.':'Ingresa tu identificación y contraseña para acceder a MW1.'}
         </p>
 
         <form className={styles.form} onSubmit={submit}>
@@ -97,38 +97,23 @@ export default function LoginPage() {
             required
           />
 
-          {staging&&!platformLogin&&<section style={{border:'1px solid #d9e2f0',borderRadius:12,padding:14,margin:'8px 0 18px',background:'#f8fafc'}}>
-            <strong style={{display:'block',marginBottom:7}}>¿Dónde deseas ingresar?</strong>
-            <p className={styles.copy} style={{margin:'0 0 10px'}}>Clientes operativos como ATOGOB ingresan en MW1 producción. Esta dirección es exclusivamente para probar las mejoras antes de publicarlas.</p>
-            <a href="https://chatpro-web-production.up.railway.app/login" style={{fontWeight:750}}>Ingresar a MW1 operativo (ATO GOB y otros clientes) →</a>
-            {companySlug&&<p className={styles.copy} style={{margin:'10px 0 0'}}>Estás ingresando a la empresa de pruebas: <strong>{companySlug}</strong>.</p>}
-          </section>}
-          <p className={styles.copy}>
-            {platformLogin
-              ? 'Área privada y separada de las cuentas de clientes. Solo personal autorizado de MW1.'
-              : staging
-                ? 'Usa las credenciales de tu empresa. Este acceso no permite administrar la plataforma.'
-                : 'Ingresa con las credenciales de tu empresa. Si necesitas acceso, comunícate con su administrador.'}
-          </p>
-
+          {staging&&!platformLogin&&!companySlug&&<p className={styles.copy} style={{margin:'4px 0 6px',padding:10,background:'#fff8e6',borderRadius:8}}>
+            Esta página es para empresas piloto. Si tu empresa ya opera en MW1, <a href="https://chatpro-web-production.up.railway.app/login">ingresa al sistema actual</a>.
+          </p>}
           {!platformLogin&&<p className={styles.copy} style={{margin:'6px 0 4px'}}>
             <a href={'/recuperar-acceso'+(typeof window!=='undefined'&&
               new URLSearchParams(window.location.search).get('company')
               ? '?company='+encodeURIComponent(new URLSearchParams(window.location.search).get('company')||'')
               :'')}>¿Olvidaste tu contraseña?</a>
           </p>}
-          {staging&&!platformLogin&&<p className={styles.copy} style={{margin:'12px 0',lineHeight:1.5}}>
-            ¿Ya utilizas MW1 con ATOGOB? <a href="https://chatpro-web-production.up.railway.app/login" style={{fontWeight:700}}>Entrar a tu entorno actual</a>.
-            Las cuentas de producción no se trasladan automáticamente a este entorno de pruebas.
-          </p>}
-          {staging&&!platformLogin&&<p className={styles.copy}>
-            ¿Administras la plataforma? <a href="/login?mode=platform&next=%2Fadmin" style={{fontWeight:700}}>Acceso de superadministrador MW1</a>.
-          </p>}
           {error ? <p className={styles.error}>{error}</p> : null}
           <button type="submit" disabled={loading || !password || (staging&&!platformLogin&&!companySlug)}>
             {loading ? 'Ingresando…' : 'Ingresar'}
           </button>
         </form>
+        {staging&&<p className={styles.copy} style={{margin:'14px 0 0',fontSize:12,textAlign:'center'}}>
+          {platformLogin?<a href="/login">Acceso empresarial</a>:<a href="/login?mode=platform&next=%2Fadmin">Administración de MW1</a>}
+        </p>}
       </section>
     </main>
   );
