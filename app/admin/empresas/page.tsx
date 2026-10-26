@@ -602,6 +602,11 @@ export default function PlatformCompaniesPage() {
                   <p style={{fontSize:12,color:'#45556d',margin:'5px 0'}}><strong>Motivo:</strong> {linked.recommendationReason||'Por evaluar'}</p>
                   <p style={{fontSize:12,color:'#64748b',margin:'7px 0'}}><strong>Datos consultados:</strong> {linked.activityObservedAt?new Date(linked.activityObservedAt).toLocaleString('es-CO'):'Sin registro'}. Es una fotografía de actividad, no información en tiempo real.</p>
                   <p style={{fontSize:12,color:'#63718a',margin:'5px 0'}}>Sin sincronización automática de usuarios, consumos ni planes. No se creó una cuenta demo duplicada.</p>
+                  <div style={{marginTop:12,padding:12,background:'#fff',borderRadius:10,border:'1px solid #dce6f2'}}>
+                    <strong style={{fontSize:13}}>Cuenta operativa · MW1 producción</strong>
+                    <p style={{fontSize:12,color:'#526179',lineHeight:1.5,margin:'6px 0 10px'}}>Esta empresa utiliza el mismo proyecto MW1, en la versión productiva actual. Para abrir sus conversaciones usa sus propias credenciales de producción. El superadministrador no puede hacerse pasar por el propietario.</p>
+                    <a href="https://chatpro-web-production.up.railway.app/login" target="_blank" rel="noopener noreferrer" style={{display:'inline-block',padding:'9px 12px',background:'#f4bf00',color:'#172235',fontWeight:800,borderRadius:8,fontSize:13,textDecoration:'none'}}>Abrir MW1 operativo ↗</a>
+                  </div>
                 </article>)}
               </div>}
               <h3 style={{fontSize:17,margin:'20px 0 8px'}}>Empresas en pruebas de MW1</h3>
