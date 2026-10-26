@@ -53,7 +53,7 @@ export default function LoginPage() {
       router.replace(platformLogin && safeDestination==='/' ? '/admin' : safeDestination);
       router.refresh();
     } catch {
-      setError('No se pudo conectar con Chat Pro. Intenta nuevamente.');
+      setError('No se pudo conectar con MW1. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }
@@ -103,6 +103,13 @@ export default function LoginPage() {
               new URLSearchParams(window.location.search).get('company')
               ? '?company='+encodeURIComponent(new URLSearchParams(window.location.search).get('company')||'')
               :'')}>¿Olvidaste tu contraseña?</a>
+          </p>}
+          {staging&&!platformLogin&&<p className={styles.copy} style={{margin:'12px 0',lineHeight:1.5}}>
+            ¿Ya utilizas MW1 con ATOGOB? <a href="https://chatpro-web-production.up.railway.app/login" style={{fontWeight:700}}>Entrar a tu entorno actual</a>.
+            Las cuentas de producción no se trasladan automáticamente a este entorno de pruebas.
+          </p>}
+          {staging&&!platformLogin&&<p className={styles.copy}>
+            ¿Administras la plataforma? <a href="/login?mode=platform&next=%2Fadmin" style={{fontWeight:700}}>Acceso de superadministrador MW1</a>.
           </p>}
           {error ? <p className={styles.error}>{error}</p> : null}
           <button type="submit" disabled={loading || !password}>
