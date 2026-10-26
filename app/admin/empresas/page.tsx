@@ -601,6 +601,12 @@ export default function PlatformCompaniesPage() {
                   <p style={{fontSize:12,color:'#45556d',margin:'5px 0'}}><strong>Costo verificable de OpenAI por empresa:</strong> No medido todavía. Las respuestas registradas no equivalen a tokens ni cargos.</p>
                   <p style={{fontSize:12,color:'#45556d',margin:'5px 0'}}><strong>Motivo:</strong> {linked.recommendationReason||'Por evaluar'}</p>
                   <p style={{fontSize:12,color:'#64748b',margin:'7px 0'}}><strong>Datos consultados:</strong> {linked.activityObservedAt?new Date(linked.activityObservedAt).toLocaleString('es-CO'):'Sin registro'}. Es una fotografía de actividad, no información en tiempo real.</p>
+                  <section aria-label="Estado de incorporación a MW1" style={{margin:'12px 0',padding:12,border:'1px solid #e7e9ee',background:'#fff',borderRadius:10}}>
+                    <strong style={{fontSize:13}}>Estado de incorporación comercial</strong>
+                    <p style={{margin:'7px 0',fontSize:12,color:'#49556b'}}>Cuenta existente identificada en el directorio: sí. Integración administrable desde este panel: todavía no.</p>
+                    <p style={{margin:'7px 0',fontSize:12,color:'#49556b'}}>Siguiente requisito: validar la misma versión del CRM, conexiones por empresa y permisos antes de cualquier actualización productiva.</p>
+                    <p style={{margin:'7px 0 0',fontSize:12,color:'#8b5b00'}}>Protección: este directorio es de solo lectura. No migra registros, cambia claves, reconecta Meta ni modifica automatizaciones.</p>
+                  </section>
                   <p style={{fontSize:12,color:'#63718a',margin:'5px 0'}}>Sin sincronización automática de usuarios, consumos ni planes. No se creó una cuenta demo duplicada.</p>
                   <div style={{marginTop:12,padding:12,background:'#fff',borderRadius:10,border:'1px solid #dce6f2'}}>
                     <strong style={{fontSize:13}}>Cuenta operativa · MW1 producción</strong>
