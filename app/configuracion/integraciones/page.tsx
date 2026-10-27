@@ -481,7 +481,7 @@ export default function IntegracionesPage() {
           <p style={{margin:'0 0 12px',color:'#475569',fontSize:14}}>Elige un canal y conéctalo a tu propia empresa. Puedes empezar por WhatsApp y añadir los demás después. No compartas contraseñas de Meta ni códigos de seguridad con asesores.</p>
           <ol style={{margin:'0 0 14px',paddingLeft:22,lineHeight:1.8,fontSize:14}}>
             <li>Accede a Meta Business con una cuenta que tenga permisos sobre el número, la página y la cuenta de Instagram.</li>
-            <li>Selecciona WhatsApp, Instagram o Messenger en las tarjetas de abajo y utiliza su opción de conexión.</li>
+            <li>{stagingReadOnly?'Explora los canales disponibles; las conexiones reales siguen bloqueadas hasta terminar la configuración técnica del entorno piloto.':'Selecciona WhatsApp, Instagram o Messenger en las tarjetas de abajo y utiliza su opción de conexión.'}</li>
             <li>Comprueba el estado del canal conectado y realiza una conversación de prueba antes de activar automatizaciones.</li>
           </ol>
           <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
@@ -494,6 +494,7 @@ export default function IntegracionesPage() {
             })}
           </div>
           <p style={{margin:'12px 0 0',fontSize:12,color:'#64748b'}}>Este estado pertenece solo a {companyName}. No conecta ni modifica las cuentas de otra empresa.</p>
+          {stagingReadOnly&&<p role="status" style={{margin:'12px 0 0',padding:12,borderRadius:10,background:'#fff8e4',color:'#694b12',fontSize:13}}>Modo de prueba seguro: puedes revisar los canales, pero aún no autorizar conexiones. El equipo técnico debe validar primero Meta y los webhooks de staging sin alterar los de ATOGOB.</p>}
         </section>
         {message ? <p className={styles.error}>{message}</p> : null}
 
