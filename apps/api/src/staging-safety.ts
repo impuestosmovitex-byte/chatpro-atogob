@@ -32,7 +32,7 @@ export function assertStagingIsolation(env: NodeJS.ProcessEnv = process.env): vo
   // No checkout, payment, or subscription endpoints are enabled here.
   const forbidden = Object.keys(env).filter((name) =>
     /^(SHOPIFY_|META_|WHATSAPP_|OPENAI_|TIKTOK_|TELEGRAM_|WOMPI_|MERCADOPAGO_|MERCADO_PAGO_)/i.test(name) &&
-    name !== 'MERCADOPAGO_ACCESS_TOKEN' && Boolean(env[name]?.trim()),
+    !['MERCADOPAGO_ACCESS_TOKEN', 'META_WHATSAPP_APP_ID', 'META_WHATSAPP_EMBEDDED_CONFIG_ID', 'META_WHATSAPP_APP_SECRET'].includes(name) && Boolean(env[name]?.trim()),
   );
   if (forbidden.length) {
     throw new Error('STAGING BLOCKED: external messaging, store or AI credentials are configured.');
