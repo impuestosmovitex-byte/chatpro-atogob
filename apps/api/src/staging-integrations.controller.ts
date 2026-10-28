@@ -30,7 +30,14 @@ export class StagingIntegrationsController {
   }
 
   @Post('whatsapp/embedded/complete')
-  async embeddedComplete() {
+  async embeddedComplete(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+  ) {
+    // Validate tenant and admin role before responding, even while completion is disabled.
+    await this.list(key, userId, companyId, slug);
     // Never exchange codes or write tokens until a tenant-bound staging flow is audited.
     throw new ForbiddenException('El registro real de WhatsApp aún no está habilitado en staging.');
   }
