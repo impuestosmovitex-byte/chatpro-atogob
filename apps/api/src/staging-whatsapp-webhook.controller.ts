@@ -4,6 +4,7 @@ import { validMetaSignature } from './staging-meta-signature';
 import { extractStagingWhatsappPhoneIds } from './staging-whatsapp-routing';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
+import { SupabaseService } from './supabase.service';
 
 /**
  * Dedicated staging-only verification endpoint. No production webhook changes.
@@ -12,6 +13,7 @@ import type { Request } from 'express';
  */
 @Controller('webhook/whatsapp-staging')
 export class StagingWhatsappWebhookController {
+  constructor(private readonly supabase: SupabaseService) {}
   @Get()
   verify(
     @Query('hub.mode') mode = '',
@@ -33,16 +35,27 @@ export class StagingWhatsappWebhookController {
 
   @Post()
   @HttpCode(503)
-  receive(
+  async receive(
     @Req() request?: RawBodyRequest<Request>,
     @Headers('x-hub-signature-256') signature?: string,
-  ): never {
+  ): Promise<never> {
     // Validate original bytes BEFORE inspecting events. No event processing yet.
     if (!request?.rawBody || !validMetaSignature(request.rawBody, signature, process.env.META_WHATSAPP_APP_SECRET))
       throw new ForbiddenException('Firma Meta no válida.');
     // Parsing candidates is not authorization; never process or route without a DB lookup.
     const ids = extractStagingWhatsappPhoneIds(request.body);
     if (ids.length !== 1) throw new ForbiddenException('Número de destino ambiguo o ausente.');
+    const { data, error } = await this.supabase.getClient()
+      .from('company_integrations')
+      .select('company_id,status')
+      .eq('provider','meta')
+      .eq('integration_type','whatsapp')
+      .eq('external_id',ids[0])
+      .limit(2);
+    if (error || !Array.isArray(data) || data.length !== 1 ||
+        data[0].status !== 'active' || !data[0].company_id)
+      throw new ForbiddenException('Número sin una empresa autorizada única.');
+    // No delivery or acknowledgement until isolated message processing is verified.
     throw new ForbiddenException('Recepción de WhatsApp deshabilitada en staging.');
   }
 }
