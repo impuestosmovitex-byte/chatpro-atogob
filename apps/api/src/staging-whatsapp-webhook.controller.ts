@@ -1,5 +1,8 @@
-import { Controller, ForbiddenException, Get, HttpCode, Post, Query } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Headers, HttpCode, Post, Query, Req } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
+import { validMetaSignature } from './staging-meta-signature';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 
 /**
  * Dedicated staging-only verification endpoint. No production webhook changes.
@@ -29,9 +32,13 @@ export class StagingWhatsappWebhookController {
 
   @Post()
   @HttpCode(503)
-  receive(): never {
-    // Do not accept or acknowledge real Meta events without signature validation
-    // and an independently verified phone-number-to-company routing table.
+  receive(
+    @Req() request?: RawBodyRequest<Request>,
+    @Headers('x-hub-signature-256') signature?: string,
+  ): never {
+    // Validate original bytes BEFORE inspecting events. No event processing yet.
+    if (!request?.rawBody || !validMetaSignature(request.rawBody, signature, process.env.META_WHATSAPP_APP_SECRET))
+      throw new ForbiddenException('Firma Meta no válida.');
     throw new ForbiddenException('Recepción de WhatsApp deshabilitada en staging.');
   }
 }
