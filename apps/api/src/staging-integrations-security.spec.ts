@@ -12,15 +12,22 @@ describe('staging integration catalog and isolation',()=>{
  };
  let controller:StagingIntegrationsController;
  let reads:string[];
+ let duplicatePhone=false;
  beforeEach(()=>{
   process.env.CHATPRO_INBOX_KEY=key;
   reads=[];
+  duplicatePhone=false;
   const db={from:(table:string)=>{
    reads.push(table);
    const filters:Record<string,unknown>={};
    const query={
     select:(_columns:string)=>query,
     eq:(field:string,value:unknown)=>{filters[field]=value;return query;},
+    limit:async()=>{
+     const row=rows[table];
+     const found=row&&Object.entries(filters).every(([k,v])=>row[k]===v);
+     return {data:found?(duplicatePhone?[row,row]:[row]):[],error:null};
+    },
     maybeSingle:async()=>{
      const row=rows[table];
      const matches=row&&Object.entries(filters).every(([k,v])=>row[k]===v);
@@ -86,6 +93,16 @@ describe('staging integration catalog and isolation',()=>{
     await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'}))
       .rejects.toThrow(/asignado a otra empresa/);
     expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
+  } finally {
+    delete rows.company_integrations;
+  }
+ });
+ test('preflight rejects duplicated number ownership records',async()=>{
+  rows.company_integrations={company_id:companyId,provider:'meta',integration_type:'whatsapp',external_id:'123456789'};
+  duplicatePhone=true;
+  try {
+    await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'}))
+      .rejects.toThrow(/asignaciones duplicadas/);
   } finally {
     delete rows.company_integrations;
   }
