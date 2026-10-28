@@ -556,24 +556,6 @@ export class IntegrationsController {
       selectedPhone.code_verification_status,
     );
 
-    const subscribeUrl = new URL(
-      `https://graph.facebook.com/${settings.apiVersion}/${wabaId}/subscribed_apps`,
-    );
-    const subscribePayload = await this.metaJson(
-      subscribeUrl,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
-      'Meta no permitió suscribir la app a la cuenta de WhatsApp',
-    );
-
-    if (subscribePayload.success !== true) {
-      throw new BadRequestException(
-        'Meta no confirmó la suscripción de webhooks para esta cuenta.',
-      );
-    }
-
     const client = this.supabaseService.getClient();
     const { data: existing, error: existingError } = await client
       .from('company_integrations')
@@ -592,6 +574,25 @@ export class IntegrationsController {
     if (existing && existing.company_id !== company.id) {
       throw new BadRequestException(
         'Este Phone Number ID ya está conectado a otra empresa en Chat Pro.',
+      );
+    }
+
+
+    const subscribeUrl = new URL(
+      `https://graph.facebook.com/${settings.apiVersion}/${wabaId}/subscribed_apps`,
+    );
+    const subscribePayload = await this.metaJson(
+      subscribeUrl,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      'Meta no permitió suscribir la app a la cuenta de WhatsApp',
+    );
+
+    if (subscribePayload.success !== true) {
+      throw new BadRequestException(
+        'Meta no confirmó la suscripción de webhooks para esta cuenta.',
       );
     }
 
