@@ -27,7 +27,7 @@ describe('staging WhatsApp verification isolation', () => {
   it('still blocks real processing after valid signature', () => {
     const previous = process.env.META_WHATSAPP_APP_SECRET;
     const secret = 'staging-fixture-secret-123456789';
-    const rawBody = Buffer.from('{"object":"whatsapp_business_account","entry":[]}');
+    const rawBody = Buffer.from('{"object":"whatsapp_business_account","entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"123456789"}}}]}]}');
     const signature = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
     process.env.META_WHATSAPP_APP_SECRET = secret;
     try {
