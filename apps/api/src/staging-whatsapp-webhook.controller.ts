@@ -1,6 +1,7 @@
 import { Controller, ForbiddenException, Get, Headers, HttpCode, Post, Query, Req } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import { validMetaSignature } from './staging-meta-signature';
+import { extractStagingWhatsappPhoneIds } from './staging-whatsapp-routing';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 
@@ -39,6 +40,9 @@ export class StagingWhatsappWebhookController {
     // Validate original bytes BEFORE inspecting events. No event processing yet.
     if (!request?.rawBody || !validMetaSignature(request.rawBody, signature, process.env.META_WHATSAPP_APP_SECRET))
       throw new ForbiddenException('Firma Meta no válida.');
+    // Parsing candidates is not authorization; never process or route without a DB lookup.
+    const ids = extractStagingWhatsappPhoneIds(request.body);
+    if (ids.length !== 1) throw new ForbiddenException('Número de destino ambiguo o ausente.');
     throw new ForbiddenException('Recepción de WhatsApp deshabilitada en staging.');
   }
 }
