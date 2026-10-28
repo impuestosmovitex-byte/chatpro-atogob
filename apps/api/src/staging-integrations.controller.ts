@@ -16,17 +16,24 @@ export class StagingIntegrationsController {
   ) {
     // Reuse the same tenant membership and admin-role validation as the catalog.
     const result = await this.list(key, userId, companyId, slug);
+    const onboardingReady =
+      process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED === 'true' &&
+      result.company.slug === 'piloto-mw1-prueba' &&
+      !!process.env.META_WHATSAPP_APP_ID?.trim() &&
+      !!process.env.META_WHATSAPP_APP_SECRET?.trim() &&
+      !!process.env.META_WHATSAPP_EMBEDDED_CONFIG_ID?.trim() &&
+      !!process.env.CHATPRO_INTEGRATIONS_ENCRYPTION_KEY?.trim();
     return {
       ok: true,
-      ready: false,
-      connectionEnabled: false,
+      ready: onboardingReady,
+      connectionEnabled: onboardingReady,
       appId: process.env.META_WHATSAPP_APP_ID?.trim() || null,
       configurationId: process.env.META_WHATSAPP_EMBEDDED_CONFIG_ID?.trim() || null,
       apiVersion: 'v26.0',
       flowVersion: 'v4',
       sessionInfoVersion: '3',
       company: result.company,
-      message: 'Meta configurado en staging; la autorización real permanece deshabilitada hasta validar aislamiento y webhooks.',
+      message: onboardingReady ? 'Autorización de Meta disponible solo para piloto; los mensajes y webhooks siguen deshabilitados.' : 'La autorización de Meta no está habilitada para esta empresa.',
     };
   }
 
