@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, Headers, Post, Query, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Controller, ForbiddenException, Get, Headers, Post, Query, UnauthorizedException, Body } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 
 /** Read-only integration status for isolated MW1 staging. No tokens or secrets exposed. */
@@ -27,6 +27,33 @@ export class StagingIntegrationsController {
       company: result.company,
       message: 'Meta configurado en staging; la autorización real permanece deshabilitada hasta validar aislamiento y webhooks.',
     };
+  }
+
+  @Post('whatsapp/embedded/preflight')
+  async embeddedPreflight(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+    @Body() body: { phoneNumberId?: unknown } = {},
+  ) {
+    const result = await this.list(key, userId, companyId, slug);
+    const phoneNumberId = typeof body?.phoneNumberId === 'string' ? body.phoneNumberId.trim() : '';
+    if (!/^\\d{6,30}$/.test(phoneNumberId))
+      throw new BadRequestException('Identificador de teléfono no válido.');
+    // This is a read-only gate. Never call Meta or change a webhook here.
+    const { data: connected, error } = await this.supabase.getClient()
+      .from('company_integrations')
+      .select('company_id')
+      .eq('provider','meta')
+      .eq('integration_type','whatsapp')
+      .eq('external_id',phoneNumberId)
+      .maybeSingle();
+    if (error) throw new BadRequestException('No se pudo validar la titularidad del número.');
+    if (connected && connected.company_id !== result.company.id)
+      throw new ForbiddenException('El número ya está asignado a otra empresa.');
+    return {ok:true,companyId:result.company.id,numberAvailable:!connected,alreadyAssignedToThisCompany:!!connected,
+      connectionEnabled:false,message:'Validación previa correcta. La conexión real aún no está habilitada.'};
   }
 
   @Post('whatsapp/embedded/complete')
