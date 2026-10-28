@@ -55,6 +55,14 @@ export class StagingWhatsappWebhookController {
     if (error || !Array.isArray(data) || data.length !== 1 ||
         data[0].status !== 'active' || !data[0].company_id)
       throw new ForbiddenException('Número sin una empresa autorizada única.');
+    // A registered phone alone is insufficient: the owning company must be active.
+    const { data: tenant, error: tenantError } = await this.supabase.getClient()
+      .from('companies')
+      .select('id,status')
+      .eq('id',data[0].company_id)
+      .maybeSingle();
+    if (tenantError || !tenant || tenant.status !== 'active')
+      throw new ForbiddenException('Empresa destinataria no autorizada.');
     // No delivery or acknowledgement until isolated message processing is verified.
     throw new ForbiddenException('Recepción de WhatsApp deshabilitada en staging.');
   }
