@@ -42,14 +42,16 @@ export class StagingIntegrationsController {
     if (!/^\d{6,30}$/.test(phoneNumberId))
       throw new BadRequestException('Identificador de teléfono no válido.');
     // This is a read-only gate. Never call Meta or change a webhook here.
-    const { data: connected, error } = await this.supabase.getClient()
+    const { data: matches, error } = await this.supabase.getClient()
       .from('company_integrations')
       .select('company_id')
       .eq('provider','meta')
       .eq('integration_type','whatsapp')
       .eq('external_id',phoneNumberId)
-      .maybeSingle();
-    if (error) throw new BadRequestException('No se pudo validar la titularidad del número.');
+      .limit(2);
+    if (error || !Array.isArray(matches)) throw new BadRequestException('No se pudo validar la titularidad del número.');
+    if (matches.length > 1) throw new ForbiddenException('El número tiene asignaciones duplicadas.');
+    const connected = matches[0] || null;
     if (connected && connected.company_id !== result.company.id)
       throw new ForbiddenException('El número ya está asignado a otra empresa.');
     return {ok:true,companyId:result.company.id,numberAvailable:!connected,alreadyAssignedToThisCompany:!!connected,
