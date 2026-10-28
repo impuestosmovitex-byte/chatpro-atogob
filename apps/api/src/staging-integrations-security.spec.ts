@@ -66,6 +66,20 @@ describe('staging integration catalog and isolation',()=>{
   await expect(controller.embeddedComplete('wrong',ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/Sesión requerida/);
   expect(reads).toEqual([]);
  });
+ test('preflight rejects malformed phone IDs before integration lookup',async()=>{
+  await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'bad'})).rejects.toThrow(/no válido/);
+  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+ });
+ test('preflight rejects cross-tenant access without integration lookup',async()=>{
+  await expect(controller.embeddedPreflight(key,ownerId,'other-company','piloto-mw1-prueba',{phoneNumberId:'123456789'})).rejects.toThrow();
+  expect(reads).toEqual(['companies']);
+ });
+ test('preflight does not claim to enable WhatsApp',async()=>{
+  const res=await controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'});
+  expect(res.connectionEnabled).toBe(false);
+  expect(res.numberAvailable).toBe(true);
+  expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
+ });
  test('rejects wrong internal key before querying database',async()=>{
   await expect(controller.list('wrong',ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow();
   expect(reads).toEqual([]);
