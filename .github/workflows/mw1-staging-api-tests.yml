@@ -24,4 +24,4 @@ jobs:
           cache-dependency-path: apps/api/package-lock.json
       - run: npm ci
       - name: Run MW1 access, billing and webhook tests
-        run: npm test -- --runInBand --runTestsByPath src/access-login-isolation.spec.ts src/mw1-billing-contract.spec.ts src/mw1-mp-webhook-signature.spec.ts src/staging-integrations-security.spec.ts src/staging-safety.spec.ts src/staging-whatsapp-webhook.spec.ts src/staging-meta-signature.spec.ts
+        run: npm test -- --runInBand --runTestsByPath src/access-login-isolation.spec.ts src/mw1-billing-contract.spec.ts src/mw1-mp-webhook-signature.spec.ts src/staging-integrations-security.spec.ts src/staging-safety.spec.ts src/staging-whatsapp-webhook.spec.ts src/staging-meta-signature.spec.ts src/staging-whatsapp-routing.spec.ts
