@@ -16,6 +16,18 @@ describe('assertStagingIsolation', () => {
       ...valid, SUPABASE_URL: 'https://lttucfblydpaljfboxro.supabase.co',
     })).toThrow(/STAGING BLOCKED/);
   });
+  it('permits only the three dedicated Meta Embedded Signup variables', () => {
+    expect(() => assertStagingIsolation({
+      ...valid,
+      META_WHATSAPP_APP_ID: '123456789',
+      META_WHATSAPP_EMBEDDED_CONFIG_ID: '987654321',
+      META_WHATSAPP_APP_SECRET: 'STAGING_FIXTURE_META_NOT_REAL',
+    })).not.toThrow();
+    expect(() => assertStagingIsolation({
+      ...valid,
+      META_WHATSAPP_ACCESS_TOKEN: 'must-not-be-present',
+    })).toThrow(/external messaging/);
+  });
   it('blocks external channel credentials', () => {
     expect(() => assertStagingIsolation({
       ...valid, SHOPIFY_ACCESS_TOKEN: 'do-not-connect',
