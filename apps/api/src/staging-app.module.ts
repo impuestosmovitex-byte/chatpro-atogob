@@ -9,6 +9,7 @@ import { StagingDemoRequestsController } from './staging-demo-requests.controlle
 import { SupabaseService } from './supabase.service';
 import { StagingInboxController } from './staging-inbox.controller';
 import { StagingIntegrationsController } from './staging-integrations.controller';
+import { StagingWhatsappWebhookController } from './staging-whatsapp-webhook.controller';
 import { UsersController } from './users.controller';
 import { StagingMyPlanController } from './staging-my-plan.controller';
 import { StagingSubscriptionAdminController } from './staging-subscription-admin.controller';
@@ -32,6 +33,7 @@ class StagingHealthController {
     StagingMercadoPagoWebhookController,
     StagingInboxController,
     StagingIntegrationsController,
+    StagingWhatsappWebhookController,
     UsersController,
     StagingMyPlanController,
     StagingSubscriptionAdminController,
