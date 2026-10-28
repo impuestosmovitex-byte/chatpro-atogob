@@ -80,6 +80,16 @@ describe('staging integration catalog and isolation',()=>{
   expect(res.numberAvailable).toBe(true);
   expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
  });
+ test('preflight blocks a number already assigned to another company',async()=>{
+  rows.company_integrations={company_id:'another-tenant',provider:'meta',integration_type:'whatsapp',external_id:'123456789'};
+  try {
+    await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'}))
+      .rejects.toThrow(/asignado a otra empresa/);
+    expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
+  } finally {
+    delete rows.company_integrations;
+  }
+ });
  test('rejects wrong internal key before querying database',async()=>{
   await expect(controller.list('wrong',ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow();
   expect(reads).toEqual([]);
