@@ -69,6 +69,17 @@ describe('staging integration catalog and isolation',()=>{
   await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/aún no está habilitado/);
   expect(reads).toEqual(['companies','company_memberships','app_roles']);
  });
+ test('embedded completion remains gated without explicit pilot flag',async()=>{
+  const before=process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
+  delete process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
+  try {
+    await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba',
+      {code:'invalid',wabaId:'123456789'})).rejects.toThrow(/aún no está habilitado/);
+  } finally {
+    if(before===undefined) delete process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
+    else process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED=before;
+  }
+ });
  test('embedded completion rejects unidentified callers without database access',async()=>{
   await expect(controller.embeddedComplete('wrong',ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/Sesión requerida/);
   expect(reads).toEqual([]);
