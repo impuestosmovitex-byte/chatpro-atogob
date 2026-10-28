@@ -5,12 +5,14 @@ import { SupabaseService } from './supabase.service';
 describe('staging WhatsApp verification isolation', () => {
   let matches: Array<{company_id:string;status:string}> = [];
   let queryCount = 0;
-  const db = {from: (_table:string) => {
+  let tenantStatus = 'active';
+  const db = {from: (table:string) => {
     queryCount++;
     const query = {
       select: (_s:string) => query,
       eq: (_k:string,_v:string) => query,
       limit: async (_n:number) => ({ data:matches, error:null }),
+      maybeSingle: async () => ({data: table === 'companies' ? {id:'tenant-a',status:tenantStatus}:null,error:null}),
     };
     return query;
   }};
@@ -22,7 +24,7 @@ describe('staging WhatsApp verification isolation', () => {
   const body = {object:'whatsapp_business_account',entry:[{changes:[{value:{metadata:{phone_number_id:'123456789'}}}]}]};
   const rawBody=Buffer.from(JSON.stringify(body));
   const signature='sha256='+createHmac('sha256',secret).update(rawBody).digest('hex');
-  beforeEach(() => { process.env.MW1_STAGING_WHATSAPP_VERIFY_TOKEN = valid; process.env.META_WHATSAPP_APP_SECRET=secret; matches=[];queryCount=0; });
+  beforeEach(() => { process.env.MW1_STAGING_WHATSAPP_VERIFY_TOKEN = valid; process.env.META_WHATSAPP_APP_SECRET=secret; matches=[];queryCount=0;tenantStatus='active'; });
   afterAll(() => {
     if (original === undefined) delete process.env.MW1_STAGING_WHATSAPP_VERIFY_TOKEN;
     else process.env.MW1_STAGING_WHATSAPP_VERIFY_TOKEN = original;
@@ -41,6 +43,11 @@ describe('staging WhatsApp verification isolation', () => {
   it('rejects duplicate phone assignments', async () => {
     matches=[{company_id:'tenant-a',status:'active'},{company_id:'tenant-b',status:'active'}];
     await expect(controller.receive({rawBody,body} as any,signature)).rejects.toThrow(/empresa autorizada única/);
+  });
+  it('rejects disabled owner companies before processing a signed event', async () => {
+    matches=[{company_id:'tenant-a',status:'active'}];
+    tenantStatus='suspended';
+    await expect(controller.receive({rawBody,body} as any,signature)).rejects.toThrow(/Empresa destinataria no autorizada/);
   });
   it('does not process a valid signed, tenant-owned event', async () => {
     matches=[{company_id:'tenant-a',status:'active'}];
