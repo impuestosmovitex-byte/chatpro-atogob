@@ -1,10 +1,11 @@
 import { BadRequestException, Controller, ForbiddenException, Get, Headers, Post, Query, UnauthorizedException, Body } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { IntegrationCredentialsService } from './integration-credentials.service';
 
 /** Read-only integration status for isolated MW1 staging. No tokens or secrets exposed. */
 @Controller('integrations')
 export class StagingIntegrationsController {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(private readonly supabase: SupabaseService, private readonly credentials?: IntegrationCredentialsService) {}
 
   @Get('whatsapp/embedded/config')
   async embeddedConfig(
@@ -64,11 +65,74 @@ export class StagingIntegrationsController {
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
     @Query('company') slug = '',
+    @Body() body: {code?: unknown; wabaId?: unknown; phoneNumberId?: unknown; businessId?: unknown} = {},
   ) {
-    // Validate tenant and admin role before responding, even while completion is disabled.
-    await this.list(key, userId, companyId, slug);
-    // Never exchange codes or write tokens until a tenant-bound staging flow is audited.
-    throw new ForbiddenException('El registro real de WhatsApp aún no está habilitado en staging.');
+    const context = await this.list(key, userId, companyId, slug);
+    // Pilot-only provisioning; never silently enable connections on other tenants.
+    if (process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED !== 'true' ||
+        context.company.slug !== 'piloto-mw1-prueba')
+      throw new ForbiddenException('El registro real de WhatsApp aún no está habilitado en staging.');
+    const appId = process.env.META_WHATSAPP_APP_ID?.trim();
+    const appSecret = process.env.META_WHATSAPP_APP_SECRET?.trim();
+    const code = typeof body?.code === 'string' ? body.code.trim() : '';
+    const waba = typeof body?.wabaId === 'string' ? body.wabaId.trim() : '';
+    const requested = typeof body?.phoneNumberId === 'string' ? body.phoneNumberId.trim() : '';
+    if (!appId || !appSecret || !this.credentials)
+      throw new BadRequestException('Falta configuración segura de Meta.');
+    if (code.length < 20 || code.length > 4096 || !/^[0-9]{6,30}$/.test(waba) ||
+        (requested && !/^[0-9]{6,30}$/.test(requested)))
+      throw new BadRequestException('La autorización de Meta no contiene datos válidos.');
+    const oauthUrl = new URL('https://graph.facebook.com/v26.0/oauth/access_token');
+    oauthUrl.searchParams.set('client_id',appId);
+    oauthUrl.searchParams.set('client_secret',appSecret);
+    oauthUrl.searchParams.set('code',code);
+    // No webhooks are subscribed here and no messages can be processed.
+    let tokenPayload: {access_token?: string};
+    try {
+      const response = await fetch(oauthUrl, {method:'GET',signal:AbortSignal.timeout(15000)});
+      if (!response.ok) throw new Error('oauth rejected');
+      tokenPayload = await response.json() as {access_token?: string};
+    } catch { throw new BadRequestException('Meta no permitió autorizar la cuenta.'); }
+    const accessToken = tokenPayload.access_token;
+    if (typeof accessToken !== 'string' || accessToken.length < 20)
+      throw new BadRequestException('Meta no devolvió un token empresarial válido.');
+    let phones: Array<{id?: string;verified_name?: string;display_phone_number?: string}>;
+    try {
+      const url = new URL(`https://graph.facebook.com/v26.0/${waba}/phone_numbers`);
+      url.searchParams.set('fields','id,verified_name,display_phone_number');
+      url.searchParams.set('limit','100');
+      const response = await fetch(url, {headers:{Authorization:`Bearer ${accessToken}`},signal:AbortSignal.timeout(15000)});
+      if (!response.ok) throw new Error('phone lookup rejected');
+      const payload = await response.json() as {data?: unknown};
+      phones = Array.isArray(payload.data) ? payload.data : [];
+    } catch { throw new BadRequestException('Meta no permitió comprobar el número autorizado.'); }
+    const selected = requested ? phones.find(p=>p.id===requested) : phones.length===1 ? phones[0] : undefined;
+    if (!selected?.id || !/^[0-9]{6,30}$/.test(selected.id))
+      throw new BadRequestException('Selecciona exactamente un número perteneciente a la cuenta autorizada.');
+    const phoneId = selected.id;
+    const db = this.supabase.getClient();
+    const {data: existing,error:checkError} = await db.from('company_integrations')
+      .select('company_id').eq('provider','meta').eq('integration_type','whatsapp')
+      .eq('external_id',phoneId).limit(2);
+    if (checkError || !Array.isArray(existing) || existing.length > 1 ||
+        (existing.length===1 && existing[0].company_id!==context.company.id))
+      throw new ForbiddenException('No se puede asignar este número a la empresa piloto.');
+    const encrypted = this.credentials.encrypt({access_token:accessToken});
+    const {error:saveError} = await db.from('company_integrations').upsert({
+      company_id:context.company.id,provider:'meta',integration_type:'whatsapp',
+      external_id:phoneId,status:'pending',credential_mode:'encrypted',
+      credentials_encrypted:encrypted,
+      credential_reference:{phone_number_id:phoneId,waba_id:waba},
+      config:{api_version:'v26.0',business_account_id:waba,
+        display_name:selected.verified_name||null,
+        display_phone_number:selected.display_phone_number||null,
+        setup_source:'mw1_staging_embedded_signup'},
+      updated_at:new Date().toISOString(),
+    },{onConflict:'provider,integration_type,external_id'});
+    if (saveError) throw new BadRequestException('No se pudo guardar la autorización de forma segura.');
+    return {ok:true,connectionEnabled:false,status:'pending',
+      phoneNumberId:phoneId,company:context.company,
+      message:'Autorización cifrada y pendiente; la recepción de mensajes sigue deshabilitada.'};
   }
 
   @Get()
