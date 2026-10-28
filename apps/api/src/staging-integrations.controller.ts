@@ -1,10 +1,39 @@
-import { Controller, ForbiddenException, Get, Headers, Query, UnauthorizedException } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Headers, Post, Query, UnauthorizedException } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 
 /** Read-only integration status for isolated MW1 staging. No tokens or secrets exposed. */
 @Controller('integrations')
 export class StagingIntegrationsController {
   constructor(private readonly supabase: SupabaseService) {}
+
+  @Get('whatsapp/embedded/config')
+  async embeddedConfig(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+  ) {
+    // Reuse the same tenant membership and admin-role validation as the catalog.
+    const result = await this.list(key, userId, companyId, slug);
+    return {
+      ok: true,
+      ready: false,
+      connectionEnabled: false,
+      appId: process.env.META_WHATSAPP_APP_ID?.trim() || null,
+      configurationId: process.env.META_WHATSAPP_EMBEDDED_CONFIG_ID?.trim() || null,
+      apiVersion: 'v26.0',
+      flowVersion: 'v4',
+      sessionInfoVersion: '3',
+      company: result.company,
+      message: 'Meta configurado en staging; la autorización real permanece deshabilitada hasta validar aislamiento y webhooks.',
+    };
+  }
+
+  @Post('whatsapp/embedded/complete')
+  async embeddedComplete() {
+    // Never exchange codes or write tokens until a tenant-bound staging flow is audited.
+    throw new ForbiddenException('El registro real de WhatsApp aún no está habilitado en staging.');
+  }
 
   @Get()
   async list(
