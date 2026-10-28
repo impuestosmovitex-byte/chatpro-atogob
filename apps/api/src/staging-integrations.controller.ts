@@ -39,7 +39,7 @@ export class StagingIntegrationsController {
   ) {
     const result = await this.list(key, userId, companyId, slug);
     const phoneNumberId = typeof body?.phoneNumberId === 'string' ? body.phoneNumberId.trim() : '';
-    if (!/^\\d{6,30}$/.test(phoneNumberId))
+    if (!/^\d{6,30}$/.test(phoneNumberId))
       throw new BadRequestException('Identificador de teléfono no válido.');
     // This is a read-only gate. Never call Meta or change a webhook here.
     const { data: connected, error } = await this.supabase.getClient()
