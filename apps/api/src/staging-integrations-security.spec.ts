@@ -46,6 +46,26 @@ describe('staging integration catalog and isolation',()=>{
   await expect(controller.list(key,ownerId,'another-company','piloto-mw1-prueba')).rejects.toThrow();
   expect(reads).toEqual(['companies']);
  });
+ test('embedded config is restricted to a verified company admin and never enables live connection',async()=>{
+  const result=await controller.embeddedConfig(key,ownerId,companyId,'piloto-mw1-prueba');
+  expect(result.ok).toBe(true);
+  expect(result.ready).toBe(false);
+  expect(result.connectionEnabled).toBe(false);
+  expect(result.company.slug).toBe('piloto-mw1-prueba');
+  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+ });
+ test('embedded config rejects cross-tenant identity',async()=>{
+  await expect(controller.embeddedConfig(key,ownerId,'another-company','piloto-mw1-prueba')).rejects.toThrow();
+  expect(reads).toEqual(['companies']);
+ });
+ test('embedded completion is unavailable even to valid owners',async()=>{
+  await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/aún no está habilitado/);
+  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+ });
+ test('embedded completion rejects unidentified callers without database access',async()=>{
+  await expect(controller.embeddedComplete('wrong',ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/Sesión requerida/);
+  expect(reads).toEqual([]);
+ });
  test('rejects wrong internal key before querying database',async()=>{
   await expect(controller.list('wrong',ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow();
   expect(reads).toEqual([]);
