@@ -9,6 +9,7 @@ import { StagingDemoRequestsController } from './staging-demo-requests.controlle
 import { SupabaseService } from './supabase.service';
 import { StagingInboxController } from './staging-inbox.controller';
 import { StagingIntegrationsController } from './staging-integrations.controller';
+import { IntegrationCredentialsService } from './integration-credentials.service';
 import { StagingWhatsappWebhookController } from './staging-whatsapp-webhook.controller';
 import { UsersController } from './users.controller';
 import { StagingMyPlanController } from './staging-my-plan.controller';
@@ -44,6 +45,6 @@ class StagingHealthController {
     NativeCommerceController,
     StagingSalesAssistantController,
   ],
-  providers: [SupabaseService, AccessAuthService, StagingSalesAssistantService],
+  providers: [SupabaseService, IntegrationCredentialsService, AccessAuthService, StagingSalesAssistantService],
 })
 export class StagingAppModule {}
