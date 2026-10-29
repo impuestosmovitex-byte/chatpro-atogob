@@ -375,15 +375,19 @@ export function WhatsappEmbeddedSignupButton() {
 
       const popupHint = window.setTimeout(() => {
         if (!settled && !authCode && !session) {
-          setMessage('Si no apareció la ventana de Facebook, permite las ventanas emergentes de este sitio en Chrome (icono de ventana bloqueada junto a la dirección). Después pulsa Cancelar y vuelve a intentar.');
+          setMessage('Meta todavía no responde. Si no apareció una ventana de Facebook, puede tratarse de configuración de Facebook Login for Business o de una restricción del navegador. El intento terminará automáticamente.');
         }
-      }, 12000);
+      }, 8000);
 
       cancelRef.current = () => fail(new Error('Conexión cancelada. Puedes volver a intentarlo.'));
 
       const timeout = window.setTimeout(() => {
-        fail(new Error('Meta no terminó la conexión dentro del tiempo esperado.'));
-      }, 10 * 60 * 1000);
+        if (!authCode && !session) {
+          fail(new Error('Meta no abrió la autorización o no respondió. Revisa en Meta Developers: Facebook Login for Business, inicio de sesión con SDK de JavaScript, dominios permitidos y configuración Embedded Signup. No se modificó ningún número.'));
+        } else {
+          fail(new Error('Meta inició el proceso, pero no devolvió todos los datos de autorización. Reintenta desde la empresa piloto.'));
+        }
+      }, 30000);
 
       window.addEventListener('message', listener);
 
