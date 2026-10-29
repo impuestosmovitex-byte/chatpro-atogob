@@ -68,14 +68,12 @@ function verifyFacebookSdk(
 ): Promise<FacebookSdk> {
   return new Promise((resolve, reject) => {
     try {
+      // SDK initialization is enough to launch Embedded Signup.
+      // getLoginStatus may hang in browsers restricting third-party cookies.
       initializeFacebookSdk(sdk, appId, apiVersion);
-      sdk.getLoginStatus(() => resolve(sdk));
+      resolve(sdk);
     } catch (error) {
-      reject(
-        error instanceof Error
-          ? error
-          : new Error('Meta no pudo inicializar el SDK.'),
-      );
+      reject(error instanceof Error ? error : new Error('Meta no pudo inicializar el SDK.'));
     }
   });
 }
@@ -145,7 +143,7 @@ function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk
     script.async = true;
     script.defer = true;
     script.crossOrigin = 'anonymous';
-    script.src = 'https://connect.facebook.net/es_LA/sdk.js';
+    script.src = 'https://connect.facebook.net/en_US/sdk.js';
     script.addEventListener('load', finish, { once: true });
     script.addEventListener('error', () => fail(), { once: true });
     document.body.appendChild(script);
