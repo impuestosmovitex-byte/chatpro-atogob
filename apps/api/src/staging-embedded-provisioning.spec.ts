@@ -24,6 +24,35 @@ describe('pilot-only Meta OAuth provisioning', () => {
       if(value===undefined) delete process.env[key]; else process.env[key]=value;
     }
   });
+  it('does not allow a registered phone to be overwritten',async()=>{
+    const rows: Record<string,Record<string,unknown>>={
+      companies:{id:'pilot',name:'Pilot',slug:'piloto-mw1-prueba',status:'active'},
+      company_memberships:{role_id:'owner',active:true},
+      app_roles:{key:'owner',company_id:null},
+    };
+    let writes=0;
+    const db={from:(table:string)=>{
+      const q={
+        select:(_s:string)=>q,
+        eq:(_k:string,_v:unknown)=>q,
+        maybeSingle:async()=>({data:rows[table]||null,error:null}),
+        limit:async()=>({data:[{company_id:'other-company'}],error:null}),
+        upsert:async()=>{writes++;return {error:null};},
+      };return q;
+    }};
+    global.fetch=(async(url:string|URL|Request)=>{
+      const address=String(url);
+      if(address.includes('/oauth/access_token')) return {ok:true,json:async()=>({access_token:'test-company-token-very-long'})} as Response;
+      if(address.includes('/phone_numbers')) return {ok:true,json:async()=>({data:[{id:'123456789'}]})} as Response;
+      throw Error('Unexpected external request');
+    }) as typeof fetch;
+    const controller=new StagingIntegrationsController({getClient:()=>db} as unknown as SupabaseService,
+      {encrypt:()=>'ciphertext-only'} as unknown as IntegrationCredentialsService);
+    await expect(controller.embeddedComplete('staging-internal-test-key','user','pilot','piloto-mw1-prueba',
+      {code:'code-authorization-long-enough',wabaId:'987654321',phoneNumberId:'123456789'}))
+      .rejects.toThrow(/ya está registrado/);
+    expect(writes).toBe(0);
+  });
   it('encrypts a pilot authorization as pending without subscribing webhooks',async()=>{
     const saved: Array<Record<string,unknown>>=[];
     const rows: Record<string,Record<string,unknown>>={
