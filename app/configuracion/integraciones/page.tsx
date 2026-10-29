@@ -494,7 +494,7 @@ export default function IntegracionesPage() {
             })}
           </div>
           <p style={{margin:'12px 0 0',fontSize:12,color:'#64748b'}}>Este estado pertenece solo a {companyName}. No conecta ni modifica las cuentas de otra empresa.</p>
-          {stagingReadOnly&&<p role="status" style={{margin:'12px 0 0',padding:12,borderRadius:10,background:'#fff8e4',color:'#694b12',fontSize:13}}>Modo de prueba seguro: puedes revisar los canales, pero aún no autorizar conexiones. El equipo técnico debe validar primero Meta y los webhooks de staging sin alterar los de ATOGOB.</p>}
+          {stagingReadOnly&&<p role="status" style={{margin:'12px 0 0',padding:12,borderRadius:10,background:'#fff8e4',color:'#694b12',fontSize:13}}>Modo de prueba: WhatsApp permite solicitar autorización únicamente para el piloto. Otras integraciones y la recepción de mensajes siguen deshabilitadas. No selecciones el número productivo de ATOGOB.</p>}
         </section>
         {message ? <p className={styles.error}>{message}</p> : null}
 
@@ -947,6 +947,7 @@ export default function IntegracionesPage() {
 
                   <WhatsappEmbeddedSignupButton />
 
+                  {!stagingReadOnly && <>
                   <strong>Conexión manual avanzada</strong>
                   <p>
                     Usa Phone Number ID y token únicamente cuando Meta ya haya
@@ -1063,6 +1064,7 @@ export default function IntegracionesPage() {
                       </button>
                     </div>
                   ) : null}
+                  </>}
                 </div>
               ) : selected.key === 'instagram' ? null : selected.status === 'active' ? (
                 <div className={styles.notice}>
