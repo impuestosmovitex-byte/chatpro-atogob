@@ -171,6 +171,7 @@ export function WhatsappEmbeddedSignupButton() {
   const [sdkReady, setSdkReady] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState('');
+  const [diagnostic, setDiagnostic] = useState('');
   const sdkRef = useRef<FacebookSdk | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
 
@@ -280,6 +281,7 @@ export function WhatsappEmbeddedSignupButton() {
       return;
     }
 
+    setDiagnostic('SDK cargado; invocando FB.login desde el clic.');
     setMessage('Abriendo Meta…');
     setConnecting(true);
 
@@ -338,6 +340,7 @@ export function WhatsappEmbeddedSignupButton() {
 
           if (payload.type !== 'WA_EMBEDDED_SIGNUP') return;
           metaEventReceived = true;
+          setDiagnostic('Meta envió un evento de Embedded Signup: ' + String(payload.event || 'sin tipo'));
 
           if (payload.event === 'CANCEL') {
             fail(new Error('La ventana de Meta se cerró antes de autorizar el número.'));
@@ -400,9 +403,11 @@ export function WhatsappEmbeddedSignupButton() {
       window.addEventListener('message', listener);
 
       try {
+        setDiagnostic('Llamando a FB.login; si no abre, inspeccionar errores de Chrome.');
         sdk.login(
           (response) => {
             callbackReceived = true;
+            setDiagnostic('FB.login respondió: ' + String(response.status || (response.authResponse ? 'autorización' : 'sin autorización')));
             authCode = text(response.authResponse?.code);
 
             if (!authCode) {
@@ -423,11 +428,9 @@ export function WhatsappEmbeddedSignupButton() {
           },
         );
       } catch (error) {
-        fail(
-          error instanceof Error
-            ? error
-            : new Error('Meta no pudo abrir la ventana de conexión.'),
-        );
+        const detail = error instanceof Error ? error.message : String(error);
+        setDiagnostic('FB.login lanzó excepción: ' + detail);
+        fail(new Error('FB.login falló: ' + detail));
       }
     })
       .catch((error) => {
@@ -472,6 +475,7 @@ export function WhatsappEmbeddedSignupButton() {
       </small>
       {connecting && <button type="button" className={styles.testButton} onClick={() => cancelRef.current?.()}>Cancelar intento</button>}
       {message ? <p role="status">{message}</p> : null}
+      {diagnostic && <small role="status">Diagnóstico técnico (sin credenciales): {diagnostic}</small>}
     </div>
   );
 }
