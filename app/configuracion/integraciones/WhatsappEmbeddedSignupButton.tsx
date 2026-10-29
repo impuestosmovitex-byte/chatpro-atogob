@@ -174,6 +174,7 @@ export function WhatsappEmbeddedSignupButton() {
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState('');
   const sdkRef = useRef<FacebookSdk | null>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -293,6 +294,8 @@ export function WhatsappEmbeddedSignupButton() {
       const cleanup = () => {
         window.removeEventListener('message', listener);
         window.clearTimeout(timeout);
+        window.clearTimeout(popupHint);
+        cancelRef.current = null;
       };
 
       const fail = (error: Error) => {
@@ -370,6 +373,14 @@ export function WhatsappEmbeddedSignupButton() {
         }
       };
 
+      const popupHint = window.setTimeout(() => {
+        if (!settled && !authCode && !session) {
+          setMessage('Si no apareció la ventana de Facebook, permite las ventanas emergentes de este sitio en Chrome (icono de ventana bloqueada junto a la dirección). Después pulsa Cancelar y vuelve a intentar.');
+        }
+      }, 12000);
+
+      cancelRef.current = () => fail(new Error('Conexión cancelada. Puedes volver a intentarlo.'));
+
       const timeout = window.setTimeout(() => {
         fail(new Error('Meta no terminó la conexión dentro del tiempo esperado.'));
       }, 10 * 60 * 1000);
@@ -446,7 +457,8 @@ export function WhatsappEmbeddedSignupButton() {
             : 'Preparando y verificando el SDK oficial de Meta…'
           : config?.message || 'Embedded Signup todavía no está configurado.'}
       </small>
-      {message ? <p>{message}</p> : null}
+      {connecting && <button type="button" className={styles.testButton} onClick={() => cancelRef.current?.()}>Cancelar intento</button>}
+      {message ? <p role="status">{message}</p> : null}
     </div>
   );
 }
