@@ -26,7 +26,8 @@ export class StagingIntegrationsController {
     return {
       ok: true,
       ready: onboardingReady,
-      connectionEnabled: onboardingReady,
+      connectionEnabled: false,
+      authorizationEnabled: onboardingReady,
       appId: process.env.META_WHATSAPP_APP_ID?.trim() || null,
       configurationId: process.env.META_WHATSAPP_EMBEDDED_CONFIG_ID?.trim() || null,
       apiVersion: 'v26.0',
@@ -122,8 +123,8 @@ export class StagingIntegrationsController {
       .select('company_id').eq('provider','meta').eq('integration_type','whatsapp')
       .eq('external_id',phoneId).limit(2);
     if (checkError || !Array.isArray(existing) || existing.length > 1 ||
-        (existing.length===1 && existing[0].company_id!==context.company.id))
-      throw new ForbiddenException('No se puede asignar este número a la empresa piloto.');
+        existing.length !== 0)
+      throw new ForbiddenException('El número ya está registrado; no se reemplazarán credenciales ni conexiones existentes.');
     const encrypted = this.credentials.encrypt({access_token:accessToken});
     const {error:saveError} = await db.from('company_integrations').upsert({
       company_id:context.company.id,provider:'meta',integration_type:'whatsapp',
