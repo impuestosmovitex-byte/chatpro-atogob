@@ -281,7 +281,7 @@ export function WhatsappEmbeddedSignupButton() {
       return;
     }
 
-    setDiagnostic('SDK cargado; invocando FB.login desde el clic.');
+    setDiagnostic('SDK cargado. Activación de usuario: ' + String(navigator.userActivation?.isActive) + '; contexto seguro: ' + String(window.isSecureContext) + '. Iniciando FB.login.');
     setMessage('Abriendo Meta…');
     setConnecting(true);
 
