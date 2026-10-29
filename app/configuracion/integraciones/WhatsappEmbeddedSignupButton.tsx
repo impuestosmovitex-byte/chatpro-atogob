@@ -264,6 +264,27 @@ export function WhatsappEmbeddedSignupButton() {
     window.setTimeout(() => window.location.reload(), 1000);
   }
 
+  function testPopup() {
+    // A separate user click tests browser popup permission without sending data to Meta.
+    const activated = navigator.userActivation?.isActive;
+    let probe: Window | null = null;
+    try {
+      probe = window.open('about:blank', '_blank', 'width=240,height=160');
+      if (!probe) {
+        setDiagnostic('VENTANA BLOQUEADA: Chrome devolvió null al intentar abrir una ventana.');
+        setMessage('El navegador impide abrir ventanas emergentes desde MW1. Habilita ventanas emergentes para este sitio.');
+        return;
+      }
+      probe.close();
+      setDiagnostic('VENTANA PERMITIDA: Chrome abrió y cerró una ventana de prueba. Activación del clic: ' + String(activated));
+      setMessage('Chrome permite ventanas emergentes. El bloqueo de FB.login requiere revisar el SDK o la configuración de Meta.');
+    } catch (error) {
+      setDiagnostic('ERROR DE VENTANA: ' + (error instanceof Error ? error.message : String(error)));
+      setMessage('Chrome no permitió la prueba de ventana emergente.');
+      try { probe?.close(); } catch { /* no-op */ }
+    }
+  }
+
   function connect() {
     if (
       !config?.ready ||
@@ -471,6 +492,7 @@ export function WhatsappEmbeddedSignupButton() {
             : 'Preparando y verificando el SDK oficial de Meta…'
           : config?.message || 'Embedded Signup todavía no está configurado.'}
       </small>
+      {!connecting && <button type="button" className={styles.testButton} onClick={testPopup}>Diagnosticar apertura de ventanas</button>}
       {connecting && <button type="button" className={styles.testButton} onClick={() => cancelRef.current?.()}>Cancelar intento</button>}
       {message ? <p role="status">{message}</p> : null}
       {diagnostic && <small role="status">Diagnóstico técnico (sin credenciales): {diagnostic}</small>}
