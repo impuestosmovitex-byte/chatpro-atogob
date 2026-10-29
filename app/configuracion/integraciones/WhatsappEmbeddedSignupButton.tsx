@@ -290,6 +290,8 @@ export function WhatsappEmbeddedSignupButton() {
       let session: SignupSession | null = null;
       let completing = false;
       let settled = false;
+      let callbackReceived = false;
+      let metaEventReceived = false;
 
       const cleanup = () => {
         window.removeEventListener('message', listener);
@@ -337,6 +339,12 @@ export function WhatsappEmbeddedSignupButton() {
           };
 
           if (payload.type !== 'WA_EMBEDDED_SIGNUP') return;
+          metaEventReceived = true;
+
+          if (payload.event === 'CANCEL') {
+            fail(new Error('La ventana de Meta se cerró antes de autorizar el número.'));
+            return;
+          }
 
           if (payload.event === 'ERROR') {
             fail(
@@ -374,16 +382,18 @@ export function WhatsappEmbeddedSignupButton() {
       };
 
       const popupHint = window.setTimeout(() => {
-        if (!settled && !authCode && !session) {
-          setMessage('Meta todavía no responde. Si no apareció una ventana de Facebook, puede tratarse de configuración de Facebook Login for Business o de una restricción del navegador. El intento terminará automáticamente.');
+        if (!settled && !callbackReceived && !metaEventReceived) {
+          setMessage('El SDK de Facebook cargó, pero FB.login no devolvió respuesta ni abrió el flujo. Revisa en Meta Developers → Facebook Login for Business → Configuración que esté permitido Login with JavaScript SDK y el dominio de MW1.');
         }
       }, 8000);
 
       cancelRef.current = () => fail(new Error('Conexión cancelada. Puedes volver a intentarlo.'));
 
       const timeout = window.setTimeout(() => {
-        if (!authCode && !session) {
-          fail(new Error('Meta no abrió la autorización o no respondió. Revisa en Meta Developers: Facebook Login for Business, inicio de sesión con SDK de JavaScript, dominios permitidos y configuración Embedded Signup. No se modificó ningún número.'));
+        if (!callbackReceived && !metaEventReceived) {
+          fail(new Error('FB.login no devolvió respuesta. Revisa los dominios de JavaScript SDK y Facebook Login for Business en Meta Developers. No se modificó ningún número.'));
+        } else if (!authCode && !session) {
+          fail(new Error('Meta respondió, pero no completó la autorización. Revisa que la configuración Embedded Signup sea V4 y esté habilitada para esta aplicación.'));
         } else {
           fail(new Error('Meta inició el proceso, pero no devolvió todos los datos de autorización. Reintenta desde la empresa piloto.'));
         }
@@ -394,6 +404,7 @@ export function WhatsappEmbeddedSignupButton() {
       try {
         sdk.login(
           (response) => {
+            callbackReceived = true;
             authCode = text(response.authResponse?.code);
 
             if (!authCode) {
