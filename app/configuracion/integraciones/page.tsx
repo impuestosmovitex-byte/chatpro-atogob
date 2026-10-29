@@ -530,7 +530,7 @@ export default function IntegracionesPage() {
           </div>
 
           {selected ? (
-            stagingReadOnly ? <aside className={styles.detail}>
+            stagingReadOnly && selected.key !== 'whatsapp' ? <aside className={styles.detail}>
               <div className={styles.detailTop}><span className={styles.largeIcon}>{icon(selected.key)}</span><h2>{selected.name}</h2></div>
               <p className={styles.description}>{selected.description}</p>
               <div className={styles.notice}>Este entorno de prueba muestra los canales disponibles, pero las autorizaciones de conexión siguen deshabilitadas hasta configurar y validar la aplicación de Meta/Shopify de staging. No utilices credenciales ni tokens de ATOGOB producción.</div>
@@ -551,6 +551,13 @@ export default function IntegracionesPage() {
               </div>
 
               <p className={styles.description}>{selected.description}</p>
+              {stagingReadOnly && selected.key === 'whatsapp' && (
+                <div className={styles.notice}>
+                  Piloto MW1: únicamente se permite autorizar un número nuevo en Meta.
+                  La autorización se guarda como pendiente; los mensajes, webhooks y respuestas de IA siguen deshabilitados.
+                  No selecciones el número operativo de ATOGOB.
+                </div>
+              )}
 
               <dl className={styles.details}>
                 <div>
