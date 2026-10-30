@@ -122,9 +122,9 @@ export default function ImportCatalogPage(){
         </div>}
         {rows.length?<div className={styles.tableScroll}>
           <table className={styles.table}>
-            <thead><tr><th>Referencia</th><th>Nombre</th><th>Precio</th><th>Inventario</th><th>Ficha</th></tr></thead>
+            <thead><tr><th>Referencia</th><th>Nombre</th><th>Precio</th><th>Inventario</th><th>Talla / color / presentación</th><th>Ficha</th></tr></thead>
             <tbody>{rows.map(row=><tr key={row.sku}>
-              <td>{row.sku}</td><td>{row.name}</td><td>{money(row.price)}</td><td>{row.stock===null?'Sin control':row.stock}</td><td>{Object.keys(row.facts||{}).length?`${Object.keys(row.facts||{}).length} campos`: 'Sin detalles'}</td>
+              <td>{row.sku}</td><td>{row.name}</td><td>{money(row.price)}</td><td>{row.stock===null?'Sin control':row.stock}</td><td>{row.facts?.details?.split(' | ').filter(part=>/^(Talla|Color|Presentación):/.test(part)).join(' · ')||'No especificada'}</td><td>{Object.keys(row.facts||{}).length?`${Object.keys(row.facts||{}).length} campos`: 'Sin detalles'}</td>
             </tr>)}</tbody>
           </table>
         </div>:<p className={styles.empty}>Selecciona un archivo para revisar sus productos antes de guardarlos.</p>}
