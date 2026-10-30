@@ -32,6 +32,7 @@ type FacebookSdk = {
     xfbml: boolean;
     version: string;
     autoLogAppEvents?: boolean;
+    fedCM?: boolean;
   }): void;
   getLoginStatus(callback: (response: FacebookLoginResponse) => void): void;
   login(
@@ -57,6 +58,7 @@ function initializeFacebookSdk(
     cookie: false,
     xfbml: false,
     autoLogAppEvents: false,
+    fedCM: false,
     version: apiVersion,
   });
 }
