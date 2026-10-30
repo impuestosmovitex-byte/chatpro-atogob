@@ -94,6 +94,12 @@ export default function ImportCatalogPage(){
       <section className={styles.panel}>
         <h2>1. Selecciona tu catálogo: Excel, PDF o CSV</h2>
         <p className={styles.note}>Puedes cargar un <strong>Excel (.xlsx)</strong> directamente, un <strong>PDF con texto y tabla de productos</strong> o un CSV.</p>
+        <div role="note" style={{border:'1px solid #cbd5e1',borderRadius:12,padding:14,margin:'14px 0'}}>
+          <strong>¿Qué tipo de archivo tienes?</strong>
+          <p><strong>Excel o CSV:</strong> recomendado para productos con referencias, precios, inventario, tallas o colores. La vista previa permite corregir errores antes de importar.</p>
+          <p><strong>PDF con texto:</strong> solo para tablas sencillas. Los catálogos escaneados o basados en fotografías todavía no se interpretan automáticamente.</p>
+          <p><strong>Sin archivo:</strong> puedes <Link href="/catalogo">crear productos manualmente</Link>. No inventamos precios ni existencias ausentes.</p>
+        </div>
         <p className={styles.note}>Columnas obligatorias: <strong>SKU, Nombre y Precio</strong>. Opcionales: Inventario, Descripción, Material, Composición, Medidas, Ingredientes, Alérgenos, Cuidados y Características. Las fichas enriquecidas se leen de Excel y CSV; el PDF sencillo reconoce por ahora SKU, nombre, precio e inventario.</p>
         <div className={pageStyles.uploadArea}>
           <input type="file" accept=".xlsx,.pdf,.csv,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={e=>void handleFile(e)} disabled={loading||Boolean(saved)} aria-label="Seleccionar catálogo Excel, PDF o CSV"/>
