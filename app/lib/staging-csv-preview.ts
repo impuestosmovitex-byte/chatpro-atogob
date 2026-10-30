@@ -11,7 +11,7 @@ export const IMPORT_FACT_COLUMNS:Record<ImportFactKey,{headers:string[];max:numb
   ingredients:{headers:['ingredientes','ingredients'],max:700},
   allergens:{headers:['alergenos','alergias','allergens'],max:300},
   care:{headers:['cuidados','conservacion','lavado','care'],max:450},
-  details:{headers:['caracteristicas','detalles','details','talla','color','presentacion','variante'],max:550},
+  details:{headers:['caracteristicas','detalles','details'],max:550},
 };
 
 export type ImportPreview={rows:ImportRow[];errors:string[]};
@@ -108,6 +108,24 @@ export function previewCsv(text:string):ImportPreview{
       const clean=value.replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();
       if(clean.length>column.max)issues.push('campo '+column.key+' demasiado largo');
       else facts[column.key]=clean;
+    }
+    const variantFields = [
+      ['Talla',find(['talla','size'])],
+      ['Color',find(['color','colour'])],
+      ['Presentación',find(['presentacion','variante'])],
+    ] as const;
+    const variantParts:string[]=[];
+    for(const [label,index] of variantFields){
+      if(index<0)continue;
+      const value=(values[index]||'').trim();
+      if(!value)continue;
+      if(value.length>80)issues.push(label+' demasiado largo');
+      else variantParts.push(label+': '+value.replace(/\\s+/g,' ').trim());
+    }
+    if(variantParts.length){
+      const details=[facts.details,...variantParts].filter(Boolean).join(' | ');
+      if(details.length>IMPORT_FACT_COLUMNS.details.max)issues.push('detalles de variante demasiado largos');
+      else facts.details=details;
     }
     if(issues.length)errors.push(`Fila ${i+1}: ${issues.join(', ')}.`);
     else rows.push(Object.keys(facts).length?{sku,name,price,stock,facts}:{sku,name,price,stock});
