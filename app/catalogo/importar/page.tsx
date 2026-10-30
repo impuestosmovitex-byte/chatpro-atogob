@@ -96,7 +96,7 @@ export default function ImportCatalogPage(){
         <p className={styles.note}>Puedes cargar un <strong>Excel (.xlsx)</strong> directamente, un <strong>PDF con texto y tabla de productos</strong> o un CSV.</p>
         <div role="note" style={{border:'1px solid #cbd5e1',borderRadius:12,padding:14,margin:'14px 0'}}>
           <strong>¿Qué tipo de archivo tienes?</strong>
-          <p><strong>Excel o CSV:</strong> recomendado para productos con referencias, precios, inventario, tallas o colores. La vista previa permite corregir errores antes de importar.</p>
+          <p><strong>Excel o CSV:</strong> cada combinacion de talla y color debe tener una referencia SKU exclusiva y su propia cantidad. Por ahora el importador crea entradas individuales, no agrupa variantes automaticamente en un solo producto.</p>
           <p><strong>PDF con texto:</strong> solo para tablas sencillas. Los catálogos escaneados o basados en fotografías todavía no se interpretan automáticamente.</p>
           <p><strong>Sin archivo:</strong> puedes <Link href="/catalogo">crear productos manualmente</Link>. No inventamos precios ni existencias ausentes.</p>
         </div>
