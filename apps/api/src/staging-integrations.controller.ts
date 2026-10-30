@@ -126,7 +126,10 @@ export class StagingIntegrationsController {
         existing.length !== 0)
       throw new ForbiddenException('El número ya está registrado; no se reemplazarán credenciales ni conexiones existentes.');
     const encrypted = this.credentials.encrypt({access_token:accessToken});
-    const {error:saveError} = await db.from('company_integrations').upsert({
+    // Never UPSERT here: a concurrent signup must not replace another tenant's
+    // encrypted credentials between the ownership check and the database write.
+    // Let the database's unique constraint reject duplicates atomically.
+    const {error:saveError} = await db.from('company_integrations').insert({
       company_id:context.company.id,provider:'meta',integration_type:'whatsapp',
       external_id:phoneId,status:'pending',credential_mode:'encrypted',
       credentials_encrypted:encrypted,
@@ -136,7 +139,9 @@ export class StagingIntegrationsController {
         display_phone_number:selected.display_phone_number||null,
         setup_source:'mw1_staging_embedded_signup'},
       updated_at:new Date().toISOString(),
-    },{onConflict:'provider,integration_type,external_id'});
+    });
+    if (saveError?.code === '23505')
+      throw new ForbiddenException('Este número ya fue registrado. No se modificaron sus credenciales.');
     if (saveError) throw new BadRequestException('No se pudo guardar la autorización de forma segura.');
     return {ok:true,connectionEnabled:false,status:'pending',
       phoneNumberId:phoneId,company:context.company,
