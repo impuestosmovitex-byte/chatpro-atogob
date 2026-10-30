@@ -13,7 +13,7 @@ export type PaymentOption = Readonly<{
   label: string;
   method: PaymentMethod;
   capability: CheckoutCapability;
-  integrationStatus: 'planned';
+  integrationStatus: 'planned' | 'verified';
 }>;
 
 export const PAYMENT_OPTIONS: readonly PaymentOption[] = [
