@@ -32,7 +32,6 @@ type FacebookSdk = {
     xfbml: boolean;
     version: string;
     autoLogAppEvents?: boolean;
-    fedCM?: boolean;
   }): void;
   getLoginStatus(callback: (response: FacebookLoginResponse) => void): void;
   login(
@@ -58,7 +57,6 @@ function initializeFacebookSdk(
     cookie: false,
     xfbml: false,
     autoLogAppEvents: false,
-    fedCM: false,
     version: apiVersion,
   });
 }
@@ -144,7 +142,6 @@ function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk
     script.id = 'facebook-jssdk';
     script.async = true;
     script.defer = true;
-    script.crossOrigin = 'anonymous';
     script.src = 'https://connect.facebook.net/en_US/sdk.js';
     script.addEventListener('load', finish, { once: true });
     script.addEventListener('error', () => fail(), { once: true });
