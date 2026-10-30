@@ -12,7 +12,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import OpenAI from 'openai';
 import { readCatalogPicture,exactImageMatches,validateVisualProposal,chooseVisualReferences,narrowVisualMatches } from './staging-vision';
 import {readProductFacts,validateProductFacts,writeProductFactsMetadata} from './staging-product-facts';
@@ -32,7 +32,10 @@ export class NativeCommerceController {
     userId: string,
   ): Promise<AuthorizedCompany> {
     const secret = process.env.CHATPRO_INBOX_KEY?.trim();
-    if (!secret || internalKey !== secret) {
+    // Compare fixed-size digests to avoid a variable-time shared-secret check.
+    const suppliedDigest = createHash('sha256').update(internalKey).digest();
+    const expectedDigest = createHash('sha256').update(secret || '').digest();
+    if (!secret || !timingSafeEqual(suppliedDigest, expectedDigest)) {
       throw new UnauthorizedException('No autorizado.');
     }
 
@@ -86,6 +89,9 @@ export class NativeCommerceController {
     @Headers('x-chatpro-company-id') companyId = '',
     @Headers('x-chatpro-user-id') userId = '',
   ) {
+    if (process.env.MW1_STAGING_MODE !== 'true') {
+      throw new ForbiddenException('Consulta de medios disponible únicamente en staging.');
+    }
     const company = await this.authorize(key,companyId,userId);
     // Read-only staging capability discovery. Never expose merchant credentials
     // or offer an unverified provider as an active customer checkout.
