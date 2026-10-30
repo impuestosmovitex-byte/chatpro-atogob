@@ -11,7 +11,7 @@ export const IMPORT_FACT_COLUMNS:Record<ImportFactKey,{headers:string[];max:numb
   ingredients:{headers:['ingredientes','ingredients'],max:700},
   allergens:{headers:['alergenos','alergias','allergens'],max:300},
   care:{headers:['cuidados','conservacion','lavado','care'],max:450},
-  details:{headers:['caracteristicas','detalles','details'],max:550},
+  details:{headers:['caracteristicas','detalles','details','talla','color','presentacion','variante'],max:550},
 };
 
 export type ImportPreview={rows:ImportRow[];errors:string[]};
