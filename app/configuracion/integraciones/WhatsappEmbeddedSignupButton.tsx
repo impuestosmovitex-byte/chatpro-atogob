@@ -47,107 +47,53 @@ type FacebookWindow = Window & {
 
 let facebookSdkPromise: Promise<FacebookSdk> | null = null;
 
-function initializeFacebookSdk(
-  sdk: FacebookSdk,
-  appId: string,
-  apiVersion: string,
-) {
-  sdk.init({
-    appId,
-    cookie: false,
-    xfbml: false,
-    autoLogAppEvents: false,
-    version: apiVersion,
-  });
-}
-
-function verifyFacebookSdk(
-  sdk: FacebookSdk,
-  appId: string,
-  apiVersion: string,
-): Promise<FacebookSdk> {
-  return new Promise((resolve, reject) => {
-    try {
-      // SDK initialization is enough to launch Embedded Signup.
-      // getLoginStatus may hang in browsers restricting third-party cookies.
-      initializeFacebookSdk(sdk, appId, apiVersion);
-      resolve(sdk);
-    } catch (error) {
-      reject(error instanceof Error ? error : new Error('Meta no pudo inicializar el SDK.'));
-    }
-  });
-}
-
+// Match the isolated MW1 diagnostic page that successfully opened Meta OAuth.
+// Initialize exactly once from fbAsyncInit, not again from the script load event.
 function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk> {
-  const target = window as FacebookWindow;
-
-  if (target.FB) {
-    return verifyFacebookSdk(target.FB, appId, apiVersion);
-  }
-
   if (facebookSdkPromise) return facebookSdkPromise;
-
   facebookSdkPromise = new Promise((resolve, reject) => {
-    let settled = false;
-
-    const fail = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      facebookSdkPromise = null;
-      reject(error || new Error('No se pudo cargar el SDK oficial de Meta.'));
-    };
-
-    const finish = () => {
-      if (settled || !target.FB) return;
-
-      void verifyFacebookSdk(target.FB, appId, apiVersion)
-        .then((sdk) => {
-          if (settled) return;
-          settled = true;
-          window.clearTimeout(timeout);
-          resolve(sdk);
-        })
-        .catch((error) => {
-          fail(
-            error instanceof Error
-              ? error
-              : new Error('Meta no pudo inicializar el SDK.'),
-          );
-        });
-    };
-
+    const target = window as FacebookWindow;
+    let finished = false;
     const timeout = window.setTimeout(() => {
-      fail(new Error('Meta tardó demasiado en preparar el SDK.'));
+      if (finished) return;
+      finished = true;
+      facebookSdkPromise = null;
+      reject(new Error('El SDK oficial de Meta no respondió.'));
     }, 15000);
-
-    const previousAsyncInit = target.fbAsyncInit;
-    target.fbAsyncInit = () => {
-      previousAsyncInit?.();
-      finish();
-    };
-
-    const existing = document.getElementById('facebook-jssdk') as HTMLScriptElement | null;
-    if (existing) {
-      if (target.FB) {
-        finish();
-        return;
+    const initialize = () => {
+      if (finished || !target.FB) return;
+      try {
+        target.FB.init({ appId, version: apiVersion, cookie: false, xfbml: false });
+        finished = true;
+        window.clearTimeout(timeout);
+        resolve(target.FB);
+      } catch (error) {
+        finished = true;
+        window.clearTimeout(timeout);
+        facebookSdkPromise = null;
+        reject(error instanceof Error ? error : new Error('No se pudo inicializar el SDK de Meta.'));
       }
-      existing.addEventListener('load', finish, { once: true });
-      existing.addEventListener('error', () => fail(), { once: true });
+    };
+    if (target.FB) { initialize(); return; }
+    target.fbAsyncInit = initialize;
+    const existing = document.getElementById('facebook-jssdk');
+    if (existing) {
+      // Another script load may be pending. fbAsyncInit is the official ready signal.
       return;
     }
-
     const script = document.createElement('script');
     script.id = 'facebook-jssdk';
     script.async = true;
-    script.defer = true;
     script.src = 'https://connect.facebook.net/en_US/sdk.js';
-    script.addEventListener('load', finish, { once: true });
-    script.addEventListener('error', () => fail(), { once: true });
+    script.onerror = () => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timeout);
+      facebookSdkPromise = null;
+      reject(new Error('No se pudo cargar el SDK oficial de Meta.'));
+    };
     document.body.appendChild(script);
   });
-
   return facebookSdkPromise;
 }
 
