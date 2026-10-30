@@ -120,7 +120,7 @@ export function previewCsv(text:string):ImportPreview{
       const value=(values[index]||'').trim();
       if(!value)continue;
       if(value.length>80)issues.push(label+' demasiado largo');
-      else variantParts.push(label+': '+value.replace(/\\s+/g,' ').trim());
+      else variantParts.push(label+': '+value.replace(/\s+/g,' ').trim());
     }
     if(variantParts.length){
       const details=[facts.details,...variantParts].filter(Boolean).join(' | ');
