@@ -448,6 +448,11 @@ export function WhatsappEmbeddedSignupButton() {
             extras: { setup: {} },
           },
         );
+        // If this line executes, the SDK call returned synchronously.
+        // No authentication codes, personal data or tokens are logged.
+        if (!callbackReceived && !metaEventReceived && !settled) {
+          setDiagnostic('FB.login devolvió el control sin excepción; no se recibió callback ni evento de Meta. Verificar estado de la app / roles de prueba en Meta Developers.');
+        }
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         setDiagnostic('FB.login lanzó excepción: ' + detail);
