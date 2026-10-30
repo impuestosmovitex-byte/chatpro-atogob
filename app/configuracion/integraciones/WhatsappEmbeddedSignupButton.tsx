@@ -442,7 +442,12 @@ export function WhatsappEmbeddedSignupButton() {
             config_id: config.configurationId,
             response_type: 'code',
             override_default_response_type: true,
-            extras: {},
+            extras: {
+              feature: 'app_only_install',
+              version: 4,
+              sessionInfoVersion: 4,
+              setup: {},
+            },
           },
         );
       } catch (error) {
