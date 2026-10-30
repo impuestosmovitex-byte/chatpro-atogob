@@ -444,8 +444,8 @@ export function WhatsappEmbeddedSignupButton() {
             config_id: config.configurationId,
             response_type: 'code',
             override_default_response_type: true,
-            // V4 configuration supplies products and permissions. Avoid preview/legacy flags.
-            extras: { setup: {} },
+            // Embedded Signup V4 obtains products and permissions from the Meta configuration.
+            extras: {},
           },
         );
         // If this line executes, the SDK call returned synchronously.
