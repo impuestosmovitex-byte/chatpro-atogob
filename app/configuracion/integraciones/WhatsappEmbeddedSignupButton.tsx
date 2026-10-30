@@ -304,7 +304,10 @@ export function WhatsappEmbeddedSignupButton() {
       return;
     }
 
-    setDiagnostic('SDK cargado. Activación de usuario: ' + String(navigator.userActivation?.isActive) + '; contexto seguro: ' + String(window.isSecureContext) + '. Iniciando FB.login.');
+    // Capture only resource timing metadata, never URLs, tokens, or account details.
+    const facebookResourcesBefore = performance.getEntriesByType('resource').length;
+    const activationAtClick = navigator.userActivation?.isActive;
+    setDiagnostic('SDK cargado. Activación de usuario: ' + String(activationAtClick) + '; contexto seguro: ' + String(window.isSecureContext) + '. Iniciando FB.login.');
     setMessage('Abriendo Meta…');
     setConnecting(true);
 
@@ -407,7 +410,18 @@ export function WhatsappEmbeddedSignupButton() {
 
       const popupHint = window.setTimeout(() => {
         if (!settled && !callbackReceived && !metaEventReceived) {
-          setMessage('El SDK de Facebook cargó, pero FB.login no devolvió respuesta ni abrió el flujo. Revisa en Meta Developers → Facebook Login for Business → Configuración que esté permitido Login with JavaScript SDK y el dominio de MW1.');
+          const resources = performance.getEntriesByType('resource').slice(facebookResourcesBefore);
+          const metaResources = resources.filter((entry) => {
+            try {
+              const hostname = new URL(entry.name).hostname.toLowerCase();
+              return hostname === 'facebook.com' || hostname.endsWith('.facebook.com') || hostname === 'facebook.net' || hostname.endsWith('.facebook.net');
+            } catch { return false; }
+          });
+          const fedcmSeen = metaResources.some((entry) => {
+            try { return new URL(entry.name).pathname.includes('/fed_cm/'); } catch { return false; }
+          });
+          setDiagnostic('FB.login sin callback. Clic activo: ' + String(activationAtClick) + '; recursos de Meta posteriores al clic: ' + String(metaResources.length) + '; FedCM observado: ' + String(fedcmSeen) + '. Las solicitudes del SDK podrían no aparecer en Performance por restricciones del navegador.');
+          setMessage('Facebook no abrió el flujo. Diagnóstico actualizado debajo; no modifiques permisos ni credenciales.');
         }
       }, 8000);
 
