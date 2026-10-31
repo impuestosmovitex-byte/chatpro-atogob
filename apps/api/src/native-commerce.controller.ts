@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 import { stagingPaymentMethods } from './staging-payment-methods';
+import { verifiedMerchantPayment, type PaymentVerification } from './staging-payment-verification';
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import OpenAI from 'openai';
 import { readCatalogPicture,exactImageMatches,validateVisualProposal,chooseVisualReferences,narrowVisualMatches } from './staging-vision';
@@ -102,6 +103,35 @@ export class NativeCommerceController {
     // or offer an unverified provider as an active customer checkout.
     const options = stagingPaymentMethods();
     return {ok:true,companyId:company.id,checkoutEnabled:false,options};
+  }
+
+  @Post('payments/verify-preview')
+  @Header('Cache-Control', 'private, no-store, max-age=0')
+  async verifyPaymentPreview(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Body() body: Record<string, unknown> = {},
+  ) {
+    if (process.env.MW1_STAGING_MODE !== 'true') {
+      throw new ForbiddenException('Solo disponible en staging.');
+    }
+    const company = await this.authorize(key,companyId,userId);
+    // Diagnostics only: caller-provided verification claims are NEVER trusted
+    // as payment evidence. No writes, payment confirmation or checkout.
+    if (Object.keys(body).length > 0) {
+      throw new BadRequestException('La verificación de pagos no admite datos proporcionados por el usuario.');
+    }
+    const fixture: PaymentVerification = {
+      companyId:company.id,orderCompanyId:company.id,
+      orderId:'simulation-only',externalReference:'simulation-only',
+      callbackReference:'simulation-only',currency:'COP',callbackCurrency:'COP',
+      amountMinor:10000,callbackAmountMinor:10000,
+      providerSignatureVerified:false,fetchedFromProviderApi:false,
+      providerPaymentState:'pending',
+    };
+    return {ok:true,mode:'simulation',verified:verifiedMerchantPayment(fixture),
+      checkoutEnabled:false,realPaymentChecked:false};
   }
 
   @Get('access')
