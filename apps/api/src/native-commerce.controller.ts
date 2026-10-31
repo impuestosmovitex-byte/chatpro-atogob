@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 import { stagingPaymentMethods } from './staging-payment-methods';
+import { buildStagingMercadoPagoPreference } from './staging-mercadopago-preference';
 import { verifiedMerchantPayment, type PaymentVerification } from './staging-payment-verification';
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import OpenAI from 'openai';
@@ -890,10 +891,26 @@ export class NativeCommerceController {
       !['paid','refunded'].includes(order.payment_status)&&
       attempt.status==='created' &&
       attempt.currency===order.currency&&Number(attempt.amount)===Number(order.grand_total);
+    // Prepare a deterministic request body from DB-owned amount, never from
+    // user or AI-supplied totals. It is NOT submitted to Mercado Pago here.
+    let preparedPreference=false;
+    if(eligible && attempt.provider==='mercado_pago'){
+      try{
+        buildStagingMercadoPagoPreference({
+          companyId:company.id,orderId:order.id,attemptId:attempt.id,
+          orderCode:order.id,title:'Pedido MW1 de prueba',
+          currency:order.currency,amountMinor:Math.round(Number(order.grand_total)*100),
+        });
+        preparedPreference=true;
+      }catch{
+        preparedPreference=false;
+      }
+    }
     // No provider request or link creation until merchant OAuth and signed
     // webhook validation are implemented and verified. Never echo credentials.
     return {ok:true,eligibleForFutureCheckout:eligible,checkoutEnabled:false,
       attemptId:attempt.id,provider:attempt.provider,
+      preferenceReadyForAdapter:preparedPreference,
       reason:eligible?'Proveedor sin conexión verificada.':'Pedido o intento no elegible.'};
   }
 
