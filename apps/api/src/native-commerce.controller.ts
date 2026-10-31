@@ -758,17 +758,24 @@ export class NativeCommerceController {
       .eq('company_id',company.id).eq('id',orderId).maybeSingle();
     if (error || !order) throw new BadRequestException('Pedido no encontrado.');
     const amount=Number(order.grand_total);
-    if (!Number.isFinite(amount) || amount<=0 || !/^[A-Z]{3}$/.test(order.currency||'')) {
+    if (!Number.isFinite(amount) || amount<=0 || !Number.isSafeInteger(Math.round(amount*100)) ||
+        Math.abs(amount*100-Math.round(amount*100))>0.000001 ||
+        !/^[A-Z]{3}$/.test(order.currency||'')) {
       throw new BadRequestException('Pedido sin importe válido para pago.');
     }
+    // A cancelled, delivered or already paid order must never start another checkout.
+    // This check must also be re-run atomically when creating an actual attempt.
+    const eligible = ['pending_confirmation','confirmed'].includes(order.status) &&
+      !['paid','refunded'].includes(order.payment_status);
     // Read from server-side order; do not accept totals or merchant IDs from chat.
     // All checkout providers remain disabled until tenant credentials and webhooks
     // have been verified. No payment attempts, links or status mutations here.
     return {ok:true,order:{id:order.id,code:order.order_code,
       status:order.status,paymentStatus:order.payment_status,
-      currency:order.currency,amount},
-      checkoutEnabled:false,availableMethods:[],
-      reason:'Las pasarelas de esta empresa aún no están verificadas.'};
+      currency:order.currency,amount,amountMinor:Math.round(amount*100)},
+      eligibleForCheckout:eligible,checkoutEnabled:false,availableMethods:[],
+      reason:eligible?'Las pasarelas de esta empresa aún no están verificadas.':
+        'Este pedido no admite iniciar un nuevo cobro.'};
   }
 
   @Patch('orders/:orderId/status')
