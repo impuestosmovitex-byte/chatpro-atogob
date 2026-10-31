@@ -1,0 +1,11 @@
+.form{display:flex;flex-direction:column;gap:14px;margin-top:16px;text-align:left}
+.form label:not(.consent){display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:650;color:#273047}
+.form input:not([type="checkbox"]),.form select{width:100%;border:1px solid #dbe0e7;border-radius:9px;background:#fff;color:#152034;padding:11px 12px;font-size:14px}
+.caption{font-size:12px!important;color:#6a7588;line-height:1.55}
+.consent{display:flex;align-items:flex-start;gap:10px;font-size:12px;line-height:1.5;color:#4a5569}
+.consent input{margin-top:3px}
+.form button{border:0;background:#172235;color:white;font-weight:800;padding:13px 16px;border-radius:10px;cursor:pointer}
+.form button:disabled{opacity:.55;cursor:not-allowed}
+.error{font-size:12px!important;color:#a62626}
+.success{background:#f0faf3;border:1px solid #a8dfb8;border-radius:11px;padding:17px;color:#1d5534;line-height:1.6}
+.hidden{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}

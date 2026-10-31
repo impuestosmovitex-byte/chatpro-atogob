@@ -1,0 +1,153 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {calculateIntroductoryMonths} from '../../lib/mw1-subscription-pricing';
+
+type Status={ok?:boolean;configured?:boolean;verified?:boolean;sellerIdentityConfirmed?:boolean;reason?:string;error?:string;sandboxSetup?:{testBuyerConfigured:boolean;sandboxCredentialsConfirmed:boolean;sandboxCheckoutEnabled:boolean;paymentsOperational:boolean}};
+const descriptions:Record<string,string>={
+ authenticated_test_seller_identity_matched:'La credencial está autenticada y corresponde al ID del vendedor de prueba indicado en Mercado Pago Developers. Esto no habilita pagos ni confirma pruebas de renovación.',
+ authenticated_seller_identity_unconfirmed:'Mercado Pago autenticó la credencial, pero el identificador no coincide con el vendedor de prueba esperado. Mantén bloqueadas las suscripciones.',
+ authenticated:'Mercado Pago aceptó la credencial para una consulta de lectura. El entorno de pruebas aún debe confirmarse antes de habilitar cualquier cobro.',
+ authenticated_environment_unverified:'Mercado Pago aceptó la credencial para una consulta de lectura. Esto no confirma que sea de prueba: las credenciales APP_USR pueden ser de prueba o de producción. Los cobros seguirán bloqueados.',
+ missing_token:'No hay credencial de Mercado Pago configurada en la API de staging.',
+ unrecognized_token_format:'La credencial tiene un formato no reconocido. Confirma que provenga de Credenciales de prueba de MW1 CRM.',
+ invalid_token:'Mercado Pago rechazó la credencial de prueba. Revísala en Developers.',
+ provider_error:'Mercado Pago no pudo validar la credencial. Revisa la integración.',
+ network_error:'No fue posible conectarse a Mercado Pago desde staging.',
+};
+export default function MercadoPagoAdminPage(){
+ const [status,setStatus]=useState<Status|null>(null);
+ const [busy,setBusy]=useState(false);
+ const [audit,setAudit]=useState<{ok?:boolean;plans?:Array<{planKey:string;firstMonthCop:number;secondMonthCop:number;thirdMonthCop:number;blockers:string[]}>;error?:string}|null>(null);
+ async function runAudit(){
+  setAudit(null);
+  try{const r=await fetch('/api/platform-admin/mercadopago-events?audit=1',{cache:'no-store'});
+  const body=await r.json();setAudit(r.ok?body:{ok:false,error:body.error||'No se pudo ejecutar el diagnóstico.'});}
+  catch{setAudit({ok:false,error:'No se pudo consultar la auditoría.'});}
+ }
+
+ const [diagnostics,setDiagnostics]=useState<{ok?:boolean;checks?:Record<string,boolean>;counts?:Record<string,number>;error?:string}|null>(null);
+ async function checkDiagnostics(){
+  try{const response=await fetch('/api/platform-admin/mercadopago-events?diagnostic=1',{cache:'no-store'});
+   const data=await response.json();setDiagnostics(response.ok?data:{ok:false,error:data.error||'Error de diagnóstico'});
+  }catch{setDiagnostics({ok:false,error:'No se pudo consultar el diagnóstico.'});}
+ }
+
+ const [eventRows,setEventRows]=useState<Array<{id:string;provider_event_type:string;reconciliation_status:string;received_at:string}>>([]);
+ const [eventError,setEventError]=useState('');
+ const [checkingEvent,setCheckingEvent]=useState<string|null>(null);
+ const [eventResult,setEventResult]=useState('');
+ async function loadEvents(){
+  setEventError('');
+  try{const response=await fetch('/api/platform-admin/mercadopago-events',{cache:'no-store'});
+   const data=await response.json();
+   if(!response.ok||!data.ok){setEventError(data.error||'No fue posible consultar eventos.');return;}
+   setEventRows(Array.isArray(data.events)?data.events:[]);
+  }catch{setEventError('No se pudo consultar la cola de eventos.');}
+ }
+ async function checkEvent(id:string){
+  setCheckingEvent(id);setEventResult('');
+  try{const response=await fetch('/api/platform-admin/mercadopago-events?event='+encodeURIComponent(id),{cache:'no-store'});
+   const result=await response.json();
+   setEventResult(result.ok?(result.paymentConfirmed?'Pago acreditado comprobado con Mercado Pago. Aún no se ha registrado ni activado el plan.':'Evento comprobado con Mercado Pago; pago todavía no confirmado.'):'No se pudo conciliar: '+(result.reason||result.error||'pendiente'));
+  }catch{setEventResult('Falló la verificación con Mercado Pago.');}
+  finally{setCheckingEvent(null);}
+ }
+
+ const [published,setPublished]=useState<Array<{plan_key:string;price_cop:number}>>([]);
+ useEffect(()=>{let live=true;void fetch('/api/platform-admin/plan-published',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(data=>{if(live&&Array.isArray(data?.plans))setPublished(data.plans.filter((p:unknown)=>Boolean(p)&&typeof p==='object'&&Number.isSafeInteger((p as {price_cop?:number}).price_cop)));}).catch(()=>{});return()=>{live=false};},[]);
+ async function verify(){
+  setBusy(true);setStatus(null);
+  try{
+   const response=await fetch('/api/platform-admin/mercadopago-verify',{cache:'no-store'});
+   const body=await response.json() as Status;
+   setStatus(response.ok?body:{ok:false,error:body.error||'No se pudo verificar. Inicia sesión como superadministrador.'});
+  }catch{setStatus({ok:false,error:'No fue posible comprobar el servicio.'});}
+  finally{setBusy(false);}
+ }
+ return <main style={{maxWidth:860,margin:'0 auto',padding:'30px 22px',color:'#172235'}}>
+  <p style={{fontSize:12,fontWeight:800,color:'#8e6b0c'}}>CONFIGURACIÓN / PASARELA DE PAGOS</p>
+  <h1 style={{fontSize:30,margin:'10px 0'}}>Mercado Pago</h1>
+  <p style={{color:'#586477',lineHeight:1.7}}>Comprueba la credencial desde el superadministrador, sin mostrar claves ni generar cobros. El estado de la conexión no autoriza pagos.</p>
+  <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
+   <h2 style={{fontSize:19}}>Diagnóstico de contratación · staging</h2>
+   <p style={{fontSize:13,color:'#586477'}}>Comprueba requisitos y registros sin mostrar secretos ni realizar cobros.</p>
+   <button type="button" onClick={()=>void checkDiagnostics()} style={{padding:'10px 14px',background:'#fff',border:'1px solid #c9cfd8',borderRadius:8}}>Revisar preparación</button>
+   {diagnostics?.error&&<p role="alert">{diagnostics.error}</p>}
+   {diagnostics?.ok&&<div style={{fontSize:13,marginTop:12,lineHeight:1.9}}>
+    {Object.entries(diagnostics.checks??{}).map(([name,ready])=><p key={name} style={{margin:0}}>{ready?'Configurado':'Pendiente'} · {({
+    tokenConfigured:'Credencial de Mercado Pago',
+    webhookSignatureSecretConfigured:'Firma de seguridad del webhook',
+    buyerAccountIdentified:'Comprador de prueba identificado (User ID)',
+    payerEmailVerified:'Correo del pagador para suscripciones',
+    sandboxConfirmed:'Credenciales confirmadas para prueba de suscripciones',
+    checkoutEnabled:'Checkout de prueba',
+    recordingEnabled:'Registro de pagos verificados',
+    tenantActivationEnabled:'Activación de empresa'
+   } as Record<string,string>)[name]||name}</p>)}
+    <p style={{fontWeight:700,marginTop:10}}>Registros</p>
+    {Object.entries(diagnostics.counts??{}).map(([name,n])=><p key={name} style={{margin:0}}>{name}: {n}</p>)}
+    <p style={{color:'#8a6516'}}>Esta revisión no habilita pagos ni confirma transacciones.</p>
+   </div>}
+  </section>
+  <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
+   <h2 style={{fontSize:19}}>Auditoría de los 3 planes</h2>
+   <p style={{fontSize:13,color:'#586477'}}>Revisa precios, promoción y requisitos en una sola consulta. No crea suscripciones ni cobra tarjetas.</p>
+   <button type="button" onClick={()=>void runAudit()} style={{padding:'10px 14px',background:'#fff',border:'1px solid #c9cfd8',borderRadius:8}}>Auditar planes y preparación</button>
+   {audit?.error&&<p role="alert">{audit.error}</p>}
+   {audit?.plans?.map(p=><div key={p.planKey} style={{borderTop:'1px solid #e5e7eb',padding:'12px 0',fontSize:13}}>
+    <strong>{({inicial:'Básico',pro:'Eco',empresa:'Pro'} as Record<string,string>)[p.planKey]||p.planKey}</strong>
+    <p>Mes 1: ${p.firstMonthCop.toLocaleString('es-CO')} · Mes 2: ${p.secondMonthCop.toLocaleString('es-CO')} · Mes 3+: ${p.thirdMonthCop.toLocaleString('es-CO')}</p>
+    <p style={{color:'#84601d'}}>{p.blockers.length?'Bloqueos: '+p.blockers.map(code=>({test_buyer_not_identified:'Comprador de prueba',payer_email_not_verified:'Correo de prueba para suscripciones',test_credentials_not_confirmed:'Credenciales de prueba por confirmar',webhook_secret_missing:'Firma de webhook',test_checkout_disabled:'Checkout bloqueado',provider_renewal_amount_mismatch:'Importe de renovación incorrecto',unknown_plan:'Plan desconocido'} as Record<string,string>)[code]||code).join(' · '):'Precondiciones básicas satisfechas; faltan pruebas de cobros y renovaciones.'}</p>
+   </div>)}
+  </section>
+  <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:24}}>
+   <h2 style={{fontSize:19}}>Conexión de staging</h2>
+   <p style={{color:'#586477',fontSize:14}}>Proveedor: Mercado Pago · Suscripciones · Entorno de pruebas</p>
+   <button type="button" disabled={busy} onClick={()=>void verify()} style={{padding:'12px 18px',border:0,borderRadius:9,background:'#f4bf00',color:'#172235',fontWeight:800,cursor:'pointer',marginTop:12}}>
+    {busy?'Verificando…':'Verificar conexión'}
+   </button>
+   {status&&<div role="status" style={{marginTop:17,padding:14,borderRadius:9,background:'#f6f7fa',fontSize:14,lineHeight:1.6}}>
+    <strong>{status.sellerIdentityConfirmed?'Vendedor de prueba identificado':status.verified?'Conexión autenticada · identidad sin confirmar':status.error?'No se pudo completar la consulta':'Integración pendiente de validación'}</strong>
+    <p style={{margin:'7px 0 0'}}>{status.error||descriptions[status.reason||'']||(status.verified?'La autenticación fue aceptada. Aún no hay cobros habilitados.':'No se pudo confirmar la credencial.')}</p>
+   </div>}
+  </section>
+  {status?.sandboxSetup&&<section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
+   <h2 style={{fontSize:19}}>Preparación de pagos de prueba</h2>
+   <p style={{fontSize:13,color:'#586477',lineHeight:1.6}}>Estado de configuración en Railway staging. Una credencial autenticada no confirma que sea de prueba.</p>
+   {[
+    ['Correo del pagador de prueba configurado',status.sandboxSetup.testBuyerConfigured],
+    ['Credenciales de pruebas confirmadas',status.sandboxSetup.sandboxCredentialsConfirmed],
+    ['Checkout de prueba habilitado',status.sandboxSetup.sandboxCheckoutEnabled],
+    ['Pagos operativos',status.sandboxSetup.paymentsOperational],
+   ].map(([name,ready])=><p key={String(name)} style={{fontSize:14,margin:'9px 0'}}><strong>{ready?'Configurado':'Pendiente'}</strong> · {name}</p>)}
+   <p style={{fontSize:13,color:'#765c19'}}>Estos controles no autorizan cobros reales ni sustituyen la verificación de los pagos y webhooks.</p>
+  </section>}
+  <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
+   <h2 style={{fontSize:19}}>Notificaciones recibidas</h2>
+   <p style={{fontSize:13,color:'#586477'}}>Consulta y contrasta suscripciones sin generar cargos ni activar planes.</p>
+   <button type="button" onClick={()=>void loadEvents()} style={{padding:'10px 15px',borderRadius:8,border:'1px solid #d8dde7',background:'#fff',fontWeight:750}}>Consultar notificaciones</button>
+   {eventError&&<p role="alert">{eventError}</p>}
+   {eventRows.length===0&&!eventError&&<p style={{fontSize:13,color:'#657184'}}>Pulsa consultar para ver las notificaciones disponibles.</p>}
+   {eventRows.map(item=><div key={item.id} style={{borderTop:'1px solid #e8ebf0',padding:'12px 0',fontSize:13}}>
+    <strong>{item.provider_event_type}</strong> · {item.reconciliation_status}
+    <p style={{color:'#657184',margin:'4px 0'}}>{new Date(item.received_at).toLocaleString('es-CO')}</p>
+    {['subscription_preapproval','subscription_authorized_payment'].includes(item.provider_event_type)&&<button type="button" disabled={checkingEvent!==null} onClick={()=>void checkEvent(item.id)} style={{border:'1px solid #d8dde7',borderRadius:7,padding:'7px 12px',background:'#fff'}}>{checkingEvent===item.id?'Comprobando…':'Verificar con Mercado Pago'}</button>}
+   </div>)}
+   {eventResult&&<p role="status" style={{fontSize:13,color:'#475569'}}>{eventResult}</p>}
+  </section>
+  <section style={{border:'1px solid #e1e5ec',borderRadius:14,background:'#fff',padding:25,marginTop:18}}>
+   <h2 style={{fontSize:19}}>Facturación y renovaciones</h2>
+   <p style={{fontSize:14,lineHeight:1.7,color:'#586477'}}>Los cobros, autorizaciones de tarjeta, suscripciones automáticas y la promoción del segundo mes al 50 % aún no están habilitados. Antes deben verificarse los precios publicados, webhooks y pruebas de cobros recurrentes.</p>
+   <div style={{margin:'15px 0',padding:15,background:'#f6f7fa',borderRadius:10}}>
+    <strong style={{fontSize:14}}>Simulación de promoción (sin cobros)</strong>
+    {published.length===0?<p style={{fontSize:13,color:'#725b1f'}}>Aún no hay tarifas comerciales publicadas. Revisa «Planes y precios» y publícalas únicamente después de su aprobación.</p>:
+     published.map(plan=>{const months=calculateIntroductoryMonths(plan.price_cop);return <div key={plan.plan_key} style={{borderTop:'1px solid #e2e6ec',padding:'12px 0',fontSize:13}}>
+      <strong>{({'inicial':'Básico','pro':'Eco','empresa':'Pro'} as Record<string,string>)[plan.plan_key]||plan.plan_key}</strong>
+      <p style={{margin:'5px 0'}}>Mes 1: {months[0].toLocaleString('es-CO')} COP · Mes 2: {months[1].toLocaleString('es-CO')} COP · Mes 3 en adelante: {months[2].toLocaleString('es-CO')} COP</p>
+     </div>})
+    }
+   </div>
+   <p style={{fontSize:13,color:'#7a601e'}}>No pegues el Access Token ni datos de tarjetas en esta pantalla.</p>
+  </section>
+ </main>;
+}

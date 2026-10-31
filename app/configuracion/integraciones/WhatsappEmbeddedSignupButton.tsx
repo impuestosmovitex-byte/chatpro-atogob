@@ -47,110 +47,53 @@ type FacebookWindow = Window & {
 
 let facebookSdkPromise: Promise<FacebookSdk> | null = null;
 
-function initializeFacebookSdk(
-  sdk: FacebookSdk,
-  appId: string,
-  apiVersion: string,
-) {
-  sdk.init({
-    appId,
-    cookie: true,
-    xfbml: true,
-    autoLogAppEvents: true,
-    version: apiVersion,
-  });
-}
-
-function verifyFacebookSdk(
-  sdk: FacebookSdk,
-  appId: string,
-  apiVersion: string,
-): Promise<FacebookSdk> {
-  return new Promise((resolve, reject) => {
-    try {
-      initializeFacebookSdk(sdk, appId, apiVersion);
-      sdk.getLoginStatus(() => resolve(sdk));
-    } catch (error) {
-      reject(
-        error instanceof Error
-          ? error
-          : new Error('Meta no pudo inicializar el SDK.'),
-      );
-    }
-  });
-}
-
+// Match the isolated MW1 diagnostic page that successfully opened Meta OAuth.
+// Initialize exactly once from fbAsyncInit, not again from the script load event.
 function loadFacebookSdk(appId: string, apiVersion: string): Promise<FacebookSdk> {
-  const target = window as FacebookWindow;
-
-  if (target.FB) {
-    return verifyFacebookSdk(target.FB, appId, apiVersion);
-  }
-
   if (facebookSdkPromise) return facebookSdkPromise;
-
   facebookSdkPromise = new Promise((resolve, reject) => {
-    let settled = false;
-
-    const fail = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      facebookSdkPromise = null;
-      reject(error || new Error('No se pudo cargar el SDK oficial de Meta.'));
-    };
-
-    const finish = () => {
-      if (settled || !target.FB) return;
-
-      void verifyFacebookSdk(target.FB, appId, apiVersion)
-        .then((sdk) => {
-          if (settled) return;
-          settled = true;
-          window.clearTimeout(timeout);
-          resolve(sdk);
-        })
-        .catch((error) => {
-          fail(
-            error instanceof Error
-              ? error
-              : new Error('Meta no pudo inicializar el SDK.'),
-          );
-        });
-    };
-
+    const target = window as FacebookWindow;
+    let finished = false;
     const timeout = window.setTimeout(() => {
-      fail(new Error('Meta tardó demasiado en preparar el SDK.'));
+      if (finished) return;
+      finished = true;
+      facebookSdkPromise = null;
+      reject(new Error('El SDK oficial de Meta no respondió.'));
     }, 15000);
-
-    const previousAsyncInit = target.fbAsyncInit;
-    target.fbAsyncInit = () => {
-      previousAsyncInit?.();
-      finish();
-    };
-
-    const existing = document.getElementById('facebook-jssdk') as HTMLScriptElement | null;
-    if (existing) {
-      if (target.FB) {
-        finish();
-        return;
+    const initialize = () => {
+      if (finished || !target.FB) return;
+      try {
+        target.FB.init({ appId, version: apiVersion, cookie: false, xfbml: false });
+        finished = true;
+        window.clearTimeout(timeout);
+        resolve(target.FB);
+      } catch (error) {
+        finished = true;
+        window.clearTimeout(timeout);
+        facebookSdkPromise = null;
+        reject(error instanceof Error ? error : new Error('No se pudo inicializar el SDK de Meta.'));
       }
-      existing.addEventListener('load', finish, { once: true });
-      existing.addEventListener('error', () => fail(), { once: true });
+    };
+    if (target.FB) { initialize(); return; }
+    target.fbAsyncInit = initialize;
+    const existing = document.getElementById('facebook-jssdk');
+    if (existing) {
+      // Another script load may be pending. fbAsyncInit is the official ready signal.
       return;
     }
-
     const script = document.createElement('script');
     script.id = 'facebook-jssdk';
     script.async = true;
-    script.defer = true;
-    script.crossOrigin = 'anonymous';
-    script.src = 'https://connect.facebook.net/es_LA/sdk.js';
-    script.addEventListener('load', finish, { once: true });
-    script.addEventListener('error', () => fail(), { once: true });
+    script.src = 'https://connect.facebook.net/en_US/sdk.js';
+    script.onerror = () => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timeout);
+      facebookSdkPromise = null;
+      reject(new Error('No se pudo cargar el SDK oficial de Meta.'));
+    };
     document.body.appendChild(script);
   });
-
   return facebookSdkPromise;
 }
 
@@ -173,7 +116,9 @@ export function WhatsappEmbeddedSignupButton() {
   const [sdkReady, setSdkReady] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState('');
+  const [diagnostic, setDiagnostic] = useState('');
   const sdkRef = useRef<FacebookSdk | null>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -264,6 +209,27 @@ export function WhatsappEmbeddedSignupButton() {
     window.setTimeout(() => window.location.reload(), 1000);
   }
 
+  function testPopup() {
+    // A separate user click tests browser popup permission without sending data to Meta.
+    const activated = navigator.userActivation?.isActive;
+    let probe: Window | null = null;
+    try {
+      probe = window.open('about:blank', '_blank', 'width=240,height=160');
+      if (!probe) {
+        setDiagnostic('VENTANA BLOQUEADA: Chrome devolvió null al intentar abrir una ventana.');
+        setMessage('El navegador impide abrir ventanas emergentes desde MW1. Habilita ventanas emergentes para este sitio.');
+        return;
+      }
+      probe.close();
+      setDiagnostic('VENTANA PERMITIDA: Chrome abrió y cerró una ventana de prueba. Activación del clic: ' + String(activated));
+      setMessage('Chrome permite ventanas emergentes. El bloqueo de FB.login requiere revisar el SDK o la configuración de Meta.');
+    } catch (error) {
+      setDiagnostic('ERROR DE VENTANA: ' + (error instanceof Error ? error.message : String(error)));
+      setMessage('Chrome no permitió la prueba de ventana emergente.');
+      try { probe?.close(); } catch { /* no-op */ }
+    }
+  }
+
   function connect() {
     if (
       !config?.ready ||
@@ -281,6 +247,10 @@ export function WhatsappEmbeddedSignupButton() {
       return;
     }
 
+    // Capture only resource timing metadata, never URLs, tokens, or account details.
+    const facebookResourcesBefore = performance.getEntriesByType('resource').length;
+    const activationAtClick = navigator.userActivation?.isActive;
+    setDiagnostic('SDK cargado. Activación de usuario: ' + String(activationAtClick) + '; contexto seguro: ' + String(window.isSecureContext) + '. Iniciando FB.login.');
     setMessage('Abriendo Meta…');
     setConnecting(true);
 
@@ -289,10 +259,14 @@ export function WhatsappEmbeddedSignupButton() {
       let session: SignupSession | null = null;
       let completing = false;
       let settled = false;
+      let callbackReceived = false;
+      let metaEventReceived = false;
 
       const cleanup = () => {
         window.removeEventListener('message', listener);
         window.clearTimeout(timeout);
+        window.clearTimeout(popupHint);
+        cancelRef.current = null;
       };
 
       const fail = (error: Error) => {
@@ -334,6 +308,13 @@ export function WhatsappEmbeddedSignupButton() {
           };
 
           if (payload.type !== 'WA_EMBEDDED_SIGNUP') return;
+          metaEventReceived = true;
+          setDiagnostic('Meta envió un evento de Embedded Signup: ' + String(payload.event || 'sin tipo'));
+
+          if (payload.event === 'CANCEL') {
+            fail(new Error('La ventana de Meta se cerró antes de autorizar el número.'));
+            return;
+          }
 
           if (payload.event === 'ERROR') {
             fail(
@@ -370,15 +351,43 @@ export function WhatsappEmbeddedSignupButton() {
         }
       };
 
+      const popupHint = window.setTimeout(() => {
+        if (!settled && !callbackReceived && !metaEventReceived) {
+          const resources = performance.getEntriesByType('resource').slice(facebookResourcesBefore);
+          const metaResources = resources.filter((entry) => {
+            try {
+              const hostname = new URL(entry.name).hostname.toLowerCase();
+              return hostname === 'facebook.com' || hostname.endsWith('.facebook.com') || hostname === 'facebook.net' || hostname.endsWith('.facebook.net');
+            } catch { return false; }
+          });
+          const fedcmSeen = metaResources.some((entry) => {
+            try { return new URL(entry.name).pathname.includes('/fed_cm/'); } catch { return false; }
+          });
+          setDiagnostic('FB.login sin callback. Clic activo: ' + String(activationAtClick) + '; recursos de Meta posteriores al clic: ' + String(metaResources.length) + '; FedCM observado: ' + String(fedcmSeen) + '. Las solicitudes del SDK podrían no aparecer en Performance por restricciones del navegador.');
+          setMessage('Facebook no abrió el flujo. Diagnóstico actualizado debajo; no modifiques permisos ni credenciales.');
+        }
+      }, 8000);
+
+      cancelRef.current = () => fail(new Error('Conexión cancelada. Puedes volver a intentarlo.'));
+
       const timeout = window.setTimeout(() => {
-        fail(new Error('Meta no terminó la conexión dentro del tiempo esperado.'));
-      }, 10 * 60 * 1000);
+        if (!callbackReceived && !metaEventReceived) {
+          fail(new Error('FB.login no devolvió respuesta. Revisa los dominios de JavaScript SDK y Facebook Login for Business en Meta Developers. No se modificó ningún número.'));
+        } else if (!authCode && !session) {
+          fail(new Error('Meta respondió, pero no completó la autorización. Revisa que la configuración Embedded Signup sea V4 y esté habilitada para esta aplicación.'));
+        } else {
+          fail(new Error('Meta inició el proceso, pero no devolvió todos los datos de autorización. Reintenta desde la empresa piloto.'));
+        }
+      }, 30000);
 
       window.addEventListener('message', listener);
 
       try {
+        setDiagnostic('Llamando a FB.login; si no abre, inspeccionar errores de Chrome.');
         sdk.login(
           (response) => {
+            callbackReceived = true;
+            setDiagnostic('FB.login respondió: ' + String(response.status || (response.authResponse ? 'autorización' : 'sin autorización')));
             authCode = text(response.authResponse?.code);
 
             if (!authCode) {
@@ -390,20 +399,21 @@ export function WhatsappEmbeddedSignupButton() {
           },
           {
             config_id: config.configurationId,
-            auth_type: 'rerequest',
             response_type: 'code',
             override_default_response_type: true,
-            extras: {
-              setup: {},
-            },
+            // Embedded Signup V4 obtains products and permissions from the Meta configuration.
+            extras: {},
           },
         );
+        // If this line executes, the SDK call returned synchronously.
+        // No authentication codes, personal data or tokens are logged.
+        if (!callbackReceived && !metaEventReceived && !settled) {
+          setDiagnostic('FB.login devolvió el control sin excepción; no se recibió callback ni evento de Meta. Verificar estado de la app / roles de prueba en Meta Developers.');
+        }
       } catch (error) {
-        fail(
-          error instanceof Error
-            ? error
-            : new Error('Meta no pudo abrir la ventana de conexión.'),
-        );
+        const detail = error instanceof Error ? error.message : String(error);
+        setDiagnostic('FB.login lanzó excepción: ' + detail);
+        fail(new Error('FB.login falló: ' + detail));
       }
     })
       .catch((error) => {
@@ -446,7 +456,10 @@ export function WhatsappEmbeddedSignupButton() {
             : 'Preparando y verificando el SDK oficial de Meta…'
           : config?.message || 'Embedded Signup todavía no está configurado.'}
       </small>
-      {message ? <p>{message}</p> : null}
+      {!connecting && <button type="button" className={styles.testButton} onClick={testPopup}>Diagnosticar apertura de ventanas</button>}
+      {connecting && <button type="button" className={styles.testButton} onClick={() => cancelRef.current?.()}>Cancelar intento</button>}
+      {message ? <p role="status">{message}</p> : null}
+      {diagnostic && <small role="status">Diagnóstico técnico (sin credenciales): {diagnostic}</small>}
     </div>
   );
 }

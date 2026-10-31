@@ -1,0 +1,108 @@
+name: MW1 staging - public smoke and access checks
+
+on:
+  push:
+    branches:
+      - feature/mw1-saas-staging-20261020
+    paths:
+      - '.github/workflows/mw1-staging-public-smoke.yml'
+      - 'proxy.ts'
+      - 'app/por-que/page.tsx'
+      - 'app/por-que/por-que.module.css'
+      - 'app/prueba-gratis/page.tsx'
+      - 'app/precios/page.tsx'
+      - 'app/demo/DemoRequestForm.tsx'
+      - 'app/api/marketing/demo-request/route.ts'
+      - 'apps/api/src/staging-demo-requests.controller.ts'
+      - 'app/api/staging-admin-setup/route.ts'
+      - 'app/activar-administrador/page.tsx'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Public routes and no-session access safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      BASE_URL: https://mw1-web-staging-staging.up.railway.app
+    steps:
+      - name: Check public pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /api/health /inicio /precios /demo; do
+            status="$(curl -sS -L --retry 8 --retry-delay 8 --retry-all-errors --connect-timeout 8 --max-time 18 -o /tmp/mw1-page -w '%{http_code}' "$BASE_URL$path")"
+            echo "$path HTTP $status"
+            test "$status" = "200"
+            test -s /tmp/mw1-page
+          done
+          grep -q '"ok":true' <(curl -fsS --max-time 18 "$BASE_URL/api/health")
+      - name: Verify Why MW1 is public without authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            # Deliberately omit -L: a redirect to /login is a regression.
+            status="$(curl -sS --connect-timeout 8 --max-time 18 -o /tmp/mw1-why -w '%{http_code}' "$BASE_URL/por-que")"
+            echo "Why MW1 attempt $attempt HTTP $status"
+            if test "$status" = "200" && grep -q '¿Por qué utilizar MW1?' /tmp/mw1-why; then
+              break
+            fi
+            sleep 12
+          done
+          test "$status" = "200"
+          grep -q '¿Por qué utilizar MW1?' /tmp/mw1-why
+          ! grep -q 'Iniciar sesión para continuar' /tmp/mw1-why
+      - name: Verify guided trial is public and chosen plans lead to it
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            status="$(curl -sS --connect-timeout 8 --max-time 18 -o /tmp/mw1-trial -w '%{http_code}' "$BASE_URL/prueba-gratis?plan=eco")"
+            echo "Guided trial attempt $attempt HTTP $status"
+            if test "$status" = "200" && grep -q 'Prueba guiada MW1' /tmp/mw1-trial; then break; fi
+            sleep 12
+          done
+          test "$status" = "200"
+          grep -q 'Prueba guiada MW1' /tmp/mw1-trial
+          ! grep -q 'Iniciar sesión para continuar' /tmp/mw1-trial
+          curl -fsS --connect-timeout 8 --max-time 18 "$BASE_URL/precios" -o /tmp/mw1-prices
+          grep -q '/prueba-gratis?plan=basico' /tmp/mw1-prices
+          grep -q '/prueba-gratis?plan=eco' /tmp/mw1-prices
+          grep -q '/prueba-gratis?plan=pro' /tmp/mw1-prices
+          foreign="$(curl -sS --max-time 18 -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/marketing/demo-request" \
+            -H 'Origin: https://attacker.invalid' -H 'Content-Type: application/json' --data '{}')"
+          echo "Foreign trial origin HTTP $foreign"
+          test "$foreign" = "403"
+      - name: Protected admin endpoints deny anonymous requests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /api/platform-admin/plan-drafts /api/platform-admin/ai-model-rates /api/platform-admin/ai-usage; do
+            status="$(curl -sS --max-time 18 -o /dev/null -w '%{http_code}' "$BASE_URL$path")"
+            echo "$path anonymous HTTP $status"
+            test "$status" = "401"
+          done
+      - name: Verify activation rejects foreign origins but accepts official site
+        shell: bash
+        run: |
+          set -euo pipefail
+          # No credentials or valid invitation codes are used here.
+          foreign="$(curl -sS --max-time 18 -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/staging-admin-setup" \
+            -H 'Origin: https://attacker.invalid' -H 'Content-Type: application/json' --data '{}')"
+          echo "Foreign origin HTTP $foreign"
+          [[ "$foreign" = "401" || "$foreign" = "403" ]]
+          allowed=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            allowed="$(curl -sS --max-time 18 -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/staging-admin-setup" \
+              -H "Origin: $BASE_URL" -H 'Sec-Fetch-Site: same-origin' -H 'Content-Type: application/json' --data '{}')"
+            echo "Official origin attempt $attempt HTTP $allowed"
+            test "$allowed" = "400" && break
+            sleep 15
+          done
+          test "$allowed" = "400"

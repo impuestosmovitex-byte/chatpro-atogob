@@ -44,6 +44,7 @@ type ResponseData = {
   error?: string;
   company?: { name?: string };
   integrations?: Integration[];
+  stagingReadOnly?: boolean;
 };
 
 
@@ -179,6 +180,7 @@ export default function IntegracionesPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selectedKey, setSelectedKey] = useState('');
   const [loading, setLoading] = useState(true);
+  const [stagingReadOnly, setStagingReadOnly] = useState(false);
   const [message, setMessage] = useState('');
   const [shopDomain, setShopDomain] = useState('');
   const [whatsappForm, setWhatsappForm] = useState({
@@ -223,6 +225,7 @@ export default function IntegracionesPage() {
 
         setCompanyName(data.company?.name || 'Empresa');
         setIntegrations(data.integrations);
+        setStagingReadOnly(data.stagingReadOnly === true);
         setSelectedKey(data.integrations[0]?.key || '');
 
         const connectedShopify = data.integrations.find(
@@ -473,6 +476,26 @@ export default function IntegracionesPage() {
           </button>
         </header>
 
+        <section aria-label="Guía de primera conexión" style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:14,padding:20,margin:'16px 0 20px'}}>
+          <h2 style={{margin:'0 0 8px',fontSize:18}}>Primeros pasos para activar tu empresa</h2>
+          <p style={{margin:'0 0 12px',color:'#475569',fontSize:14}}>Elige un canal y conéctalo a tu propia empresa. Puedes empezar por WhatsApp y añadir los demás después. No compartas contraseñas de Meta ni códigos de seguridad con asesores.</p>
+          <ol style={{margin:'0 0 14px',paddingLeft:22,lineHeight:1.8,fontSize:14}}>
+            <li>Accede a Meta Business con una cuenta que tenga permisos sobre el número, la página y la cuenta de Instagram.</li>
+            <li>{stagingReadOnly?'Explora los canales disponibles; las conexiones reales siguen bloqueadas hasta terminar la configuración técnica del entorno piloto.':'Selecciona WhatsApp, Instagram o Messenger en las tarjetas de abajo y utiliza su opción de conexión.'}</li>
+            <li>Comprueba el estado del canal conectado y realiza una conversación de prueba antes de activar automatizaciones.</li>
+          </ol>
+          <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+            {(['whatsapp','instagram','messenger'] as const).map(channel=>{
+              const item=integrations.find(i=>i.key===channel);
+              const active=item?.status==='active'&&item.connectionReady;
+              return <span key={channel} style={{background:active?'#e7f5eb':'#f1f5f9',borderRadius:20,padding:'6px 12px',fontSize:13}}>
+                {channel==='whatsapp'?'WhatsApp':channel==='instagram'?'Instagram':'Messenger'}: {loading?'Revisando':active?'Conectado':item?.status==='error'?'Requiere revisión':'Pendiente'}
+              </span>;
+            })}
+          </div>
+          <p style={{margin:'12px 0 0',fontSize:12,color:'#64748b'}}>Este estado pertenece solo a {companyName}. No conecta ni modifica las cuentas de otra empresa.</p>
+          {stagingReadOnly&&<p role="status" style={{margin:'12px 0 0',padding:12,borderRadius:10,background:'#fff8e4',color:'#694b12',fontSize:13}}>Modo de prueba: WhatsApp permite solicitar autorización únicamente para el piloto. Otras integraciones y la recepción de mensajes siguen deshabilitadas. No selecciones el número productivo de ATOGOB.</p>}
+        </section>
         {message ? <p className={styles.error}>{message}</p> : null}
 
         <section className={styles.grid}>
@@ -507,7 +530,11 @@ export default function IntegracionesPage() {
           </div>
 
           {selected ? (
-            <aside className={styles.detail}>
+            stagingReadOnly && selected.key !== 'whatsapp' ? <aside className={styles.detail}>
+              <div className={styles.detailTop}><span className={styles.largeIcon}>{icon(selected.key)}</span><h2>{selected.name}</h2></div>
+              <p className={styles.description}>{selected.description}</p>
+              <div className={styles.notice}>Este entorno de prueba muestra los canales disponibles, pero las autorizaciones de conexión siguen deshabilitadas hasta configurar y validar la aplicación de Meta/Shopify de staging. No utilices credenciales ni tokens de ATOGOB producción.</div>
+            </aside> : <aside className={styles.detail}>
               <div className={styles.detailTop}>
                 <span className={styles.largeIcon}>{icon(selected.key)}</span>
                 <div>
@@ -524,6 +551,13 @@ export default function IntegracionesPage() {
               </div>
 
               <p className={styles.description}>{selected.description}</p>
+              {stagingReadOnly && selected.key === 'whatsapp' && (
+                <div className={styles.notice}>
+                  Piloto MW1: únicamente se permite autorizar un número nuevo en Meta.
+                  La autorización se guarda como pendiente; los mensajes, webhooks y respuestas de IA siguen deshabilitados.
+                  No selecciones el número operativo de ATOGOB.
+                </div>
+              )}
 
               <dl className={styles.details}>
                 <div>
@@ -913,6 +947,7 @@ export default function IntegracionesPage() {
 
                   <WhatsappEmbeddedSignupButton />
 
+                  {!stagingReadOnly && <>
                   <strong>Conexión manual avanzada</strong>
                   <p>
                     Usa Phone Number ID y token únicamente cuando Meta ya haya
@@ -1029,6 +1064,7 @@ export default function IntegracionesPage() {
                       </button>
                     </div>
                   ) : null}
+                  </>}
                 </div>
               ) : selected.key === 'instagram' ? null : selected.status === 'active' ? (
                 <div className={styles.notice}>

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 
@@ -10,17 +10,31 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [staging, setStaging] = useState(false);
+  const [platformLogin,setPlatformLogin]=useState(false);
+  const [companySlug,setCompanySlug]=useState('');
+
+  useEffect(() => {
+    setStaging(window.location.hostname === 'mw1-web-staging-staging.up.railway.app');
+    const params=new URLSearchParams(window.location.search);
+    setPlatformLogin(params.get('mode')==='platform');
+    setCompanySlug(params.get('company')||'');
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    if(staging&&!platformLogin&&!companySlug){
+      setError('Selecciona una empresa de pruebas con su enlace de acceso. Para ATOGOB operativo utiliza el acceso a MW1 producción que aparece arriba.');
+      return;
+    }
     setLoading(true);
 
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ identifier, password, company:platformLogin?'__platform__':companySlug||undefined }),
       });
 
       const data = (await response.json()) as {
@@ -29,30 +43,37 @@ export default function LoginPage() {
       };
 
       if (!response.ok || !data.ok) {
-        setError(data.error || 'No se pudo iniciar sesión.');
+        const genericAuthError = !data.error || /^(Unauthorized|No autorizado\.?|Forbidden)$/i.test(data.error);
+        setError(response.status===401 || genericAuthError
+          ? 'No pudimos validar el código de acceso o la contraseña. Verifica los datos e inténtalo de nuevo.'
+          : data.error || 'No se pudo iniciar sesión.');
+
         return;
       }
 
       const destination = new URLSearchParams(window.location.search).get('next');
-      router.replace(
-        destination && destination.startsWith('/') ? destination : '/',
-      );
+      const allowedReturn = destination && destination.startsWith('/') &&
+        !destination.startsWith('//') && !destination.includes('\\\\') &&
+        !destination.startsWith('/admin') && !destination.startsWith('/api/') &&
+        !destination.startsWith('/login');
+      const safeDestination = allowedReturn ? destination : '/';
+      router.replace(platformLogin && safeDestination==='/' ? '/admin' : safeDestination);
       router.refresh();
     } catch {
-      setError('No se pudo conectar con Chat Pro. Intenta nuevamente.');
+      setError('No se pudo conectar con MW1. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className={styles.shell}>
+    <main className={`${styles.shell} ${platformLogin?styles.platformShell:''}`}>
       <section className={styles.card}>
-        <div className={styles.mark}>CP</div>
-        <p className={styles.eyebrow}>CHAT PRO</p>
-        <h1>Iniciar sesión</h1>
+        <div className={styles.mark}>MW1</div>
+        <p className={styles.eyebrow}>{platformLogin?'ACCESO PRIVADO · PLATAFORMA':'MW1 · ACCESO EMPRESARIAL'}</p>
+        <h1>{platformLogin?'Administración de MW1':'Accede a tu empresa'}</h1>
         <p className={styles.copy}>
-          Ingresa tu identificación o código de acceso y tu contraseña.
+          {companySlug?'Ingresa con las credenciales de tu empresa.':'Ingresa tu identificación y contraseña para acceder a MW1.'}
         </p>
 
         <form className={styles.form} onSubmit={submit}>
@@ -63,7 +84,7 @@ export default function LoginPage() {
             onChange={(event) => setIdentifier(event.target.value)}
             autoComplete="username"
             autoFocus
-            placeholder="Ejemplo: 1020304050"
+            placeholder={platformLogin?'Identificación de administrador':'Tu código de acceso'}
           />
 
           <label htmlFor="password">Contraseña</label>
@@ -76,16 +97,23 @@ export default function LoginPage() {
             required
           />
 
-          <p className={styles.copy}>
-            Para configurar la primera cuenta de la empresa, deja vacía la
-            identificación y usa la contraseña principal actual.
-          </p>
 
+          {!platformLogin&&<p className={styles.copy} style={{margin:'6px 0 4px'}}>
+            <a href={'/recuperar-acceso'+(typeof window!=='undefined'&&
+              new URLSearchParams(window.location.search).get('company')
+              ? '?company='+encodeURIComponent(new URLSearchParams(window.location.search).get('company')||'')
+              :'')}>¿Olvidaste tu contraseña?</a>
+          </p>}
           {error ? <p className={styles.error}>{error}</p> : null}
-          <button type="submit" disabled={loading || !password}>
+          <button type="submit" disabled={loading || !password || (staging&&!platformLogin&&!companySlug)}>
             {loading ? 'Ingresando…' : 'Ingresar'}
           </button>
         </form>
+        {staging&&<p className={styles.copy} style={{margin:'14px 0 0',fontSize:12,textAlign:'center'}}>
+          {platformLogin?<a href="/login">Acceso empresarial</a>:companySlug
+            ?<span>Entorno piloto · <a href="/login?mode=platform&next=%2Fadmin">Administración de MW1</a></span>
+            :<span>¿Ya eres cliente? <a href="https://chatpro-web-production.up.railway.app/login">Entrar al MW1 actual</a> · <a href="/login?mode=platform&next=%2Fadmin">Administración</a></span>}
+        </p>}
       </section>
     </main>
   );

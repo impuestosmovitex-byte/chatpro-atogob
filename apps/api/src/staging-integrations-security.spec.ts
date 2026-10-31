@@ -1,0 +1,125 @@
+import {StagingIntegrationsController} from './staging-integrations.controller';
+import {SupabaseService} from './supabase.service';
+
+describe('staging integration catalog and isolation',()=>{
+ const key='test-staging-key';
+ const previousKey=process.env.CHATPRO_INBOX_KEY;
+ const companyId='pilot-company-id',ownerId='pilot-owner-id';
+ const rows:Record<string,Record<string,unknown>>={
+  companies:{id:companyId,name:'Piloto MW1 Prueba',slug:'piloto-mw1-prueba',status:'active'},
+  company_memberships:{company_id:companyId,user_id:ownerId,active:true,role_id:'owner-role'},
+  app_roles:{id:'owner-role',key:'owner',company_id:null},
+ };
+ let controller:StagingIntegrationsController;
+ let reads:string[];
+ let duplicatePhone=false;
+ beforeEach(()=>{
+  process.env.CHATPRO_INBOX_KEY=key;
+  reads=[];
+  duplicatePhone=false;
+  const db={from:(table:string)=>{
+   reads.push(table);
+   const filters:Record<string,unknown>={};
+   const query={
+    select:(_columns:string)=>query,
+    eq:(field:string,value:unknown)=>{filters[field]=value;return query;},
+    limit:async()=>{
+     const row=rows[table];
+     const found=row&&Object.entries(filters).every(([k,v])=>row[k]===v);
+     return {data:found?(duplicatePhone?[row,row]:[row]):[],error:null};
+    },
+    maybeSingle:async()=>{
+     const row=rows[table];
+     const matches=row&&Object.entries(filters).every(([k,v])=>row[k]===v);
+     return {data:matches?row:null,error:null};
+    },
+   };
+   return query;
+  }};
+  controller=new StagingIntegrationsController({getClient:()=>db} as unknown as SupabaseService);
+ });
+ afterAll(()=>{if(previousKey===undefined)delete process.env.CHATPRO_INBOX_KEY;else process.env.CHATPRO_INBOX_KEY=previousKey;});
+ test('owner sees catalog without credentials or live-connection claims',async()=>{
+  const result=await controller.list(key,ownerId,companyId,'piloto-mw1-prueba');
+  expect(result.ok).toBe(true);
+  expect(result.stagingReadOnly).toBe(true);
+  expect(result.connectionEnabled).toBe(false);
+  expect(result.integrations.map(x=>x.key)).toEqual(['whatsapp','shopify','instagram','messenger','meta-ads']);
+  expect(result.integrations.every(x=>x.status==='disconnected'&&!x.connectionReady)).toBe(true);
+  expect(JSON.stringify(result)).not.toMatch(/accessToken|credentials_encrypted|api_secret/);
+  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+ });
+ test('rejects other tenant without reading integration records',async()=>{
+  await expect(controller.list(key,ownerId,'another-company','piloto-mw1-prueba')).rejects.toThrow();
+  expect(reads).toEqual(['companies']);
+ });
+ test('embedded config is restricted to a verified company admin and never enables live connection',async()=>{
+  const result=await controller.embeddedConfig(key,ownerId,companyId,'piloto-mw1-prueba');
+  expect(result.ok).toBe(true);
+  expect(result.ready).toBe(false);
+  expect(result.connectionEnabled).toBe(false);
+  expect(result.company.slug).toBe('piloto-mw1-prueba');
+  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+ });
+ test('embedded config rejects cross-tenant identity',async()=>{
+  await expect(controller.embeddedConfig(key,ownerId,'another-company','piloto-mw1-prueba')).rejects.toThrow();
+  expect(reads).toEqual(['companies']);
+ });
+ test('embedded completion is unavailable even to valid owners',async()=>{
+  await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/aún no está habilitado/);
+  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+ });
+ test('embedded completion remains gated without explicit pilot flag',async()=>{
+  const before=process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
+  delete process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
+  try {
+    await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba',
+      {code:'invalid',wabaId:'123456789'})).rejects.toThrow(/aún no está habilitado/);
+  } finally {
+    if(before===undefined) delete process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
+    else process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED=before;
+  }
+ });
+ test('embedded completion rejects unidentified callers without database access',async()=>{
+  await expect(controller.embeddedComplete('wrong',ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/Sesión requerida/);
+  expect(reads).toEqual([]);
+ });
+ test('preflight rejects malformed phone IDs before integration lookup',async()=>{
+  await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'bad'})).rejects.toThrow(/no válido/);
+  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+ });
+ test('preflight rejects cross-tenant access without integration lookup',async()=>{
+  await expect(controller.embeddedPreflight(key,ownerId,'other-company','piloto-mw1-prueba',{phoneNumberId:'123456789'})).rejects.toThrow();
+  expect(reads).toEqual(['companies']);
+ });
+ test('preflight does not claim to enable WhatsApp',async()=>{
+  const res=await controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'});
+  expect(res.connectionEnabled).toBe(false);
+  expect(res.numberAvailable).toBe(true);
+  expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
+ });
+ test('preflight blocks a number already assigned to another company',async()=>{
+  rows.company_integrations={company_id:'another-tenant',provider:'meta',integration_type:'whatsapp',external_id:'123456789'};
+  try {
+    await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'}))
+      .rejects.toThrow(/asignado a otra empresa/);
+    expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
+  } finally {
+    delete rows.company_integrations;
+  }
+ });
+ test('preflight rejects duplicated number ownership records',async()=>{
+  rows.company_integrations={company_id:companyId,provider:'meta',integration_type:'whatsapp',external_id:'123456789'};
+  duplicatePhone=true;
+  try {
+    await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'}))
+      .rejects.toThrow(/asignaciones duplicadas/);
+  } finally {
+    delete rows.company_integrations;
+  }
+ });
+ test('rejects wrong internal key before querying database',async()=>{
+  await expect(controller.list('wrong',ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow();
+  expect(reads).toEqual([]);
+ });
+});

@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
-import styles from './layout.module.css';
+import type {ReactNode} from 'react';
 
-export default function EmpresasAdminLayout({ children }: { children: ReactNode }) {
-  return <div className={styles.shell}>{children}</div>;
+/** The platform navigation is fixed-positioned inside the page. Avoid the old
+ * tenant grid here: it incorrectly puts the only flow child under the sidebar. */
+export default function EmpresasAdminLayout({children}:{children:ReactNode}){
+  return <>{children}</>;
 }

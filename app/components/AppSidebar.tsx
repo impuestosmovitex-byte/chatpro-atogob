@@ -92,6 +92,8 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const pathname = usePathname();
   const [roleKey, setRoleKey] = useState('');
+  const [ordersEnabled, setOrdersEnabled] = useState(false);
+  const [demoNavigation, setDemoNavigation] = useState(false);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [activeCompany, setActiveCompany] = useState(companyName);
   const [activeSlug, setActiveSlug] = useState('');
@@ -120,14 +122,29 @@ export function AppSidebar({
           session.roleKey?.trim().toLowerCase() || '';
 
         setRoleKey(normalizedRoleKey);
+        // Start independent tenant reads together instead of waiting for commerce first.
+        const capabilitiesRequest = fetch('/api/auth/capabilities', { cache: 'no-store' }).catch(() => null);
+        const companiesRequest = session.userId
+          ? fetch('/api/auth/companies', { cache: 'no-store' }).catch(() => null)
+          : null;
+        const isDemo = window.location.hostname === 'mw1-web-staging-staging.up.railway.app';
+        if (alive) setDemoNavigation(isDemo);
+        if (session.userId && (normalizedRoleKey === 'owner' || normalizedRoleKey === 'admin')) {
+          try {
+            const commerce = await fetch('/api/native-commerce/access', { cache: 'no-store' });
+            if (alive) setOrdersEnabled(commerce.ok);
+          } catch {
+            if (alive) setOrdersEnabled(false);
+          }
+        } else if (alive) {
+          setOrdersEnabled(false);
+        }
         setActiveCompany(session.companyName?.trim() || companyName);
         setActiveSlug(session.companySlug?.trim().toLowerCase() || '');
 
         try {
-          const capabilitiesResponse = await fetch(
-            '/api/auth/capabilities',
-            { cache: 'no-store' },
-          );
+          const capabilitiesResponse = await capabilitiesRequest;
+          if (!capabilitiesResponse) throw new Error('No se pudieron consultar permisos.');
           const capabilitiesData = (await capabilitiesResponse.json()) as {
             ok?: boolean;
             capabilities?: Capabilities;
@@ -142,28 +159,15 @@ export function AppSidebar({
             setCapabilities(capabilitiesData.capabilities);
           }
         } catch {
-          const fullAccess =
-            normalizedRoleKey === 'owner' ||
-            normalizedRoleKey === 'admin';
-
-          if (alive) {
-            setCapabilities({
-              inbox: true,
-              clients: true,
-              automations: fullAccess,
-              statistics: fullAccess,
-              configuration: fullAccess,
-              testAgent: fullAccess,
-              health: fullAccess,
-            });
-          }
+          // Fail closed: a capability lookup failure must not expose modules
+          // or pretend that the signed-in user has administrative privileges.
+          if (alive) setCapabilities(null);
         }
 
         if (!session.userId) return;
 
-        const companiesResponse = await fetch('/api/auth/companies', {
-          cache: 'no-store',
-        });
+        const companiesResponse = await companiesRequest;
+        if (!companiesResponse) return;
         const companiesData = (await companiesResponse.json()) as {
           ok?: boolean;
           companies?: CompanyOption[];
@@ -190,13 +194,13 @@ export function AppSidebar({
 
   const fullAccess = roleKey === 'owner' || roleKey === 'admin';
   const effectiveCapabilities: Capabilities = capabilities ?? {
-    inbox: true,
-    clients: true,
-    automations: fullAccess,
-    statistics: fullAccess,
-    configuration: fullAccess,
-    testAgent: fullAccess,
-    health: fullAccess,
+    inbox: false,
+    clients: false,
+    automations: false,
+    statistics: false,
+    configuration: false,
+    testAgent: false,
+    health: false,
   };
 
   const isServiceTenant = activeSlug === 'emprende-con-maogo';
@@ -212,6 +216,16 @@ export function AppSidebar({
         effectiveCapabilities[item.capability] &&
         (item.href !== '/leads' || isServiceTenant),
     ),
+    ...(ordersEnabled ? [
+      { href: '/pedidos', label: 'Pedidos', icon: '▤', exact: true },
+      ...(demoNavigation ? [{ href: '/pedidos/simulador', label: 'Simular chat', icon: '◈' }] : []),
+      { href: '/catalogo', label: 'Catálogo', icon: '▦', exact: true },
+      ...(demoNavigation ? [{ href: '/catalogo/conexiones', label: 'Fuentes y conexiones', icon: '⊞' }] : []),
+      ...(demoNavigation ? [{ href: '/catalogo/fichas', label: 'Fichas de producto', icon: '▤' }] : []),
+      ...(demoNavigation ? [{ href: '/catalogo/asistente', label: 'Asistente de catálogo', icon: '◈' }] : []),
+      ...(demoNavigation ? [{ href: '/catalogo/importar', label: 'Importar catálogo', icon: '⇧' },{ href: '/catalogo/imagenes', label: 'Fotos del catálogo', icon: '▧' }] : []),
+      { href: '/pedidos/avisos', label: 'Avisos de pedidos', icon: '◉' },
+    ] : []),
     ...(effectiveCapabilities.configuration
       ? [
           {
@@ -337,7 +351,22 @@ export function AppSidebar({
         aria-label="Navegación móvil"
         aria-hidden={hideMobileNavigation}
       >
-        {effectiveCapabilities.inbox ? (
+        {ordersEnabled ? (
+          <Link className={`${styles.mobileNavItem} ${isActive(pathname, '/pedidos') ? styles.mobileNavActive : ''}`} href="/pedidos">
+            <span aria-hidden="true">▤</span><small>Pedidos</small>
+          </Link>
+        ) : null}
+        {ordersEnabled && demoNavigation ? (
+          <Link className={`${styles.mobileNavItem} ${isActive(pathname, '/pedidos/simulador') ? styles.mobileNavActive : ''}`} href="/pedidos/simulador">
+            <span aria-hidden="true">◈</span><small>Simular chat</small>
+          </Link>
+        ) : null}
+        {ordersEnabled ? (
+          <Link className={`${styles.mobileNavItem} ${isActive(pathname, '/catalogo') ? styles.mobileNavActive : ''}`} href="/catalogo">
+            <span aria-hidden="true">▦</span><small>Catálogo</small>
+          </Link>
+        ) : null}
+        {!demoNavigation && effectiveCapabilities.inbox ? (
           <Link
             className={`${styles.mobileNavItem} ${
               isActive(pathname, '/', true) ? styles.mobileNavActive : ''
@@ -349,7 +378,7 @@ export function AppSidebar({
           </Link>
         ) : null}
 
-        {effectiveCapabilities.clients ? (
+        {!demoNavigation && effectiveCapabilities.clients ? (
           <Link
             className={`${styles.mobileNavItem} ${
               isActive(pathname, '/clientes') ? styles.mobileNavActive : ''
@@ -361,7 +390,7 @@ export function AppSidebar({
           </Link>
         ) : null}
 
-        {effectiveCapabilities.clients && isServiceTenant ? (
+        {!demoNavigation && effectiveCapabilities.clients && isServiceTenant ? (
           <Link
             className={`${styles.mobileNavItem} ${
               isActive(pathname, '/leads') ? styles.mobileNavActive : ''
@@ -373,7 +402,7 @@ export function AppSidebar({
           </Link>
         ) : null}
 
-        {effectiveCapabilities.statistics ? (
+        {!demoNavigation && effectiveCapabilities.statistics ? (
           <Link
             className={`${styles.mobileNavItem} ${
               isActive(pathname, '/estadisticas') ? styles.mobileNavActive : ''

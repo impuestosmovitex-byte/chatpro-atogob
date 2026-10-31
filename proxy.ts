@@ -11,6 +11,11 @@ const PUBLIC_PATHS = new Set([
   '/precios',
   '/demo',
   '/integraciones',
+  '/por-que',
+  '/prueba-gratis',
+  '/recuperar-acceso',
+  '/api/auth/recovery',
+  '/api/marketing/demo-request',
   '/api/auth/login',
   '/api/auth/logout',
   '/api/health',
@@ -51,7 +56,13 @@ function matchesPath(pathname: string, allowedPath: string): boolean {
 }
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.has(pathname);
+  // Enrollment has to run before any user session exists. Its API still
+  // requires an exact staging Origin plus a 256-bit operator-issued code.
+  const isStagingEnrollment =
+    process.env.MW1_STAGING_MODE === 'true' &&
+    (pathname === '/activar-administrador' ||
+      pathname === '/api/staging-admin-setup');
+  return PUBLIC_PATHS.has(pathname) || isStagingEnrollment;
 }
 
 function canManagePlatform(roleKey: string): boolean {
@@ -114,8 +125,27 @@ export async function proxy(request: NextRequest) {
 
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('next', pathname);
+    if(pathname==='/admin'||pathname.startsWith('/admin/'))
+      loginUrl.searchParams.set('mode','platform');
 
     return secureResponse(NextResponse.redirect(loginUrl));
+  }
+
+  // A platform session has no tenant id. Never let it visit company pages
+  // or their APIs. Tenant sessions cannot enter the platform.
+  const isPlatformPath=pathname==='/admin'||pathname.startsWith('/admin/')||
+    pathname==='/api/platform-admin'||pathname.startsWith('/api/platform-admin/');
+  if(isPlatformPath && session.type!=='platform'){
+    if(pathname.startsWith('/api/'))return secureResponse(NextResponse.json(
+      {ok:false,error:'Requiere sesión independiente de superadministrador.'},{status:403}));
+    return secureResponse(NextResponse.redirect(new URL('/login?mode=platform&next='+encodeURIComponent(pathname),request.url)));
+  }
+  if(session.type==='platform'){
+    if(isPlatformPath || pathname==='/api/auth/session'||pathname==='/api/auth/logout')
+      return secureResponse(NextResponse.next());
+    if(pathname.startsWith('/api/'))return secureResponse(NextResponse.json(
+      {ok:false,error:'Las cuentas de plataforma no acceden a datos de empresas.'},{status:403}));
+    return secureResponse(NextResponse.redirect(new URL('/admin',request.url)));
   }
 
   if (isAutomationPath(pathname)) {

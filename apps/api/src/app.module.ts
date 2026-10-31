@@ -55,6 +55,11 @@ import { MetaAdsWhatsappMiddleware } from './meta-ads-whatsapp.middleware';
 import { MetaAdsReferralSubscriptionService } from './meta-ads-referral-subscription.service';
 import { MetaLeadFormsService } from './meta-lead-forms.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
+import { StagingMerchantPaymentCredentialsService } from './staging-merchant-payment-credentials.service';
+import { StagingMercadoPagoOrchestratorService } from './staging-mercadopago-orchestrator.service';
+import { StagingMerchantPaymentReconciliationService } from './staging-merchant-payment-reconciliation.service';
+import { StagingMerchantPaymentTenantResolver } from './staging-merchant-payment-tenant-resolver.service';
+import { StagingMerchantMercadoPagoWebhookController } from './staging-merchant-mercadopago-webhook.controller';
 import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
@@ -80,6 +85,7 @@ import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { PlatformHealthController } from './platform-health.controller';
 import { PlatformHealthService } from './platform-health.service';
 import { PlatformAdminController } from './platform-admin.controller';
+import { NativeCommerceController } from './native-commerce.controller';
 import { WhatsappTemplateController } from './whatsapp-template.controller';
 import { WhatsappTemplateService } from './whatsapp-template.service';
 import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
@@ -94,6 +100,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
 @Module({
   imports: [ScheduleModule.forRoot()],
   controllers: [
+    StagingMerchantMercadoPagoWebhookController,
     InternalDiagnosticsController,
     ShopifyOrderDetailDiagnosticsController,
     AppController,
@@ -132,6 +139,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
     ServiceAreasController,
     PlatformHealthController,
     PlatformAdminController,
+    NativeCommerceController,
     WhatsappTemplateController,
     PushNotificationController,
   ],
@@ -141,6 +149,10 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
     CompanyCommerceService,
     CustomerOrderService,
     IntegrationCredentialsService,
+    StagingMerchantPaymentCredentialsService,
+    StagingMercadoPagoOrchestratorService,
+    StagingMerchantPaymentReconciliationService,
+    StagingMerchantPaymentTenantResolver,
     MetaMessengerService,
     MetaInstagramService,
     MetaInstagramMediaAiService,
