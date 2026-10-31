@@ -13,6 +13,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { stagingPaymentMethods } from './staging-payment-methods';
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import OpenAI from 'openai';
 import { readCatalogPicture,exactImageMatches,validateVisualProposal,chooseVisualReferences,narrowVisualMatches } from './staging-vision';
@@ -99,15 +100,7 @@ export class NativeCommerceController {
     const company = await this.authorize(key,companyId,userId);
     // Read-only staging capability discovery. Never expose merchant credentials
     // or offer an unverified provider as an active customer checkout.
-    const options = [
-      { id:'mercadopago_card',provider:'mercado_pago',label:'Tarjeta — Mercado Pago',method:'card' },
-      { id:'mercadopago_pse',provider:'mercado_pago',label:'PSE — Mercado Pago',method:'pse' },
-      { id:'bold_card',provider:'bold',label:'Tarjeta — Bold',method:'card' },
-      { id:'bold_pse',provider:'bold',label:'PSE — Bold',method:'pse' },
-      { id:'addi',provider:'addi',label:'Addi',method:'financing' },
-      { id:'sistecredito',provider:'sistecredito',label:'Sistecrédito',method:'financing' },
-      { id:'transfer',provider:'bank_transfer',label:'Transferencia',method:'transfer' },
-    ].map(method=>({...method,enabled:false,status:'pending_integration' as const}));
+    const options = stagingPaymentMethods();
     return {ok:true,companyId:company.id,checkoutEnabled:false,options};
   }
 
