@@ -57,6 +57,7 @@ import { MetaLeadFormsService } from './meta-lead-forms.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { StagingMerchantPaymentCredentialsService } from './staging-merchant-payment-credentials.service';
 import { StagingMercadoPagoOrchestratorService } from './staging-mercadopago-orchestrator.service';
+import { StagingMerchantMercadoPagoWebhookController } from './staging-merchant-mercadopago-webhook.controller';
 import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
@@ -97,6 +98,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
 @Module({
   imports: [ScheduleModule.forRoot()],
   controllers: [
+    StagingMerchantMercadoPagoWebhookController,
     InternalDiagnosticsController,
     ShopifyOrderDetailDiagnosticsController,
     AppController,
