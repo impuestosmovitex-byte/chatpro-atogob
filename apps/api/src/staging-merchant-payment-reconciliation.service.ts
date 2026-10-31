@@ -23,11 +23,15 @@ export class StagingMerchantPaymentReconciliationService{
   const [orderResult,attemptResult]=await Promise.all([
    database.from('commerce_orders').select('id,company_id,currency,grand_total')
     .eq('company_id',companyId).eq('id',orderId).maybeSingle(),
-   database.from('commerce_payments').select('id,company_id,order_id,provider,currency,amount,status')
+   database.from('commerce_payments').select('id,company_id,order_id,provider,provider_payment_id,currency,amount,status')
     .eq('company_id',companyId).eq('order_id',orderId).eq('id',attemptId).maybeSingle(),
   ]);
   if(orderResult.error||attemptResult.error||!orderResult.data||!attemptResult.data||
     attemptResult.data.provider!=='mercado_pago')throw new Error('Pedido o intento no encontrado.');
+  // Never reconcile an unbound provider payment: binding must originate from
+  // a server-side provider response with its own independent verification.
+  if(attemptResult.data.provider_payment_id!==providerPaymentId)
+   throw new Error('El pago del proveedor no está vinculado a este intento.');
   const merchant=await this.credentials.resolveMercadoPago(companyId);
   const payment=await fetchMerchantMercadoPagoPayment(providerPaymentId,merchant.accessToken);
   const verified=assessCommercialPaymentEvidence({
