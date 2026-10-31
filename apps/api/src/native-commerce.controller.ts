@@ -860,6 +860,43 @@ export class NativeCommerceController {
     return {ok:true,created:false,attempt:existing,checkoutEnabled:false};
   }
 
+  @Post('orders/:orderId/checkout-preview')
+  @Header('Cache-Control', 'private, no-store, max-age=0')
+  async checkoutPreview(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Param('orderId') orderId = '',
+    @Body() body:Record<string,unknown> = {},
+  ) {
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new ForbiddenException('Solo MW1 de pruebas.');
+    const company=await this.authorize(key,companyId,userId);
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if(!uuid.test(orderId)||typeof body.attemptId!=='string'||!uuid.test(body.attemptId)||
+       Object.keys(body).some(k=>k!=='attemptId'))
+      throw new BadRequestException('Intento de pago inválido.');
+    const db=this.supabase.getClient();
+    const {data:attempt,error}=await db.from('commerce_payments')
+      .select('id,order_id,provider,status,currency,amount')
+      .eq('company_id',company.id).eq('order_id',orderId)
+      .eq('id',body.attemptId).maybeSingle();
+    if(error||!attempt)throw new BadRequestException('Intento no encontrado.');
+    const {data:order,error:orderError}=await db.from('commerce_orders')
+      .select('id,status,payment_status,currency,grand_total')
+      .eq('company_id',company.id).eq('id',orderId).maybeSingle();
+    if(orderError||!order)throw new BadRequestException('Pedido no encontrado.');
+    const eligible=['pending_confirmation','confirmed'].includes(order.status)&&
+      !['paid','refunded'].includes(order.payment_status)&&
+      attempt.status==='created' &&
+      attempt.currency===order.currency&&Number(attempt.amount)===Number(order.grand_total);
+    // No provider request or link creation until merchant OAuth and signed
+    // webhook validation are implemented and verified. Never echo credentials.
+    return {ok:true,eligibleForFutureCheckout:eligible,checkoutEnabled:false,
+      attemptId:attempt.id,provider:attempt.provider,
+      reason:eligible?'Proveedor sin conexión verificada.':'Pedido o intento no elegible.'};
+  }
+
   @Patch('orders/:orderId/status')
   async advance(
     @Headers('x-chatpro-inbox-key') key = '',
