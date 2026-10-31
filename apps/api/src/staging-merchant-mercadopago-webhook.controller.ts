@@ -2,6 +2,7 @@ import {Controller,ForbiddenException,Headers,HttpCode,Post,Query,Body} from '@n
 import {verifyMercadoPagoWebhookSignature} from './staging-mercadopago-webhook-signature';
 import {merchantNotificationFingerprint} from './staging-merchant-notification-reconciliation';
 import {SupabaseService} from './supabase.service';
+import {StagingMerchantPaymentTenantResolver} from './staging-merchant-payment-tenant-resolver.service';
 import {ServiceUnavailableException} from '@nestjs/common';
 
 /** Merchant order notices MUST NOT share MW1 SaaS subscription reconciliation.
@@ -9,7 +10,7 @@ import {ServiceUnavailableException} from '@nestjs/common';
  */
 @Controller('webhook/merchant-mercadopago-staging')
 export class StagingMerchantMercadoPagoWebhookController {
- constructor(private readonly supabase:SupabaseService){}
+ constructor(private readonly supabase:SupabaseService,private readonly tenantResolver:StagingMerchantPaymentTenantResolver){}
  @Post()
  @HttpCode(202)
  async receive(
@@ -53,6 +54,10 @@ export class StagingMerchantMercadoPagoWebhookController {
   if(readError||!record)throw new ServiceUnavailableException('No se pudo verificar el registro.');
   if(record.provider_payment_id!==dataId||record.event_fingerprint!==fingerprint)
     throw new ForbiddenException('Identificador de notificación reutilizado con otro pago.');
+  // Resolve only previously provider-bound attempts. Unknown payments remain
+  // in quarantine and cannot trigger a provider lookup with another tenant's key.
+  const boundAttempt=await this.tenantResolver.findBoundMerchantAttempt(dataId);
+  if(!boundAttempt)return {accepted:true,recorded:true,tenantResolved:false,processed:false,paymentConfirmed:false};
   // A valid HMAC is not proof of payment nor merchant ownership.
   // Next phase: server-side provider GET + tenant routing + idempotent
   // reconciliation. Never update commerce_orders.payment_status here.
