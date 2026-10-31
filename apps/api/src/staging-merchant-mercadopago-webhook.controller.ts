@@ -1,15 +1,18 @@
 import {Controller,ForbiddenException,Headers,HttpCode,Post,Query,Body} from '@nestjs/common';
 import {verifyMercadoPagoWebhookSignature} from './staging-mercadopago-webhook-signature';
 import {merchantNotificationFingerprint} from './staging-merchant-notification-reconciliation';
+import {SupabaseService} from './supabase.service';
+import {ServiceUnavailableException} from '@nestjs/common';
 
 /** Merchant order notices MUST NOT share MW1 SaaS subscription reconciliation.
  * This quarantine endpoint does not store PII or mutate any order or payment.
  */
 @Controller('webhook/merchant-mercadopago-staging')
 export class StagingMerchantMercadoPagoWebhookController {
+ constructor(private readonly supabase:SupabaseService){}
  @Post()
  @HttpCode(202)
- receive(
+ async receive(
   @Headers('x-signature') signature='',
   @Headers('x-request-id') requestId='',
   @Query('data.id') dataId='',
@@ -34,10 +37,15 @@ export class StagingMerchantMercadoPagoWebhookController {
   const eventId=(eventData&&typeof eventData==='object'&&!Array.isArray(eventData)&&
     'id' in eventData)?String((eventData as {id:unknown}).id):'';
   if(eventId!==dataId)throw new ForbiddenException('Referencia de pago inconsistente.');
-  merchantNotificationFingerprint({requestId,paymentId:dataId,eventType:type});
+  const fingerprint=merchantNotificationFingerprint({requestId,paymentId:dataId,eventType:type});
+  const {error}=await this.supabase.getClient().from('mw1_merchant_mp_webhook_inbox').upsert({
+    request_id:requestId,provider_payment_id:dataId,event_fingerprint:fingerprint,
+    status:'pending_tenant_resolution'
+  },{onConflict:'request_id',ignoreDuplicates:true});
+  if(error)throw new ServiceUnavailableException('No se pudo registrar la notificación comercial.');
   // A valid HMAC is not proof of payment nor merchant ownership.
   // Next phase: server-side provider GET + tenant routing + idempotent
   // reconciliation. Never update commerce_orders.payment_status here.
-  return {accepted:true,processed:false,paymentConfirmed:false};
+  return {accepted:true,recorded:true,processed:false,paymentConfirmed:false};
  }
 }
