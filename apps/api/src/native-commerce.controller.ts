@@ -778,6 +778,33 @@ export class NativeCommerceController {
         'Este pedido no admite iniciar un nuevo cobro.'};
   }
 
+  @Get('orders/:orderId/payment-attempts')
+  @Header('Cache-Control', 'private, no-store, max-age=0')
+  async paymentAttempts(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Param('orderId') orderId = '',
+  ) {
+    if (process.env.MW1_STAGING_MODE !== 'true') {
+      throw new ForbiddenException('Disponible únicamente en MW1 staging.');
+    }
+    const company = await this.authorize(key,companyId,userId);
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if(!uuid.test(orderId))throw new BadRequestException('Pedido no válido.');
+    const db=this.supabase.getClient();
+    const {data:order,error:orderError}=await db.from('commerce_orders')
+      .select('id').eq('company_id',company.id).eq('id',orderId).maybeSingle();
+    if(orderError||!order)throw new BadRequestException('Pedido no encontrado.');
+    const {data,error}=await db.from('commerce_payments')
+      .select('id,provider,status,currency,amount,created_at,updated_at,approved_at')
+      .eq('company_id',company.id).eq('order_id',order.id)
+      .order('created_at',{ascending:false}).limit(50);
+    if(error)throw new BadRequestException('No se pudieron consultar los intentos de pago.');
+    // Never return provider tokens, checkout URLs or raw webhook payloads.
+    return {ok:true,orderId:order.id,attempts:data||[],checkoutEnabled:false};
+  }
+
   @Patch('orders/:orderId/status')
   async advance(
     @Headers('x-chatpro-inbox-key') key = '',
