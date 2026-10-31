@@ -805,6 +805,61 @@ export class NativeCommerceController {
     return {ok:true,orderId:order.id,attempts:data||[],checkoutEnabled:false};
   }
 
+  @Post('orders/:orderId/payment-attempts')
+  @Header('Cache-Control', 'private, no-store, max-age=0')
+  async preparePaymentAttempt(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Param('orderId') orderId = '',
+    @Body() body: Record<string,unknown> = {},
+  ) {
+    if (process.env.MW1_STAGING_MODE !== 'true') {
+      throw new ForbiddenException('Solo MW1 de pruebas.');
+    }
+    const company=await this.authorize(key,companyId,userId);
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const provider=body.provider;
+    const requestKey=body.requestKey;
+    if(!uuid.test(orderId) || typeof requestKey!=='string' || !uuid.test(requestKey) ||
+       !['mercado_pago','bold'].includes(String(provider)) ||
+       Object.keys(body).some(k=>!['provider','requestKey'].includes(k))) {
+      throw new BadRequestException('Solicitud de pago inválida.');
+    }
+    const db=this.supabase.getClient();
+    const {data:order,error:orderError}=await db.from('commerce_orders')
+      .select('id,status,payment_status,currency,grand_total')
+      .eq('company_id',company.id).eq('id',orderId).maybeSingle();
+    if(orderError||!order)throw new BadRequestException('Pedido no encontrado.');
+    if(!['pending_confirmation','confirmed'].includes(order.status) ||
+      ['paid','refunded'].includes(order.payment_status)) {
+      throw new ForbiddenException('El pedido no permite iniciar pagos.');
+    }
+    const amount=Number(order.grand_total);
+    if(!Number.isFinite(amount)||amount<=0||!Number.isSafeInteger(Math.round(amount*100))||
+      Math.abs(amount*100-Math.round(amount*100))>0.000001||
+      !/^[A-Z]{3}$/.test(order.currency||'')) {
+      throw new BadRequestException('Importe del pedido inválido.');
+    }
+    // Idempotent draft only. No checkout link, no payment approval, no credentials.
+    // The DB unique(company_id,idempotency_key) protects concurrent retries.
+    const attempt={company_id:company.id,order_id:order.id,provider:String(provider),
+      idempotency_key:requestKey,status:'created',currency:order.currency,amount};
+    const {data:created,error}=await db.from('commerce_payments')
+      .insert(attempt).select('id,order_id,provider,status,currency,amount').single();
+    if(!error&&created)return {ok:true,created:true,attempt:created,checkoutEnabled:false};
+    if(error?.code!=='23505')throw new BadRequestException('No se pudo preparar el intento de pago.');
+    const {data:existing,error:lookupError}=await db.from('commerce_payments')
+      .select('id,order_id,provider,status,currency,amount')
+      .eq('company_id',company.id).eq('idempotency_key',requestKey).maybeSingle();
+    if(lookupError||!existing||existing.order_id!==order.id||
+       existing.provider!==provider||existing.currency!==order.currency||
+       Number(existing.amount)!==amount) {
+      throw new ForbiddenException('La clave de solicitud ya pertenece a otro intento de pago.');
+    }
+    return {ok:true,created:false,attempt:existing,checkoutEnabled:false};
+  }
+
   @Patch('orders/:orderId/status')
   async advance(
     @Headers('x-chatpro-inbox-key') key = '',
