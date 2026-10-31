@@ -13,7 +13,9 @@ export type PaymentAttemptDraft = Readonly<{
  * Never use this alone for deduplication: the database must enforce uniqueness.
  */
 export function paymentAttemptFingerprint(draft: PaymentAttemptDraft): string {
-  if (!/^[0-9a-f-]{36}$/i.test(draft.companyId) ||
+  const supportedProviders = ['mercado_pago','bold','addi','sistecredito','bank_transfer'];
+  if (!supportedProviders.includes(draft.provider) ||
+      !/^[0-9a-f-]{36}$/i.test(draft.companyId) ||
       !/^[0-9a-f-]{36}$/i.test(draft.orderId) ||
       !/^[0-9a-f-]{36}$/i.test(draft.requestKey) ||
       !/^[A-Z]{3}$/.test(draft.currency) ||
