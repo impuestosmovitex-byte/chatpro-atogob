@@ -43,6 +43,16 @@ export class StagingMerchantMercadoPagoWebhookController {
     status:'pending_tenant_resolution'
   },{onConflict:'request_id',ignoreDuplicates:true});
   if(error)throw new ServiceUnavailableException('No se pudo registrar la notificación comercial.');
+  // A reused provider request ID must refer to exactly the same event.
+  // The unique index also protects concurrent inserts; read after upsert
+  // to detect a conflicting notification that was ignored by idempotency.
+  const {data:record,error:readError}=await this.supabase.getClient()
+    .from('mw1_merchant_mp_webhook_inbox')
+    .select('provider_payment_id,event_fingerprint')
+    .eq('request_id',requestId).maybeSingle();
+  if(readError||!record)throw new ServiceUnavailableException('No se pudo verificar el registro.');
+  if(record.provider_payment_id!==dataId||record.event_fingerprint!==fingerprint)
+    throw new ForbiddenException('Identificador de notificación reutilizado con otro pago.');
   // A valid HMAC is not proof of payment nor merchant ownership.
   // Next phase: server-side provider GET + tenant routing + idempotent
   // reconciliation. Never update commerce_orders.payment_status here.
