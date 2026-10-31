@@ -1,5 +1,6 @@
 import {Controller,ForbiddenException,Headers,HttpCode,Post,Query} from '@nestjs/common';
 import {verifyMercadoPagoWebhookSignature} from './staging-mercadopago-webhook-signature';
+import {merchantNotificationFingerprint} from './staging-merchant-notification-reconciliation';
 
 /** Merchant order notices MUST NOT share MW1 SaaS subscription reconciliation.
  * This quarantine endpoint does not store PII or mutate any order or payment.
@@ -20,6 +21,8 @@ export class StagingMerchantMercadoPagoWebhookController {
   if(!verifyMercadoPagoWebhookSignature({
     signatureHeader:signature,requestId,dataId,secret,
   }))throw new ForbiddenException('Firma de webhook inválida.');
+  // Validate event identity without trusting webhook fields as payment evidence.
+  merchantNotificationFingerprint({requestId,paymentId:dataId,eventType:'payment'});
   // A valid HMAC is not proof of payment nor merchant ownership.
   // Next phase: server-side provider GET + tenant routing + idempotent
   // reconciliation. Never update commerce_orders.payment_status here.
