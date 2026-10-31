@@ -57,6 +57,7 @@ import { MetaLeadFormsService } from './meta-lead-forms.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { StagingMerchantPaymentCredentialsService } from './staging-merchant-payment-credentials.service';
 import { StagingMercadoPagoOrchestratorService } from './staging-mercadopago-orchestrator.service';
+import { StagingMerchantPaymentReconciliationService } from './staging-merchant-payment-reconciliation.service';
 import { StagingMerchantMercadoPagoWebhookController } from './staging-merchant-mercadopago-webhook.controller';
 import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
@@ -149,6 +150,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
     IntegrationCredentialsService,
     StagingMerchantPaymentCredentialsService,
     StagingMercadoPagoOrchestratorService,
+    StagingMerchantPaymentReconciliationService,
     MetaMessengerService,
     MetaInstagramService,
     MetaInstagramMediaAiService,
