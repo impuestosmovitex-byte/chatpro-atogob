@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AppSidebar } from '../../components/AppSidebar';
-import styles from '../../pedidos/page.module.css';
+import { AppSidebar } from '../components/AppSidebar';
+import styles from '../pedidos/page.module.css';
 
 type Method = { id:string; provider:string; label:string; method:string; enabled:boolean; status:string };
 type PaymentResponse = { ok?:boolean; options?:Method[]; checkoutEnabled?:boolean; error?:string };
