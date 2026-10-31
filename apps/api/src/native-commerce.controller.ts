@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Get,
   Headers,
+  Header,
   Param,
   Patch,
   Post,
@@ -84,6 +85,9 @@ export class NativeCommerceController {
   }
 
   @Get('payment-methods')
+  @Header('Cache-Control', 'private, no-store, max-age=0')
+  @Header('Pragma', 'no-cache')
+  @Header('X-Content-Type-Options', 'nosniff')
   async paymentMethods(
     @Headers('x-chatpro-inbox-key') key = '',
     @Headers('x-chatpro-company-id') companyId = '',
