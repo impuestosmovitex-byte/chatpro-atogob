@@ -40,6 +40,8 @@ type OrderDetail = {
   }>;
 };
 
+type PaymentAttempt = { id:string; provider:string; status:string; currency:string; amount:number|string; created_at:string };
+
 const labels: Record<OrderStatus, string> = {
   pending_confirmation: 'Por confirmar',
   confirmed: 'Confirmado',
@@ -68,6 +70,8 @@ export default function NativeOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<OrderDetail | null>(null);
+  const [paymentAttempts,setPaymentAttempts]=useState<PaymentAttempt[]>([]);
+  const [paymentsNote,setPaymentsNote]=useState('');
   const [filter, setFilter] = useState('all');
   const [companyName, setCompanyName] = useState('Mi empresa');
   const [loading, setLoading] = useState(true);
@@ -110,6 +114,26 @@ export default function NativeOrdersPage() {
     });
     return () => { cancelled = true; };
   }, [selectedId, orders]);
+
+  useEffect(()=>{
+    if(!selectedId){setPaymentAttempts([]);setPaymentsNote('');return;}
+    const controller=new AbortController();
+    setPaymentAttempts([]);
+    setPaymentsNote('Consultando intentos de pago…');
+    void fetch(`/api/native-commerce/orders/${selectedId}/payment-attempts`,{
+      signal:controller.signal,cache:'no-store',
+    }).then(async response=>{
+      const result=await response.json() as {ok?:boolean;attempts?:PaymentAttempt[];error?:string};
+      if(!response.ok||!result.ok)throw new Error(result.error||'Sin historial disponible.');
+      if(!controller.signal.aborted){
+        setPaymentAttempts(result.attempts||[]);
+        setPaymentsNote((result.attempts||[]).length?'':'No hay intentos de pago registrados.');
+      }
+    }).catch(error=>{
+      if(!controller.signal.aborted)setPaymentsNote(error instanceof Error?error.message:'No se pudo consultar pagos.');
+    });
+    return ()=>controller.abort();
+  },[selectedId]);
 
   async function advance(order: Order) {
     const next = nextStates[order.status];
@@ -248,6 +272,14 @@ export default function NativeOrdersPage() {
             </div>
             {!detail ? <p>Cargando información…</p> : <>
               <p><strong>Pago:</strong> {detail.order.payment_status === 'paid' ? 'Confirmado' : 'Sin confirmar'} · <strong>Estado:</strong> {labels[detail.order.status]}</p>
+              <div className={styles.dispatchPanel}>
+                <h3>Intentos de pago</h3>
+                <p className={styles.note}>Solo consulta. No genera enlaces ni modifica el estado del pedido.</p>
+                {paymentsNote&&<p role="status">{paymentsNote}</p>}
+                {paymentAttempts.map(item=><p key={item.id}>
+                  {item.provider.replace(/_/g,' ')} · {item.status} · {money(item.amount,item.currency)}
+                </p>)}
+              </div>
               <div className={styles.tableScroll}><table className={styles.table}>
                 <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th><th>Subtotal</th></tr></thead>
                 <tbody>{detail.items.map(item =>
