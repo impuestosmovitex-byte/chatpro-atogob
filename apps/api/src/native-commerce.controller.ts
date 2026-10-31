@@ -739,6 +739,38 @@ export class NativeCommerceController {
     return { ok: true, order, items: items ?? [], shipments: shipments.data ?? [], notifications: notifications.data ?? [] };
   }
 
+  @Get('orders/:orderId/payment-quote')
+  @Header('Cache-Control', 'private, no-store, max-age=0')
+  async paymentQuote(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Param('orderId') orderId = '',
+  ) {
+    if (process.env.MW1_STAGING_MODE !== 'true') {
+      throw new ForbiddenException('Disponible únicamente en MW1 staging.');
+    }
+    const company = await this.authorize(key,companyId,userId);
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuid.test(orderId)) throw new BadRequestException('Identificador de pedido no válido.');
+    const {data:order,error}=await this.supabase.getClient().from('commerce_orders')
+      .select('id,order_code,status,payment_status,currency,grand_total')
+      .eq('company_id',company.id).eq('id',orderId).maybeSingle();
+    if (error || !order) throw new BadRequestException('Pedido no encontrado.');
+    const amount=Number(order.grand_total);
+    if (!Number.isFinite(amount) || amount<=0 || !/^[A-Z]{3}$/.test(order.currency||'')) {
+      throw new BadRequestException('Pedido sin importe válido para pago.');
+    }
+    // Read from server-side order; do not accept totals or merchant IDs from chat.
+    // All checkout providers remain disabled until tenant credentials and webhooks
+    // have been verified. No payment attempts, links or status mutations here.
+    return {ok:true,order:{id:order.id,code:order.order_code,
+      status:order.status,paymentStatus:order.payment_status,
+      currency:order.currency,amount},
+      checkoutEnabled:false,availableMethods:[],
+      reason:'Las pasarelas de esta empresa aún no están verificadas.'};
+  }
+
   @Patch('orders/:orderId/status')
   async advance(
     @Headers('x-chatpro-inbox-key') key = '',
