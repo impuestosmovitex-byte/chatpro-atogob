@@ -55,6 +55,7 @@ import { MetaAdsWhatsappMiddleware } from './meta-ads-whatsapp.middleware';
 import { MetaAdsReferralSubscriptionService } from './meta-ads-referral-subscription.service';
 import { MetaLeadFormsService } from './meta-lead-forms.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
+import { StagingMerchantPaymentCredentialsService } from './staging-merchant-payment-credentials.service';
 import { RolesController } from './roles.controller';
 import { QuickRepliesController } from './quick-replies.controller';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
@@ -143,6 +144,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
     CompanyCommerceService,
     CustomerOrderService,
     IntegrationCredentialsService,
+    StagingMerchantPaymentCredentialsService,
     MetaMessengerService,
     MetaInstagramService,
     MetaInstagramMediaAiService,
