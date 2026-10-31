@@ -1,4 +1,3 @@
-import {createHash} from 'node:crypto';
 import {buildMerchantOrderDraft} from './staging-mercadopago-order-draft';
 import {assessMerchantMercadoPagoPayment} from './staging-merchant-mercadopago-payment';
 
