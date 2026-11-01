@@ -5190,6 +5190,20 @@ export default function Home() {
                           : "No hay mensajes todavía."}
                     </p>
                   ) : null}
+                  {selected.messages.some(item =>
+                    item.sender !== "customer" && item.deliveryStatus === "failed"
+                  ) && (
+                    <div role="alert" style={{
+                      padding: "10px 14px", margin: "8px", borderRadius: 8,
+                      border: "1px solid currentColor", fontSize: 13,
+                    }}>
+                      <strong>⚠ Hay mensajes que no llegaron al cliente.</strong>
+                      <div>No consideres estos intentos como contacto exitoso.
+                        Revisa el mensaje marcado como fallido y utiliza otra vía
+                        de contacto autorizada. No reenvíes automáticamente
+                        plantillas de marketing rechazadas por Meta.</div>
+                    </div>
+                  )}
                   {selected.messages.map((item) => (
                     <div
                       key={
