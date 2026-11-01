@@ -1251,7 +1251,8 @@ export default function Home() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [imageSending, setImageSending] = useState(false);
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const attachmentFile = attachmentFiles[0] || null;
   const [attachmentSending, setAttachmentSending] = useState(false);
   const [draggingFile, setDraggingFile] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -2819,17 +2820,18 @@ export default function Home() {
   function selectImages(files: File[]) {
     if (!files.length) return;
 
-    const allowed = new Set([
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/webp",
-    ]);
-
-    const invalidFile = files.find((file) => !allowed.has(file.type));
-
+    const allowed = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+    const supportedImage = (file: File) => {
+      const mime = file.type.toLowerCase().trim();
+      const ext = file.name.toLowerCase().split(".").pop() || "";
+      return allowed.has(mime) || ((!mime || mime === "application/octet-stream") &&
+        ["jpg", "jpeg", "png", "webp"].includes(ext));
+    };
+    const invalidFile = files.find((file) => !supportedImage(file));
     if (invalidFile) {
-      setError("Formato no permitido. Usa JPG, PNG o WEBP.");
+      const name = invalidFile.name || "archivo";
+      const format = invalidFile.type || "sin tipo MIME";
+      setError(`No se puede enviar "${name}" (formato ${format}). Usa JPG, PNG o WEBP. Si es HEIC de iPhone, conviértelo a JPG.`);
       return;
     }
 
@@ -2866,7 +2868,7 @@ export default function Home() {
   }
 
   function clearAttachmentDraft() {
-    setAttachmentFile(null);
+    setAttachmentFiles([]);
 
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
@@ -2877,114 +2879,96 @@ export default function Home() {
     inputFiles?: FileList | File[] | null,
   ) {
     const files = Array.from(inputFiles ?? []);
-
     if (!files.length) return;
 
-    const allImages = files.every((file) =>
-      file.type.startsWith("image/"),
+    const allImages = files.every(file =>
+      file.type.toLowerCase().startsWith("image/") ||
+      ((!file.type || file.type === "application/octet-stream") &&
+        /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)),
     );
-
     if (allImages) {
       selectImages(files);
       return;
     }
-
-    if (files.length > 1) {
-      setError(
-        "Puedes seleccionar varias imágenes a la vez. Videos y documentos se envían uno por uno.",
-      );
+    if (files.length > 10) {
+      setError("Selecciona hasta 10 archivos por envío.");
       return;
     }
-
-    const file = files[0];
-
     const allowed = new Set([
-      "video/mp4",
-      "video/3gpp",
-      "application/pdf",
-      "text/plain",
+      "video/mp4", "video/3gpp", "application/pdf", "text/plain",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/vnd.ms-excel",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ]);
-
-    if (!allowed.has(file.type)) {
-      setError(
-        "Formato no permitido. Usa JPG, PNG, WEBP, MP4, 3GP, PDF, TXT, DOC, DOCX, XLS o XLSX.",
-      );
+    const supported = (file:File) => {
+      const mime=file.type.toLowerCase();
+      const ext=file.name.toLowerCase().split(".").pop()||"";
+      return allowed.has(mime) ||
+        ((!mime||mime==="application/octet-stream") &&
+         ["mp4","3gp","3gpp","pdf","txt","doc","docx","xls","xlsx"].includes(ext));
+    };
+    const invalid = files.find(file=>!supported(file));
+    if (invalid) {
+      setError(`El archivo "${invalid.name}" no es compatible (${invalid.type||"tipo desconocido"}). Los videos MOV deben convertirse a MP4.`);
       return;
     }
-
-    if (file.size > 25 * 1024 * 1024) {
-      setError("El archivo supera el límite de 25 MB.");
+    const oversized = files.find(file=>file.size>25*1024*1024);
+    if (oversized) {
+      setError(`El archivo "${oversized.name}" supera el límite de 25 MB.`);
       return;
     }
-
     clearImageDraft();
-    setAttachmentFile(file);
-
-    if (imageInputRef.current) {
-      imageInputRef.current.value = "";
-    }
-
+    setAttachmentFiles(files);
+    if (imageInputRef.current) imageInputRef.current.value="";
     setQuickReplyOpen(false);
     setError("");
   }
 
   async function sendSelectedAttachment() {
-    if (!selected?.session.id || !attachmentFile) return;
-
+    if (!selected?.session.id || !attachmentFiles.length) return;
     setAttachmentSending(true);
     setError("");
     setActionMessage("");
-
+    let sentCount = 0;
     try {
-      const form = new FormData();
-
-      form.set("sessionId", selected.session.id);
-      form.set(
-        "file",
-        attachmentFile,
-        attachmentFile.name || "archivo",
-      );
-
-      if (message.trim()) {
-        form.set(
-          "caption",
-          message.trim().slice(0, 1024),
-        );
+      for (const file of attachmentFiles) {
+        const form = new FormData();
+        form.set("sessionId", selected.session.id);
+        form.set("file", file, file.name || "archivo");
+        if (sentCount === 0 && message.trim()) {
+          form.set("caption", message.trim().slice(0, 1024));
+        }
+        const response = await fetch("/api/inbox/file", {
+          method: "POST",
+          body: form,
+        });
+        const data = (await readJson(response)) as ApiConversation & {
+          message?: string;
+        };
+        if (!response.ok || !data.ok || !data.conversation) {
+          throw new Error(data.error || data.message ||
+            `No se pudo enviar "${file.name}".`);
+        }
+        sentCount += 1;
+        setSelected(data.conversation);
       }
-
-      const response = await fetch("/api/inbox/file", {
-        method: "POST",
-        body: form,
-      });
-
-      const data = (await readJson(response)) as ApiConversation & {
-        message?: string;
-      };
-
-      if (!response.ok || !data.ok || !data.conversation) {
-        throw new Error(
-          data.error ||
-            data.message ||
-            "No se pudo enviar el archivo.",
-        );
-      }
-
-      setSelected(data.conversation);
-      conversationDraftsRef.current[data.conversation.session.id] = "";
+      const sentTotal = attachmentFiles.length;
+      conversationDraftsRef.current[selected.session.id] = "";
       clearAttachmentDraft();
       setMessage("");
-      setActionMessage("Archivo enviado.");
+      setActionMessage(sentTotal === 1 ? "Archivo enviado." :
+        `${sentTotal} archivos enviados.`);
       await loadList(false);
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "No se pudo enviar el archivo.",
-      );
+      if (sentCount > 0) {
+        setAttachmentFiles(current=>current.slice(sentCount));
+        conversationDraftsRef.current[selected.session.id] = "";
+        setMessage("");
+        await loadList(false);
+      }
+      setError(caught instanceof Error ? caught.message :
+        "No se pudieron enviar todos los archivos.");
     } finally {
       setAttachmentSending(false);
     }
@@ -5588,7 +5572,7 @@ export default function Home() {
                               </span>
 
                               <div>
-                                <strong>{attachmentFile.name}</strong>
+                                <strong>{attachmentFile.name}{attachmentFiles.length > 1 ? ` y ${attachmentFiles.length - 1} archivo(s) más` : ''}</strong>
                                 <small>
                                   {(attachmentFile.size / 1024 / 1024).toFixed(2)} MB
                                 </small>
