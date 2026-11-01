@@ -16,7 +16,7 @@ export class StagingMerchantPaymentBindingService {
      process.env.MW1_MP_SANDBOX_ORDERS_ENABLED!=='true'||
      process.env.MW1_MERCHANT_PAYMENT_BINDING_ENABLED!=='true')
     throw new Error('Vinculación de pagos de prueba deshabilitada.');
-  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if(![companyId,orderId,attemptId].every(x=>uuid.test(x))||
      !/^[0-9]{1,40}$/.test(paymentId))throw new Error('Referencias inválidas.');
   const db=this.db.getClient();
