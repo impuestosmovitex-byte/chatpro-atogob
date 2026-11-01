@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { detectSupportedMediaMime, detectedMimeMatchesName } from "../../../lib/media-upload-detection";
 import { INBOX_SESSION_COOKIE, getInboxSession } from "../../../lib/inbox-auth";
 
 export const dynamic = "force-dynamic";
@@ -65,13 +66,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (
-      !["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(
-        image.type,
-      )
-    ) {
+    const detectedMime = await detectSupportedMediaMime(image);
+    if (!detectedMime?.startsWith("image/") || !detectedMimeMatchesName(image, detectedMime)) {
       return NextResponse.json(
-        { ok: false, error: "Formato no permitido. Usa JPG, PNG o WEBP." },
+        { ok: false, error: `La imagen "${image.name}" no es JPG, PNG o WEBP válido. Si es HEIC, conviértela a JPG.` },
+        { status: 400 },
+      );
+    }
+    if (image.type && image.type !== "application/octet-stream" &&
+        !["image/jpeg","image/jpg","image/png","image/webp"].includes(image.type.toLowerCase())) {
+      return NextResponse.json(
+        { ok: false, error: "El tipo del archivo no coincide con una imagen compatible." },
         { status: 400 },
       );
     }
@@ -83,7 +88,7 @@ export async function POST(request: NextRequest) {
     target.searchParams.set("company", session.companySlug);
 
     const payload = new FormData();
-    payload.set("image", image, image.name || "imagen.jpg");
+    payload.set("image", new File([image], image.name || "imagen.jpg", {type:detectedMime}), image.name || "imagen.jpg");
     if (caption) payload.set("caption", caption.slice(0, 1024));
 
     const response = await fetch(target, {
