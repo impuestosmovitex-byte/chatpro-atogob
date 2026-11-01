@@ -1907,7 +1907,7 @@ export default function Home() {
       await openConversation(sessionId, true);
       setActionMessage(
         data.warning?.trim() ||
-          "Plantilla enviada por WhatsApp. La conversación quedó abierta para continuar como asesor.",
+          "Solicitud de plantilla aceptada por Meta. La entrega aún NO está confirmada; comprueba el estado del mensaje antes de considerar contactado al cliente.",
       );
     } catch (caught) {
       setError(
