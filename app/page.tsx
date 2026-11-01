@@ -2841,17 +2841,18 @@ export default function Home() {
   function selectImages(files: File[]) {
     if (!files.length) return;
 
-    const allowed = new Set([
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/webp",
-    ]);
-
-    const invalidFile = files.find((file) => !allowed.has(file.type));
-
+    const allowed = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+    const supportedImage = (file: File) => {
+      const mime = file.type.toLowerCase().trim();
+      const ext = file.name.toLowerCase().split(".").pop() || "";
+      return allowed.has(mime) || ((!mime || mime === "application/octet-stream") &&
+        ["jpg", "jpeg", "png", "webp"].includes(ext));
+    };
+    const invalidFile = files.find((file) => !supportedImage(file));
     if (invalidFile) {
-      setError("Formato no permitido. Usa JPG, PNG o WEBP.");
+      const name = invalidFile.name || "archivo";
+      const format = invalidFile.type || "sin tipo MIME";
+      setError(`No se puede enviar "${name}" (formato ${format}). Usa JPG, PNG o WEBP. Si es HEIC de iPhone, conviértelo a JPG.`);
       return;
     }
 
@@ -2903,7 +2904,9 @@ export default function Home() {
     if (!files.length) return;
 
     const allImages = files.every((file) =>
-      file.type.startsWith("image/"),
+      file.type.toLowerCase().startsWith("image/") ||
+      ((!file.type || file.type === "application/octet-stream") &&
+        /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)),
     );
 
     if (allImages) {
@@ -2931,10 +2934,11 @@ export default function Home() {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ]);
 
-    if (!allowed.has(file.type)) {
-      setError(
-        "Formato no permitido. Usa JPG, PNG, WEBP, MP4, 3GP, PDF, TXT, DOC, DOCX, XLS o XLSX.",
-      );
+    const extension = file.name.toLowerCase().split(".").pop() || "";
+    const validByExtension = (!file.type || file.type === "application/octet-stream") &&
+      ["mp4", "3gp", "pdf", "txt", "doc", "docx", "xls", "xlsx"].includes(extension);
+    if (!allowed.has(file.type.toLowerCase()) && !validByExtension) {
+      setError(`No se puede enviar "${file.name}" (${file.type || "tipo desconocido"}). Usa MP4 o 3GP para videos; JPG, PNG o WEBP para fotos. Los videos MOV deben convertirse a MP4.`);
       return;
     }
 
