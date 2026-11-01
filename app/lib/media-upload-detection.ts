@@ -12,7 +12,7 @@ export async function detectSupportedMediaMime(file:File):Promise<string|null>{
   if(ascii(4,4)==='ftyp'){
     const brand=ascii(8,4);
     if(brand.startsWith('3g'))return 'video/3gpp';
-    if(['isom','iso2','mp41','mp42','avc1','M4V ','MSNV'].includes(brand))
+    if(['isom','iso2','iso5','iso6','mp41','mp42','avc1','M4V ','MSNV'].includes(brand))
       return 'video/mp4';
   }
   return null;
