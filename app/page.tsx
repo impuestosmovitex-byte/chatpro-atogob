@@ -48,6 +48,8 @@ type InboxMessage = {
   mediaStoragePath?: string | null;
   mediaVoice: boolean;
   providerMessageId?: string | null;
+  deliveryStatus?: string | null;
+  providerError?: string | null;
   replyToProviderMessageId?: string | null;
   replyToMessage?: string | null;
   messageSource?: string | null;
@@ -5199,6 +5201,21 @@ export default function Home() {
                         item.providerMessageId || undefined
                       }
                     >
+                      {item.sender !== "customer" && item.providerMessageId && (
+                        <div role="status" style={{fontSize:"11px",marginBottom:4}}>
+                          {item.deliveryStatus === "read" ? "✓✓ Leído" :
+                           item.deliveryStatus === "delivered" ? "✓✓ Entregado" :
+                           item.deliveryStatus === "failed" ? "⚠ No entregado — Meta rechazó el mensaje" :
+                           "◷ Enviado a Meta — entrega sin confirmar"}
+                          {item.deliveryStatus === "failed" && item.providerError && (
+                            <div style={{fontSize:"11px",fontWeight:500}}>
+                              {item.providerError.includes("131049")
+                                ? "131049: restricción de entrega de marketing. Contactar por otra vía permitida."
+                                : item.providerError.slice(0,180)}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="message-bubble">
                         {item.replyToMessage ? (
                           <button
