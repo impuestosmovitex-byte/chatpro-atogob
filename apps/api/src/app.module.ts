@@ -58,6 +58,7 @@ import { IntegrationCredentialsService } from './integration-credentials.service
 import { StagingMerchantPaymentCredentialsService } from './staging-merchant-payment-credentials.service';
 import { StagingMercadoPagoOrchestratorService } from './staging-mercadopago-orchestrator.service';
 import { StagingMerchantPaymentReconciliationService } from './staging-merchant-payment-reconciliation.service';
+import { StagingMerchantPaymentBindingService } from './staging-merchant-payment-binding.service';
 import { StagingMerchantPaymentTenantResolver } from './staging-merchant-payment-tenant-resolver.service';
 import { StagingMerchantMercadoPagoWebhookController } from './staging-merchant-mercadopago-webhook.controller';
 import { RolesController } from './roles.controller';
@@ -152,6 +153,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
     StagingMerchantPaymentCredentialsService,
     StagingMercadoPagoOrchestratorService,
     StagingMerchantPaymentReconciliationService,
+    StagingMerchantPaymentBindingService,
     StagingMerchantPaymentTenantResolver,
     MetaMessengerService,
     MetaInstagramService,
