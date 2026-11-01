@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { detectSupportedMediaMime, detectedMimeMatchesName } from "../../../lib/media-upload-detection";
 import {
   INBOX_SESSION_COOKIE,
   getInboxSession,
@@ -79,14 +80,17 @@ export async function POST(request: NextRequest) {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ]);
 
-    if (!allowed.has(file.type)) {
+    const detectedMime = await detectSupportedMediaMime(file);
+    const videoFile = /\.(mp4|3gp|3gpp)$/i.test(file.name) ||
+      file.type.toLowerCase().startsWith("video/");
+    const validVideo = !!detectedMime?.startsWith("video/") &&
+      detectedMimeMatchesName(file,detectedMime);
+    const acceptedDocument = allowed.has(file.type.toLowerCase()) &&
+      !file.type.toLowerCase().startsWith("video/");
+    if ((videoFile && !validVideo) || (!videoFile && !acceptedDocument)) {
       return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Formato no permitido. Usa MP4, 3GP, PDF, TXT, DOC, DOCX, XLS o XLSX.",
-        },
-        { status: 400 },
+        { ok:false, error:`Archivo "${file.name}" no compatible. Para videos usa MP4 o 3GP auténticos. Los MOV necesitan conversión a MP4.` },
+        {status:400},
       );
     }
 
@@ -99,7 +103,7 @@ export async function POST(request: NextRequest) {
     target.searchParams.set("company", session.companySlug);
 
     const payload = new FormData();
-    payload.set("file", file, file.name || "archivo");
+    payload.set("file", validVideo ? new File([file],file.name,{type:detectedMime!}) : file, file.name || "archivo");
 
     if (caption) {
       payload.set("caption", caption.slice(0, 1024));
