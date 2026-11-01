@@ -63,3 +63,20 @@ desarrollando como plataforma separada.
 - Pruebas verificadas de mensajes y estados, roles, migración histórica,
   conectores, pedidos y recuperación ante errores.
 - Servicios antiguos retirados solo después de validar que ya no son necesarios.
+
+## Decisión explícita: conexiones heredadas ATOGOB y Emprende con MAOGO
+- Las conexiones actuales de WhatsApp, Instagram, Messenger y demás integraciones
+  de ATOGOB y Emprende con MAOGO **se conservan tal como funcionan hoy**,
+  incluso si su alta fue manual o anterior al onboarding automatizado de MW1.
+- No revocar tokens, desconectar números, reemplazar webhooks, cambiar IDs de
+  Meta ni exigir reconexión durante el desarrollo o la migración por defecto.
+- MW1 debe admitir conexiones **legacy/manual** y conexiones **onboarding
+  automatizado** como modalidades compatibles de la misma plataforma multiempresa.
+- Antes de cualquier cambio sobre conectores heredados, inventariar IDs,
+  permisos, suscripciones webhooks, tenencia por empresa y rutas de mensajes;
+  validar en staging sin producir eventos duplicados.
+- Después de consolidar MW1 y verificar continuidad, evaluar **por separado**
+  si conviene migrar cada cuenta al flujo automatizado; solo hacerlo si es
+  realmente necesario, con autorización explícita, respaldos y plan de reversión.
+- Los nuevos clientes sí podrán utilizar el flujo automatizado de conexión
+  cuando esté probado y habilitado.
