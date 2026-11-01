@@ -3,6 +3,7 @@ import {verifyMercadoPagoWebhookSignature} from './staging-mercadopago-webhook-s
 import {merchantNotificationFingerprint} from './staging-merchant-notification-reconciliation';
 import {SupabaseService} from './supabase.service';
 import {StagingMerchantPaymentTenantResolver} from './staging-merchant-payment-tenant-resolver.service';
+import {StagingMerchantPaymentReconciliationService} from './staging-merchant-payment-reconciliation.service';
 import {ServiceUnavailableException} from '@nestjs/common';
 
 /** Merchant order notices MUST NOT share MW1 SaaS subscription reconciliation.
@@ -10,7 +11,7 @@ import {ServiceUnavailableException} from '@nestjs/common';
  */
 @Controller('webhook/merchant-mercadopago-staging')
 export class StagingMerchantMercadoPagoWebhookController {
- constructor(private readonly supabase:SupabaseService,private readonly tenantResolver:StagingMerchantPaymentTenantResolver){}
+ constructor(private readonly supabase:SupabaseService,private readonly tenantResolver:StagingMerchantPaymentTenantResolver,private readonly reconciliation:StagingMerchantPaymentReconciliationService){}
  @Post()
  @HttpCode(202)
  async receive(
@@ -58,9 +59,18 @@ export class StagingMerchantMercadoPagoWebhookController {
   // in quarantine and cannot trigger a provider lookup with another tenant's key.
   const boundAttempt=await this.tenantResolver.findBoundMerchantAttempt(dataId);
   if(!boundAttempt)return {accepted:true,recorded:true,tenantResolved:false,processed:false,paymentConfirmed:false};
-  // A valid HMAC is not proof of payment nor merchant ownership.
-  // Next phase: server-side provider GET + tenant routing + idempotent
-  // reconciliation. Never update commerce_orders.payment_status here.
-  return {accepted:true,recorded:true,processed:false,paymentConfirmed:false};
+  // Review the payment using credentials belonging only to this resolved merchant.
+  // This method never writes paid states. Failures remain in quarantine.
+  let verified=false;
+  try {
+    const result=await this.reconciliation.review(
+      boundAttempt.companyId,boundAttempt.orderId,boundAttempt.attemptId,dataId,
+    );
+    verified=result.verified===true;
+  } catch {
+    // Never leak provider tokens or error details to webhook callers.
+  }
+  return {accepted:true,recorded:true,tenantResolved:true,
+    verified,processed:false,paymentConfirmed:false};
  }
 }
