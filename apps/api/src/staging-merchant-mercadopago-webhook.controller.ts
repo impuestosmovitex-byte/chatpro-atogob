@@ -73,7 +73,7 @@ export class StagingMerchantMercadoPagoWebhookController {
   // Store only a read-only review outcome. No paid-state mutation.
   // Scope the update to the exact immutable inbox event and its payment ID.
   const reviewOutcome=verified?'verified_readonly':'needs_review';
-  const {error:reviewError}=await this.supabase.getClient()
+  const {error:reviewError,data:writtenReview}=await this.supabase.getClient()
     .from('mw1_merchant_mp_webhook_inbox')
     .update({
       company_id:boundAttempt.companyId,
@@ -85,9 +85,15 @@ export class StagingMerchantMercadoPagoWebhookController {
     })
     .eq('request_id',requestId)
     .eq('provider_payment_id',dataId)
-    .eq('event_fingerprint',fingerprint);
+    .eq('event_fingerprint',fingerprint)
+    .is('reviewed_at',null)
+    .select('id').maybeSingle();
   if(reviewError)throw new ServiceUnavailableException('No se pudo registrar la revisión comercial.');
+  // Duplicate deliveries must not rewrite completed reviews. The database
+  // compare-and-set condition above prevents concurrent overwrite.
+
   return {accepted:true,recorded:true,tenantResolved:true,
-    verified,reviewOutcome,processed:false,paymentConfirmed:false};
+    reviewRecorded:!!writtenReview,verified:!!writtenReview&&verified,
+    processed:false,paymentConfirmed:false};
  }
 }
