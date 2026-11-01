@@ -80,3 +80,47 @@ desarrollando como plataforma separada.
   realmente necesario, con autorización explícita, respaldos y plan de reversión.
 - Los nuevos clientes sí podrán utilizar el flujo automatizado de conexión
   cuando esté probado y habilitado.
+
+## Decisión comercial y operativa: pilotos, medición y activación de funciones
+- **ATOGOB y Emprende con MAOGO** son empresas reales piloto dentro del futuro
+  MW1 unificado. Deben tener acceso operativo continuo **sin bloquearse** por
+  ausencia de plan contratado, tarjeta, autorización de cobro, suscripción o
+  cupos comerciales durante la etapa piloto.
+- Esto **NO** implica ignorar la autenticación, las autorizaciones de usuario,
+  la seguridad ni los límites técnicos de los proveedores.
+- Sus conexiones manuales heredadas permanecen intactas. Ninguna acción de
+  onboarding automatizado debe revocar sus credenciales ni duplicar webhooks.
+- La exención piloto y sus fechas/cambios serán propiedad del superadministrador;
+  las empresas de prueba no obtienen esa condición por coincidencia de nombre.
+  Validar siempre por ID de tenant, no por el texto del nombre o el slug.
+- El consumo se mide aun cuando el cobro esté exento: llamadas de IA,
+  modelo/tokens/costo estimado, mensajes WhatsApp por categoría/estado,
+  almacenamiento, adjuntos, automatizaciones, infraestructura asignable y
+  otros servicios medibles.
+- Un estimado de costos **no equivale** a un cargo facturado: registrar fuente,
+  fecha, unidad, tarifas efectivas, moneda, confianza y limitaciones. Los costos
+  compartidos se asignan con metodología explícita; no inventar un monto por
+  cliente sin datos.
+- Separar **(a) disponibilidad de código**, **(b) derecho por plan o excepción**,
+  **(c) habilitación por superadministrador** y **(d) activación/configuración
+  voluntaria por la empresa**. Una actualización jamás debe activar de forma
+  sorpresiva pagos, automatizaciones, conexiones o IA nueva.
+- Matriz por empresa: disponible / permitido por plan / habilitado por
+  plataforma / configurado por empresa / operativo / consumo.
+- El superadministrador podrá encender o apagar módulos por tenant, con
+  auditoría, sin cambiar por error planes, cobros o datos históricos.
+- En el piloto ATOGOB/MAOGO, el control de funciones no debe poner en peligro
+  el uso vigente; novedades opcionales quedan inicialmente apagadas.
+- Ante eventual plan Básico, Eco, Pro, límites/medios de pago se aplicarán
+  solo a empresas y módulos sujetos a contratación; jamás convertir el
+  estado 'sin medio de pago' en un bloqueo universal de los pilotos.
+- Nombre comercial **provisional**: MW1; se evaluará «Chatbo MW1» u otra
+  marca. Un cambio de marca nunca obliga a reconectar canales.
+- Las mejoras aprobadas se desarrollan una vez en la rama MW1, se prueban
+  en staging y se promueven por versión a la operación de todas las empresas;
+  la activación se gestiona por tenant. No mantener dos productos.
+- Situación comprobada el 2026-11-01: staging tiene
+  `company_entitlements`, `mw1_billing_subscriptions` y
+  `platform_ai_usage_events`; esta última está vacía. Las empresas de
+  operación ATOGOB/MAOGO aún no están migradas a esa base staging.
+  No presentar el costo estimado de staging como consumo real productivo.
