@@ -70,7 +70,24 @@ export class StagingMerchantMercadoPagoWebhookController {
   } catch {
     // Never leak provider tokens or error details to webhook callers.
   }
+  // Store only a read-only review outcome. No paid-state mutation.
+  // Scope the update to the exact immutable inbox event and its payment ID.
+  const reviewOutcome=verified?'verified_readonly':'needs_review';
+  const {error:reviewError}=await this.supabase.getClient()
+    .from('mw1_merchant_mp_webhook_inbox')
+    .update({
+      company_id:boundAttempt.companyId,
+      order_id:boundAttempt.orderId,
+      attempt_id:boundAttempt.attemptId,
+      status:'needs_review',
+      review_outcome:reviewOutcome,
+      reviewed_at:new Date().toISOString(),
+    })
+    .eq('request_id',requestId)
+    .eq('provider_payment_id',dataId)
+    .eq('event_fingerprint',fingerprint);
+  if(reviewError)throw new ServiceUnavailableException('No se pudo registrar la revisión comercial.');
   return {accepted:true,recorded:true,tenantResolved:true,
-    verified,processed:false,paymentConfirmed:false};
+    verified,reviewOutcome,processed:false,paymentConfirmed:false};
  }
 }
