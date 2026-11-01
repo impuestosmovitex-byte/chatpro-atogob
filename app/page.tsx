@@ -2906,7 +2906,7 @@ export default function Home() {
     const allImages = files.every(file =>
       file.type.toLowerCase().startsWith("image/") ||
       ((!file.type || file.type === "application/octet-stream") &&
-        /\\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)),
+        /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)),
     );
     if (allImages) {
       selectImages(files);
