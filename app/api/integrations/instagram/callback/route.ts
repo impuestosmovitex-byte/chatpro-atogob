@@ -50,7 +50,7 @@ export async function GET(
     );
   }
 
-  return NextResponse.redirect(
+  const response = NextResponse.redirect(
     new URL(
       `/configuracion/integraciones?instagram_code=${encodeURIComponent(
         code,
@@ -60,4 +60,7 @@ export async function GET(
       publicOrigin,
     ),
   );
+  response.headers.set('Cache-Control', 'no-store, private');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  return response;
 }
