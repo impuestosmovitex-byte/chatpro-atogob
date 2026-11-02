@@ -49,8 +49,18 @@ export async function POST(request: NextRequest) {
   }
 
   if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
-    const submitted = await request.json().catch(() => null) as { state?: unknown } | null;
+    const submitted = await request.json().catch(() => null) as
+      | { state?: unknown; code?: unknown; redirectUri?: unknown }
+      | null;
     const state = typeof submitted?.state === 'string' ? submitted.state : '';
+    const code = typeof submitted?.code === 'string' ? submitted.code.trim() : '';
+    const expectedRedirect = 'https://mw1-web-staging-staging.up.railway.app/api/integrations/instagram/callback';
+    if (!code || code.length > 4096 || submitted?.redirectUri !== expectedRedirect) {
+      return NextResponse.json(
+        { ok: false, error: 'El retorno de Instagram es inválido.' },
+        { status: 400 },
+      );
+    }
     const stored = request.cookies.get('mw1_ig_oauth_state')?.value || '';
     let signedStateValid = false;
     try {
