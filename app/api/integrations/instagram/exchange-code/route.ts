@@ -4,6 +4,8 @@ import {
   INBOX_SESSION_COOKIE,
 } from '../../../../lib/inbox-auth';
 
+import { verifyInstagramOAuthState } from '../../../../lib/instagram-oauth-state';
+
 export const dynamic = 'force-dynamic';
 
 function canManage(
@@ -46,30 +48,27 @@ export async function POST(request: NextRequest) {
   }
 
   if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
-    return NextResponse.json(
-      { ok: false, error: 'Conexión de Instagram en preparación para el piloto.' },
-      { status: 403 },
-    );
-  }
-
-  // Staging OAuth remains closed until the signed state and one-time
-  // authorization are fully verified on the server.
-  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
-    const submitted = await request.json().catch(() => null) as
-      | { state?: unknown }
-      | null;
-    const state = typeof submitted?.state === 'string'
-      ? submitted.state
-      : '';
+    const submitted = await request.json().catch(() => null) as { state?: unknown } | null;
+    const state = typeof submitted?.state === 'string' ? submitted.state : '';
     const stored = request.cookies.get('mw1_ig_oauth_state')?.value || '';
-    if (!state || !stored || state !== stored) {
+    let signedStateValid = false;
+    try {
+      signedStateValid = Boolean(
+        state && stored && state === stored && session.userId &&
+        verifyInstagramOAuthState(state, session.companyId, session.userId),
+      );
+    } catch {
+      signedStateValid = false;
+    }
+    if (!signedStateValid) {
       return NextResponse.json(
-        { ok: false, error: 'Estado OAuth de Instagram no válido.' },
+        { ok: false, error: 'Autorización de Instagram no válida o vencida.' },
         { status: 403 },
       );
     }
+    // Server-side single-use state consumption is not implemented yet.
     return NextResponse.json(
-      { ok: false, error: 'Instagram aún requiere verificación de autorización de un solo uso.' },
+      { ok: false, error: 'Instagram sigue deshabilitado hasta completar la autorización de un solo uso.' },
       { status: 403 },
     );
   }
