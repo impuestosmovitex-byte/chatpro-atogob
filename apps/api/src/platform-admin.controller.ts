@@ -204,8 +204,13 @@ export class PlatformAdminController {
       .select('feature_key,enabled,updated_at')
       .eq('company_id', company.id);
     if (error) throw new BadRequestException('Error consultando preferencias.');
+    const {data: rights, error: rightsError} = await client
+      .from('company_entitlements')
+      .select('plan_key,ai_enabled,whatsapp_enabled,instagram_enabled,messenger_enabled,automations_enabled,statistics_enabled,native_orders_enabled')
+      .eq('company_id',company.id).maybeSingle();
+    if (rightsError) throw new BadRequestException('No se pudieron consultar los derechos del plan.');
     return { ok: true, company, preferences: data ?? [],
-      informationalOnly: true };
+      entitlements: rights ?? null, informationalOnly: true };
   }
 
   @Post('feature-preferences')
