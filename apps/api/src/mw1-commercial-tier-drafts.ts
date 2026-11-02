@@ -26,7 +26,7 @@ function pendingRights():Record<Mw1FeatureKey,PlannedRight>{
 export const MW1_COMMERCIAL_TIER_DRAFTS:readonly TierDraft[]=[
   {tier:'basico',label:'Básico',maxUsers:2,maxConnections:1,rights:pendingRights(),approved:false},
   {tier:'eco',label:'Eco',maxUsers:3,maxConnections:3,rights:pendingRights(),approved:false},
-  {tier:'pro',label:'Pro',maxUsers:3,maxConnections:3,rights:pendingRights(),approved:false},
+  {tier:'pro',label:'Pro',maxUsers:3,maxConnections:5,rights:pendingRights(),approved:false},
 ];
 
 /** Only an explicitly reviewed mapping may be used for published entitlements. */
