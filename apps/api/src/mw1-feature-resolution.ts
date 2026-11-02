@@ -45,3 +45,58 @@ export function billingGateAllowsAccess(
 ): boolean {
   return subscriptionActive || explicitPilotExemption;
 }
+
+
+// Commercial plan names are not yet standardized: current plan drafts use
+// Inicial/Pro/Empresa while product planning anticipates Basico/Eco/Pro.
+// For that reason do NOT infer rights from a plan name. Read the actual
+// per-tenant entitlement booleans instead, and leave new modules pending.
+export type Mw1EntitlementSnapshot = {
+  ai_enabled?: boolean | null;
+  whatsapp_enabled?: boolean | null;
+  instagram_enabled?: boolean | null;
+  messenger_enabled?: boolean | null;
+  automations_enabled?: boolean | null;
+  statistics_enabled?: boolean | null;
+  native_orders_enabled?: boolean | null;
+};
+
+export function planAllowsMw1Feature(
+  feature: Mw1FeatureKey,
+  rights: Mw1EntitlementSnapshot,
+): boolean | null {
+  const fields: Partial<Record<Mw1FeatureKey, keyof Mw1EntitlementSnapshot>> = {
+    ai_assistant: 'ai_enabled',
+    whatsapp: 'whatsapp_enabled',
+    instagram: 'instagram_enabled',
+    messenger: 'messenger_enabled',
+    automations: 'automations_enabled',
+    statistics: 'statistics_enabled',
+    native_orders: 'native_orders_enabled',
+  };
+  const field = fields[feature];
+  if (!field) return null; // Not yet defined in the commercial plan schema.
+  const value = rights[field];
+  return typeof value === 'boolean' ? value : null;
+}
+
+export type Mw1FeaturePreview = Mw1FeatureDecision | {
+  featureKey: Mw1FeatureKey;
+  entitled: null;
+  chosen: boolean;
+  effective: false;
+  reason: 'entitlement_not_configured';
+};
+
+export function previewMw1Feature(
+  feature: Mw1FeatureKey,
+  rights: Mw1EntitlementSnapshot,
+  preference?: boolean | null,
+): Mw1FeaturePreview {
+  const entitlement = planAllowsMw1Feature(feature, rights);
+  if (entitlement === null) {
+    return {featureKey:feature,entitled:null,chosen:preference!==false,
+      effective:false,reason:'entitlement_not_configured'};
+  }
+  return resolveMw1Feature(feature, entitlement, preference);
+}
