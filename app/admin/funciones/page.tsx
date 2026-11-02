@@ -14,6 +14,7 @@ export default function FeaturePreferencesPage(){
  const [companies,setCompanies]=useState<Company[]>([]);
  const [selected,setSelected]=useState('');
  const [prefs,setPrefs]=useState<Pref[]>([]);
+ const [rights,setRights]=useState<Record<string,unknown>|null>(null);
  const [loading,setLoading]=useState(true);
  const [busy,setBusy]=useState('');
  const [error,setError]=useState('');
@@ -32,7 +33,7 @@ export default function FeaturePreferencesPage(){
   })();
  },[]);
  useEffect(()=>{
-  if(!selected){setPrefs([]);return;}
+  if(!selected){setPrefs([]);setRights(null);return;}
   let ignore=false;
   (async()=>{
    setError('');setNotice('');
@@ -40,7 +41,7 @@ export default function FeaturePreferencesPage(){
     const res=await fetch('/api/platform-admin/feature-preferences?companyId='+encodeURIComponent(selected),{cache:'no-store'});
     const data=await res.json();
     if(!res.ok||!data.ok)throw new Error(data.error||'Error al consultar.');
-    if(!ignore)setPrefs(data.preferences||[]);
+    if(!ignore){setPrefs(data.preferences||[]);setRights(data.entitlements||null);}
    }catch(e){if(!ignore)setError(e instanceof Error?e.message:'Error');}
   })();
   return ()=>{ignore=true;};
@@ -83,10 +84,18 @@ export default function FeaturePreferencesPage(){
    {selected&&<section style={{display:'grid',gap:10,marginTop:24,maxWidth:620}}>
     {features.map(([key,label])=>{
      const saved=prefs.find(p=>p.feature_key===key);
+     const field:Record<string,string>={
+       ai_assistant:'ai_enabled',whatsapp:'whatsapp_enabled',
+       instagram:'instagram_enabled',messenger:'messenger_enabled',
+       automations:'automations_enabled',native_orders:'native_orders_enabled',
+       statistics:'statistics_enabled',
+     };
+     const grant=field[key] && rights ? rights[field[key]] : null;
+     const entitlement=grant===true?'Incluido en el plan':grant===false?'No incluido en el plan':'Pendiente de definición comercial';
      return <div key={key} style={{display:'flex',alignItems:'center',
        justifyContent:'space-between',padding:15,background:'#fff',borderRadius:10}}>
       <div><strong>{label}</strong><div style={{fontSize:12,color:'#64748b'}}>
-       {saved?'Preferencia guardada':'Sin preferencia: conservar comportamiento actual'}
+       {entitlement} · {saved?'Preferencia guardada':'Sin preferencia: conservar comportamiento actual'}
       </div></div>
       <button type="button" disabled={Boolean(busy)} onClick={()=>toggle(key,saved?.enabled===true?false:true)}
        aria-label={label+': '+(saved? (saved.enabled?'activado':'desactivado'):'sin configurar')}
