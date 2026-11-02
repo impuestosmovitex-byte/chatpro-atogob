@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../../lib/inbox-auth';
 import { createInstagramOAuthState } from '../../../../lib/instagram-oauth-state';
 
@@ -21,6 +22,24 @@ export async function POST(request: NextRequest) {
   }
   try {
     const state = createInstagramOAuthState(session.companyId, session.userId);
+    const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\\/$/, '');
+    const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
+    if (!apiBase || !inboxKey) throw new Error('API de staging no configurada.');
+    const nonceHash = createHash('sha256').update(state).digest('hex');
+    const registerUrl = new URL(apiBase + '/integrations/instagram/oauth/register');
+    registerUrl.searchParams.set('company', session.companySlug);
+    const registration = await fetch(registerUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-chatpro-inbox-key': inboxKey,
+        'x-chatpro-company-id': session.companyId,
+        'x-chatpro-user-id': session.userId,
+      },
+      body: JSON.stringify({ nonceHash, expiresAt: new Date(Date.now() + 9 * 60 * 1000).toISOString() }),
+      cache: 'no-store',
+    });
+    if (!registration.ok) throw new Error('No se pudo registrar el estado OAuth.');
     const response = NextResponse.json({ ok: true, state });
     response.cookies.set('mw1_ig_oauth_state', state, {
       httpOnly: true, secure: true, sameSite: 'lax',
