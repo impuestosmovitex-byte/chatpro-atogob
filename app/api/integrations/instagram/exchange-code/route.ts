@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
         { status: 403 },
       );
     }
-    const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\\/$/, '');
+    const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
     const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
     if (!apiBase || !inboxKey) {
       return NextResponse.json({ ok: false, error: 'API de staging no configurada.' }, { status: 503 });
