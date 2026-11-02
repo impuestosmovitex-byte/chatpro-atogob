@@ -238,6 +238,26 @@ export class PlatformAdminController {
     const { data: company, error: companyError } = await client
       .from('companies').select('id').eq('id',input.companyId).maybeSingle();
     if (companyError || !company) throw new BadRequestException('Empresa no encontrada.');
+    // Deny new opt-ins without an explicit commercial right. Turning a
+    // preference off remains permitted. This changes only staged preferences,
+    // never the live connector state or existing runtime permissions.
+    if (input.enabled === true) {
+      const mapping: Record<string,string> = {
+        ai_assistant:'ai_enabled',whatsapp:'whatsapp_enabled',
+        instagram:'instagram_enabled',messenger:'messenger_enabled',
+        automations:'automations_enabled',statistics:'statistics_enabled',
+        native_orders:'native_orders_enabled',
+      };
+      const column=mapping[input.featureKey as string];
+      if (!column) throw new BadRequestException(
+        'Esta función todavía no tiene autorización comercial definida.');
+      const {data:rights,error:rightsError}=await client
+        .from('company_entitlements').select(column)
+        .eq('company_id',company.id).maybeSingle();
+      if (rightsError || rights?.[column] !== true)
+        throw new BadRequestException(
+          'La función no está autorizada por el plan de la empresa.');
+    }
     const { data, error } = await client
       .from('mw1_company_feature_preferences')
       .upsert({ company_id:company.id,feature_key:input.featureKey,
