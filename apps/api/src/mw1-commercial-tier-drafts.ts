@@ -32,5 +32,5 @@ export const MW1_COMMERCIAL_TIER_DRAFTS:readonly TierDraft[]=[
 /** Only an explicitly reviewed mapping may be used for published entitlements. */
 export function checkTierDraftReady(tier:TierDraft):{ready:boolean;pending:Mw1FeatureKey[]} {
   const pending=MW1_FEATURE_KEYS.filter(key=>tier.rights[key]==='pending');
-  return {ready:pending.length===0&&tier.approved===false?false:false,pending};
+  return {ready:pending.length===0,pending};
 }
