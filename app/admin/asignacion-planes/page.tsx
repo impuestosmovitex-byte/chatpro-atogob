@@ -3,9 +3,11 @@ import {useEffect,useState} from 'react';
 import {PlatformSidebar} from '../../components/PlatformSidebar';
 type Company={id:string;name:string};
 type Draft={company_id:string;tier:string;notes:string};
+type AuditEvent={id:string;proposed_tier:string;action:string;actor_id:string;created_at:string};
 export default function AssignmentDraftPage(){
  const [companies,setCompanies]=useState<Company[]>([]);
  const [drafts,setDrafts]=useState<Draft[]>([]);
+ const [events,setEvents]=useState<AuditEvent[]>([]);
  const [companyId,setCompanyId]=useState('');
  const [tier,setTier]=useState('basico');
  const [notes,setNotes]=useState('');
@@ -28,6 +30,8 @@ export default function AssignmentDraftPage(){
  })();},[]);
  function selectCompany(id:string){
   setCompanyId(id);
+  setEvents([]);
+  if(id)void fetch('/api/platform-admin/company-plan-activation-history?companyId='+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(data=>{if(data.ok)setEvents(data.events||[]);}).catch(()=>{});
   setReadiness(null);
   if(id)void fetch('/api/platform-admin/company-plan-assignment-readiness?companyId='+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(data=>{if(data.ok)setReadiness(data);}).catch(()=>{});
   const draft=drafts.find(d=>d.company_id===id);
@@ -91,6 +95,15 @@ export default function AssignmentDraftPage(){
       Solicitar revisión de activación (sin aplicar)
      </button>}
     {readiness&&<div style={{background:'#f1f5f9',padding:14,borderRadius:9}}><strong>{readiness.commerciallyReady?'Revisión comercial completa':'Requisitos pendientes'}</strong><p>La activación real permanece deshabilitada.</p>{readiness.reasons.map(reason=><p key={reason}>{reason}</p>)}</div>}
+    {companyId&&<section><h2>Historial de solicitudes</h2>
+     {events.length===0?<p>No hay solicitudes registradas para esta empresa.</p>:
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+       <thead><tr><th>Fecha</th><th>Plan</th><th>Evento</th><th>Administrador</th></tr></thead>
+       <tbody>{events.map(event=><tr key={event.id}>
+        <td>{new Date(event.created_at).toLocaleString('es-CO')}</td>
+        <td>{event.proposed_tier}</td><td>{event.action}</td>
+        <td>{event.actor_id}</td></tr>)}</tbody>
+      </table>}</section>}
     {message&&<p role="status">{message}</p>}
    </section>
   </main>
