@@ -85,6 +85,13 @@ export async function POST(request: NextRequest) {
     if (!apiBase || !inboxKey) {
       return NextResponse.json({ ok: false, error: 'API de staging no configurada.' }, { status: 503 });
     }
+    if (apiBase !== 'https://mw1-api-staging-staging.up.railway.app' ||
+        session.companySlug !== 'piloto-mw1-prueba') {
+      return NextResponse.json(
+        { ok: false, error: 'Esta autorización solo se procesa en la empresa piloto.' },
+        { status: 403 },
+      );
+    }
     const nonceHash = createHash('sha256').update(state).digest('hex');
     const target = new URL(apiBase + '/integrations/instagram/oauth/consume');
     target.searchParams.set('company', session.companySlug);
