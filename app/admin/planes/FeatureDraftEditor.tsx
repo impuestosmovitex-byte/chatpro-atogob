@@ -38,7 +38,7 @@ export default function FeatureDraftEditor(){
     setMatrix(previous=>{
      const updated={...previous};
      for(const draft of data.drafts||[]){
-      if(tiers.includes(draft.tier))updated[draft.tier]={...initial(draft.tier),...draft.rights};
+      if(tiers.includes(draft.tier as Tier)){const tier=draft.tier as Tier;updated[tier]={...initial(tier),...draft.rights};}
      }
      return updated;
     });
