@@ -73,6 +73,23 @@ export default function AssignmentDraftPage(){
       {busy?'Guardando…':'Guardar propuesta sin activar'}
      </button>
     </>}
+    {readiness?.commerciallyReady&&companyId&&<button type="button" disabled={busy}
+      onClick={async()=>{
+       if(!window.confirm('¿Registrar solicitud de revisión para esta empresa? No activa el plan ni cambia permisos.'))return;
+       setBusy(true);
+       try{
+        const response=await fetch('/api/platform-admin/company-plan-activation-request',{
+         method:'POST',headers:{'content-type':'application/json'},
+         body:JSON.stringify({companyId,confirm:'SOLICITAR REVISION DE ACTIVACION'})});
+        const result=await response.json();
+        if(!response.ok||!result.ok)throw new Error(result.error||'Error en solicitud');
+        setMessage('Solicitud registrada para revisión. Plan todavía sin activar.');
+       }catch(e){setMessage(e instanceof Error?e.message:'Error');}
+       finally{setBusy(false);}
+      }}
+      style={{padding:12,border:'1px solid #172235',borderRadius:8,background:'white'}}>
+      Solicitar revisión de activación (sin aplicar)
+     </button>}
     {readiness&&<div style={{background:'#f1f5f9',padding:14,borderRadius:9}}><strong>{readiness.commerciallyReady?'Revisión comercial completa':'Requisitos pendientes'}</strong><p>La activación real permanece deshabilitada.</p>{readiness.reasons.map(reason=><p key={reason}>{reason}</p>)}</div>}
     {message&&<p role="status">{message}</p>}
    </section>
