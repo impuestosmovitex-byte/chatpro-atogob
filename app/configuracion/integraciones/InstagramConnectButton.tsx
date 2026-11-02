@@ -341,76 +341,43 @@ export function InstagramConnectButton({
     };
   }, [config?.ready]);
 
-  function startLogin() {
-    if (
-      !config?.ready ||
-      !config.appId ||
-      (window.location.hostname === 'mw1-web-staging-staging.up.railway.app' && config.authorizationEnabled !== true)
-    ) {
-      setMessage(
-        config?.message ||
-          'Falta preparar Instagram en Meta.',
-      );
-
+  async function startLogin() {
+    if (!config?.ready || !config.appId) {
+      setMessage(config?.message || 'Falta preparar Instagram en Meta.');
       return;
     }
-
+    const isStaging = window.location.hostname === 'mw1-web-staging-staging.up.railway.app';
+    if (isStaging && config.authorizationEnabled !== true) {
+      setMessage(config.message || 'Instagram sigue en preparación.');
+      return;
+    }
     setMessage('');
-
-    const redirectUri =
-      `${window.location.origin}/api/integrations/instagram/callback`;
-
-    const state =
-      crypto.randomUUID()
-        .replace(
-          /-/g,
-          '',
-        );
-
-    window.sessionStorage.setItem(
-      'chatpro_instagram_oauth_state',
-      state,
-    );
-
-    const oauthUrl =
-      new URL(
-        'https://www.instagram.com/oauth/authorize',
-      );
-
-    oauthUrl.searchParams.set(
-      'client_id',
-      config.appId,
-    );
-
-    oauthUrl.searchParams.set(
-      'redirect_uri',
-      redirectUri,
-    );
-
-    oauthUrl.searchParams.set(
-      'scope',
-      config.scopes?.join(',') ||
-        '',
-    );
-
-    oauthUrl.searchParams.set(
-      'response_type',
-      'code',
-    );
-
-    oauthUrl.searchParams.set(
-      'state',
-      state,
-    );
-
-    oauthUrl.searchParams.set(
-      'force_reauth',
-      'true',
-    );
-
-    window.location.assign(
-      oauthUrl.toString(),
-    );
+    const redirectUri = window.location.origin + '/api/integrations/instagram/callback';
+    let state = '';
+    if (isStaging) {
+      try {
+        const response = await fetch('/api/integrations/instagram/begin', { method: 'POST', cache: 'no-store' });
+        const payload = await response.json() as { ok?: boolean; state?: string; error?: string };
+        if (!response.ok || !payload.ok || !payload.state) {
+          throw new Error(payload.error || 'No se pudo iniciar la autorización segura.');
+        }
+        state = payload.state;
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'No se pudo preparar la conexión.');
+        return;
+      }
+    } else {
+      state = crypto.randomUUID().replace(/-/g, '');
+    }
+    window.sessionStorage.setItem('chatpro_instagram_oauth_state', state);
+    const oauthUrl = new URL('https://www.instagram.com/oauth/authorize');
+    oauthUrl.searchParams.set('client_id', config.appId);
+    oauthUrl.searchParams.set('redirect_uri', redirectUri);
+    oauthUrl.searchParams.set('scope', config.scopes?.join(',') || '');
+    oauthUrl.searchParams.set('response_type', 'code');
+    oauthUrl.searchParams.set('state', state);
+    oauthUrl.searchParams.set('force_reauth', 'true');
+    window.location.assign(oauthUrl.toString());
   }
 
   async function testConnection() {
