@@ -23,10 +23,30 @@ function pendingRights():Record<Mw1FeatureKey,PlannedRight>{
   return Object.fromEntries(MW1_FEATURE_KEYS.map(key=>[key,'pending'])) as Record<Mw1FeatureKey,PlannedRight>;
 }
 
+// The statuses below describe the current *proposal*, not deployed access.
+// New connectors, native orders and merchant payments remain pending.
+function plannedRights(tier:CommercialTier):Record<Mw1FeatureKey,PlannedRight>{
+  const rights=pendingRights();
+  rights.whatsapp='included';
+  if(tier==='basico'){
+    rights.ai_assistant='not_included';
+    rights.instagram='not_included';
+    rights.messenger='not_included';
+    rights.automations='not_included';
+  } else {
+    rights.ai_assistant='included';
+    rights.instagram='included';
+    rights.messenger='included';
+    rights.automations='included';
+    rights.statistics='included';
+  }
+  return rights;
+}
+
 export const MW1_COMMERCIAL_TIER_DRAFTS:readonly TierDraft[]=[
-  {tier:'basico',label:'Básico',maxUsers:2,maxConnections:1,rights:pendingRights(),approved:false},
-  {tier:'eco',label:'Eco',maxUsers:3,maxConnections:3,rights:pendingRights(),approved:false},
-  {tier:'pro',label:'Pro',maxUsers:3,maxConnections:5,rights:pendingRights(),approved:false},
+  {tier:'basico',label:'Básico',maxUsers:2,maxConnections:1,rights:plannedRights('basico'),approved:false},
+  {tier:'eco',label:'Eco',maxUsers:3,maxConnections:3,rights:plannedRights('eco'),approved:false},
+  {tier:'pro',label:'Pro',maxUsers:3,maxConnections:5,rights:plannedRights('pro'),approved:false},
 ];
 
 /** Only an explicitly reviewed mapping may be used for published entitlements. */
