@@ -29,6 +29,7 @@ export default function FeatureDraftEditor(){
  const [busy,setBusy]=useState<Tier|null>(null);
  const [dirty,setDirty]=useState<Record<Tier,boolean>>({basico:false,eco:false,pro:false});
  const [notice,setNotice]=useState('');
+ const [reviewStatus,setReviewStatus]=useState<Record<Tier,'draft'|'ready'>>({basico:'draft',eco:'draft',pro:'draft'});
  useEffect(()=>{
   (async()=>{
    try{
@@ -49,6 +50,7 @@ export default function FeatureDraftEditor(){
  function change(tier:Tier,key:string,value:Status){
   setMatrix(previous=>({...previous,[tier]:{...previous[tier],[key]:value}}));
   setDirty(previous=>({...previous,[tier]:true}));
+  setReviewStatus(previous=>({...previous,[tier]:'draft'}));
   setNotice('');
  }
  async function save(tier:Tier){
@@ -60,6 +62,7 @@ export default function FeatureDraftEditor(){
    const data=await response.json();
    if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar.');
    setDirty(previous=>({...previous,[tier]:false}));
+   setReviewStatus(previous=>({...previous,[tier]:features.some(([key])=>matrix[tier][key]==='pending')?'draft':'ready'}));
    setNotice('Borrador de '+tier+' guardado. No modifica permisos reales.');
   }catch(e){setNotice(e instanceof Error?e.message:'Error al guardar.');}
   finally{setBusy(null);}
@@ -85,6 +88,10 @@ export default function FeatureDraftEditor(){
       </select>
      </td>)}</tr>)}</tbody>
    </table></div>
+   <p style={{fontSize:12,color:'#64748b'}}>Estado de revisión local: una matriz sin funciones pendientes puede marcarse como lista para revisión, pero nunca queda aprobada ni publicada con este guardado.</p>
+   <div style={{display:'flex',gap:12,flexWrap:'wrap',fontSize:13}}>
+    {tiers.map(t=><span key={t}><strong>{t.toUpperCase()}:</strong> {dirty[t]?'Cambios sin guardar':reviewStatus[t]==='ready'?'Lista para revisión interna':'Borrador pendiente'}</span>)}
+   </div>
    <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:16}}>
     {tiers.map(t=><button key={t} type="button" disabled={!dirty[t]||busy!==null}
      onClick={()=>void save(t)}
