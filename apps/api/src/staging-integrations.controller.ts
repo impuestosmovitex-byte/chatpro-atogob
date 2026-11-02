@@ -47,6 +47,11 @@ export class StagingIntegrationsController {
     @Body() body: { phoneNumberId?: unknown } = {},
   ) {
     const result = await this.list(key, userId, companyId, slug);
+    // Preflight must not disclose whether a phone belongs to another tenant
+    // unless this specific staging pilot is explicitly authorized for onboarding.
+    if (process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED !== 'true' ||
+        result.company.slug !== 'piloto-mw1-prueba')
+      throw new ForbiddenException('La validación de WhatsApp no está habilitada para esta empresa.');
     const phoneNumberId = typeof body?.phoneNumberId === 'string' ? body.phoneNumberId.trim() : '';
     if (!/^\d{6,30}$/.test(phoneNumberId))
       throw new BadRequestException('Identificador de teléfono no válido.');
