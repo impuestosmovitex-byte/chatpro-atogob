@@ -184,6 +184,54 @@ export class PlatformAdminController {
     };
   }
 
+  @Get('commercial-feature-drafts')
+  async commercialFeatureDrafts(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if (process.env.MW1_STAGING_MODE !== 'true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    const {data,error}=await this.supabaseService.getClient()
+      .from('mw1_commercial_feature_drafts').select('tier,rights,updated_at');
+    if(error) throw new BadRequestException('Error consultando matriz comercial.');
+    return {ok:true,drafts:data??[],informationalOnly:true};
+  }
+
+  @Post('commercial-feature-drafts')
+  async saveCommercialFeatureDraft(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Body() body: unknown,
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if (process.env.MW1_STAGING_MODE !== 'true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      throw new BadRequestException('Borrador inválido.');
+    const input=body as Record<string,unknown>;
+    if (!['basico','eco','pro'].includes(String(input.tier)) ||
+        Object.keys(input).some(k=>!['tier','rights'].includes(k)) ||
+        !input.rights || typeof input.rights!=='object' ||
+        Array.isArray(input.rights))
+      throw new BadRequestException('Plan o matriz inválidos.');
+    const rights=input.rights as Record<string,unknown>;
+    const allowed=['ai_assistant','whatsapp','instagram','messenger','automations',
+      'catalog_pdf','native_orders','merchant_payments','statistics'];
+    if (Object.keys(rights).length!==allowed.length ||
+        allowed.some(k=>!['included','not_included','pending'].includes(String(rights[k]))) ||
+        Object.keys(rights).some(k=>!allowed.includes(k)))
+      throw new BadRequestException('Cada funcionalidad debe estar definida.');
+    const {data,error}=await this.supabaseService.getClient()
+      .from('mw1_commercial_feature_drafts')
+      .upsert({tier:input.tier,rights,updated_at:new Date().toISOString()},{onConflict:'tier'})
+      .select('tier,rights,updated_at').single();
+    if(error) throw new BadRequestException('No se pudo guardar el borrador.');
+    return {ok:true,draft:data,informationalOnly:true};
+  }
+
   @Get('feature-preferences')
   async featurePreferences(
     @Headers('x-chatpro-inbox-key') key = '',
