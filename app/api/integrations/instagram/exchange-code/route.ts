@@ -45,6 +45,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
+    return NextResponse.json(
+      { ok: false, error: 'Conexión de Instagram en preparación para el piloto.' },
+      { status: 403 },
+    );
+  }
+
   const apiBase =
     process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
   const inboxKey =
