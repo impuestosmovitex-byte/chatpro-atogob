@@ -51,6 +51,67 @@ export class StagingIntegrationsController {
     };
   }
 
+  @Post('instagram/oauth/register')
+  async registerInstagramOAuth(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+    @Body() body: { nonceHash?: string; expiresAt?: string } = {},
+  ) {
+    const result = await this.list(key, userId, companyId, slug);
+    if (result.company.slug !== 'piloto-mw1-prueba' ||
+        process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED !== 'true' ||
+        process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true') {
+      throw new ForbiddenException('Instagram no habilitado.');
+    }
+    if (!/^[a-f0-9]{64}$/.test(body.nonceHash || '')) {
+      throw new BadRequestException('Identificador OAuth inválido.');
+    }
+    const expiry = Date.parse(body.expiresAt || '');
+    if (!Number.isFinite(expiry) || expiry <= Date.now() ||
+        expiry > Date.now() + 10 * 60 * 1000) {
+      throw new BadRequestException('Caducidad OAuth inválida.');
+    }
+    const { error } = await this.supabase.getClient()
+      .from('mw1_instagram_oauth_nonces')
+      .insert({
+        nonce_hash: body.nonceHash,
+        company_id: companyId,
+        user_id: userId,
+        expires_at: new Date(expiry).toISOString(),
+      });
+    if (error) throw new ForbiddenException('No se pudo registrar el inicio OAuth.');
+    return { ok: true };
+  }
+
+  @Post('instagram/oauth/consume')
+  async consumeInstagramOAuth(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+    @Body() body: { nonceHash?: string } = {},
+  ) {
+    const result = await this.list(key, userId, companyId, slug);
+    if (result.company.slug !== 'piloto-mw1-prueba' ||
+        process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED !== 'true' ||
+        process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true') {
+      throw new ForbiddenException('Instagram no habilitado.');
+    }
+    if (!/^[a-f0-9]{64}$/.test(body.nonceHash || '')) {
+      throw new BadRequestException('Identificador OAuth inválido.');
+    }
+    const { data, error } = await this.supabase.getClient()
+      .rpc('mw1_consume_instagram_oauth_nonce', {
+        p_nonce_hash: body.nonceHash,
+        p_company_id: companyId,
+        p_user_id: userId,
+      });
+    if (error) throw new ForbiddenException('No se pudo validar el estado OAuth.');
+    return { ok: true, consumed: data === true };
+  }
+
   @Get('whatsapp/embedded/config')
   async embeddedConfig(
     @Headers('x-chatpro-inbox-key') key = '',
