@@ -184,6 +184,45 @@ export class PlatformAdminController {
     };
   }
 
+  @Post('company-plan-activation-review')
+  async reviewCompanyPlanRequest(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Body() body: unknown,
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    if(!body||typeof body!=='object'||Array.isArray(body))
+      throw new BadRequestException('Revisión inválida.');
+    const input=body as Record<string,unknown>;
+    if(Object.keys(input).some(k=>!['companyId','decision','reason'].includes(k))||
+       typeof input.companyId!=='string'||
+       !['approve_review','reject'].includes(String(input.decision))||
+       typeof input.reason!=='string'||input.reason.trim().length<5||
+       input.reason.length>500)
+      throw new BadRequestException('Incluye una decisión y justificación válida.');
+    const client=this.supabaseService.getClient();
+    const {data:company,error:ce}=await client.from('companies').select('id')
+      .eq('id',input.companyId).maybeSingle();
+    if(ce||!company)throw new BadRequestException('Empresa no encontrada.');
+    const {data:events,error:ee}=await client.from('mw1_plan_activation_audit')
+      .select('proposed_tier,action').eq('company_id',company.id)
+      .order('created_at',{ascending:false}).limit(1);
+    if(ee)throw new BadRequestException('No se pudo consultar el historial.');
+    const latest=events?.[0];
+    if(latest?.action!=='activation_requested')
+      throw new BadRequestException('No existe solicitud pendiente para revisar.');
+    const action=input.decision==='reject'?'activation_rejected':'activation_review_approved';
+    const {data,error}=await client.from('mw1_plan_activation_audit')
+      .insert({company_id:company.id,proposed_tier:latest.proposed_tier,
+       action,actor_id:user,details:{reason:input.reason.trim(),applied:false}})
+      .select('id,action,created_at').single();
+    if(error)throw new BadRequestException('No se pudo registrar la decisión.');
+    return {ok:true,event:data,applied:false,informationalOnly:true};
+  }
+
   @Get('company-plan-activation-history')
   async companyPlanActivationHistory(
     @Headers('x-chatpro-inbox-key') key = '',
