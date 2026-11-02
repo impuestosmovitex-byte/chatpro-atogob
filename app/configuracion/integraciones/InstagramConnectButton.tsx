@@ -340,7 +340,7 @@ export function InstagramConnectButton({
     return () => {
       cancelled = true;
     };
-  }, [config?.ready]);
+  }, [config?.ready, config?.authorizationEnabled]);
 
   async function startLogin() {
     if (!config?.ready || !config.appId) {
