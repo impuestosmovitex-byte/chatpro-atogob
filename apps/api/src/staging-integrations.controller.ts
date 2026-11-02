@@ -7,6 +7,50 @@ import { IntegrationCredentialsService } from './integration-credentials.service
 export class StagingIntegrationsController {
   constructor(private readonly supabase: SupabaseService, private readonly credentials?: IntegrationCredentialsService) {}
 
+  /**
+   * Instagram onboarding readiness is intentionally read-only in staging.
+   * We use Instagram Login, not the WhatsApp Embedded Signup configuration.
+   * Do not enable subscriptions, exchange tokens, or touch production channels.
+   */
+  @Get('instagram/config')
+  async instagramConfig(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+  ) {
+    const result = await this.list(key, userId, companyId, slug);
+    const isPilot = result.company.slug === 'piloto-mw1-prueba';
+    const enabled = process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED === 'true';
+    const appId = process.env.META_INSTAGRAM_APP_ID?.trim() || '';
+    const appSecret = process.env.META_INSTAGRAM_APP_SECRET?.trim() || '';
+    const encryptionReady = Boolean(process.env.CHATPRO_INTEGRATIONS_ENCRYPTION_KEY?.trim());
+    const ready = isPilot && enabled && Boolean(appId && appSecret) && encryptionReady;
+    return {
+      ok: true,
+      company: result.company,
+      provider: 'meta',
+      integrationType: 'instagram',
+      loginMode: 'instagram_login',
+      appId: isPilot && enabled && appId ? appId : null,
+      scopes: ['instagram_business_basic', 'instagram_business_manage_messages'],
+      ready,
+      authorizationEnabled: false,
+      connectionEnabled: false,
+      webhookEnabled: false,
+      missing: isPilot && enabled ? [
+        ...(!appId ? ['META_INSTAGRAM_APP_ID'] : []),
+        ...(!appSecret ? ['META_INSTAGRAM_APP_SECRET'] : []),
+        ...(!encryptionReady ? ['CHATPRO_INTEGRATIONS_ENCRYPTION_KEY'] : []),
+      ] : [],
+      message: !isPilot || !enabled
+        ? 'La conexión de Instagram aún no está habilitada para esta empresa.'
+        : ready
+          ? 'Configuración preliminar lista; falta habilitar OAuth seguro y pruebas de recepción.'
+          : 'La configuración de Instagram en staging está incompleta.',
+    };
+  }
+
   @Get('whatsapp/embedded/config')
   async embeddedConfig(
     @Headers('x-chatpro-inbox-key') key = '',
