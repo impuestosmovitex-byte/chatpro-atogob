@@ -41,6 +41,18 @@ export async function GET(
     );
   }
 
+  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
+    const expected = request.cookies.get('mw1_ig_oauth_state')?.value || '';
+    if (!state || !expected || state !== expected) {
+      const denied = NextResponse.redirect(
+        new URL('/configuracion/integraciones?instagram_error=Autorizacion%20de%20Instagram%20no%20valida', publicOrigin),
+      );
+      denied.headers.set('Cache-Control', 'no-store, private');
+      denied.headers.set('Referrer-Policy', 'no-referrer');
+      return denied;
+    }
+  }
+
   if (!code) {
     return NextResponse.redirect(
       new URL(
