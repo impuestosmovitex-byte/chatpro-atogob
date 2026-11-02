@@ -184,6 +184,50 @@ export class PlatformAdminController {
     };
   }
 
+  @Post('company-plan-activation-request')
+  async requestCompanyPlanActivation(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Body() body: unknown,
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    if(!body||typeof body!=='object'||Array.isArray(body))
+      throw new BadRequestException('Solicitud inválida.');
+    const input=body as Record<string,unknown>;
+    if(Object.keys(input).some(k=>!['companyId','confirm'].includes(k))||
+       typeof input.companyId!=='string'||
+       input.confirm!=='SOLICITAR REVISION DE ACTIVACION')
+      throw new BadRequestException('Se requiere confirmación explícita.');
+    const client=this.supabaseService.getClient();
+    const {data:company,error:ce}=await client.from('companies').select('id')
+      .eq('id',input.companyId).maybeSingle();
+    if(ce||!company)throw new BadRequestException('Empresa no encontrada.');
+    const {data:assignment,error:ae}=await client
+      .from('mw1_company_plan_assignment_drafts')
+      .select('tier').eq('company_id',company.id).maybeSingle();
+    if(ae||!assignment)throw new BadRequestException('Guarda primero un plan propuesto.');
+    const {data:approval,error:pe}=await client
+      .from('mw1_commercial_feature_approvals')
+      .select('draft_updated_at').eq('tier',assignment.tier).maybeSingle();
+    if(pe)throw new BadRequestException('No se pudo validar la aprobación.');
+    const {data:draft,error:de}=await client
+      .from('mw1_commercial_feature_drafts')
+      .select('updated_at').eq('tier',assignment.tier).maybeSingle();
+    if(de)throw new BadRequestException('No se pudo validar la versión.');
+    if(!approval||!draft||approval.draft_updated_at!==draft.updated_at)
+      throw new BadRequestException('El plan comercial aún no está aprobado y vigente.');
+    const {data:event,error}=await client.from('mw1_plan_activation_audit')
+      .insert({company_id:company.id,proposed_tier:assignment.tier,
+        action:'activation_requested',actor_id:user,
+        details:{mode:'review_only',applied:false}})
+      .select('id,created_at').single();
+    if(error)throw new BadRequestException('No fue posible registrar la solicitud.');
+    return {ok:true,request:event,applied:false,informationalOnly:true};
+  }
+
   @Get('company-plan-assignment-readiness')
   async assignmentReadiness(
     @Headers('x-chatpro-inbox-key') key = '',
