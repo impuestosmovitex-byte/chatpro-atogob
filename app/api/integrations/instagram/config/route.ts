@@ -73,6 +73,8 @@ export async function GET(request: NextRequest) {
   const response = await fetch(target, {
     headers: {
       'x-chatpro-inbox-key': inboxKey,
+      'x-chatpro-user-id': session.userId ?? '',
+      'x-chatpro-company-id': session.companyId,
     },
     cache: 'no-store',
   });
