@@ -8,6 +8,7 @@ export default function AssignmentDraftPage(){
  const [companies,setCompanies]=useState<Company[]>([]);
  const [drafts,setDrafts]=useState<Draft[]>([]);
  const [events,setEvents]=useState<AuditEvent[]>([]);
+ const [reviewReason,setReviewReason]=useState('');
  const [companyId,setCompanyId]=useState('');
  const [tier,setTier]=useState('basico');
  const [notes,setNotes]=useState('');
@@ -28,6 +29,23 @@ export default function AssignmentDraftPage(){
   }catch(e){setMessage(e instanceof Error?e.message:'Error de carga');}
   finally{setLoading(false);}
  })();},[]);
+ async function submitReview(decision:'approve_review'|'reject'){
+  if(!companyId||busy||reviewReason.trim().length<5)return;
+  if(!window.confirm('¿Registrar esta decisión de revisión? No se activará el plan.'))return;
+  setBusy(true);
+  try{
+   const res=await fetch('/api/platform-admin/company-plan-activation-review',{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({companyId,decision,reason:reviewReason.trim()})});
+   const data=await res.json();
+   if(!res.ok||!data.ok)throw new Error(data.error||'No se pudo registrar.');
+   const history=await fetch('/api/platform-admin/company-plan-activation-history?companyId='+encodeURIComponent(companyId),{cache:'no-store'});
+   if(history.ok){const updated=await history.json();if(updated.ok)setEvents(updated.events||[]);}
+   setReviewReason('');
+   setMessage('Decisión auditada; no se modificó ningún permiso ni plan activo.');
+  }catch(e){setMessage(e instanceof Error?e.message:'Error de revisión');}
+  finally{setBusy(false);}
+ }
  function selectCompany(id:string){
   setCompanyId(id);
   setEvents([]);
@@ -95,6 +113,21 @@ export default function AssignmentDraftPage(){
       Solicitar revisión de activación (sin aplicar)
      </button>}
     {readiness&&<div style={{background:'#f1f5f9',padding:14,borderRadius:9}}><strong>{readiness.commerciallyReady?'Revisión comercial completa':'Requisitos pendientes'}</strong><p>La activación real permanece deshabilitada.</p>{readiness.reasons.map(reason=><p key={reason}>{reason}</p>)}</div>}
+    {companyId&&events[0]?.action==='activation_requested'&&
+     <div style={{display:'grid',gap:9}}>
+      <strong>Revisar solicitud pendiente (sin activar plan)</strong>
+      <textarea id="review-reason" placeholder="Justificación de la decisión (mínimo 5 caracteres)"
+       maxLength={500} rows={2} onChange={e=>setReviewReason(e.target.value)}
+       value={reviewReason} style={{padding:10}}/>
+      <div style={{display:'flex',gap:10}}>
+       {(['approve_review','reject'] as const).map(decision=>
+        <button type="button" key={decision} disabled={busy||reviewReason.trim().length<5}
+         onClick={()=>void submitReview(decision)}
+         style={{padding:10,borderRadius:7,border:'1px solid #172235'}}>
+         {decision==='reject'?'Rechazar solicitud':'Aprobar revisión (sin activar)'}
+        </button>)}
+      </div>
+     </div>}
     {companyId&&<section><h2>Historial de solicitudes</h2>
      <p style={{fontSize:13,fontWeight:700}}>Estado de revisión: {events.length===0?'Sin solicitudes':events[0].action==='activation_rejected'?'Rechazada':events[0].action==='activation_requested'?'Pendiente de revisión':'Evento registrado'}</p>
      {events.length===0?<p>No hay solicitudes registradas para esta empresa.</p>:
