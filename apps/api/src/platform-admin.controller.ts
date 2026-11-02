@@ -184,6 +184,60 @@ export class PlatformAdminController {
     };
   }
 
+  @Get('commercial-feature-approvals')
+  async commercialFeatureApprovals(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if (process.env.MW1_STAGING_MODE !== 'true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    const {data,error}=await this.supabaseService.getClient()
+      .from('mw1_commercial_feature_approvals')
+      .select('tier,rights,draft_updated_at,approved_by,approved_at');
+    if(error) throw new BadRequestException('Error consultando aprobaciones.');
+    return {ok:true,approvals:data??[],informationalOnly:true};
+  }
+
+  @Post('commercial-feature-approvals')
+  async approveCommercialFeatureDraft(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Body() body: unknown,
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if (process.env.MW1_STAGING_MODE !== 'true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      throw new BadRequestException('Solicitud inválida.');
+    const input=body as Record<string,unknown>;
+    if (Object.keys(input).some(k=>!['tier','confirm','draftUpdatedAt'].includes(k)) ||
+        !['basico','eco','pro'].includes(String(input.tier)) ||
+        input.confirm !== 'APROBAR BORRADOR COMERCIAL' ||
+        typeof input.draftUpdatedAt !== 'string')
+      throw new BadRequestException('La aprobación requiere confirmación explícita.');
+    const client=this.supabaseService.getClient();
+    const {data:draft,error:draftError}=await client
+      .from('mw1_commercial_feature_drafts').select('tier,rights,updated_at')
+      .eq('tier',input.tier).maybeSingle();
+    if(draftError||!draft||draft.updated_at!==input.draftUpdatedAt)
+      throw new BadRequestException('El borrador cambió. Recarga antes de aprobar.');
+    const rights=draft.rights as Record<string,unknown>;
+    const allowed=['ai_assistant','whatsapp','instagram','messenger','automations',
+      'catalog_pdf','native_orders','merchant_payments','statistics'];
+    if (Object.keys(rights).length!==allowed.length ||
+        allowed.some(k=>!['included','not_included'].includes(String(rights[k]))))
+      throw new BadRequestException('Define todas las funciones antes de aprobar.');
+    const {data:approved,error}=await client.from('mw1_commercial_feature_approvals')
+      .upsert({tier:draft.tier,rights:draft.rights,draft_updated_at:draft.updated_at,
+        approved_by:user,approved_at:new Date().toISOString()},{onConflict:'tier'})
+      .select('tier,approved_by,approved_at').single();
+    if(error)throw new BadRequestException('No se pudo registrar la aprobación.');
+    return {ok:true,approval:approved,informationalOnly:true};
+  }
+
   @Get('commercial-feature-drafts')
   async commercialFeatureDrafts(
     @Headers('x-chatpro-inbox-key') key = '',
