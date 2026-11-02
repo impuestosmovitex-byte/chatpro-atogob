@@ -92,12 +92,14 @@ export default function FeaturePreferencesPage(){
      };
      const grant=field[key] && rights ? rights[field[key]] : null;
      const entitlement=grant===true?'Incluido en el plan':grant===false?'No incluido en el plan':'Pendiente de definición comercial';
+     const eligible=grant===true;
+     const pendingCommercial=grant===null;
      return <div key={key} style={{display:'flex',alignItems:'center',
        justifyContent:'space-between',padding:15,background:'#fff',borderRadius:10}}>
       <div><strong>{label}</strong><div style={{fontSize:12,color:'#64748b'}}>
        {entitlement} · {saved?'Preferencia guardada':'Sin preferencia: conservar comportamiento actual'}
       </div></div>
-      <button type="button" disabled={Boolean(busy)} onClick={()=>toggle(key,saved?.enabled===true?false:true)}
+      <button type="button" title={eligible?'Preferencia de empresa (no opera módulos aún)':'Solo prueba visual: permiso comercial no otorgado'} disabled={Boolean(busy)} onClick={()=>toggle(key,saved?.enabled===true?false:true)}
        aria-label={label+': '+(saved? (saved.enabled?'activado':'desactivado'):'sin configurar')}
        aria-pressed={saved?.enabled===true}
        style={{minWidth:105,padding:'10px 12px',border:0,borderRadius:24,
