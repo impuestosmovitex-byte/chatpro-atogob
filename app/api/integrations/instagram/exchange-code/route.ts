@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import {
   getInboxSession,
   INBOX_SESSION_COOKIE,
@@ -66,11 +67,42 @@ export async function POST(request: NextRequest) {
         { status: 403 },
       );
     }
-    // Server-side single-use state consumption is not implemented yet.
-    return NextResponse.json(
-      { ok: false, error: 'Instagram sigue deshabilitado hasta completar la autorización de un solo uso.' },
+    const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\\/$/, '');
+    const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
+    if (!apiBase || !inboxKey) {
+      return NextResponse.json({ ok: false, error: 'API de staging no configurada.' }, { status: 503 });
+    }
+    const nonceHash = createHash('sha256').update(state).digest('hex');
+    const target = new URL(apiBase + '/integrations/instagram/oauth/consume');
+    target.searchParams.set('company', session.companySlug);
+    const consumption = await fetch(target, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-chatpro-inbox-key': inboxKey,
+        'x-chatpro-company-id': session.companyId,
+        'x-chatpro-user-id': session.userId ?? '',
+      },
+      body: JSON.stringify({ nonceHash }),
+      cache: 'no-store',
+    }).catch(() => null);
+    if (!consumption?.ok) {
+      return NextResponse.json({ ok: false, error: 'No se pudo verificar la autorización.' }, { status: 403 });
+    }
+    const result = await consumption.json().catch(() => ({})) as { consumed?: boolean };
+    if (result.consumed !== true) {
+      return NextResponse.json({ ok: false, error: 'Autorización vencida o utilizada anteriormente.' }, { status: 403 });
+    }
+    // This path intentionally does not exchange authorization codes for tokens.
+    const blocked = NextResponse.json(
+      { ok: false, error: 'Autorización de uso único validada. La conexión real de Instagram sigue deshabilitada.' },
       { status: 403 },
     );
+    blocked.cookies.set('mw1_ig_oauth_state', '', {
+      httpOnly: true, secure: true, sameSite: 'lax', maxAge: 0,
+      path: '/api/integrations/instagram',
+    });
+    return blocked;
   }
 
   const apiBase =
