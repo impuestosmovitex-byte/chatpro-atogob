@@ -271,6 +271,7 @@ export function InstagramConnectButton({
                 JSON.stringify({
                   code,
                   redirectUri,
+                  state: returnedState,
                 }),
             },
           );
