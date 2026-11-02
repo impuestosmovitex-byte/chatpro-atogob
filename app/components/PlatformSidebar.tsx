@@ -7,6 +7,7 @@ const links=[
  {href:'/admin',label:'Resumen MW1',icon:'▦'},
  {href:'/admin/empresas',label:'Empresas',icon:'▤'},
  {href:'/admin/funciones',label:'Funciones por empresa',icon:'⚙'},
+ {href:'/admin/asignacion-planes',label:'Asignación de planes',icon:'📋'},
  {href:'/admin/planes',label:'Planes y precios',icon:'◇'},
  {href:'/admin/solicitudes-suscripcion',label:'Solicitudes de suscripción',icon:'▤'},
  {href:'/admin/mercado-pago',label:'Mercado Pago',icon:'◈'},
