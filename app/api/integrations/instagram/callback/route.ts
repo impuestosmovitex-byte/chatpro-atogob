@@ -12,20 +12,9 @@ export async function GET(
   const url =
     new URL(request.url);
 
-  const forwardedHost =
-    request.headers
-      .get('x-forwarded-host')
-      ?.trim() || '';
-
-  const forwardedProto =
-    request.headers
-      .get('x-forwarded-proto')
-      ?.trim() || 'https';
-
-  const publicOrigin =
-    forwardedHost
-      ? `${forwardedProto}://${forwardedHost}`
-      : 'https://chatpro-web-production.up.railway.app';
+  // Never trust caller-controlled forwarded host/protocol headers for OAuth redirects.
+  // Keep the authorization response on this application's own origin.
+  const publicOrigin = request.nextUrl.origin;
 
   const code =
     url.searchParams.get('code');
