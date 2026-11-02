@@ -10,6 +10,7 @@ export default function AssignmentDraftPage(){
  const [tier,setTier]=useState('basico');
  const [notes,setNotes]=useState('');
  const [message,setMessage]=useState('');
+ const [readiness,setReadiness]=useState<{commerciallyReady:boolean;reasons:string[]}|null>(null);
  const [busy,setBusy]=useState(false);
  const [loading,setLoading]=useState(true);
  useEffect(()=>{(async()=>{
@@ -27,6 +28,8 @@ export default function AssignmentDraftPage(){
  })();},[]);
  function selectCompany(id:string){
   setCompanyId(id);
+  setReadiness(null);
+  if(id)void fetch('/api/platform-admin/company-plan-assignment-readiness?companyId='+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(data=>{if(data.ok)setReadiness(data);}).catch(()=>{});
   const draft=drafts.find(d=>d.company_id===id);
   setTier(draft?.tier||'basico');setNotes(draft?.notes||'');setMessage('');
  }
@@ -40,6 +43,9 @@ export default function AssignmentDraftPage(){
    const data=await res.json();
    if(!res.ok||!data.ok)throw new Error(data.error||'No se pudo guardar.');
    setDrafts(prev=>[...prev.filter(d=>d.company_id!==companyId),data.draft]);
+   setReadiness(null);
+   const readyResponse=await fetch('/api/platform-admin/company-plan-assignment-readiness?companyId='+encodeURIComponent(companyId),{cache:'no-store'});
+   if(readyResponse.ok)setReadiness(await readyResponse.json());
    setMessage('Asignación propuesta guardada. No se han cambiado permisos, cobros ni conexiones.');
   }catch(e){setMessage(e instanceof Error?e.message:'Error al guardar');}
   finally{setBusy(false);}
@@ -67,6 +73,7 @@ export default function AssignmentDraftPage(){
       {busy?'Guardando…':'Guardar propuesta sin activar'}
      </button>
     </>}
+    {readiness&&<div style={{background:'#f1f5f9',padding:14,borderRadius:9}}><strong>{readiness.commerciallyReady?'Revisión comercial completa':'Requisitos pendientes'}</strong><p>La activación real permanece deshabilitada.</p>{readiness.reasons.map(reason=><p key={reason}>{reason}</p>)}</div>}
     {message&&<p role="status">{message}</p>}
    </section>
   </main>
