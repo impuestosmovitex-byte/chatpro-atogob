@@ -184,6 +184,53 @@ export class PlatformAdminController {
     };
   }
 
+  @Get('company-plan-assignment-drafts')
+  async companyPlanAssignmentDrafts(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    const {data,error}=await this.supabaseService.getClient()
+      .from('mw1_company_plan_assignment_drafts')
+      .select('company_id,tier,notes,updated_at');
+    if(error)throw new BadRequestException('No se pudieron consultar las asignaciones.');
+    return {ok:true,drafts:data??[],informationalOnly:true};
+  }
+
+  @Post('company-plan-assignment-drafts')
+  async saveCompanyPlanAssignmentDraft(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Body() body: unknown,
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    if(!body||typeof body!=='object'||Array.isArray(body))
+      throw new BadRequestException('Asignación inválida.');
+    const input=body as Record<string,unknown>;
+    if(Object.keys(input).some(k=>!['companyId','tier','notes'].includes(k))||
+       typeof input.companyId!=='string'||
+       !/^[0-9a-f]{8}-[0-9a-f-]{27,36}$/i.test(input.companyId)||
+       !['basico','eco','pro'].includes(String(input.tier))||
+       typeof input.notes!=='string'||input.notes.length>500)
+      throw new BadRequestException('Empresa, plan o notas inválidos.');
+    const client=this.supabaseService.getClient();
+    const {data:company,error:companyError}=await client.from('companies')
+      .select('id').eq('id',input.companyId).maybeSingle();
+    if(companyError||!company)throw new BadRequestException('Empresa no encontrada.');
+    const {data,error}=await client.from('mw1_company_plan_assignment_drafts')
+      .upsert({company_id:company.id,tier:input.tier,notes:input.notes,
+        updated_at:new Date().toISOString()},{onConflict:'company_id'})
+      .select('company_id,tier,notes,updated_at').single();
+    if(error)throw new BadRequestException('No se pudo guardar el borrador.');
+    return {ok:true,draft:data,informationalOnly:true};
+  }
+
   @Get('commercial-feature-approvals')
   async commercialFeatureApprovals(
     @Headers('x-chatpro-inbox-key') key = '',
