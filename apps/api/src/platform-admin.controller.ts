@@ -184,6 +184,41 @@ export class PlatformAdminController {
     };
   }
 
+  @Get('company-plan-assignment-readiness')
+  async assignmentReadiness(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Query('companyId') companyId = '',
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    const client=this.supabaseService.getClient();
+    const companyResult=await client.from('companies').select('id')
+      .eq('id',companyId).maybeSingle();
+    if(companyResult.error||!companyResult.data)
+      throw new BadRequestException('Empresa no encontrada.');
+    const assignment=await client.from('mw1_company_plan_assignment_drafts')
+      .select('tier').eq('company_id',companyId).maybeSingle();
+    if(assignment.error)throw new BadRequestException('Error de asignación.');
+    const tier=assignment.data?.tier;
+    const approval=tier?await client.from('mw1_commercial_feature_approvals')
+      .select('draft_updated_at').eq('tier',tier).maybeSingle():null;
+    const draft=tier?await client.from('mw1_commercial_feature_drafts')
+      .select('updated_at').eq('tier',tier).maybeSingle():null;
+    if(approval?.error||draft?.error)
+      throw new BadRequestException('Error consultando plan.');
+    const reasons:string[]=[];
+    if(!tier)reasons.push('No existe una asignación propuesta.');
+    else if(!approval?.data)reasons.push('El plan no está aprobado.');
+    else if(approval.data.draft_updated_at!==draft?.data?.updated_at)
+      reasons.push('La aprobación no corresponde a la versión vigente.');
+    return {ok:true,proposedTier:tier??null,
+      commerciallyReady:reasons.length===0,canApply:false,
+      reasons,informationalOnly:true};
+  }
+
   @Get('company-plan-assignment-drafts')
   async companyPlanAssignmentDrafts(
     @Headers('x-chatpro-inbox-key') key = '',
