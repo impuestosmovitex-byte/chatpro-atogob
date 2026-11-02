@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   }
   try {
     const state = createInstagramOAuthState(session.companyId, session.userId);
-    const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\\/$/, '');
+    const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
     const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
     if (!apiBase || !inboxKey) throw new Error('API de staging no configurada.');
     const nonceHash = createHash('sha256').update(state).digest('hex');
