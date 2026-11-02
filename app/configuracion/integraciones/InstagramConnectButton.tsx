@@ -10,6 +10,7 @@ import styles from './page.module.css';
 type InstagramConfig = {
   ok?: boolean;
   ready?: boolean;
+  authorizationEnabled?: boolean;
   appId?: string;
   apiVersion?: string;
   scopes?: string[];
@@ -341,7 +342,8 @@ export function InstagramConnectButton({
   function startLogin() {
     if (
       !config?.ready ||
-      !config.appId
+      !config.appId ||
+      (window.location.hostname === 'mw1-web-staging-staging.up.railway.app' && config.authorizationEnabled !== true)
     ) {
       setMessage(
         config?.message ||
