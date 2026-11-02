@@ -184,6 +184,27 @@ export class PlatformAdminController {
     };
   }
 
+  @Get('company-plan-activation-history')
+  async companyPlanActivationHistory(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Query('companyId') companyId = '',
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if (process.env.MW1_STAGING_MODE !== 'true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    const client=this.supabaseService.getClient();
+    const {data:company,error:ce}=await client.from('companies')
+      .select('id').eq('id',companyId).maybeSingle();
+    if(ce||!company)throw new BadRequestException('Empresa no encontrada.');
+    const {data,error}=await client.from('mw1_plan_activation_audit')
+      .select('id,proposed_tier,action,actor_id,details,created_at')
+      .eq('company_id',company.id).order('created_at',{ascending:false}).limit(50);
+    if(error)throw new BadRequestException('No se pudo consultar el historial.');
+    return {ok:true,events:data??[],informationalOnly:true};
+  }
+
   @Post('company-plan-activation-request')
   async requestCompanyPlanActivation(
     @Headers('x-chatpro-inbox-key') key = '',
