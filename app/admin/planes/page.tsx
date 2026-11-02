@@ -173,6 +173,32 @@ export default function AdminPlansPage(){
         Trabaja en las propuestas Básico, Eco y Pro. Los borradores no modifican
         los límites de ninguna compañía ni publican precios. No activan cobros.
       </p>
+      <section style={{background:'#fff',border:'1px solid #dbe3ef',padding:18,borderRadius:12,margin:'20px 0'}}>
+        <h2 style={{marginTop:0}}>Matriz de planes · propuesta comercial</h2>
+        <p style={{fontSize:13,color:'#667085'}}>
+          Referencia de planificación: aún no concede ni revoca funciones a ninguna empresa.
+          Los módulos nuevos como catálogos PDF, pedidos y pagos requieren aprobación específica.
+        </p>
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead><tr style={{textAlign:'left',background:'#f1f5f9'}}>
+              <th style={{padding:10}}>Plan</th><th style={{padding:10}}>Usuarios</th>
+              <th style={{padding:10}}>Conexiones</th><th style={{padding:10}}>Funciones propuestas</th>
+            </tr></thead>
+            <tbody>{MW1_COMMERCIAL_PROPOSAL.map(plan=><tr key={plan.key}
+              style={{borderTop:'1px solid #e2e8f0'}}>
+              <td style={{padding:10,fontWeight:800}}>{plan.name}</td>
+              <td style={{padding:10}}>{plan.users}</td>
+              <td style={{padding:10}}>{plan.connections}</td>
+              <td style={{padding:10}}>{plan.highlights.join(' · ')}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <p style={{fontSize:12,color:'#925d16'}}>
+          ATOGOB y Emprende con MAOGO mantienen sus conexiones actuales y
+          no deben bloquearse por falta de un medio de pago durante el piloto.
+        </p>
+      </section>
       <p><Link href="/admin/empresas">← Volver a empresas</Link> ·
         <Link href="/precios"> Consultar la página comercial</Link></p>
       {!loaded&&<p>Verificando acceso de superadministrador…</p>}
