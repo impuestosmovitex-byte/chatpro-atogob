@@ -52,6 +52,28 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Staging OAuth remains closed until the signed state and one-time
+  // authorization are fully verified on the server.
+  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
+    const submitted = await request.json().catch(() => null) as
+      | { state?: unknown }
+      | null;
+    const state = typeof submitted?.state === 'string'
+      ? submitted.state
+      : '';
+    const stored = request.cookies.get('mw1_ig_oauth_state')?.value || '';
+    if (!state || !stored || state !== stored) {
+      return NextResponse.json(
+        { ok: false, error: 'Estado OAuth de Instagram no válido.' },
+        { status: 403 },
+      );
+    }
+    return NextResponse.json(
+      { ok: false, error: 'Instagram aún requiere verificación de autorización de un solo uso.' },
+      { status: 403 },
+    );
+  }
+
   const apiBase =
     process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
   const inboxKey =
