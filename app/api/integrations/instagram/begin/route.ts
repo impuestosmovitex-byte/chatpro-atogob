@@ -25,6 +25,9 @@ export async function POST(request: NextRequest) {
     const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
     const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
     if (!apiBase || !inboxKey) throw new Error('API de staging no configurada.');
+    if (apiBase !== 'https://mw1-api-staging-staging.up.railway.app') {
+      throw new Error('El inicio OAuth debe utilizar la API de staging.');
+    }
     const nonceHash = createHash('sha256').update(state).digest('hex');
     const registerUrl = new URL(apiBase + '/integrations/instagram/oauth/register');
     registerUrl.searchParams.set('company', session.companySlug);
