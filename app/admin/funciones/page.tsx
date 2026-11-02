@@ -88,13 +88,13 @@ export default function FeaturePreferencesPage(){
       <div><strong>{label}</strong><div style={{fontSize:12,color:'#64748b'}}>
        {saved?'Preferencia guardada':'Sin preferencia: conservar comportamiento actual'}
       </div></div>
-      <button type="button" disabled={Boolean(busy)} onClick={()=>toggle(key,!saved?.enabled)}
-       aria-label={label+': '+(saved?.enabled?'activado':'desactivado')}
+      <button type="button" disabled={Boolean(busy)} onClick={()=>toggle(key,saved?.enabled===true?false:true)}
+       aria-label={label+': '+(saved? (saved.enabled?'activado':'desactivado'):'sin configurar')}
        aria-pressed={saved?.enabled===true}
        style={{minWidth:105,padding:'10px 12px',border:0,borderRadius:24,
          color:saved?.enabled?'white':'#334155',
          background:saved?.enabled?'#16835d':'#e2e8f0',cursor:'pointer'}}>
-       {busy===key?'Guardando…':saved?.enabled?'● Activado':'○ Apagado'}
+       {busy===key?'Guardando…':!saved?'— Sin configurar':saved.enabled?'● Activado':'○ Apagado'}
       </button>
      </div>;
     })}
