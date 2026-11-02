@@ -153,10 +153,10 @@ export function InstagramConnectButton({
   useEffect(() => {
     if (
       !config?.ready ||
-      (window.location.hostname === 'mw1-web-staging-staging.up.railway.app' &&
-        config.authorizationEnabled !== true) ||
       typeof window ===
-        'undefined'
+        'undefined' ||
+      (window.location.hostname === 'mw1-web-staging-staging.up.railway.app' &&
+        config.authorizationEnabled !== true)
     ) {
       return;
     }
