@@ -96,6 +96,7 @@ export default function AssignmentDraftPage(){
      </button>}
     {readiness&&<div style={{background:'#f1f5f9',padding:14,borderRadius:9}}><strong>{readiness.commerciallyReady?'Revisión comercial completa':'Requisitos pendientes'}</strong><p>La activación real permanece deshabilitada.</p>{readiness.reasons.map(reason=><p key={reason}>{reason}</p>)}</div>}
     {companyId&&<section><h2>Historial de solicitudes</h2>
+     <p style={{fontSize:13,fontWeight:700}}>Estado de revisión: {events.length===0?'Sin solicitudes':events[0].action==='activation_rejected'?'Rechazada':events[0].action==='activation_requested'?'Pendiente de revisión':'Evento registrado'}</p>
      {events.length===0?<p>No hay solicitudes registradas para esta empresa.</p>:
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
        <thead><tr><th>Fecha</th><th>Plan</th><th>Evento</th><th>Administrador</th></tr></thead>
