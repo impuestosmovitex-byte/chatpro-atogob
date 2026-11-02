@@ -184,6 +184,30 @@ export class PlatformAdminController {
     };
   }
 
+  @Get('feature-preferences')
+  async featurePreferences(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Query('companyId') companyId = '',
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if (process.env.MW1_STAGING_MODE !== 'true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    const client = this.supabaseService.getClient();
+    const { data: company, error: companyError } = await client
+      .from('companies').select('id,name').eq('id', companyId).maybeSingle();
+    if (companyError || !company)
+      throw new BadRequestException('Empresa no encontrada.');
+    const { data, error } = await client
+      .from('mw1_company_feature_preferences')
+      .select('feature_key,enabled,updated_at')
+      .eq('company_id', company.id);
+    if (error) throw new BadRequestException('Error consultando preferencias.');
+    return { ok: true, company, preferences: data ?? [],
+      informationalOnly: true };
+  }
+
   @Get('companies')
   async listCompanies(
     @Headers('x-chatpro-inbox-key') providedKey = '',
