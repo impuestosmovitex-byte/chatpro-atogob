@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import {useEffect,useState,type FormEvent} from 'react';
 import {PlatformSidebar} from '../../components/PlatformSidebar';
+import FeatureDraftEditor from './FeatureDraftEditor';
 import {MW1_COMMERCIAL_PROPOSAL,MW1_EXTRA_USER_PREVIEW_COP,MW1_EXTRA_CONNECTION_PREVIEW_COP} from '../../lib/mw1-commercial-proposal';
 
 type Key='inicial'|'pro'|'empresa';
@@ -199,29 +200,7 @@ export default function AdminPlansPage(){
           no deben bloquearse por falta de un medio de pago durante el piloto.
         </p>
       </section>
-      <section style={{padding:18,border:'1px solid #dbe3ef',borderRadius:12,background:'#fff',margin:'16px 0'}}>
-        <h2 style={{marginTop:0}}>Matriz de funcionalidades por plan (borrador)</h2>
-        <p style={{fontSize:13,color:'#64748b'}}>Esta comparación es una propuesta pendiente de aprobación. No modifica accesos ni suscripciones actuales.</p>
-        <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-            <thead><tr><th style={{padding:9,textAlign:'left'}}>Función</th><th>Básico</th><th>Eco</th><th>Pro</th></tr></thead>
-            <tbody>{([
-              ['WhatsApp','Incluido','Incluido','Incluido'],
-              ['Asistente IA','No incluido','Incluido','Incluido'],
-              ['Instagram','No incluido','Incluido','Incluido'],
-              ['Messenger','No incluido','Incluido','Incluido'],
-              ['Automatizaciones','No incluido','Incluido','Incluido'],
-              ['Estadísticas','Pendiente','Incluido','Incluido'],
-              ['Catálogos PDF','Pendiente','Pendiente','Pendiente'],
-              ['Pedidos nativos','Pendiente','Pendiente','Pendiente'],
-              ['Pasarela de pagos','Pendiente','Pendiente','Pendiente'],
-            ] as const).map(([name,basico,eco,pro])=><tr key={name} style={{borderTop:'1px solid #e2e8f0'}}>
-              <td style={{padding:9,fontWeight:650}}>{name}</td>
-              {[basico,eco,pro].map((status,i)=><td key={i} style={{textAlign:'center',padding:9,color:status==='Pendiente'?'#966a09':status==='No incluido'?'#64748b':'#167347'}}>{status}</td>)}
-            </tr>)}</tbody>
-          </table>
-        </div>
-      </section>
+      {loaded&&authorized&&<FeatureDraftEditor/>}
       <p><Link href="/admin/empresas">← Volver a empresas</Link> ·
         <Link href="/precios"> Consultar la página comercial</Link></p>
       {!loaded&&<p>Verificando acceso de superadministrador…</p>}
