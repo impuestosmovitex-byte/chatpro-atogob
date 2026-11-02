@@ -208,6 +208,41 @@ export class PlatformAdminController {
       informationalOnly: true };
   }
 
+  @Post('feature-preferences')
+  async updateFeaturePreference(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Body() body: unknown,
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if (process.env.MW1_STAGING_MODE !== 'true')
+      throw new UnauthorizedException('Solo disponible en staging.');
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      throw new BadRequestException('Configuración inválida.');
+    const input = body as Record<string, unknown>;
+    const allowed = ['ai_assistant','whatsapp','instagram','messenger',
+      'automations','catalog_pdf','native_orders','merchant_payments','statistics'];
+    if (typeof input.companyId !== 'string' ||
+      typeof input.featureKey !== 'string' ||
+      !allowed.includes(input.featureKey) ||
+      typeof input.enabled !== 'boolean' ||
+      Object.keys(input).some(k => !['companyId','featureKey','enabled'].includes(k)))
+      throw new BadRequestException('Empresa, función o estado inválido.');
+    const client = this.supabaseService.getClient();
+    const { data: company, error: companyError } = await client
+      .from('companies').select('id').eq('id',input.companyId).maybeSingle();
+    if (companyError || !company) throw new BadRequestException('Empresa no encontrada.');
+    const { data, error } = await client
+      .from('mw1_company_feature_preferences')
+      .upsert({ company_id:company.id,feature_key:input.featureKey,
+        enabled:input.enabled,updated_at:new Date().toISOString() },
+        { onConflict:'company_id,feature_key' })
+      .select('feature_key,enabled,updated_at').single();
+    if (error) throw new BadRequestException('No se pudo guardar la preferencia.');
+    return { ok:true, preference:data, informationalOnly:true };
+  }
+
   @Get('companies')
   async listCompanies(
     @Headers('x-chatpro-inbox-key') providedKey = '',
