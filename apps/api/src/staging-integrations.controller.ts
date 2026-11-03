@@ -29,6 +29,8 @@ export class StagingIntegrationsController {
     const exchangeEnabled = process.env.MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED === 'true';
     const ready = isPilot && enabled && Boolean(appId && appSecret) &&
       encryptionReady && oauthEnabled && exchangeEnabled;
+    // Explicit opt-in. Keep OAuth blocked even if all other prerequisites are set.
+    const pilotLoginEnabled = process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED === 'true';
     return {
       ok: true,
       company: result.company,
@@ -38,7 +40,7 @@ export class StagingIntegrationsController {
       appId: isPilot && enabled && appId ? appId : null,
       scopes: ['instagram_business_basic', 'instagram_business_manage_messages'],
       ready,
-      authorizationEnabled: false,
+      authorizationEnabled: ready && pilotLoginEnabled,
       connectionEnabled: false,
       webhookEnabled: false,
       missing: isPilot && enabled ? [
@@ -47,11 +49,14 @@ export class StagingIntegrationsController {
         ...(!encryptionReady ? ['CHATPRO_INTEGRATIONS_ENCRYPTION_KEY'] : []),
         ...(!oauthEnabled ? ['MW1_STAGING_INSTAGRAM_OAUTH_ENABLED'] : []),
         ...(!exchangeEnabled ? ['MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED'] : []),
+        ...(!pilotLoginEnabled ? ['MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED'] : []),
       ] : [],
       message: !isPilot || !enabled
         ? 'La conexión de Instagram aún no está habilitada para esta empresa.'
         : ready
-          ? 'Requisitos técnicos preparados; la autorización real permanece bloqueada hasta las pruebas controladas.'
+          ? (pilotLoginEnabled
+            ? 'Autorización piloto habilitada. La recepción de mensajes sigue deshabilitada.'
+            : 'Requisitos técnicos preparados; falta habilitar explícitamente el piloto de autorización.')
           : 'La configuración de Instagram en staging está incompleta.',
     };
   }
