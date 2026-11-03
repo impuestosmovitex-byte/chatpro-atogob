@@ -51,6 +51,33 @@ export class StagingIntegrationsController {
     };
   }
 
+  /**
+   * Isolated Instagram Login token exchange. This never subscribes webhooks,
+   * sends messages or activates a channel. The feature flag is OFF by default.
+   */
+  @Post('instagram/exchange-code')
+  async exchangeInstagramCode(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+    @Body() body: { code?: string; redirectUri?: string } = {},
+  ) {
+    const result = await this.list(key, userId, companyId, slug);
+    if (result.company.slug !== 'piloto-mw1-prueba' ||
+        process.env.MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED !== 'true') {
+      throw new ForbiddenException('El intercambio de Instagram no está habilitado.');
+    }
+    const expectedRedirect = 'https://mw1-web-staging-staging.up.railway.app/api/integrations/instagram/callback';
+    const code = typeof body.code === 'string' ? body.code.trim() : '';
+    if (!code || code.length > 4096 || body.redirectUri !== expectedRedirect) {
+      throw new BadRequestException('El código o retorno de Instagram es inválido.');
+    }
+    // Token exchange and pending-only save must be implemented here, never by
+    // importing production MetaInstagramService (which subscribes webhooks).
+    throw new ForbiddenException('Instagram pendiente de intercambio aislado seguro.');
+  }
+
   @Post('instagram/oauth/register')
   async registerInstagramOAuth(
     @Headers('x-chatpro-inbox-key') key = '',
