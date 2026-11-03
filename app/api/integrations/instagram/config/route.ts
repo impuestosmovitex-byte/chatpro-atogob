@@ -87,14 +87,38 @@ export async function GET(request: NextRequest) {
     cache: 'no-store',
   });
 
+  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app' &&
+      response.ok) {
+    const body = await response.json().catch(() => null) as
+      | { ready?: boolean; missing?: string[]; authorizationEnabled?: boolean;
+          message?: string; [key: string]: unknown }
+      | null;
+    if (!body) {
+      return NextResponse.json({ ok: false, error: 'Configuración inválida.' }, { status: 502 });
+    }
+    const stateSecret = process.env.MW1_INSTAGRAM_OAUTH_STATE_SECRET?.trim() || '';
+    const webSecretReady = stateSecret.length >= 32;
+    return NextResponse.json({
+      ...body,
+      ready: body.ready === true && webSecretReady,
+      authorizationEnabled: false,
+      missing: [
+        ...(Array.isArray(body.missing) ? body.missing : []),
+        ...(!webSecretReady ? ['MW1_INSTAGRAM_OAUTH_STATE_SECRET'] : []),
+      ],
+      message: !webSecretReady
+        ? 'Falta configurar la seguridad OAuth de Instagram en la web de staging.'
+        : body.message,
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
   return new NextResponse(
     await response.text(),
     {
       status: response.status,
       headers: {
-        'content-type':
-          response.headers.get('content-type') ??
-          'application/json',
+        'content-type': response.headers.get('content-type') ?? 'application/json',
+        'cache-control': 'no-store',
       },
     },
   );
