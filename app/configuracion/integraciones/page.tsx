@@ -530,7 +530,7 @@ export default function IntegracionesPage() {
           </div>
 
           {selected ? (
-            stagingReadOnly && selected.key !== 'whatsapp' ? <aside className={styles.detail}>
+            stagingReadOnly && selected.key !== 'whatsapp' && selected.key !== 'instagram' ? <aside className={styles.detail}>
               <div className={styles.detailTop}><span className={styles.largeIcon}>{icon(selected.key)}</span><h2>{selected.name}</h2></div>
               <p className={styles.description}>{selected.description}</p>
               <div className={styles.notice}>Este entorno de prueba muestra los canales disponibles, pero las autorizaciones de conexión siguen deshabilitadas hasta configurar y validar la aplicación de Meta/Shopify de staging. No utilices credenciales ni tokens de ATOGOB producción.</div>
