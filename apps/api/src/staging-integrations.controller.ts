@@ -75,7 +75,8 @@ export class StagingIntegrationsController {
   ) {
     const result = await this.list(key, userId, companyId, slug);
     if (result.company.slug !== 'piloto-mw1-prueba' ||
-        process.env.MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED !== 'true') {
+        process.env.MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED !== 'true' ||
+        process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED !== 'true') {
       throw new ForbiddenException('El intercambio de Instagram no está habilitado.');
     }
     const expectedRedirect = 'https://mw1-web-staging-staging.up.railway.app/api/integrations/instagram/callback';
