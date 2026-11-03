@@ -550,6 +550,9 @@ export function InstagramConnectButton({
   const connected =
     status === 'active';
 
+  const pending =
+    status === 'pending';
+
   const requiresReconnect =
     status === 'error';
 
@@ -593,12 +596,25 @@ export function InstagramConnectButton({
       <strong>
         {connected
           ? 'Instagram conectado'
-          : requiresReconnect
-            ? 'Instagram requiere reconexión'
-            : 'Conectar Instagram'}
+          : pending
+            ? 'Instagram pendiente de activación'
+            : requiresReconnect
+              ? 'Instagram requiere reconexión'
+              : 'Conectar Instagram'}
       </strong>
 
-      {hasConnection ? (
+      {pending ? (
+        <>
+          <p>
+            {username
+              ? `Instagram @${username} está autorizado, pero la recepción de mensajes todavía está deshabilitada.`
+              : 'La cuenta de Instagram está pendiente de activación. Todavía no recibe mensajes.'}
+          </p>
+          <small>
+            La activación debe realizarse después de las verificaciones de seguridad.
+          </small>
+        </>
+      ) : hasConnection ? (
         <>
           <p>
             {connected
