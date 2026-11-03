@@ -61,7 +61,7 @@ export class StagingIntegrationsController {
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
     @Query('company') slug = '',
-    @Body() body: { code?: string; redirectUri?: string } = {},
+    @Body() body: { code?: string; redirectUri?: string; nonceHash?: string } = {},
   ) {
     const result = await this.list(key, userId, companyId, slug);
     if (result.company.slug !== 'piloto-mw1-prueba' ||
@@ -77,6 +77,18 @@ export class StagingIntegrationsController {
         process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true' ||
         !this.credentials) {
       throw new ForbiddenException('El piloto de Instagram no está preparado.');
+    }
+    if (!/^[a-f0-9]{64}$/.test(body.nonceHash || '')) {
+      throw new BadRequestException('La autorización OAuth no es válida.');
+    }
+    const { data: consumed, error: nonceError } = await this.supabase.getClient()
+      .rpc('mw1_consume_instagram_oauth_nonce', {
+        p_nonce_hash: body.nonceHash,
+        p_company_id: companyId,
+        p_user_id: userId,
+      });
+    if (nonceError || consumed !== true) {
+      throw new ForbiddenException('Autorización OAuth vencida o utilizada anteriormente.');
     }
     const appId = process.env.META_INSTAGRAM_APP_ID?.trim();
     const appSecret = process.env.META_INSTAGRAM_APP_SECRET?.trim();
