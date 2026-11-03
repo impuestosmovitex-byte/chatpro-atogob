@@ -73,9 +73,89 @@ export class StagingIntegrationsController {
     if (!code || code.length > 4096 || body.redirectUri !== expectedRedirect) {
       throw new BadRequestException('El código o retorno de Instagram es inválido.');
     }
-    // Token exchange and pending-only save must be implemented here, never by
-    // importing production MetaInstagramService (which subscribes webhooks).
-    throw new ForbiddenException('Instagram pendiente de intercambio aislado seguro.');
+    if (process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED !== 'true' ||
+        process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true' ||
+        !this.credentials) {
+      throw new ForbiddenException('El piloto de Instagram no está preparado.');
+    }
+    const appId = process.env.META_INSTAGRAM_APP_ID?.trim();
+    const appSecret = process.env.META_INSTAGRAM_APP_SECRET?.trim();
+    if (!appId || !appSecret) {
+      throw new ForbiddenException('Falta configurar la aplicación de Instagram.');
+    }
+    // Only Instagram Login endpoints; no subscribed_apps or webhook changes.
+    const exchangeBody = new URLSearchParams({
+      client_id: appId, client_secret: appSecret,
+      grant_type: 'authorization_code', redirect_uri: expectedRedirect, code,
+    });
+    const shortResponse = await fetch('https://api.instagram.com/oauth/access_token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: exchangeBody.toString(),
+    });
+    const shortData = await shortResponse.json().catch(() => ({})) as Record<string, unknown>;
+    const shortToken = typeof shortData.access_token === 'string' ? shortData.access_token : '';
+    if (!shortResponse.ok || shortToken.length < 20) {
+      throw new BadRequestException('Instagram rechazó el código de autorización.');
+    }
+    const longUrl = new URL('https://graph.instagram.com/access_token');
+    longUrl.searchParams.set('grant_type', 'ig_exchange_token');
+    longUrl.searchParams.set('client_secret', appSecret);
+    longUrl.searchParams.set('access_token', shortToken);
+    const longResponse = await fetch(longUrl);
+    const longData = await longResponse.json().catch(() => ({})) as Record<string, unknown>;
+    const accessToken = typeof longData.access_token === 'string' ? longData.access_token : '';
+    if (!longResponse.ok || accessToken.length < 20) {
+      throw new BadRequestException('Instagram no permitió extender la autorización.');
+    }
+    const version = (process.env.META_INSTAGRAM_API_VERSION || 'v26.0').trim();
+    if (!/^v[0-9]+\\.[0-9]+$/.test(version)) {
+      throw new BadRequestException('Versión de la API de Meta no válida.');
+    }
+    const profileUrl = new URL('https://graph.instagram.com/' + version + '/me');
+    profileUrl.searchParams.set('fields', 'id,user_id,username,name,account_type');
+    profileUrl.searchParams.set('access_token', accessToken);
+    const profileResponse = await fetch(profileUrl);
+    const profile = await profileResponse.json().catch(() => ({})) as Record<string, unknown>;
+    const externalId = String(profile.user_id || '').trim();
+    const accountType = String(profile.account_type || '').toUpperCase();
+    if (!profileResponse.ok || !/^[0-9]+$/.test(externalId) ||
+        !['BUSINESS','CREATOR','MEDIA_CREATOR'].includes(accountType)) {
+      throw new BadRequestException('Instagram requiere una cuenta profesional válida.');
+    }
+    const db = this.supabase.getClient();
+    const { data: existing, error: checkError } = await db.from('company_integrations')
+      .select('id').eq('provider', 'meta').eq('integration_type', 'instagram')
+      .eq('external_id', externalId).maybeSingle();
+    if (checkError || existing) {
+      throw new ForbiddenException('La cuenta ya está registrada o no pudo verificarse.');
+    }
+    const expires = Number(longData.expires_in);
+    const { error: saveError } = await db.from('company_integrations').insert({
+      company_id: companyId,
+      provider: 'meta',
+      integration_type: 'instagram',
+      external_id: externalId,
+      status: 'pending',
+      config: {
+        setup_source: 'mw1_staging_instagram_login',
+        api_version: version,
+        username: typeof profile.username === 'string' ? profile.username : null,
+        account_type: accountType,
+        token_expires_at: Number.isFinite(expires) && expires > 0
+          ? new Date(Date.now() + expires * 1000).toISOString() : null,
+        webhooks_subscribed: false,
+      },
+      credential_mode: 'encrypted',
+      credential_reference: { token_format: 'instagram_user_access_token' },
+      credentials_encrypted: this.credentials.encrypt({ access_token: accessToken }),
+    });
+    if (saveError) throw new ForbiddenException('No se pudo guardar la cuenta pendiente.');
+    return {
+      ok: true, pending: true, connectionEnabled: false,
+      message: 'Cuenta validada y guardada como pendiente. No se activaron mensajes.',
+      instagram: { username: typeof profile.username === 'string' ? profile.username : null },
+    };
   }
 
   @Post('instagram/oauth/register')
