@@ -61,6 +61,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app' &&
+      apiBase !== 'https://mw1-api-staging-staging.up.railway.app') {
+    return NextResponse.json(
+      { ok: false, error: 'La configuración de Instagram debe consultarse en la API de staging.' },
+      { status: 503 },
+    );
+  }
+
   const target = new URL(
     `${apiBase}/integrations/instagram/config`,
   );
