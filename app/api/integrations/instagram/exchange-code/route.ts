@@ -93,9 +93,16 @@ export async function POST(request: NextRequest) {
       );
     }
     const nonceHash = createHash('sha256').update(state).digest('hex');
-    const target = new URL(apiBase + '/integrations/instagram/oauth/consume');
+    // The API consumes the nonce atomically during exchange. Do not consume it here.
+    if (process.env.MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED !== 'true') {
+      return NextResponse.json(
+        { ok: false, error: 'El intercambio de Instagram todavía está deshabilitado.' },
+        { status: 403 },
+      );
+    }
+    const target = new URL(apiBase + '/integrations/instagram/exchange-code');
     target.searchParams.set('company', session.companySlug);
-    const consumption = await fetch(target, {
+    const upstream = await fetch(target, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -103,26 +110,26 @@ export async function POST(request: NextRequest) {
         'x-chatpro-company-id': session.companyId,
         'x-chatpro-user-id': session.userId ?? '',
       },
-      body: JSON.stringify({ nonceHash }),
+      body: JSON.stringify({ code, redirectUri: expectedRedirect, nonceHash }),
       cache: 'no-store',
     }).catch(() => null);
-    if (!consumption?.ok) {
-      return NextResponse.json({ ok: false, error: 'No se pudo verificar la autorización.' }, { status: 403 });
+    if (!upstream) {
+      return NextResponse.json(
+        { ok: false, error: 'No se pudo contactar con la API de Instagram.' },
+        { status: 502 },
+      );
     }
-    const result = await consumption.json().catch(() => ({})) as { consumed?: boolean };
-    if (result.consumed !== true) {
-      return NextResponse.json({ ok: false, error: 'Autorización vencida o utilizada anteriormente.' }, { status: 403 });
-    }
-    // This path intentionally does not exchange authorization codes for tokens.
-    const blocked = NextResponse.json(
-      { ok: false, error: 'Autorización de uso único validada. La conexión real de Instagram sigue deshabilitada.' },
-      { status: 403 },
-    );
-    blocked.cookies.set('mw1_ig_oauth_state', '', {
-      httpOnly: true, secure: true, sameSite: 'lax', maxAge: 0,
-      path: '/api/integrations/instagram',
+    const response = new NextResponse(await upstream.text(), {
+      status: upstream.status,
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
     });
-    return blocked;
+    if (upstream.ok) {
+      response.cookies.set('mw1_ig_oauth_state', '', {
+        httpOnly: true, secure: true, sameSite: 'lax', maxAge: 0,
+        path: '/api/integrations/instagram',
+      });
+    }
+    return response;
   }
 
   const apiBase =
