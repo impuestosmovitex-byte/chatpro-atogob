@@ -798,7 +798,8 @@ export function InstagramConnectButton({
               connecting ||
               testing ||
               disconnecting ||
-              !config?.ready
+              !config?.ready ||
+              config?.authorizationEnabled === false
             }
           >
             {connecting
@@ -847,7 +848,8 @@ export function InstagramConnectButton({
             disabled={
               loading ||
               connecting ||
-              !config?.ready
+              !config?.ready ||
+              config?.authorizationEnabled === false
             }
           >
             {loading
@@ -860,8 +862,10 @@ export function InstagramConnectButton({
       )}
 
       <small>
-        {config?.ready
-          ? 'La autorización se realiza directamente con Instagram. Las credenciales se procesan y guardan cifradas en el servidor.'
+        {config?.authorizationEnabled === false
+          ? config.message || 'El piloto de Instagram está en preparación. No se permiten conexiones todavía.'
+          : config?.ready
+            ? 'La autorización se realiza directamente con Instagram. Las credenciales se procesan y guardan cifradas en el servidor.'
           : config?.message ||
             (
               config?.missing
