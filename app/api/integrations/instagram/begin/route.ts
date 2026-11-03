@@ -17,7 +17,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Acceso no autorizado.' }, { status: 403 });
   }
   if (process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED !== 'true' ||
-      process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true') {
+      process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true' ||
+      process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED !== 'true') {
     return NextResponse.json({ ok: false, error: 'Instagram no habilitado.' }, { status: 403 });
   }
   try {
