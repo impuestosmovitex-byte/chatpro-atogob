@@ -98,10 +98,12 @@ export async function GET(request: NextRequest) {
     }
     const stateSecret = process.env.MW1_INSTAGRAM_OAUTH_STATE_SECRET?.trim() || '';
     const webSecretReady = stateSecret.length >= 32;
+    const uiEnabled = process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED === 'true';
     return NextResponse.json({
       ...body,
       ready: body.ready === true && webSecretReady,
-      authorizationEnabled: false,
+      authorizationEnabled: body.ready === true && webSecretReady &&
+        body.authorizationEnabled === true && uiEnabled,
       missing: [
         ...(Array.isArray(body.missing) ? body.missing : []),
         ...(!webSecretReady ? ['MW1_INSTAGRAM_OAUTH_STATE_SECRET'] : []),
