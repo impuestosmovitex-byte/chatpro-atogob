@@ -411,9 +411,40 @@ export class StagingIntegrationsController {
       {key:'messenger',provider:'meta',integrationType:'messenger',name:'Messenger',description:'Centraliza mensajes de tu página de Facebook.',connectionReady:false},
       {key:'meta-ads',provider:'meta',integrationType:'ads',name:'Meta Ads',description:'Analítica publicitaria, disponible en una futura etapa.',connectionReady:false},
     ];
+    // Only expose non-sensitive Instagram metadata for the current tenant.
+    // A stored authorization is never an active message connection in staging.
+    const { data: instagramRows, error: instagramError } = await db
+      .from('company_integrations')
+      .select('id,status,config,updated_at')
+      .eq('company_id', company.id)
+      .eq('provider', 'meta')
+      .eq('integration_type', 'instagram')
+      .eq('status', 'pending')
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (instagramError) {
+      throw new ForbiddenException('No se pudo consultar el estado de Instagram.');
+    }
+    const pendingInstagram = instagramRows?.[0] ?? null;
+    const pendingConfig = pendingInstagram?.config &&
+      typeof pendingInstagram.config === 'object' &&
+      !Array.isArray(pendingInstagram.config)
+      ? pendingInstagram.config as Record<string, unknown>
+      : {};
+    const pendingUsername = typeof pendingConfig.username === 'string'
+      ? pendingConfig.username
+      : null;
     const integrations = catalog.map(channel=>({
-      ...channel,id:null,status:'disconnected',statusLabel:'No conectada',
-      credentialMode:null,details:{},connectedAt:null,updatedAt:null,
+      ...channel,
+      id: channel.key === 'instagram' && pendingInstagram ? pendingInstagram.id : null,
+      status: channel.key === 'instagram' && pendingInstagram ? 'pending' : 'disconnected',
+      statusLabel: channel.key === 'instagram' && pendingInstagram ? 'Pendiente de activación' : 'No conectada',
+      credentialMode: null,
+      details: channel.key === 'instagram' && pendingInstagram
+        ? { username: pendingUsername, displayName: pendingUsername }
+        : {},
+      connectedAt: null,
+      updatedAt: channel.key === 'instagram' && pendingInstagram ? pendingInstagram.updated_at : null,
       health:{status:'not_checked',statusLabel:'Sin verificar',checkedAt:null,
         error:null,verifiedName:null,displayPhoneNumber:null,qualityRating:null},
     }));
