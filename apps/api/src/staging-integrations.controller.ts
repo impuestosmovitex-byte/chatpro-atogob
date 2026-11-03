@@ -25,7 +25,12 @@ export class StagingIntegrationsController {
     const appId = process.env.META_INSTAGRAM_APP_ID?.trim() || '';
     const appSecret = process.env.META_INSTAGRAM_APP_SECRET?.trim() || '';
     const encryptionReady = Boolean(process.env.CHATPRO_INTEGRATIONS_ENCRYPTION_KEY?.trim());
-    const ready = isPilot && enabled && Boolean(appId && appSecret) && encryptionReady;
+    const oauthEnabled = process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED === 'true';
+    const exchangeEnabled = process.env.MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED === 'true';
+    const oauthStateSecretReady = Boolean(process.env.MW1_INSTAGRAM_OAUTH_STATE_SECRET?.trim() &&
+      (process.env.MW1_INSTAGRAM_OAUTH_STATE_SECRET?.trim().length || 0) >= 32);
+    const ready = isPilot && enabled && Boolean(appId && appSecret) &&
+      encryptionReady && oauthEnabled && exchangeEnabled && oauthStateSecretReady;
     return {
       ok: true,
       company: result.company,
@@ -42,11 +47,14 @@ export class StagingIntegrationsController {
         ...(!appId ? ['META_INSTAGRAM_APP_ID'] : []),
         ...(!appSecret ? ['META_INSTAGRAM_APP_SECRET'] : []),
         ...(!encryptionReady ? ['CHATPRO_INTEGRATIONS_ENCRYPTION_KEY'] : []),
+        ...(!oauthEnabled ? ['MW1_STAGING_INSTAGRAM_OAUTH_ENABLED'] : []),
+        ...(!exchangeEnabled ? ['MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED'] : []),
+        ...(!oauthStateSecretReady ? ['MW1_INSTAGRAM_OAUTH_STATE_SECRET'] : []),
       ] : [],
       message: !isPilot || !enabled
         ? 'La conexión de Instagram aún no está habilitada para esta empresa.'
         : ready
-          ? 'Configuración preliminar lista; falta habilitar OAuth seguro y pruebas de recepción.'
+          ? 'Requisitos técnicos preparados; la autorización real permanece bloqueada hasta las pruebas controladas.'
           : 'La configuración de Instagram en staging está incompleta.',
     };
   }
