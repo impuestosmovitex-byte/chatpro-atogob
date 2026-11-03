@@ -3,6 +3,9 @@ import {
   NextResponse,
 } from 'next/server';
 
+import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../../lib/inbox-auth';
+import { verifyInstagramOAuthState } from '../../../../lib/instagram-oauth-state';
+
 export const dynamic =
   'force-dynamic';
 
@@ -43,7 +46,25 @@ export async function GET(
 
   if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
     const expected = request.cookies.get('mw1_ig_oauth_state')?.value || '';
-    if (!state || !expected || state !== expected) {
+    const session = await getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
+    let valid = Boolean(
+      session?.type === 'user' &&
+      (session.roleKey === 'owner' || session.roleKey === 'admin') &&
+      session.companySlug === 'piloto-mw1-prueba' &&
+      state && expected && state === expected &&
+      process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED === 'true' &&
+      process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED === 'true',
+    );
+    if (valid && session?.userId && session.companyId) {
+      try {
+        valid = Boolean(verifyInstagramOAuthState(state!, session.companyId, session.userId));
+      } catch {
+        valid = false;
+      }
+    } else {
+      valid = false;
+    }
+    if (!valid) {
       const denied = NextResponse.redirect(
         new URL('/configuracion/integraciones?instagram_error=Autorizacion%20de%20Instagram%20no%20valida', publicOrigin),
       );
