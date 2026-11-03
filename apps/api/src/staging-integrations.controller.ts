@@ -109,7 +109,7 @@ export class StagingIntegrationsController {
       throw new BadRequestException('Instagram no permitió extender la autorización.');
     }
     const version = (process.env.META_INSTAGRAM_API_VERSION || 'v26.0').trim();
-    if (!/^v[0-9]+\\.[0-9]+$/.test(version)) {
+    if (!/^v[0-9]+\.[0-9]+$/.test(version)) {
       throw new BadRequestException('Versión de la API de Meta no válida.');
     }
     const profileUrl = new URL('https://graph.instagram.com/' + version + '/me');
