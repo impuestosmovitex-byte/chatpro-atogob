@@ -279,6 +279,7 @@ export function InstagramConnectButton({
         const data =
           (await response.json()) as {
             ok?: boolean;
+            pending?: boolean;
             message?: string;
             error?: string;
             instagram?: {
@@ -309,10 +310,14 @@ export function InstagramConnectButton({
             ?.trim();
 
         setMessage(
-          username
-            ? `Instagram @${username} quedó conectado.`
-            : data.message ||
-                'Instagram quedó conectado.',
+          data.pending
+            ? (username
+                ? `Instagram @${username} quedó pendiente de activación. Aún no recibe mensajes.`
+                : 'Instagram quedó pendiente de activación. Aún no recibe mensajes.')
+            : username
+              ? `Instagram @${username} quedó conectado.`
+              : data.message ||
+                  'Instagram quedó conectado.',
         );
 
         window.setTimeout(
