@@ -49,7 +49,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
-    if (process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED !== 'true' || process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true') {
+    if (process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED !== 'true' || process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true' ||
+        process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED !== 'true') {
       return NextResponse.json({ ok: false, error: 'Instagram no habilitado en staging.' }, { status: 403 });
     }
     const submitted = await request.json().catch(() => null) as
