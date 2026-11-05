@@ -11,6 +11,11 @@ import { StagingInboxController } from './staging-inbox.controller';
 import { StagingIntegrationsController } from './staging-integrations.controller';
 import { StagingWhatsappCoexistencePilotController } from './staging-whatsapp-coexistence-pilot.controller';
 import { StagingWhatsappCoexistenceOAuthHandshakeService } from './staging-whatsapp-coexistence-oauth-handshake.service';
+import { StagingWhatsappCoexistenceMetaCodeExchangeService } from './staging-whatsapp-coexistence-meta-code-exchange.service';
+import { StagingWhatsappCoexistenceMetaTokenReviewService } from './staging-whatsapp-coexistence-meta-token-review.service';
+import { StagingWhatsappCoexistenceMetaGraphService } from './staging-whatsapp-coexistence-meta-graph.service';
+import { StagingWhatsappCoexistenceBusinessOwnerService } from './staging-whatsapp-coexistence-business-owner.service';
+import { StagingWhatsappCoexistenceTenantVerificationService } from './staging-whatsapp-coexistence-tenant-verification.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { StagingWhatsappWebhookController } from './staging-whatsapp-webhook.controller';
 import { UsersController } from './users.controller';
@@ -49,6 +54,11 @@ class StagingHealthController {
     StagingSalesAssistantController,
   ],
   providers: [SupabaseService, IntegrationCredentialsService, AccessAuthService, StagingSalesAssistantService,
-    StagingWhatsappCoexistenceOAuthHandshakeService],
+    StagingWhatsappCoexistenceOAuthHandshakeService,
+    StagingWhatsappCoexistenceMetaCodeExchangeService,
+    StagingWhatsappCoexistenceMetaTokenReviewService,
+    StagingWhatsappCoexistenceMetaGraphService,
+    StagingWhatsappCoexistenceBusinessOwnerService,
+    StagingWhatsappCoexistenceTenantVerificationService],
 })
 export class StagingAppModule {}
