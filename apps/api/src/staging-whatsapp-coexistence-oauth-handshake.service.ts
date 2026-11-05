@@ -32,7 +32,7 @@ const PILOT = 'piloto-mw1-prueba';
 const STAGING_DB = 'https://zqfbxqszfnrbwpfukwak.supabase.co';
 const TABLE = 'mw1_whatsapp_coexistence_oauth_nonces';
 const CONSUME_RPC = 'mw1_consume_whatsapp_coexistence_oauth_nonce';
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
 const TTL_MS = 7 * 60 * 1000;
 
