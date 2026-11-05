@@ -42,7 +42,7 @@ type Integration = {
 type ResponseData = {
   ok?: boolean;
   error?: string;
-  company?: { name?: string };
+  company?: { name?: string; slug?: string };
   integrations?: Integration[];
   stagingReadOnly?: boolean;
 };
@@ -177,6 +177,7 @@ function normalizeShopDomain(value: string | null | undefined): string {
 
 export default function IntegracionesPage() {
   const [companyName, setCompanyName] = useState('Empresa');
+  const [isCoexistencePilot, setIsCoexistencePilot] = useState(false);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selectedKey, setSelectedKey] = useState('');
   const [loading, setLoading] = useState(true);
@@ -224,6 +225,8 @@ export default function IntegracionesPage() {
         }
 
         setCompanyName(data.company?.name || 'Empresa');
+        setIsCoexistencePilot(data.stagingReadOnly === true &&
+          data.company?.slug === 'piloto-mw1-prueba');
         setIntegrations(data.integrations);
         setStagingReadOnly(data.stagingReadOnly === true);
         setSelectedKey(data.integrations[0]?.key || '');
@@ -946,6 +949,16 @@ export default function IntegracionesPage() {
                   </p>
 
                   <WhatsappEmbeddedSignupButton />
+
+                  {isCoexistencePilot ? (
+                    <a
+                      href="/configuracion/integraciones/whatsapp-coexistencia-prueba"
+                      style={{ display: 'block', padding: '12px 14px', borderRadius: 9,
+                        background: '#edf2fa', color: '#214f9f', fontWeight: 800 }}
+                    >
+                      Diagnóstico independiente de WhatsApp Coexistencia (piloto)
+                    </a>
+                  ) : null}
 
                   {!stagingReadOnly && <>
                   <strong>Conexión manual avanzada</strong>
