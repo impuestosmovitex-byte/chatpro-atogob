@@ -86,5 +86,7 @@ jobs:
         run: node scripts/test-whatsapp-coexistence-pilot-begin.mjs
       - name: Verify Meta return is pilot-only, one-time and read-only
         run: node scripts/test-whatsapp-coexistence-meta-return.mjs
+      - name: Verify Meta coexistence popup has explicit pilot-only security gates
+        run: node scripts/test-whatsapp-coexistence-meta-launch.mjs
       - name: Build web
         run: npm run build
