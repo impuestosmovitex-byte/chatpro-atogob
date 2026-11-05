@@ -55,6 +55,15 @@ por un flujo de Messenger íntegramente gestionado por el servidor y aislado por
 - La función `public.mw1_consume_messenger_oauth_nonce(text,uuid,uuid)`
   realiza consumo atómico y comprueba empresa, usuario, no consumido y no
   vencido. Usa `SECURITY INVOKER` y `search_path` restringido.
+- Nuevo adaptador interno de API `apps/api/src/staging-messenger-oauth-nonce-store.ts`:
+  prepara el vencimiento en el servidor (9 minutos), valida empresa/usuario
+  del piloto y hash SHA-256, guarda exclusivamente el hash y consume una sola
+  vez mediante la función SQL anterior. Se agregaron pruebas Jest con cliente
+  Supabase simulado para registro, rechazo por empresa/usuario, errores de
+  escritura y consumo de nonce reutilizado o inválido.
+  **No se registró en AppModule ni se expuso por endpoints**: la capa futura
+  todavía deberá comprobar la sesión y los permisos en la API antes de llamar
+  este adaptador. No existen llamadas Meta ni manejo de tokens reales.
   Prueba transaccional aprobada: empresa equivocada, usuario equivocado,
   reutilización, autorización caducada y nonce inexistente rechazados;
   un nonce válido solo se consume una vez. La transacción se revirtió y
