@@ -5,12 +5,14 @@ import {
   useState,
 } from 'react';
 
+import { getInstagramDisplayStatus } from '../../lib/instagram-display-status';
 import styles from './page.module.css';
 
 type InstagramConfig = {
   ok?: boolean;
   ready?: boolean;
   authorizationEnabled?: boolean;
+  connectionEnabled?: boolean;
   appId?: string;
   configurationId?: string;
   apiVersion?: string;
@@ -558,18 +560,20 @@ export function InstagramConnectButton({
     }
   }
 
-  const status =
-    integration?.status ||
-    'disconnected';
-
-  const connected =
-    status === 'active';
-
-  const pending =
-    status === 'pending';
-
-  const requiresReconnect =
-    status === 'error';
+  const status = integration?.status || 'disconnected';
+  const isStaging = typeof window !== 'undefined' &&
+    window.location.hostname === 'mw1-web-staging-staging.up.railway.app';
+  const {
+    connected,
+    pending,
+    requiresReconnect,
+    authorizationBlocked,
+  } = getInstagramDisplayStatus({
+    status,
+    isStaging,
+    connectionEnabled: config?.connectionEnabled,
+    authorizationEnabled: config?.authorizationEnabled,
+  });
 
   const hasConnection =
     connected ||
@@ -615,7 +619,9 @@ export function InstagramConnectButton({
             ? 'Instagram pendiente de activación'
             : requiresReconnect
               ? 'Instagram requiere reconexión'
-              : 'Conectar Instagram'}
+              : authorizationBlocked
+                ? 'Instagram aún no habilitado'
+                : 'Conectar Instagram'}
       </strong>
 
       {pending ? (
@@ -814,7 +820,7 @@ export function InstagramConnectButton({
               testing ||
               disconnecting ||
               !config?.ready ||
-              config?.authorizationEnabled === false
+              authorizationBlocked
             }
           >
             {connecting
@@ -864,7 +870,7 @@ export function InstagramConnectButton({
               loading ||
               connecting ||
               !config?.ready ||
-              config?.authorizationEnabled === false
+              authorizationBlocked
             }
           >
             {loading
@@ -877,8 +883,8 @@ export function InstagramConnectButton({
       )}
 
       <small>
-        {config?.authorizationEnabled === false
-          ? config.message || 'El piloto de Instagram está en preparación. No se permiten conexiones todavía.'
+        {authorizationBlocked
+          ? config?.message || 'El piloto de Instagram está en preparación. No se permiten conexiones todavía.'
           : config?.ready
             ? 'La autorización se realiza directamente con Instagram. Las credenciales se procesan y guardan cifradas en el servidor.'
           : config?.message ||
