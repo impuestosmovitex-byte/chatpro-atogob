@@ -32,7 +32,8 @@ export function assertStagingIsolation(env: NodeJS.ProcessEnv = process.env): vo
   // No checkout, payment, or subscription endpoints are enabled here.
   // These two public identifiers are pinned to the isolated Instagram pilot.
   // They cannot authorize requests, access accounts, or send messages alone.
-  // Keep every Instagram app secret and access token forbidden in staging.
+  // The explicit secret gate allows only the pilot app's OAuth secret.
+  // Other Meta credentials (including access tokens) remain forbidden.
   const instagramPilotPublicIds: Record<string, string> = {
     META_INSTAGRAM_APP_ID: '1079916404666757',
     META_INSTAGRAM_UNIFIED_CONFIG_ID: '2371579683591784',
@@ -42,9 +43,26 @@ export function assertStagingIsolation(env: NodeJS.ProcessEnv = process.env): vo
       throw new Error('STAGING BLOCKED: unexpected Instagram pilot identifier.');
     }
   }
+  const instagramSecretAllowed =
+    env.MW1_STAGING_INSTAGRAM_SECRET_ALLOWED === 'true' &&
+    env.META_INSTAGRAM_APP_ID === instagramPilotPublicIds.META_INSTAGRAM_APP_ID &&
+    env.META_INSTAGRAM_UNIFIED_CONFIG_ID === instagramPilotPublicIds.META_INSTAGRAM_UNIFIED_CONFIG_ID &&
+    Boolean(env.CHATPRO_INTEGRATIONS_ENCRYPTION_KEY?.trim());
+
+  // A secret alone never enables login: authorization still requires
+  // all separate pilot feature flags and membership/nonce checks.
+  const permittedExternal = [
+    'MERCADOPAGO_ACCESS_TOKEN',
+    'META_WHATSAPP_APP_ID',
+    'META_WHATSAPP_EMBEDDED_CONFIG_ID',
+    'META_WHATSAPP_APP_SECRET',
+    'META_INSTAGRAM_APP_ID',
+    'META_INSTAGRAM_UNIFIED_CONFIG_ID',
+    ...(instagramSecretAllowed ? ['META_INSTAGRAM_APP_SECRET'] : []),
+  ];
   const forbidden = Object.keys(env).filter((name) =>
     /^(SHOPIFY_|META_|WHATSAPP_|OPENAI_|TIKTOK_|TELEGRAM_|WOMPI_|MERCADOPAGO_|MERCADO_PAGO_)/i.test(name) &&
-    !['MERCADOPAGO_ACCESS_TOKEN', 'META_WHATSAPP_APP_ID', 'META_WHATSAPP_EMBEDDED_CONFIG_ID', 'META_WHATSAPP_APP_SECRET', 'META_INSTAGRAM_APP_ID', 'META_INSTAGRAM_UNIFIED_CONFIG_ID'].includes(name) && Boolean(env[name]?.trim()),
+    !permittedExternal.includes(name) && Boolean(env[name]?.trim()),
   );
   if (forbidden.length) {
     throw new Error('STAGING BLOCKED: external messaging, store or AI credentials are configured.');
