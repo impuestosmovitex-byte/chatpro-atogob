@@ -137,6 +137,34 @@ export class StagingIntegrationsController {
     } catch {
       throw new BadRequestException('Meta rechazó el código de Unified Login.');
     }
+    // Inspect the returned token before trusting or encrypting it. The
+    // app token is held server-side only; no secrets are sent to the browser.
+    try {
+      const debugUrl = new URL(`https://graph.facebook.com/${version}/debug_token`);
+      debugUrl.searchParams.set('input_token', accessToken);
+      const debugResponse = await fetch(debugUrl, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${appId}|${appSecret}` },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15000),
+      });
+      const debug = await debugResponse.json() as {
+        data?: { app_id?: unknown; type?: unknown; is_valid?: unknown; scopes?: unknown };
+      };
+      const info = debug.data;
+      const granted = Array.isArray(info?.scopes) ? info.scopes : [];
+      if (!debugResponse.ok || !info ||
+          String(info.app_id || '') !== appId ||
+          info.is_valid !== true ||
+          info.type !== 'SYSTEM_USER' ||
+          !['instagram_basic', 'instagram_manage_messages'].every(scope => granted.includes(scope))) {
+        throw new Error('unexpected Meta token');
+      }
+    } catch {
+      throw new ForbiddenException(
+        'Meta no confirmó que el token pertenezca al piloto y tenga permisos de Instagram. No se guardó ninguna autorización.',
+      );
+    }
     const graphHeaders = { Authorization: `Bearer ${accessToken}` };
     let clientBusinessId = '';
     let assigned: Array<{ id?: unknown; username?: unknown }> = [];
