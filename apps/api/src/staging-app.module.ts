@@ -9,6 +9,8 @@ import { StagingDemoRequestsController } from './staging-demo-requests.controlle
 import { SupabaseService } from './supabase.service';
 import { StagingInboxController } from './staging-inbox.controller';
 import { StagingIntegrationsController } from './staging-integrations.controller';
+import { StagingWhatsappCoexistencePilotController } from './staging-whatsapp-coexistence-pilot.controller';
+import { StagingWhatsappCoexistenceOAuthHandshakeService } from './staging-whatsapp-coexistence-oauth-handshake.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { StagingWhatsappWebhookController } from './staging-whatsapp-webhook.controller';
 import { UsersController } from './users.controller';
@@ -34,6 +36,7 @@ class StagingHealthController {
     StagingMercadoPagoWebhookController,
     StagingInboxController,
     StagingIntegrationsController,
+    StagingWhatsappCoexistencePilotController,
     StagingWhatsappWebhookController,
     UsersController,
     StagingMyPlanController,
@@ -45,6 +48,7 @@ class StagingHealthController {
     NativeCommerceController,
     StagingSalesAssistantController,
   ],
-  providers: [SupabaseService, IntegrationCredentialsService, AccessAuthService, StagingSalesAssistantService],
+  providers: [SupabaseService, IntegrationCredentialsService, AccessAuthService, StagingSalesAssistantService,
+    StagingWhatsappCoexistenceOAuthHandshakeService],
 })
 export class StagingAppModule {}
