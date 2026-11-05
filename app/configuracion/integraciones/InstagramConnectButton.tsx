@@ -238,7 +238,7 @@ export function InstagramConnectButton({
         expectedState
     ) {
       setMessage(
-        'Instagram regresó una autorización que no coincide con la solicitud iniciada en ChatPro.',
+        'Instagram regresó una autorización que no coincide con la solicitud iniciada en MW1.',
       );
 
       return;
@@ -358,6 +358,10 @@ export function InstagramConnectButton({
       setMessage(config.message || 'Instagram sigue en preparación.');
       return;
     }
+    if (config.loginMode !== 'unified_login' || !config.configurationId) {
+      setMessage('Unified Login no está configurado. No se iniciará el flujo anterior.');
+      return;
+    }
     setMessage('');
     const redirectUri = window.location.origin + '/api/integrations/instagram/callback';
     let state = '';
@@ -377,10 +381,6 @@ export function InstagramConnectButton({
       state = crypto.randomUUID().replace(/-/g, '');
     }
     window.sessionStorage.setItem('chatpro_instagram_oauth_state', state);
-    if (config.loginMode !== 'unified_login' || !config.configurationId) {
-      setMessage('Unified Login no está configurado. No se iniciará el flujo anterior.');
-      return;
-    }
     const oauthUrl = new URL('https://www.facebook.com/dialog/oauth');
     oauthUrl.searchParams.set('client_id', config.appId);
     oauthUrl.searchParams.set('config_id', config.configurationId);
@@ -444,8 +444,8 @@ export function InstagramConnectButton({
           'Conexión correcta',
         detail:
           verifiedUsername
-            ? `Instagram respondió correctamente. @${verifiedUsername} está conectado y disponible para ChatPro.`
-            : 'Instagram respondió correctamente y la conexión está disponible para ChatPro.',
+            ? `Instagram respondió correctamente. @${verifiedUsername} está conectado y disponible para MW1.`
+            : 'Instagram respondió correctamente y la conexión está disponible para MW1.',
         checkedAt:
           new Date()
             .toLocaleString(
@@ -489,7 +489,7 @@ export function InstagramConnectButton({
   async function disconnectInstagram() {
     const confirmed =
       window.confirm(
-        '¿Desconectar Instagram de ChatPro? La cuenta de Instagram no se elimina, pero ChatPro dejará de procesar sus mensajes hasta que la vuelvas a autorizar.',
+        '¿Desconectar Instagram de MW1? La cuenta de Instagram no se elimina, pero MW1 dejará de procesar sus mensajes hasta que la vuelvas a autorizar.',
       );
 
     if (!confirmed) {
@@ -625,7 +625,7 @@ export function InstagramConnectButton({
         <>
           <p>
             {connected
-              ? 'ChatPro verificó la cuenta y las credenciales guardadas con Meta.'
+              ? 'MW1 verificó la cuenta y las credenciales guardadas con Meta.'
               : health?.error ||
                 'La conexión guardada ya no pudo verificarse correctamente con Meta.'}
           </p>
