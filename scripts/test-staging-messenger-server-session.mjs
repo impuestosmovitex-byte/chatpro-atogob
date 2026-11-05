@@ -7,6 +7,7 @@ import {
   getMessengerPilotIdentityFromSessionCookie,
   verifyMessengerPilotCallbackFromServerCookies,
   consumeMessengerPilotCallbackOffline,
+  prepareMessengerPilotStartOffline,
 } from '../app/lib/staging-messenger-oauth-server-session.ts';
 
 const oldSecret=process.env.CHATPRO_INBOX_SESSION_SECRET;
@@ -40,6 +41,24 @@ try {
     const other=await createInboxSessionToken({...session,...change});
     assert.equal(await getMessengerPilotIdentityFromSessionCookie(other),null);
   }
+  let registrations=0;
+  const registered=await prepareMessengerPilotStartOffline(token,async(identity,signed)=>{
+    registrations++;
+    assert.equal(identity.companyId,session.companyId);
+    assert.equal(identity.userId,session.userId);
+    assert.match(signed,/^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/);
+  });
+  assert.equal(typeof registered,'string');
+  assert.equal(registrations,1);
+  assert.equal(await prepareMessengerPilotStartOffline(null,async()=>{registrations++;}),null);
+  assert.equal(await prepareMessengerPilotStartOffline(
+    await createInboxSessionToken({...session,roleKey:'viewer'}),
+    async()=>{registrations++;}
+  ),null);
+  assert.equal(registrations,1,'No register call for unauthorized sessions');
+  assert.equal(await prepareMessengerPilotStartOffline(token,
+    async()=>{throw Error('staging nonce store failed');}),null);
+  assert.equal(await prepareMessengerPilotStartOffline(token,undefined),null);
   const state=createMessengerPilotOAuthState(valid);
   const returned=new URLSearchParams({code:'synthetic-code',state});
   assert.deepEqual(await verifyMessengerPilotCallbackFromServerCookies(token,state,returned),{
