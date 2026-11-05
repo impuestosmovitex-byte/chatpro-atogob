@@ -64,6 +64,15 @@ por un flujo de Messenger íntegramente gestionado por el servidor y aislado por
   **No se registró en AppModule ni se expuso por endpoints**: la capa futura
   todavía deberá comprobar la sesión y los permisos en la API antes de llamar
   este adaptador. No existen llamadas Meta ni manejo de tokens reales.
+- **Verificación adicional implementada** en
+  `apps/api/src/staging-messenger-oauth-authorized-nonce.service.ts`:
+  antes de usar el adaptador, exige clave de servicio interno, fija el destino
+  a Supabase STAGING, comprueba empresa activa por ID y slug, membresía activa
+  del usuario y rol `owner/admin` (global o de esa empresa). Revalida en
+  cada registro y consumo, para rechazar membresías revocadas. Pruebas con
+  Supabase simulado cubren credencial interna incorrecta, otra empresa,
+  usuario sin membresía, rol insuficiente, fallos de lectura y cambio de
+  proyecto. **Sigue sin registrarse en AppModule ni exponerse como ruta pública.**
   Prueba transaccional aprobada: empresa equivocada, usuario equivocado,
   reutilización, autorización caducada y nonce inexistente rechazados;
   un nonce válido solo se consume una vez. La transacción se revirtió y
