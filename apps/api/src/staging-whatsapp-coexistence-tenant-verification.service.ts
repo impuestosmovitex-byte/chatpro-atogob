@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { SupabaseService } from './supabase.service';
 import { StagingWhatsappCoexistenceMetaGraphService } from
@@ -46,6 +47,7 @@ function safeSecretEqual(a: string, b: string): boolean {
   return timingSafeEqual(aa, bb);
 }
 
+@Injectable()
 export class StagingWhatsappCoexistenceTenantVerificationService {
   constructor(
     private readonly supabase: SupabaseService,
