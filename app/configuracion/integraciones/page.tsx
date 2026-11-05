@@ -489,7 +489,7 @@ export default function IntegracionesPage() {
               const item=integrations.find(i=>i.key===channel);
               const active=item?.status==='active'&&item.connectionReady;
               return <span key={channel} style={{background:active?'#e7f5eb':'#f1f5f9',borderRadius:20,padding:'6px 12px',fontSize:13}}>
-                {channel==='whatsapp'?'WhatsApp':channel==='instagram'?'Instagram':'Messenger'}: {loading?'Revisando':active?'Conectado':item?.status==='error'?'Requiere revisión':'Pendiente'}
+                {channel==='whatsapp'?'WhatsApp':channel==='instagram'?'Instagram':'Messenger'}: {loading?'Revisando':active?'Conectado':item?.status==='error'?'Requiere revisión':item?.status==='pending'?'Autorización pendiente':item?.status==='active'?'Sin mensajería activa':'Sin conectar'}
               </span>;
             })}
           </div>
