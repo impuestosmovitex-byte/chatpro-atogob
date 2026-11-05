@@ -56,3 +56,21 @@ export function parseWhatsappSignupCompletion(
     businessId: typeof businessId === 'string' ? businessId : null,
   };
 }
+
+/**
+ * Cross-check a completion against the mode that the operator explicitly
+ * selected before opening Meta. The event alone cannot authorize switching
+ * a conventional signup into a coexistence migration (or the reverse).
+ * This is an offline guard only; real provisioning requires a fresh trusted
+ * server session, a verified Meta OAuth code and a tenant-owned number.
+ */
+export function matchWhatsappSignupMode(
+  completion: WhatsappSignupCompletion | null,
+  requestedMode: WhatsappSignupMode | null | undefined,
+): WhatsappSignupCompletion | null {
+  if (!completion || !requestedMode || completion.mode !== requestedMode) return null;
+  // Coexistence must identify a concrete phone; never guess an existing
+  // WhatsApp Business App number from a WABA alone.
+  if (requestedMode === 'coexistence' && !completion.phoneNumberId) return null;
+  return completion;
+}
