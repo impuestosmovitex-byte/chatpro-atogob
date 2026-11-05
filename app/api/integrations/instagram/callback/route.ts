@@ -9,6 +9,18 @@ import { verifyInstagramOAuthState } from '../../../../lib/instagram-oauth-state
 export const dynamic =
   'force-dynamic';
 
+// A rejected staging authorization cannot be resumed with its old cookie.
+// Keep the cookie path identical to the one used by the OAuth begin route.
+function rejectStagingReturn(response: NextResponse): NextResponse {
+  response.headers.set('Cache-Control', 'no-store, private');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  response.cookies.set('mw1_ig_oauth_state', '', {
+    httpOnly: true, secure: true, sameSite: 'lax',
+    maxAge: 0, path: '/api/integrations/instagram',
+  });
+  return response;
+}
+
 export async function GET(
   request: NextRequest,
 ) {
@@ -73,9 +85,7 @@ export async function GET(
       const denied = NextResponse.redirect(
         new URL('/configuracion/integraciones?instagram_error=Autorizacion%20de%20Instagram%20no%20valida', publicOrigin),
       );
-      denied.headers.set('Cache-Control', 'no-store, private');
-      denied.headers.set('Referrer-Policy', 'no-referrer');
-      return denied;
+      return rejectStagingReturn(denied);
     }
   }
 
@@ -87,18 +97,17 @@ export async function GET(
         publicOrigin,
       ),
     );
-    denied.headers.set('Cache-Control', 'no-store, private');
-    denied.headers.set('Referrer-Policy', 'no-referrer');
-    return denied;
+    return isStaging ? rejectStagingReturn(denied) : denied;
   }
 
   if (!code) {
-    return NextResponse.redirect(
+    const denied = NextResponse.redirect(
       new URL(
         '/configuracion/integraciones?instagram_error=Meta no devolvió el código de autorización.',
         publicOrigin,
       ),
     );
+    return isStaging ? rejectStagingReturn(denied) : denied;
   }
 
   const response = NextResponse.redirect(
