@@ -70,9 +70,17 @@ export async function consumeMessengerPilotCallbackOffline(
       typeof consume !== 'function') {
     return { valid: false, reason: 'invalid_state' };
   }
-  const parsed = await verifyMessengerPilotCallbackFromServerCookies(
-    sessionCookie, oauthStateCookie, params,
-  );
+  // Reuse the same verified identity for both callback validation and nonce
+  // consumption. Never re-read a potentially changing session mid-operation.
+  if (oauthStateCookie.length > 2048 || !(params instanceof URLSearchParams)) {
+    return { valid: false, reason: 'invalid_state' };
+  }
+  let parsed: MessengerPilotCallback;
+  try {
+    parsed = parseMessengerPilotCallback(params, identity, oauthStateCookie);
+  } catch {
+    return { valid: false, reason: 'invalid_state' };
+  }
   if (!parsed.valid) return parsed;
   try {
     await consume(identity, parsed.state, oauthStateCookie);
