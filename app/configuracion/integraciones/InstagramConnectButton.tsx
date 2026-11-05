@@ -75,6 +75,15 @@ export function InstagramConnectButton({
   ] =
     useState(true);
 
+  // Avoid reading browser-only location during the server render.
+  const [isStaging, setIsStaging] = useState(false);
+
+  useEffect(() => {
+    setIsStaging(
+      window.location.hostname === 'mw1-web-staging-staging.up.railway.app',
+    );
+  }, []);
+
   const [
     connecting,
     setConnecting,
@@ -561,8 +570,7 @@ export function InstagramConnectButton({
   }
 
   const status = integration?.status || 'disconnected';
-  const isStaging = typeof window !== 'undefined' &&
-    window.location.hostname === 'mw1-web-staging-staging.up.railway.app';
+
   const {
     connected,
     pending,
@@ -627,9 +635,11 @@ export function InstagramConnectButton({
       {pending ? (
         <>
           <p>
-            {username
-              ? `Instagram @${username} está autorizado, pero la recepción de mensajes todavía está deshabilitada.`
-              : 'La cuenta de Instagram está pendiente de activación. Todavía no recibe mensajes.'}
+            {status === 'active' && isStaging
+              ? 'MW1 no tiene la mensajería de Instagram habilitada en este entorno de prueba.'
+              : username
+                ? `Instagram @${username} está autorizado, pero la recepción de mensajes todavía está deshabilitada.`
+                : 'La cuenta de Instagram está pendiente de activación. Todavía no recibe mensajes.'}
           </p>
           <small>
             La activación debe realizarse después de las verificaciones de seguridad.
