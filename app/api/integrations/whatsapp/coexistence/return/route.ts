@@ -19,6 +19,7 @@ const COOKIE='__Host-mw1-wa-coexistence-state';
 export async function POST(request:NextRequest){
   if(request.nextUrl.hostname!==HOST||
       process.env.MW1_STAGING_MODE!=='true'||
+      process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED!=='true'||
       process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED!=='true'||
       process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED!=='true'){
     return NextResponse.json({ok:false,error:'Retorno de piloto no habilitado.'},
