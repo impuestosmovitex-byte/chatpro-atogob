@@ -78,7 +78,8 @@ describe('staging integration catalog and isolation',()=>{
   expect(reads).toEqual(['companies']);
  });
  test('embedded completion is unavailable even to valid owners',async()=>{
-  await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/aún no está habilitado/);
+  await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba',
+    {signupEvent:'FINISH'})).rejects.toThrow(/aún no está habilitado/);
   expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
  });
  test('embedded completion remains gated without explicit pilot flag',async()=>{
@@ -86,15 +87,25 @@ describe('staging integration catalog and isolation',()=>{
   delete process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
   try {
     await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba',
-      {code:'invalid',wabaId:'123456789'})).rejects.toThrow(/aún no está habilitado/);
+      {signupEvent:'FINISH',code:'invalid',wabaId:'123456789'})).rejects.toThrow(/aún no está habilitado/);
   } finally {
     if(before===undefined) delete process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
     else process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED=before;
   }
  });
  test('embedded completion rejects unidentified callers without database access',async()=>{
-  await expect(controller.embeddedComplete('wrong',ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/Sesión requerida/);
+  await expect(controller.embeddedComplete('wrong',ownerId,companyId,'piloto-mw1-prueba',
+    {signupEvent:'FINISH'})).rejects.toThrow(/Sesión requerida/);
   expect(reads).toEqual([]);
+ });
+ test('rejects coexistence and missing signup mode before any lookup',async()=>{
+  for(const signupEvent of [undefined,'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING']) {
+   reads=[];
+   await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba',
+     {signupEvent,code:'synthetic-code'}))
+     .rejects.toThrow(/flujo separado de coexistencia/);
+   expect(reads).toEqual([]);
+  }
  });
  test('preflight rejects malformed phone IDs before integration lookup',async()=>{
   await expect(withWhatsappPilot(()=>controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'bad'}))).rejects.toThrow(/no válido/);
