@@ -60,6 +60,8 @@ jobs:
         run: node --experimental-strip-types scripts/test-staging-messenger-disabled.mjs
       - name: Test Messenger pilot signed OAuth state and callback (offline)
         run: node --experimental-strip-types scripts/test-staging-messenger-oauth-protocol.mjs
+      - name: Check signed server sessions for Messenger pilot (offline)
+        run: node --experimental-strip-types scripts/test-staging-messenger-server-session.mjs
       - name: Verify web and API Messenger state compatibility (offline)
         run: node --experimental-strip-types scripts/test-staging-messenger-state-parity.mjs
       - name: Validate fail-closed Instagram connection labels (offline)
