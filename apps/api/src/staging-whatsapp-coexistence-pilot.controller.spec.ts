@@ -31,7 +31,12 @@ describe('Pilot-only WhatsApp coexistence OAuth begin route (staging)',()=>{
     process.env.META_WHATSAPP_EMBEDDED_CONFIG_ID='1431168516739052';
     issue.mockReset().mockResolvedValue({signedState:nonce,onboardingId:onboarding});
     ctrl=new StagingWhatsappCoexistencePilotController(
-      {issue} as unknown as StagingWhatsappCoexistenceOAuthHandshakeService);
+      {issue} as unknown as StagingWhatsappCoexistenceOAuthHandshakeService,
+      {exchange:jest.fn(),resolveSinglePhone:jest.fn()} as unknown as
+        ConstructorParameters<typeof StagingWhatsappCoexistencePilotController>[1],
+      {verify:jest.fn()} as unknown as
+        ConstructorParameters<typeof StagingWhatsappCoexistencePilotController>[2],
+    );
   });
 
   it('allows only the staging pilot to inspect readiness',()=>{
