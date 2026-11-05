@@ -1,10 +1,10 @@
-import { getInboxSession } from './inbox-auth';
+import { getInboxSession } from './inbox-auth.ts';
 import {
   getMessengerPilotIdentity,
   parseMessengerPilotCallback,
   type MessengerPilotCallback,
   type MessengerPilotIdentity,
-} from './staging-messenger-oauth-protocol';
+} from './staging-messenger-oauth-protocol.ts';
 
 /**
  * SERVER-ONLY, OFFLINE preparation for future Messenger OAuth routes.
