@@ -48,12 +48,18 @@ export class StagingWhatsappCoexistencePilotController {
       (process.env.MW1_WHATSAPP_COEXISTENCE_OAUTH_STATE_SECRET?.length || 0) >= 32 &&
       process.env.META_WHATSAPP_APP_ID?.trim() === '1079916404666757' &&
       process.env.META_WHATSAPP_EMBEDDED_CONFIG_ID?.trim() === '1431168516739052';
+    const metaLaunchReady = prepared &&
+      process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED === 'true' &&
+      process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED === 'true' &&
+      (process.env.META_WHATSAPP_APP_SECRET?.trim().length || 0) >= 10;
     return {
-      ok:true,beginReady:prepared,metaLaunchEnabled:false,
-      codeExchangeEnabled:false,connectionEnabled:false,
-      message:prepared
-        ? 'Inicio seguro del piloto preparado. La autorización real de Meta sigue deshabilitada.'
-        : 'Falta habilitar y validar exclusivamente el inicio OAuth de staging.',
+      ok:true,beginReady:prepared,metaLaunchEnabled:metaLaunchReady,
+      codeExchangeEnabled:metaLaunchReady,connectionEnabled:false,
+      message:metaLaunchReady
+        ? 'El inicio de Meta está preparado exclusivamente para el piloto. No se activarán números automáticamente.'
+        : prepared
+          ? 'El estado temporal está preparado. La autorización de Meta requiere validación adicional.'
+          : 'Falta habilitar y validar exclusivamente el inicio OAuth de staging.',
     };
   }
 
@@ -105,7 +111,8 @@ export class StagingWhatsappCoexistencePilotController {
     } = {},
   ) {
     const actor=this.authorize(key,userId,companyId,slug);
-    if (process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED!=='true' ||
+    if (process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED!=='true' ||
+        process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED!=='true' ||
         process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED!=='true') {
       throw new ServiceUnavailableException('El retorno seguro del piloto no está habilitado.');
     }
