@@ -23,6 +23,7 @@ describe('staging integration catalog and isolation',()=>{
    const query={
     select:(_columns:string)=>query,
     eq:(field:string,value:unknown)=>{filters[field]=value;return query;},
+    order:(_field:string,_options:{ascending:boolean})=>query,
     limit:async()=>{
      const row=rows[table];
      const found=row&&Object.entries(filters).every(([k,v])=>row[k]===v);
@@ -47,7 +48,7 @@ describe('staging integration catalog and isolation',()=>{
   expect(result.integrations.map(x=>x.key)).toEqual(['whatsapp','shopify','instagram','messenger','meta-ads']);
   expect(result.integrations.every(x=>x.status==='disconnected'&&!x.connectionReady)).toBe(true);
   expect(JSON.stringify(result)).not.toMatch(/accessToken|credentials_encrypted|api_secret/);
-  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+  expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
  });
  test('rejects other tenant without reading integration records',async()=>{
   await expect(controller.list(key,ownerId,'another-company','piloto-mw1-prueba')).rejects.toThrow();
@@ -59,7 +60,7 @@ describe('staging integration catalog and isolation',()=>{
   expect(result.ready).toBe(false);
   expect(result.connectionEnabled).toBe(false);
   expect(result.company.slug).toBe('piloto-mw1-prueba');
-  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+  expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
  });
  test('embedded config rejects cross-tenant identity',async()=>{
   await expect(controller.embeddedConfig(key,ownerId,'another-company','piloto-mw1-prueba')).rejects.toThrow();
@@ -67,7 +68,7 @@ describe('staging integration catalog and isolation',()=>{
  });
  test('embedded completion is unavailable even to valid owners',async()=>{
   await expect(controller.embeddedComplete(key,ownerId,companyId,'piloto-mw1-prueba')).rejects.toThrow(/aún no está habilitado/);
-  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+  expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
  });
  test('embedded completion remains gated without explicit pilot flag',async()=>{
   const before=process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
@@ -86,7 +87,7 @@ describe('staging integration catalog and isolation',()=>{
  });
  test('preflight rejects malformed phone IDs before integration lookup',async()=>{
   await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'bad'})).rejects.toThrow(/no válido/);
-  expect(reads).toEqual(['companies','company_memberships','app_roles']);
+  expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
  });
  test('preflight rejects cross-tenant access without integration lookup',async()=>{
   await expect(controller.embeddedPreflight(key,ownerId,'other-company','piloto-mw1-prueba',{phoneNumberId:'123456789'})).rejects.toThrow();
@@ -96,7 +97,7 @@ describe('staging integration catalog and isolation',()=>{
   const res=await controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'});
   expect(res.connectionEnabled).toBe(false);
   expect(res.numberAvailable).toBe(true);
-  expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
+  expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations','company_integrations']);
  });
  test('preflight blocks a number already assigned to another company',async()=>{
   rows.company_integrations={company_id:'another-tenant',provider:'meta',integration_type:'whatsapp',external_id:'123456789'};
