@@ -6,7 +6,8 @@ import { StagingWhatsappCoexistenceTenantVerificationService } from './staging-w
 describe('isolated Meta OAuth return (synthetic values only)',()=>{
   const keys=['MW1_STAGING_MODE','SUPABASE_URL','CHATPRO_INBOX_KEY',
     'MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED',
-    'MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED'] as const;
+    'MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED',
+    'MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED'] as const;
   const saved=new Map<string,string|undefined>();
   const internalKey='SYNTHETIC_MW1_INTERNAL_KEY';
   const userId='11111111-1111-4111-8111-111111111111';
@@ -42,6 +43,7 @@ describe('isolated Meta OAuth return (synthetic values only)',()=>{
     process.env.CHATPRO_INBOX_KEY=internalKey;
     process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED='true';
     process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED='true';
+    process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED='true';
     consume.mockReset().mockResolvedValue({onboardingId});
     exchange.mockReset().mockResolvedValue(token);
     resolveSinglePhone.mockReset().mockResolvedValue(phone);
@@ -87,6 +89,12 @@ describe('isolated Meta OAuth return (synthetic values only)',()=>{
   });
   it('refuses a disabled Meta reviewer before any OAuth action',async()=>{
     process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED='false';
+    await expect(call()).rejects.toThrow();
+    expect(consume).not.toHaveBeenCalled();
+    expect(exchange).not.toHaveBeenCalled();
+  });
+  it('refuses a launch flag that is not explicitly enabled',async()=>{
+    process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED='false';
     await expect(call()).rejects.toThrow();
     expect(consume).not.toHaveBeenCalled();
     expect(exchange).not.toHaveBeenCalled();
