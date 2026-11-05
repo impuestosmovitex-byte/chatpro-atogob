@@ -387,6 +387,8 @@ export function InstagramConnectButton({
     oauthUrl.searchParams.set('redirect_uri', redirectUri);
     oauthUrl.searchParams.set('response_type', 'code');
     oauthUrl.searchParams.set('override_default_response_type', 'true');
+    // Ensure the Instagram option is offered even for Facebook-authenticated browsers.
+    oauthUrl.searchParams.set('prompt', 'login');
     oauthUrl.searchParams.set('state', state);
     window.location.assign(oauthUrl.toString());
   }
