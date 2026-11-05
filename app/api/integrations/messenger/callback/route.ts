@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { isMessengerDisabledInStaging } from '../../../../lib/staging-messenger-gate';
+
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  // In staging, never forward an OAuth code or provider error details.
+  // Use a fixed destination, not caller-controlled forwarded headers.
+  if (isMessengerDisabledInStaging(request.nextUrl.hostname)) {
+    const destination = new URL(
+      '/configuracion/integraciones',
+      'https://mw1-web-staging-staging.up.railway.app',
+    );
+    destination.searchParams.set(
+      'messenger_error',
+      'La autorización de Messenger todavía no está habilitada en MW1 staging.',
+    );
+    const denied = NextResponse.redirect(destination);
+    denied.headers.set('Cache-Control', 'no-store, private');
+    denied.headers.set('Referrer-Policy', 'no-referrer');
+    return denied;
+  }
+
   const url = new URL(request.url);
 
   const forwardedHost =

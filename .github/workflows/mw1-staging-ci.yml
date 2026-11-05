@@ -56,6 +56,8 @@ jobs:
         run: node scripts/test-mw1-staging-inbox-unavailable.cjs
       - name: Verify business login and isolated platform access
         run: node scripts/test-mw1-login-separation.cjs
+      - name: Verify disabled Messenger OAuth in staging (offline)
+        run: node --experimental-strip-types scripts/test-staging-messenger-disabled.mjs
       - name: Validate fail-closed Instagram connection labels (offline)
         run: node --experimental-strip-types scripts/test-instagram-display-status.mjs
       - name: Verify signed Instagram OAuth state (offline)

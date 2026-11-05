@@ -4,6 +4,8 @@ import {
   INBOX_SESSION_COOKIE,
 } from '../../../../lib/inbox-auth';
 
+import { isMessengerDisabledInStaging } from '../../../../lib/staging-messenger-gate';
+
 export const dynamic = 'force-dynamic';
 
 function canManage(
@@ -42,6 +44,21 @@ export async function GET(request: NextRequest) {
           'No tienes permiso para administrar integraciones.',
       },
       { status: 403 },
+    );
+  }
+
+  // Messenger onboarding is intentionally unavailable in isolated staging.
+  // Do not call legacy API endpoints or expose tokens to the web client.
+  if (isMessengerDisabledInStaging(request.nextUrl.hostname)) {
+    return NextResponse.json(
+      {
+        ok: true,
+        ready: false,
+        authorizationEnabled: false,
+        connectionEnabled: false,
+        message: 'Messenger todavía no está habilitado en MW1 staging. No se autorizan páginas ni se reciben mensajes.',
+      },
+      { headers: { 'Cache-Control': 'no-store' } },
     );
   }
 

@@ -93,10 +93,9 @@ export function MessengerConnectButton() {
   }, []);
 
   useEffect(() => {
-    if (
-      !config?.ready ||
-      typeof window === 'undefined'
-    ) {
+    // Remove OAuth codes from the browser address even if Messenger was
+    // disabled while Meta redirected. Never retain a staging callback code.
+    if (!config || typeof window === 'undefined') {
       return;
     }
 
@@ -109,7 +108,7 @@ export function MessengerConnectButton() {
     const oauthError =
       url.searchParams.get('messenger_error')?.trim() || '';
 
-    if (!code && !oauthError) {
+    if (!code && !oauthError && !returnedState) {
       return;
     }
 
@@ -123,7 +122,14 @@ export function MessengerConnectButton() {
       `${url.pathname}${url.search}${url.hash}`,
     );
 
+    if (!config.ready) {
+      window.sessionStorage.removeItem('chatpro_messenger_oauth_state');
+      setMessage(config.message || 'Messenger todavía no está habilitado.');
+      return;
+    }
+
     if (oauthError) {
+      window.sessionStorage.removeItem('chatpro_messenger_oauth_state');
       setMessage(oauthError);
       return;
     }
@@ -143,7 +149,7 @@ export function MessengerConnectButton() {
       returnedState !== expectedState
     ) {
       setMessage(
-        'Meta regresó una autorización que no coincide con la solicitud iniciada en ChatPro.',
+        'Meta regresó una autorización que no coincide con la solicitud iniciada en MW1.',
       );
       return;
     }
@@ -424,7 +430,7 @@ export function MessengerConnectButton() {
         Autoriza tu cuenta de Meta y
         selecciona la Página de Facebook
         cuyos mensajes quieres administrar
-        desde ChatPro.
+        desde MW1.
       </p>
 
       {!pages.length ? (
@@ -516,7 +522,7 @@ export function MessengerConnectButton() {
 
       <small>
         {config?.ready
-          ? 'Meta abrirá su ventana oficial de autorización. ChatPro no mostrará el token guardado.'
+          ? 'Meta abrirá su ventana oficial de autorización. MW1 no mostrará el token guardado.'
           : config?.message ||
             (config?.missing?.length
               ? `Falta configurar: ${config.missing.join(', ')}`
