@@ -188,6 +188,9 @@ export function WhatsappEmbeddedSignupButton() {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        // This endpoint is for the conventional FINISH only. The separate
+        // coexistence event is stopped earlier in the Meta message listener.
+        signupEvent: 'FINISH',
         code,
         wabaId: session.wabaId,
         phoneNumberId: session.phoneNumberId || '',
