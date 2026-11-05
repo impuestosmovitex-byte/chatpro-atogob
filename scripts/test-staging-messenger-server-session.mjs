@@ -46,7 +46,7 @@ try {
     registrations++;
     assert.equal(identity.companyId,session.companyId);
     assert.equal(identity.userId,session.userId);
-    assert.match(signed,/^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/);
+    assert.match(signed,/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
   });
   assert.equal(typeof registered,'string');
   assert.equal(registrations,1);
