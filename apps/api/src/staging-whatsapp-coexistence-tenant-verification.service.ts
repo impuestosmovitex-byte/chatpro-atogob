@@ -65,8 +65,8 @@ export class StagingWhatsappCoexistenceTenantVerificationService {
         /[\r\n\u0000]/.test(input.accessToken)) {
       return { readyForLaterProvisioningReview: false, reason: 'invalid_input' };
     }
-    const db = this.supabase.getClient();
     try {
+      const db = this.supabase.getClient();
       const { data: company, error: companyError } = await db.from('companies')
         .select('id,slug,status').eq('id', input.companyId)
         .eq('slug', PILOT).maybeSingle();
