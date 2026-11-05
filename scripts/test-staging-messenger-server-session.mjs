@@ -6,6 +6,7 @@ import {
 import {
   getMessengerPilotIdentityFromSessionCookie,
   verifyMessengerPilotCallbackFromServerCookies,
+  consumeMessengerPilotCallbackOffline,
 } from '../app/lib/staging-messenger-oauth-server-session.ts';
 
 const oldSecret=process.env.CHATPRO_INBOX_SESSION_SECRET;
@@ -53,6 +54,41 @@ try {
   assert.deepEqual(await verifyMessengerPilotCallbackFromServerCookies(token,state,
     new URLSearchParams({state,error:'access_denied',error_description:'DO_NOT_ECHO_SECRET'})),{
     valid:false,reason:'provider_denied',
+  });
+  const spent=new Set();
+  let attempts=0;
+  const atomicConsume=async(identity,signedState,cookie)=>{
+    attempts++;
+    assert.equal(identity.companyId,session.companyId);
+    assert.equal(identity.userId,session.userId);
+    assert.equal(cookie,state);
+    if(spent.has(signedState))throw Error('replayed');
+    spent.add(signedState);
+  };
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,state,returned,atomicConsume),{
+    valid:true,code:'synthetic-code',state,
+  });
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,state,returned,atomicConsume),{
+    valid:false,reason:'invalid_state',
+  });
+  assert.equal(attempts,2);
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,'wrong',returned,atomicConsume),{
+    valid:false,reason:'invalid_state',
+  });
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(null,state,returned,atomicConsume),{
+    valid:false,reason:'invalid_state',
+  });
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,state,
+    new URLSearchParams({state,error:'access_denied'}),atomicConsume),{
+    valid:false,reason:'provider_denied',
+  });
+  assert.equal(attempts,2,'Rejected callbacks must never consume a nonce');
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,state,returned,
+    async()=>{throw Error('database unavailable')}),{
+    valid:false,reason:'invalid_state',
+  });
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,state,returned,undefined),{
+    valid:false,reason:'invalid_state',
   });
   const duplicate=new URLSearchParams([['code','one'],['code','two'],['state',state]]);
   assert.deepEqual(await verifyMessengerPilotCallbackFromServerCookies(token,state,duplicate),{
