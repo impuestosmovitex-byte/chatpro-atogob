@@ -179,7 +179,6 @@ export class StagingIntegrationsController {
     if (checkError || existing) {
       throw new ForbiddenException('La cuenta ya está registrada o no pudo verificarse.');
     }
-    const expires = Number(longData.expires_in);
     const { error: saveError } = await db.from('company_integrations').insert({
       company_id: companyId,
       provider: 'meta',
