@@ -206,10 +206,31 @@ export class StagingIntegrationsController {
       throw new BadRequestException('Selecciona exactamente una cuenta profesional de Instagram durante la autorización.');
     }
     const externalId = assigned[0].id;
-    const username = typeof assigned[0].username === 'string'
-      ? assigned[0].username.trim() : null;
+    let username = typeof assigned[0].username === 'string'
+      ? assigned[0].username.trim() : '';
+    // Meta may return the shared asset ID without username. Query only that
+    // exact authorized ID; never use a search or a different account as fallback.
+    if (!username) {
+      try {
+        const profileUrl = new URL(`https://graph.facebook.com/${version}/${externalId}`);
+        profileUrl.searchParams.set('fields', 'id,username');
+        const profileResponse = await fetch(profileUrl, {
+          headers: graphHeaders, cache: 'no-store', signal: AbortSignal.timeout(15000),
+        });
+        const profile = await profileResponse.json() as { id?: unknown; username?: unknown };
+        if (!profileResponse.ok || String(profile.id || '') !== externalId ||
+            typeof profile.username !== 'string') {
+          throw new Error('Instagram account verification failed');
+        }
+        username = profile.username.trim();
+      } catch {
+        throw new ForbiddenException(
+          'Meta no permitió verificar el usuario de la cuenta de Instagram autorizada. No se guardó ninguna conexión.',
+        );
+      }
+    }
     // The first staging pilot must only authorize the dedicated test account.
-    if (username?.toLowerCase() !== 'chatpro_mw1') {
+    if (username.toLowerCase() !== 'chatpro_mw1') {
       throw new ForbiddenException(
         'Este piloto solo acepta la cuenta de pruebas @chatpro_mw1; no se guardó ninguna autorización.',
       );
