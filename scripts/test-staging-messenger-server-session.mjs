@@ -59,6 +59,11 @@ try {
   assert.equal(await prepareMessengerPilotStartOffline(token,
     async()=>{throw Error('staging nonce store failed');}),null);
   assert.equal(await prepareMessengerPilotStartOffline(token,undefined),null);
+  assert.equal(await prepareMessengerPilotStartOffline(token,async()=>false),null);
+  assert.equal(await prepareMessengerPilotStartOffline(token,async()=>null),null);
+  const explicitlyRegistered=await prepareMessengerPilotStartOffline(token,async()=>true);
+  assert.equal(typeof explicitlyRegistered,'string');
+
   const state=createMessengerPilotOAuthState(valid);
   const returned=new URLSearchParams({code:'synthetic-code',state});
   assert.deepEqual(await verifyMessengerPilotCallbackFromServerCookies(token,state,returned),{
@@ -120,6 +125,13 @@ try {
   assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,state,returned,undefined),{
     valid:false,reason:'invalid_state',
   });
+  for(const deniedValue of [false,null,'unexpected']) {
+    assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,state,returned,
+      async()=>deniedValue),{valid:false,reason:'invalid_state'});
+  }
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,state,returned,
+    async()=>true),{valid:true,code:'synthetic-code',state});
+
   const duplicate=new URLSearchParams([['code','one'],['code','two'],['state',state]]);
   assert.deepEqual(await verifyMessengerPilotCallbackFromServerCookies(token,state,duplicate),{
     valid:false,reason:'invalid_parameters',
