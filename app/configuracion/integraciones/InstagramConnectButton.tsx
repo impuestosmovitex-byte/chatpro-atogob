@@ -19,6 +19,13 @@ type InstagramConfig = {
   scopes?: string[];
   loginMode?: string;
   missing?: string[];
+  diagnostics?: {
+    apiReady?: boolean;
+    apiAuthorizationEnabled?: boolean;
+    webStateSecretReady?: boolean;
+    webAuthorizationEnabled?: boolean;
+    callbackRegisteredInMeta?: string;
+  };
   error?: string;
   message?: string;
 };
@@ -77,6 +84,7 @@ export function InstagramConnectButton({
 
   // Avoid reading browser-only location during the server render.
   const [isStaging, setIsStaging] = useState(false);
+  const [showOnboardingDiagnostics, setShowOnboardingDiagnostics] = useState(false);
 
   useEffect(() => {
     setIsStaging(
@@ -905,6 +913,30 @@ export function InstagramConnectButton({
                 : 'Instagram todavía no está configurado.'
             )}
       </small>
+
+      {isStaging && !hasConnection ? (
+        <div style={{marginTop: 12}}>
+          <button type="button" className={styles.testButton}
+            onClick={() => setShowOnboardingDiagnostics(value => !value)}>
+            {showOnboardingDiagnostics ? 'Ocultar diagnóstico' : 'Diagnosticar conexión de Instagram'}
+          </button>
+          {showOnboardingDiagnostics ? (
+            <div role="status" style={{marginTop: 10, padding: 12, borderRadius: 10,
+              border: '1px solid #d7deeb', background: '#f6f8fc', display: 'grid', gap: 6}}>
+              <strong>Diagnóstico seguro del piloto</strong>
+              <small>API preparada: {config?.diagnostics?.apiReady === true ? 'Sí' : 'No confirmado'}</small>
+              <small>Autorización API: {config?.diagnostics?.apiAuthorizationEnabled === true ? 'Habilitada' : 'Bloqueada o no confirmada'}</small>
+              <small>Firma OAuth web: {config?.diagnostics?.webStateSecretReady === true ? 'Preparada' : 'Falta verificar'}</small>
+              <small>Autorización web: {config?.diagnostics?.webAuthorizationEnabled === true ? 'Habilitada' : 'No habilitada'}</small>
+              {config?.missing?.length ? (
+                <small>Requisitos pendientes: {config.missing.join(', ')}</small>
+              ) : null}
+              <small>Meta (callback y permisos): comprobación independiente; este diagnóstico no abre OAuth ni genera tokens.</small>
+              <small>La habilitación del piloto requiere el procedimiento de seguridad autorizado.</small>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {message ? (
         <p>{message}</p>
