@@ -110,46 +110,68 @@ export class StagingIntegrationsController {
     if (!appId || !appSecret) {
       throw new ForbiddenException('Falta configurar la aplicación de Instagram.');
     }
-    // Only Instagram Login endpoints; no subscribed_apps or webhook changes.
-    const exchangeBody = new URLSearchParams({
-      client_id: appId, client_secret: appSecret,
-      grant_type: 'authorization_code', redirect_uri: expectedRedirect, code,
-    });
-    const shortResponse = await fetch('https://api.instagram.com/oauth/access_token', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: exchangeBody.toString(),
-    });
-    const shortData = await shortResponse.json().catch(() => ({})) as Record<string, unknown>;
-    const shortToken = typeof shortData.access_token === 'string' ? shortData.access_token : '';
-    if (!shortResponse.ok || shortToken.length < 20) {
-      throw new BadRequestException('Instagram rechazó el código de autorización.');
-    }
-    const longUrl = new URL('https://graph.instagram.com/access_token');
-    longUrl.searchParams.set('grant_type', 'ig_exchange_token');
-    longUrl.searchParams.set('client_secret', appSecret);
-    longUrl.searchParams.set('access_token', shortToken);
-    const longResponse = await fetch(longUrl);
-    const longData = await longResponse.json().catch(() => ({})) as Record<string, unknown>;
-    const accessToken = typeof longData.access_token === 'string' ? longData.access_token : '';
-    if (!longResponse.ok || accessToken.length < 20) {
-      throw new BadRequestException('Instagram no permitió extender la autorización.');
+    // Business Integration System User Token via Meta Unified Login.
+    // Never log credentials or subscribe webhooks during OAuth.
+    if (appId !== '1079916404666757' ||
+        process.env.META_INSTAGRAM_UNIFIED_CONFIG_ID?.trim() !== '2371579683591784') {
+      throw new ForbiddenException('La configuración de Unified Login no corresponde al piloto.');
     }
     const version = (process.env.META_INSTAGRAM_API_VERSION || 'v26.0').trim();
     if (!/^v[0-9]+\.[0-9]+$/.test(version)) {
       throw new BadRequestException('Versión de la API de Meta no válida.');
     }
-    const profileUrl = new URL('https://graph.instagram.com/' + version + '/me');
-    profileUrl.searchParams.set('fields', 'id,user_id,username,name,account_type');
-    profileUrl.searchParams.set('access_token', accessToken);
-    const profileResponse = await fetch(profileUrl);
-    const profile = await profileResponse.json().catch(() => ({})) as Record<string, unknown>;
-    const externalId = String(profile.user_id || '').trim();
-    const accountType = String(profile.account_type || '').toUpperCase();
-    if (!profileResponse.ok || !/^[0-9]+$/.test(externalId) ||
-        !['BUSINESS','CREATOR','MEDIA_CREATOR'].includes(accountType)) {
-      throw new BadRequestException('Instagram requiere una cuenta profesional válida.');
+    const tokenUrl = new URL(`https://graph.facebook.com/${version}/oauth/access_token`);
+    tokenUrl.searchParams.set('client_id', appId);
+    tokenUrl.searchParams.set('client_secret', appSecret);
+    tokenUrl.searchParams.set('redirect_uri', expectedRedirect);
+    tokenUrl.searchParams.set('code', code);
+    let accessToken = '';
+    try {
+      const response = await fetch(tokenUrl, {
+        method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(15000),
+      });
+      const payload = await response.json() as { access_token?: unknown };
+      if (!response.ok || typeof payload.access_token !== 'string' ||
+          payload.access_token.length < 20) throw new Error('exchange failed');
+      accessToken = payload.access_token;
+    } catch {
+      throw new BadRequestException('Meta rechazó el código de Unified Login.');
     }
+    const graphHeaders = { Authorization: `Bearer ${accessToken}` };
+    let clientBusinessId = '';
+    let assigned: Array<{ id?: unknown; username?: unknown }> = [];
+    try {
+      const identityUrl = new URL(`https://graph.facebook.com/${version}/me`);
+      identityUrl.searchParams.set('fields', 'client_business_id');
+      const identityResponse = await fetch(identityUrl, {
+        headers: graphHeaders, cache: 'no-store', signal: AbortSignal.timeout(15000),
+      });
+      const identity = await identityResponse.json() as { client_business_id?: unknown };
+      if (!identityResponse.ok) throw new Error('business lookup failed');
+      clientBusinessId = typeof identity.client_business_id === 'string'
+        ? identity.client_business_id : '';
+      const accountsUrl = new URL(`https://graph.facebook.com/${version}/me/assigned_instagram_accounts`);
+      accountsUrl.searchParams.set('fields', 'id,username');
+      accountsUrl.searchParams.set('limit', '100');
+      const accountsResponse = await fetch(accountsUrl, {
+        headers: graphHeaders, cache: 'no-store', signal: AbortSignal.timeout(15000),
+      });
+      const accounts = await accountsResponse.json() as { data?: unknown; paging?: unknown };
+      if (!accountsResponse.ok || !Array.isArray(accounts.data) || accounts.paging) {
+        throw new Error('account lookup failed or paginated');
+      }
+      assigned = accounts.data;
+    } catch {
+      throw new BadRequestException('No se pudieron verificar los activos de Instagram autorizados.');
+    }
+    // Never guess which account was granted: pilot authorization accepts only one.
+    if (assigned.length !== 1 || typeof assigned[0]?.id !== 'string' ||
+        !/^[0-9]+$/.test(assigned[0].id)) {
+      throw new BadRequestException('Selecciona exactamente una cuenta profesional de Instagram durante la autorización.');
+    }
+    const externalId = assigned[0].id;
+    const username = typeof assigned[0].username === 'string'
+      ? assigned[0].username : null;
     const db = this.supabase.getClient();
     const { data: existing, error: checkError } = await db.from('company_integrations')
       .select('id').eq('provider', 'meta').eq('integration_type', 'instagram')
@@ -165,23 +187,23 @@ export class StagingIntegrationsController {
       external_id: externalId,
       status: 'pending',
       config: {
-        setup_source: 'mw1_staging_instagram_login',
+        setup_source: 'mw1_staging_unified_login',
         api_version: version,
-        username: typeof profile.username === 'string' ? profile.username : null,
-        account_type: accountType,
-        token_expires_at: Number.isFinite(expires) && expires > 0
-          ? new Date(Date.now() + expires * 1000).toISOString() : null,
+        username,
+        account_type: 'PROFESSIONAL',
+        client_business_id: clientBusinessId || null,
+        token_expires_at: null,
         webhooks_subscribed: false,
       },
       credential_mode: 'encrypted',
-      credential_reference: { token_format: 'instagram_user_access_token' },
+      credential_reference: { token_format: 'business_integration_system_user_access_token' },
       credentials_encrypted: this.credentials.encrypt({ access_token: accessToken }),
     });
     if (saveError) throw new ForbiddenException('No se pudo guardar la cuenta pendiente.');
     return {
       ok: true, pending: true, connectionEnabled: false,
       message: 'Cuenta validada y guardada como pendiente. No se activaron mensajes.',
-      instagram: { username: typeof profile.username === 'string' ? profile.username : null },
+      instagram: { username },
     };
   }
 
