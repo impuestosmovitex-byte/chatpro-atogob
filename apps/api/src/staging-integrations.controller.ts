@@ -157,7 +157,10 @@ export class StagingIntegrationsController {
         headers: graphHeaders, cache: 'no-store', signal: AbortSignal.timeout(15000),
       });
       const accounts = await accountsResponse.json() as { data?: unknown; paging?: unknown };
-      if (!accountsResponse.ok || !Array.isArray(accounts.data) || accounts.paging) {
+      const nextPage = accounts.paging && typeof accounts.paging === 'object' &&
+        'next' in accounts.paging && typeof accounts.paging.next === 'string'
+        ? accounts.paging.next : null;
+      if (!accountsResponse.ok || !Array.isArray(accounts.data) || nextPage) {
         throw new Error('account lookup failed or paginated');
       }
       assigned = accounts.data;
