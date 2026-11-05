@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 /**
  * STAGING ONLY: read-only Meta Graph WABA ownership check.
  * Not registered with Nest's AppModule or exposed as an HTTP route.
@@ -47,6 +48,7 @@ export function reviewWhatsappBusinessOwnerEvidence(
   return {verified:true,wabaId:expectedWabaId,ownerBusinessId:ownerId};
 }
 
+@Injectable()
 export class StagingWhatsappCoexistenceBusinessOwnerService{
   constructor(private readonly request:typeof fetch=fetch){}
   async verify(params:{
