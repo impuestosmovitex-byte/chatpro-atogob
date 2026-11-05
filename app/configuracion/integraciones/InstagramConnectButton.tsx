@@ -12,6 +12,7 @@ type InstagramConfig = {
   ready?: boolean;
   authorizationEnabled?: boolean;
   appId?: string;
+  configurationId?: string;
   apiVersion?: string;
   scopes?: string[];
   loginMode?: string;
@@ -376,13 +377,17 @@ export function InstagramConnectButton({
       state = crypto.randomUUID().replace(/-/g, '');
     }
     window.sessionStorage.setItem('chatpro_instagram_oauth_state', state);
-    const oauthUrl = new URL('https://www.instagram.com/oauth/authorize');
+    if (config.loginMode !== 'unified_login' || !config.configurationId) {
+      setMessage('Unified Login no está configurado. No se iniciará el flujo anterior.');
+      return;
+    }
+    const oauthUrl = new URL('https://www.facebook.com/dialog/oauth');
     oauthUrl.searchParams.set('client_id', config.appId);
+    oauthUrl.searchParams.set('config_id', config.configurationId);
     oauthUrl.searchParams.set('redirect_uri', redirectUri);
-    oauthUrl.searchParams.set('scope', config.scopes?.join(',') || '');
     oauthUrl.searchParams.set('response_type', 'code');
     oauthUrl.searchParams.set('state', state);
-    oauthUrl.searchParams.set('force_reauth', 'true');
+    oauthUrl.searchParams.set('prompt', 'login');
     window.location.assign(oauthUrl.toString());
   }
 
