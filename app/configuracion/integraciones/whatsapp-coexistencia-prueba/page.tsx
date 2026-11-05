@@ -31,8 +31,13 @@ export default async function WhatsappCoexistenciaPruebaPage() {
     session.companySlug === 'piloto-mw1-prueba' &&
     ['owner', 'admin'].includes(session.roleKey.trim().toLowerCase());
   const stagingModeReady = process.env.MW1_STAGING_MODE === 'true';
-  const stagingApiReady = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '') ===
-    'https://mw1-api-staging-staging.up.railway.app';
+  // Railway staging reaches the API through its private network. Accept only
+  // the dedicated staging API endpoints, never arbitrary or production URLs.
+  const configuredApi = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '') || '';
+  const stagingApiReady = [
+    'http://mw1-api-staging.railway.internal:8080',
+    'https://mw1-api-staging-staging.up.railway.app',
+  ].includes(configuredApi);
 
   if (!pilotAdmin || !stagingModeReady || !stagingApiReady) {
     // This is an ACCESS-DENIED view, never a relaxed authorization path.
