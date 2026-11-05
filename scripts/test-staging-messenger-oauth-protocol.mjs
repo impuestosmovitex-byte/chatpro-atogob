@@ -14,9 +14,9 @@ const instant=1800000000000;
 const validSession = {
   type: 'user',
   roleKey: 'owner',
-  companyId: 'offline-company',
+  companyId: '11111111-1111-4111-8111-111111111111',
   companySlug: MESSENGER_PILOT_SLUG,
-  userId: 'offline-admin',
+  userId: '22222222-2222-4222-8222-222222222222',
   expiresAt: instant + 60 * 60 * 1000,
 };
 try {
@@ -27,10 +27,13 @@ try {
   assert.ok(getMessengerPilotIdentity({ ...validSession, roleKey: 'ADMIN' }));
   for(const edit of [
     {type:'bootstrap'}, {type:'platform'}, {roleKey:'viewer'},
-    {companySlug:'another-company'}, {companyId:''},{userId:null},
+    {companySlug:'another-company'}, {companyId:''}, {companyId:'not-a-uuid'},
+    {userId:null}, {userId:'not-a-uuid'},
     {expiresAt:instant-1},
   ]) assert.equal(getMessengerPilotIdentity({...validSession,...edit}),null);
 
+  assert.throws(()=>createMessengerPilotOAuthState({...owner, companyId:'invalid'}),/Identidad/);
+  assert.throws(()=>createMessengerPilotOAuthState({...owner, userId:'invalid'}),/Identidad/);
   const state=createMessengerPilotOAuthState(owner);
   const another=createMessengerPilotOAuthState(owner);
   assert.notEqual(state,another,'State must use a fresh nonce');
@@ -39,8 +42,8 @@ try {
   assert.equal(verified?.provider,'messenger');
   assert.equal(verified?.v,1);
   assert.match(verified?.nonce??'',/^[A-Za-z0-9_-]{32}$/);
-  assert.equal(verifyMessengerPilotOAuthState(state,{...owner,userId:'other-user'}),null);
-  assert.equal(verifyMessengerPilotOAuthState(state,{...owner,companyId:'other-company'}),null);
+  assert.equal(verifyMessengerPilotOAuthState(state,{...owner,userId:'33333333-3333-4333-8333-333333333333'}),null);
+  assert.equal(verifyMessengerPilotOAuthState(state,{...owner,companyId:'44444444-4444-4444-8444-444444444444'}),null);
   assert.equal(verifyMessengerPilotOAuthState(state+'extra',owner),null);
   assert.equal(verifyMessengerPilotOAuthState(state+'.bad',owner),null);
   assert.equal(verifyMessengerPilotOAuthState('x'.repeat(2049),owner),null);
