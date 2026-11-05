@@ -70,5 +70,7 @@ jobs:
         run: node --experimental-strip-types scripts/test-instagram-oauth-state.mjs
       - name: Validate Instagram OAuth callback parameters (offline)
         run: node --experimental-strip-types scripts/test-staging-instagram-callback.mjs
+      - name: Verify WhatsApp coexistence completion parsing (offline)
+        run: node --experimental-strip-types scripts/test-whatsapp-coexistence-completion.mjs
       - name: Build web
         run: npm run build
