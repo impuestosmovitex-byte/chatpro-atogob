@@ -23,6 +23,6 @@ export function getInstagramDisplayStatus({
     connected,
     pending,
     requiresReconnect: status === 'error',
-    authorizationBlocked: isStaging && authorizationEnabled !== true,
+    authorizationBlocked: isStaging ? authorizationEnabled !== true : authorizationEnabled === false,
   };
 }
