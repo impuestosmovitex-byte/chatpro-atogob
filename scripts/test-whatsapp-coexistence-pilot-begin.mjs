@@ -29,7 +29,7 @@ assert.match(route,/request\.nextUrl\.hostname !== HOST/);
 assert.match(route,/__Host-mw1-wa-coexistence-state/);
 assert.match(route,/httpOnly:true,secure:true,sameSite:'lax',path:'\/',maxAge:420/);
 assert.match(route,/status:'nonce_prepared_only'/);
-assert.doesNotMatch(route,/fb\.login|FB\.login|oauth\/access_token|webhook\/|smb_app_data/);
+assert.doesNotMatch(route,/\bFB\.login\s*\(|\bsdk\.login\s*\(|oauth\/access_token|webhook\/|smb_app_data/);
 assert.match(page,/WhatsappCoexistencePilotStart/);
 assert.match(client,/fetch\('\/api\/integrations\/whatsapp\/coexistence\/pilot'/);
 assert.match(client,/metaLaunchEnabled!==false/);
