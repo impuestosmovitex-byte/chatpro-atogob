@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseWhatsappSignupCompletion, matchWhatsappSignupMode } from '../app/lib/whatsapp-coexistence-completion.ts';
+import { parseWhatsappSignupCompletion, matchWhatsappSignupMode, prepareWhatsappCoexistenceVerification } from '../app/lib/whatsapp-coexistence-completion.ts';
 import { buildWhatsappSignupLaunchOptions } from '../app/lib/whatsapp-coexistence-launch.ts';
 
 const origin='https://www.facebook.com';
@@ -47,6 +47,28 @@ assert.equal(matchWhatsappSignupMode(
   parseWhatsappSignupCompletion(origin,message('FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING',
     {waba_id:payload.waba_id})), 'coexistence'),null,
   'Coexistence cannot guess a WhatsApp Business App phone number');
+const wabaOnlyMetaCompletion=parseWhatsappSignupCompletion(
+  origin,message('FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING',
+    {waba_id:payload.waba_id}));
+assert.deepEqual(prepareWhatsappCoexistenceVerification(
+  wabaOnlyMetaCompletion,'coexistence'),{
+  status:'requires_meta_phone_verification',
+  wabaIdHint:payload.waba_id,phoneNumberIdHint:null,
+});
+assert.equal(matchWhatsappSignupMode(wabaOnlyMetaCompletion,'coexistence'),null,
+  'A WABA-only completion is not verified enough for provisioning');
+assert.deepEqual(prepareWhatsappCoexistenceVerification(
+  coexistence,'coexistence'),{
+  status:'requires_meta_phone_verification',wabaIdHint:payload.waba_id,
+  phoneNumberIdHint:payload.phone_number_id,
+});
+assert.equal(prepareWhatsappCoexistenceVerification(
+  conventional,'coexistence'),null,'Conventional FINISH cannot become coexistence');
+assert.equal(prepareWhatsappCoexistenceVerification(
+  wabaOnlyMetaCompletion,undefined),null,
+  'A user must explicitly select coexistence before a Meta review');
+assert.equal(prepareWhatsappCoexistenceVerification(
+  null,'coexistence'),null);
 const normalOptions=buildWhatsappSignupLaunchOptions('123456789','cloud_api');
 assert.deepEqual(normalOptions,{
   config_id:'123456789',response_type:'code',
