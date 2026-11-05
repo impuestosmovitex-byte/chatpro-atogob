@@ -1,6 +1,8 @@
 import { getInboxSession } from './inbox-auth';
 import {
   getMessengerPilotIdentity,
+  parseMessengerPilotCallback,
+  type MessengerPilotCallback,
   type MessengerPilotIdentity,
 } from './staging-messenger-oauth-protocol';
 
@@ -23,5 +25,29 @@ export async function getMessengerPilotIdentityFromSessionCookie(
     return getMessengerPilotIdentity(session);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Future server callback preflight, not a route or token-exchange mechanism.
+ * The caller must extract both cookie values from the incoming HTTP request,
+ * never from a request body, and must atomically consume the nonce before
+ * exchanging any code. Reject returns contain no provider-controlled text.
+ */
+export async function verifyMessengerPilotCallbackFromServerCookies(
+  sessionCookie: string | null | undefined,
+  oauthStateCookie: string | null | undefined,
+  params: URLSearchParams,
+): Promise<MessengerPilotCallback> {
+  const identity = await getMessengerPilotIdentityFromSessionCookie(sessionCookie);
+  if (!identity || typeof oauthStateCookie !== 'string' ||
+      !oauthStateCookie || oauthStateCookie.length > 2048 ||
+      !(params instanceof URLSearchParams)) {
+    return { valid: false, reason: 'invalid_state' };
+  }
+  try {
+    return parseMessengerPilotCallback(params, identity, oauthStateCookie);
+  } catch {
+    return { valid: false, reason: 'invalid_state' };
   }
 }
