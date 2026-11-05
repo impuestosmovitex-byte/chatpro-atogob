@@ -1,6 +1,10 @@
 import { Controller, ForbiddenException, Get, Headers, Post, Query, ServiceUnavailableException } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { StagingWhatsappCoexistenceOAuthHandshakeService } from './staging-whatsapp-coexistence-oauth-handshake.service';
+import { Body } from '@nestjs/common';
+import { StagingWhatsappCoexistenceBrowserHandoffService } from './staging-whatsapp-coexistence-browser-handoff.service';
+import { StagingWhatsappCoexistenceMetaCodeExchangeService } from './staging-whatsapp-coexistence-meta-code-exchange.service';
+import { StagingWhatsappCoexistenceTenantVerificationService } from './staging-whatsapp-coexistence-tenant-verification.service';
 
 /**
  * STAGING ONLY. A real server-to-server entry point for the isolated pilot
@@ -10,7 +14,11 @@ import { StagingWhatsappCoexistenceOAuthHandshakeService } from './staging-whats
  */
 @Controller('integrations/whatsapp/coexistence/pilot')
 export class StagingWhatsappCoexistencePilotController {
-  constructor(private readonly handshake: StagingWhatsappCoexistenceOAuthHandshakeService) {}
+  constructor(
+    private readonly handshake: StagingWhatsappCoexistenceOAuthHandshakeService,
+    private readonly exchange: StagingWhatsappCoexistenceMetaCodeExchangeService,
+    private readonly tenant: StagingWhatsappCoexistenceTenantVerificationService,
+  ) {}
 
   private authorize(key: string, userId: string, companyId: string, slug: string) {
     const expected = process.env.CHATPRO_INBOX_KEY?.trim() || '';
@@ -74,5 +82,65 @@ export class StagingWhatsappCoexistencePilotController {
     } catch {
       throw new ForbiddenException('No se pudo autorizar el inicio OAuth del piloto.');
     }
+  }
+
+
+  /**
+   * Receives a Meta SDK code and a coexistence-only session hint only AFTER
+   * authenticated Next.js checked the signed pilot user and HttpOnly cookie.
+   * A valid response still performs NO provisioning or token persistence.
+   */
+  @Post('review')
+  async review(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+    @Body() body: {
+      signedState?: unknown;
+      trustedHttpOnlyCookieState?: unknown;
+      metaMessageOrigin?: unknown;
+      metaMessageJson?: unknown;
+      sdkLoginResponse?: unknown;
+    } = {},
+  ) {
+    const actor=this.authorize(key,userId,companyId,slug);
+    if (process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED!=='true' ||
+        process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED!=='true') {
+      throw new ServiceUnavailableException('El retorno seguro del piloto no está habilitado.');
+    }
+    const handoff=new StagingWhatsappCoexistenceBrowserHandoffService(
+      this.handshake,async request=>{
+        const token=await this.exchange.exchange(request.code);
+        if(!token)return {exchangedAndReviewed:false};
+        const phone=request.phoneNumberIdHint ||
+          await this.exchange.resolveSinglePhone(request.wabaIdHint,token);
+        if(!phone)return {exchangedAndReviewed:false};
+        // The independent tenant review enforces the saved pilot business
+        // binding, active membership, WABA scopes, true coexistence phone
+        // and absence of ANY existing integration assignment.
+        const check=await this.tenant.verify({
+          ...actor,onboardingId:request.onboardingId,
+          wabaId:request.wabaIdHint,phoneNumberId:phone,
+          accessToken:token,
+        });
+        return {exchangedAndReviewed:check.readyForLaterProvisioningReview};
+      },
+    );
+    const result=await handoff.inspectBrowserReturn({
+      trustedActor:actor,selectedMode:'coexistence',
+      signedState:body?.signedState,
+      trustedHttpOnlyCookieState:body?.trustedHttpOnlyCookieState,
+      metaMessageOrigin:body?.metaMessageOrigin,
+      metaMessageJson:body?.metaMessageJson,
+      sdkLoginResponse:body?.sdkLoginResponse,
+    });
+    return {
+      ok:result.status==='requires_independent_meta_owner_and_phone_review',
+      status:result.status,
+      // Even positive review never activates WhatsApp or syncs history.
+      connectionEnabled:false,codeStored:false,
+      webhookEnabled:false,historySyncEnabled:false,
+    };
   }
 }
