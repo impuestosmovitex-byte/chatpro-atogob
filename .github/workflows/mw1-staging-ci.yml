@@ -84,5 +84,7 @@ jobs:
         run: node scripts/test-whatsapp-coexistence-pilot-page.mjs
       - name: Verify staging-only WhatsApp coexistence nonce begin bridge and cookie safety
         run: node scripts/test-whatsapp-coexistence-pilot-begin.mjs
+      - name: Verify Meta return is pilot-only, one-time and read-only
+        run: node scripts/test-whatsapp-coexistence-meta-return.mjs
       - name: Build web
         run: npm run build
