@@ -55,10 +55,14 @@ class StagingHealthController {
   ],
   providers: [SupabaseService, IntegrationCredentialsService, AccessAuthService, StagingSalesAssistantService,
     StagingWhatsappCoexistenceOAuthHandshakeService,
-    StagingWhatsappCoexistenceMetaCodeExchangeService,
-    StagingWhatsappCoexistenceMetaTokenReviewService,
-    StagingWhatsappCoexistenceMetaGraphService,
-    StagingWhatsappCoexistenceBusinessOwnerService,
+    {provide:StagingWhatsappCoexistenceMetaCodeExchangeService,
+      useFactory:()=>new StagingWhatsappCoexistenceMetaCodeExchangeService()},
+    {provide:StagingWhatsappCoexistenceMetaTokenReviewService,
+      useFactory:()=>new StagingWhatsappCoexistenceMetaTokenReviewService()},
+    {provide:StagingWhatsappCoexistenceMetaGraphService,
+      useFactory:()=>new StagingWhatsappCoexistenceMetaGraphService()},
+    {provide:StagingWhatsappCoexistenceBusinessOwnerService,
+      useFactory:()=>new StagingWhatsappCoexistenceBusinessOwnerService()},
     StagingWhatsappCoexistenceTenantVerificationService],
 })
 export class StagingAppModule {}
