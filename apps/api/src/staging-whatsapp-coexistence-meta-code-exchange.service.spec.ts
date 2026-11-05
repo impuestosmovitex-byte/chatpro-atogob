@@ -4,6 +4,7 @@ describe('server-only WhatsApp Meta OAuth exchange (all mocked)',()=>{
   const keys=[
     'MW1_STAGING_MODE','SUPABASE_URL',
     'MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED',
+    'MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED',
     'MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED',
     'META_WHATSAPP_APP_ID','META_WHATSAPP_EMBEDDED_CONFIG_ID',
     'META_WHATSAPP_APP_SECRET',
@@ -21,6 +22,7 @@ describe('server-only WhatsApp Meta OAuth exchange (all mocked)',()=>{
     process.env.MW1_STAGING_MODE='true';
     process.env.SUPABASE_URL='https://zqfbxqszfnrbwpfukwak.supabase.co';
     process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED='true';
+    process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED='true';
     process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED='true';
     process.env.META_WHATSAPP_APP_ID='1079916404666757';
     process.env.META_WHATSAPP_EMBEDDED_CONFIG_ID='1431168516739052';
@@ -45,6 +47,7 @@ describe('server-only WhatsApp Meta OAuth exchange (all mocked)',()=>{
   });
   it.each([
     ['pilot flag off','MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED','false'],
+    ['popup flag off','MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED','false'],
     ['begin flag off','MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED','false'],
     ['not staging','MW1_STAGING_MODE','false'],
     ['production database','SUPABASE_URL','https://production.example.supabase.co'],
