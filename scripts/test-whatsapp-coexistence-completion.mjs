@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseWhatsappSignupCompletion } from '../app/lib/whatsapp-coexistence-completion.ts';
+import { parseWhatsappSignupCompletion, matchWhatsappSignupMode } from '../app/lib/whatsapp-coexistence-completion.ts';
 
 const origin='https://www.facebook.com';
 const message=(event, data)=>JSON.stringify({
@@ -31,4 +31,19 @@ for(const bad of [
   '{invalid', 'x'.repeat(10001),
 ]) assert.equal(parseWhatsappSignupCompletion(origin,bad),null);
 assert.equal(parseWhatsappSignupCompletion(origin,{type:'WA_EMBEDDED_SIGNUP'}),null);
+const coexistence=parseWhatsappSignupCompletion(
+  origin,message('FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING',payload));
+const conventional=parseWhatsappSignupCompletion(origin,message('FINISH',payload));
+assert.deepEqual(matchWhatsappSignupMode(coexistence,'coexistence'),coexistence);
+assert.deepEqual(matchWhatsappSignupMode(conventional,'cloud_api'),conventional);
+assert.equal(matchWhatsappSignupMode(coexistence,'cloud_api'),null,
+  'A coexistence event must not silently become a conventional signup');
+assert.equal(matchWhatsappSignupMode(conventional,'coexistence'),null,
+  'A conventional event must not silently become a phone migration');
+assert.equal(matchWhatsappSignupMode(coexistence,undefined),null,
+  'No implied opt-in to coexistence without explicit selection');
+assert.equal(matchWhatsappSignupMode(
+  parseWhatsappSignupCompletion(origin,message('FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING',
+    {waba_id:payload.waba_id})), 'coexistence'),null,
+  'Coexistence cannot guess a WhatsApp Business App phone number');
 console.log('WhatsApp coexistence completion parser: isolated offline mode separation and input validation passed.');
