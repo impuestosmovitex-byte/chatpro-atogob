@@ -168,13 +168,24 @@ export class StagingIntegrationsController {
       throw new BadRequestException('No se pudieron verificar los activos de Instagram autorizados.');
     }
     // Never guess which account was granted: pilot authorization accepts only one.
+    if (assigned.length === 0) {
+      throw new BadRequestException(
+        'Meta no devolvió cuentas de Instagram asignadas. Comprueba que la cuenta sea profesional y pertenezca al portafolio seleccionado; no se guardó ninguna autorización.',
+      );
+    }
     if (assigned.length !== 1 || typeof assigned[0]?.id !== 'string' ||
         !/^[0-9]+$/.test(assigned[0].id)) {
       throw new BadRequestException('Selecciona exactamente una cuenta profesional de Instagram durante la autorización.');
     }
     const externalId = assigned[0].id;
     const username = typeof assigned[0].username === 'string'
-      ? assigned[0].username : null;
+      ? assigned[0].username.trim() : null;
+    // The first staging pilot must only authorize the dedicated test account.
+    if (username?.toLowerCase() !== 'chatpro_mw1') {
+      throw new ForbiddenException(
+        'Este piloto solo acepta la cuenta de pruebas @chatpro_mw1; no se guardó ninguna autorización.',
+      );
+    }
     const db = this.supabase.getClient();
     const { data: existing, error: checkError } = await db.from('company_integrations')
       .select('id').eq('provider', 'meta').eq('integration_type', 'instagram')
