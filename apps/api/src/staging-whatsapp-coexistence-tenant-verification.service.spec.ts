@@ -3,6 +3,8 @@ import { StagingWhatsappCoexistenceMetaGraphService } from
   './staging-whatsapp-coexistence-meta-graph.service';
 import { StagingWhatsappCoexistenceMetaTokenReviewService } from
   './staging-whatsapp-coexistence-meta-token-review.service';
+import { StagingWhatsappCoexistenceBusinessOwnerService } from
+  './staging-whatsapp-coexistence-business-owner.service';
 import {
   StagingWhatsappCoexistenceTenantVerificationService,
   type PilotCoexistenceVerificationInput,
@@ -12,10 +14,12 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
   const companyId = '11111111-1111-4111-8111-111111111111';
   const userId = '22222222-2222-4222-8222-222222222222';
   const roleId = '33333333-3333-4333-8333-333333333333';
+  const onboardingId = '55555555-5555-4555-8555-555555555555';
+  const businessId = '666666666666666';
   const input: PilotCoexistenceVerificationInput = {
     internalKey: 'SYNTHETIC-INTERNAL-KEY-ONLY',
     companySlug: 'piloto-mw1-prueba',
-    companyId, userId,
+    companyId, userId, onboardingId,
     wabaId: '123456789012345',
     phoneNumberId: '987654321098765',
     accessToken: 'SYNTHETIC_META_TOKEN_NOT_REAL_1234567890',
@@ -26,6 +30,7 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
   const getClient = jest.fn();
   const metaVerify = jest.fn();
   const tokenReview = jest.fn();
+  const ownerVerify = jest.fn();
   let service: StagingWhatsappCoexistenceTenantVerificationService;
   const env = ['MW1_STAGING_MODE','SUPABASE_URL','CHATPRO_INBOX_KEY'] as const;
   const original = new Map<string,string | undefined>();
@@ -51,11 +56,19 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
     process.env.MW1_STAGING_MODE = 'true';
     process.env.SUPABASE_URL = 'https://zqfbxqszfnrbwpfukwak.supabase.co';
     process.env.CHATPRO_INBOX_KEY = input.internalKey;
+    for (const key of Object.keys(fixtures)) delete fixtures[key];
+    const verifiedAt = new Date(Date.now()-60*1000).toISOString();
+    const expiresAt = new Date(Date.now()+25*60*1000).toISOString();
     Object.assign(fixtures,{
       companies:{data:{id:companyId,slug:'piloto-mw1-prueba',status:'active'},error:null},
       company_memberships:{data:{role_id:roleId,active:true},error:null},
       app_roles:{data:{key:'owner',company_id:companyId},error:null},
       company_integrations:{data:[],error:null},
+      mw1_whatsapp_coexistence_business_bindings:{data:{
+        company_id:companyId,waba_id:input.wabaId,meta_business_id:businessId,
+        verified_by_user_id:userId,onboarding_id:onboardingId,
+        verification_state:'verified',verified_at:verifiedAt,expires_at:expiresAt,
+      },error:null},
     });
     from.mockReset();
     getClient.mockReset().mockReturnValue({from});
@@ -65,11 +78,15 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
     tokenReview.mockReset().mockResolvedValue({
       reviewed:true,wabaId:input.wabaId,appId:'123456789012345',
     });
+    ownerVerify.mockReset().mockResolvedValue({
+      verified:true,wabaId:input.wabaId,ownerBusinessId:businessId,
+    });
     setupDb();
     service = new StagingWhatsappCoexistenceTenantVerificationService(
       {getClient} as unknown as SupabaseService,
       {verify:metaVerify} as unknown as StagingWhatsappCoexistenceMetaGraphService,
       {review:tokenReview} as unknown as StagingWhatsappCoexistenceMetaTokenReviewService,
+      {verify:ownerVerify} as unknown as StagingWhatsappCoexistenceBusinessOwnerService,
     );
   });
 
@@ -82,9 +99,14 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
     });
     expect(from.mock.calls.map(call=>call[0])).toEqual([
       'companies','company_memberships','app_roles','company_integrations',
+      'mw1_whatsapp_coexistence_business_bindings',
     ]);
     expect(tokenReview).toHaveBeenCalledTimes(1);
     expect(tokenReview).toHaveBeenCalledWith(input.accessToken,input.wabaId);
+    expect(ownerVerify).toHaveBeenCalledTimes(1);
+    expect(ownerVerify).toHaveBeenCalledWith({
+      wabaId:input.wabaId,expectedBusinessId:businessId,accessToken:input.accessToken,
+    });
     expect(metaVerify).toHaveBeenCalledTimes(1);
     expect(metaVerify).toHaveBeenCalledWith({
       wabaId:input.wabaId,phoneNumberId:input.phoneNumberId,
@@ -107,6 +129,7 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
     [{companySlug:'atogob'},'invalid_input'],
     [{companyId:'bad'},'invalid_input'],
     [{userId:'not-a-uuid'},'invalid_input'],
+    [{onboardingId:'invalid'},'invalid_input'],
     [{wabaId:'not-numeric'},'invalid_input'],
     [{phoneNumberId:'invalid'},'invalid_input'],
     [{accessToken:'too-short'},'invalid_input'],
@@ -165,6 +188,60 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
     const result = await service.verify(input);
     expect(result).toEqual(blocked('meta_verification_failed'));
     expect(JSON.stringify(result)).not.toContain('PRIVATE_META_TOKEN');
+  });
+
+  it('denies missing approved business binding before any Meta request',async()=>{
+    fixtures.mw1_whatsapp_coexistence_business_bindings = {data:null,error:null};
+    await expect(service.verify(input)).resolves.toEqual(blocked('business_binding_missing'));
+    expect(tokenReview).not.toHaveBeenCalled();
+    expect(ownerVerify).not.toHaveBeenCalled();
+    expect(metaVerify).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{company_id:'77777777-7777-4777-8777-777777777777'},'business_binding_missing'],
+    [{waba_id:'123123123123123'},'business_binding_missing'],
+    [{meta_business_id:'bad'},'business_binding_missing'],
+    [{verified_by_user_id:'77777777-7777-4777-8777-777777777777'},'business_binding_missing'],
+    [{onboarding_id:'77777777-7777-4777-8777-777777777777'},'business_binding_missing'],
+    [{verification_state:'pending'},'business_binding_missing'],
+    [{expires_at:new Date(Date.now()-1000).toISOString()},'business_binding_expired'],
+    [{verified_at:new Date(Date.now()+60*1000).toISOString()},'business_binding_expired'],
+  ])('requires a fresh binding for the correct owner and session (%s)',async(patch,reason)=>{
+    const existing=fixtures.mw1_whatsapp_coexistence_business_bindings.data as Record<string,unknown>;
+    fixtures.mw1_whatsapp_coexistence_business_bindings={data:{...existing,...patch},error:null};
+    await expect(service.verify(input)).resolves.toEqual(blocked(reason));
+    expect(tokenReview).not.toHaveBeenCalled();
+    expect(ownerVerify).not.toHaveBeenCalled();
+    expect(metaVerify).not.toHaveBeenCalled();
+  });
+
+  it('does not consult Graph if the binding cannot be read',async()=>{
+    fixtures.mw1_whatsapp_coexistence_business_bindings={
+      data:null,error:{message:'PRIVATE_DATABASE_DETAILS'},
+    };
+    const res=await service.verify(input);
+    expect(res).toEqual(blocked('database_unavailable'));
+    expect(JSON.stringify(res)).not.toContain('PRIVATE_DATABASE_DETAILS');
+    expect(tokenReview).not.toHaveBeenCalled();
+  });
+
+  it('rejects a Meta WABA owned by another portfolio even with valid token scopes',async()=>{
+    ownerVerify.mockResolvedValue({verified:false,reason:'owner_mismatch'});
+    await expect(service.verify(input)).resolves.toEqual(blocked('meta_business_owner_unconfirmed'));
+    expect(tokenReview).toHaveBeenCalledTimes(1);
+    expect(ownerVerify).toHaveBeenCalledTimes(1);
+    expect(metaVerify).not.toHaveBeenCalled();
+  });
+
+  it('rejects mismatching owner proof or exceptions without calling phone lookup',async()=>{
+    ownerVerify.mockResolvedValue({
+      verified:true,wabaId:input.wabaId,ownerBusinessId:'111111111111111',
+    });
+    await expect(service.verify(input)).resolves.toEqual(blocked('meta_business_owner_unconfirmed'));
+    ownerVerify.mockRejectedValue(Error('PRIVATE_META_ERROR'));
+    await expect(service.verify(input)).resolves.toEqual(blocked('meta_business_owner_unconfirmed'));
+    expect(metaVerify).not.toHaveBeenCalled();
   });
 
   it('does not query the Meta phone without a valid app/WABA token grant',async()=>{
