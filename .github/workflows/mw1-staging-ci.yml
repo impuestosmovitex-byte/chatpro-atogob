@@ -58,5 +58,7 @@ jobs:
         run: node scripts/test-mw1-login-separation.cjs
       - name: Verify signed Instagram OAuth state (offline)
         run: node --experimental-strip-types scripts/test-instagram-oauth-state.mjs
+      - name: Validate Instagram OAuth callback parameters (offline)
+        run: node --experimental-strip-types scripts/test-staging-instagram-callback.mjs
       - name: Build web
         run: npm run build
