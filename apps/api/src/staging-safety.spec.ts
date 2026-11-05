@@ -28,6 +28,59 @@ describe('assertStagingIsolation', () => {
       META_WHATSAPP_ACCESS_TOKEN: 'must-not-be-present',
     })).toThrow(/external messaging/);
   });
+  it('accepts only the pinned public Instagram pilot identifiers', () => {
+    expect(() => assertStagingIsolation({
+      ...valid,
+      META_INSTAGRAM_APP_ID: '1079916404666757',
+      META_INSTAGRAM_UNIFIED_CONFIG_ID: '2371579683591784',
+    })).not.toThrow();
+    expect(() => assertStagingIsolation({
+      ...valid,
+      META_INSTAGRAM_APP_ID: 'unexpected-app',
+      META_INSTAGRAM_UNIFIED_CONFIG_ID: '2371579683591784',
+    })).toThrow(/unexpected Instagram pilot identifier/);
+    expect(() => assertStagingIsolation({
+      ...valid,
+      META_INSTAGRAM_APP_ID: '1079916404666757',
+      META_INSTAGRAM_UNIFIED_CONFIG_ID: 'unexpected-configuration',
+    })).toThrow(/unexpected Instagram pilot identifier/);
+  });
+  it('rejects an Instagram secret without explicit pilot safety prerequisites', () => {
+    const instagram = {
+      ...valid,
+      META_INSTAGRAM_APP_ID: '1079916404666757',
+      META_INSTAGRAM_UNIFIED_CONFIG_ID: '2371579683591784',
+      META_INSTAGRAM_APP_SECRET: 'STAGING_FIXTURE_NOT_A_REAL_META_SECRET',
+      CHATPRO_INTEGRATIONS_ENCRYPTION_KEY: 'STAGING_FIXTURE_ENCRYPTION_KEY',
+    };
+    expect(() => assertStagingIsolation(instagram)).toThrow(/external messaging/);
+    expect(() => assertStagingIsolation({
+      ...instagram,
+      MW1_STAGING_INSTAGRAM_SECRET_ALLOWED: 'true',
+      CHATPRO_INTEGRATIONS_ENCRYPTION_KEY: '',
+    })).toThrow(/external messaging/);
+    expect(() => assertStagingIsolation({
+      ...instagram, MW1_STAGING_INSTAGRAM_SECRET_ALLOWED: 'true',
+    })).not.toThrow();
+  });
+  it('still rejects Instagram and other provider tokens with the pilot secret allowed', () => {
+    const permitted = {
+      ...valid,
+      META_INSTAGRAM_APP_ID: '1079916404666757',
+      META_INSTAGRAM_UNIFIED_CONFIG_ID: '2371579683591784',
+      META_INSTAGRAM_APP_SECRET: 'STAGING_FIXTURE_NOT_A_REAL_META_SECRET',
+      CHATPRO_INTEGRATIONS_ENCRYPTION_KEY: 'STAGING_FIXTURE_ENCRYPTION_KEY',
+      MW1_STAGING_INSTAGRAM_SECRET_ALLOWED: 'true',
+    };
+    expect(() => assertStagingIsolation({
+      ...permitted,
+      META_INSTAGRAM_ACCESS_TOKEN: 'not-a-real-token',
+    })).toThrow(/external messaging/);
+    expect(() => assertStagingIsolation({
+      ...permitted,
+      OPENAI_API_KEY: 'not-a-real-openai-key',
+    })).toThrow(/external messaging/);
+  });
   it('blocks external channel credentials', () => {
     expect(() => assertStagingIsolation({
       ...valid, SHOPIFY_ACCESS_TOKEN: 'do-not-connect',
