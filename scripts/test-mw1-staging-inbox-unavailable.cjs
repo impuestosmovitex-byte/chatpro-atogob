@@ -7,8 +7,8 @@ const app=fs.readFileSync('app/page.tsx','utf8');
 const staging=fs.readFileSync('apps/api/src/staging-app.module.ts','utf8');
 // The staging runtime deliberately does not activate production inbox integrations.
 // Never silently return fake successful message delivery or attach production credentials.
-assert(!staging.includes('InboxController,'),'Production InboxController unexpectedly activated in staging');
-assert(!staging.includes('IntegrationsController,'),'Production IntegrationsController unexpectedly activated in staging');
+assert(!/\bInboxController\s*,/.test(staging),'Production InboxController unexpectedly activated in staging');
+assert(!/\bIntegrationsController\s*,/.test(staging),'Production IntegrationsController unexpectedly activated in staging');
 for(const [name,code] of Object.entries({inbox,channels,presence})){
  assert(code.includes("process.env.MW1_STAGING_MODE === 'true'"),name+' has no explicit staging gate');
  assert(code.includes("code:'STAGING_INBOX_DISABLED'")||code.includes("code: 'STAGING_INBOX_DISABLED'"),name+' does not provide a stable reason code');
