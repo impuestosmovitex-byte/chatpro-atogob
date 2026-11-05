@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { AppSidebar } from '../../../components/AppSidebar';
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../lib/inbox-auth';
 import { WhatsappCoexistencePilotDiagnostics } from './WhatsappCoexistencePilotDiagnostics';
+import { WhatsappCoexistencePilotStart } from './WhatsappCoexistencePilotStart';
 import styles from '../page.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -117,6 +118,14 @@ export default async function WhatsappCoexistenciaPruebaPage() {
               oficial de Meta con un número nuevo de prueba.
             </p>
             <WhatsappCoexistencePilotDiagnostics />
+          </section>
+          <section className={styles.detail} style={{ minHeight: 0 }}>
+            <h2>Inicio seguro de autorización</h2>
+            <p className={styles.description}>
+              El inicio web y API del piloto está conectado, pero inactivo hasta
+              completar la seguridad. Esta etapa no abre Meta ni activa WhatsApp.
+            </p>
+            <WhatsappCoexistencePilotStart />
           </section>
           <section className={styles.detail} style={{ minHeight: 0 }}>
             <h2>Qué falta para la prueba real</h2>
