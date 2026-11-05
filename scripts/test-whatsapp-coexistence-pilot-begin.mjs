@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const read=p=>readFileSync(new URL(p,import.meta.url),'utf8');
+
+const stageModule=read('../apps/api/src/staging-app.module.ts');
+const prodModule=read('../apps/api/src/app.module.ts');
+const controller=read('../apps/api/src/staging-whatsapp-coexistence-pilot.controller.ts');
+const handshake=read('../apps/api/src/staging-whatsapp-coexistence-oauth-handshake.service.ts');
+const route=read('../app/api/integrations/whatsapp/coexistence/pilot/route.ts');
+const page=read('../app/configuracion/integraciones/whatsapp-coexistencia-prueba/page.tsx');
+const client=read('../app/configuracion/integraciones/whatsapp-coexistencia-prueba/WhatsappCoexistencePilotStart.tsx');
+
+assert.match(stageModule,/StagingWhatsappCoexistencePilotController/);
+assert.match(stageModule,/StagingWhatsappCoexistenceOAuthHandshakeService/);
+assert.doesNotMatch(prodModule,/StagingWhatsappCoexistencePilotController|StagingWhatsappCoexistenceOAuthHandshakeService/);
+assert.match(controller,/@Controller\('integrations\/whatsapp\/coexistence\/pilot'\)/);
+assert.match(controller,/@Get\('readiness'\)/);
+assert.match(controller,/@Post\('begin'\)/);
+assert.match(controller,/MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED/);
+assert.match(controller,/MW1_WHATSAPP_COEXISTENCE_OAUTH_STATE_SECRET/);
+assert.match(controller,/piloto-mw1-prueba/);
+assert.match(controller,/this\.handshake\.issue\(actor\)/);
+assert.match(handshake,/\.from\(TABLE\)\.insert\(/);
+assert.match(handshake,/company_memberships/);
+assert.match(handshake,/app_roles/);
+assert.match(route,/getInboxSession\(/);
+assert.match(route,/request\.headers\.get\('origin'\)!==ORIGIN/);
+assert.match(route,/request\.nextUrl\.hostname !== HOST/);
+assert.match(route,/__Host-mw1-wa-coexistence-state/);
+assert.match(route,/httpOnly:true,secure:true,sameSite:'lax',path:'\/',maxAge:420/);
+assert.match(route,/status:'nonce_prepared_only'/);
+assert.doesNotMatch(route,/fb\.login|FB\.login|oauth\/access_token|webhook\/|smb_app_data/);
+assert.match(page,/WhatsappCoexistencePilotStart/);
+assert.match(client,/fetch\('\/api\/integrations\/whatsapp\/coexistence\/pilot'/);
+assert.match(client,/metaLaunchEnabled!==false/);
+assert.doesNotMatch(client,/FB\.login|\.login\(|oauth\/access_token|webhook\/|smb_app_data/);
+console.log('MW1: staging-only signed user pilot, nonce API/web bridge, HttpOnly cookie and no Meta activation verified.');
