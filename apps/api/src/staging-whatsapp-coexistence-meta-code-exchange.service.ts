@@ -15,6 +15,7 @@ export class StagingWhatsappCoexistenceMetaCodeExchangeService {
       process.env.SUPABASE_URL?.trim().replace(/\/$/,'')===
         'https://zqfbxqszfnrbwpfukwak.supabase.co' &&
       process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED==='true' &&
+      process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED==='true' &&
       process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED==='true' &&
       process.env.META_WHATSAPP_APP_ID?.trim()==='1079916404666757' &&
       process.env.META_WHATSAPP_EMBEDDED_CONFIG_ID?.trim()==='1431168516739052';
