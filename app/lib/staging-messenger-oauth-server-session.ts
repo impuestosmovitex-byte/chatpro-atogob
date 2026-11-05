@@ -51,3 +51,33 @@ export async function verifyMessengerPilotCallbackFromServerCookies(
     return { valid: false, reason: 'invalid_state' };
   }
 }
+
+/**
+ * Offline-only callback completion contract. The injected consumer MUST be
+ * the reviewed staging API operation that rechecks tenant membership and
+ * atomically consumes the signed state nonce. A valid provider code is never
+ * released until consumption succeeds. This helper is not a public route,
+ * has no Meta access and cannot enable Messenger.
+ */
+export async function consumeMessengerPilotCallbackOffline(
+  sessionCookie: string | null | undefined,
+  oauthStateCookie: string | null | undefined,
+  params: URLSearchParams,
+  consume: (identity: MessengerPilotIdentity, state: string, cookie: string) => Promise<void>,
+): Promise<MessengerPilotCallback> {
+  const identity = await getMessengerPilotIdentityFromSessionCookie(sessionCookie);
+  if (!identity || typeof oauthStateCookie !== 'string' || !oauthStateCookie ||
+      typeof consume !== 'function') {
+    return { valid: false, reason: 'invalid_state' };
+  }
+  const parsed = await verifyMessengerPilotCallbackFromServerCookies(
+    sessionCookie, oauthStateCookie, params,
+  );
+  if (!parsed.valid) return parsed;
+  try {
+    await consume(identity, parsed.state, oauthStateCookie);
+  } catch {
+    return { valid: false, reason: 'invalid_state' };
+  }
+  return parsed;
+}
