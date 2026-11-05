@@ -82,6 +82,17 @@ try {
     new URLSearchParams({state,error:'access_denied'}),atomicConsume),{
     valid:false,reason:'provider_denied',
   });
+  const otherTenantSession=await createInboxSessionToken({
+    ...session, companyId:'33333333-3333-4333-8333-333333333333',
+  });
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(
+    otherTenantSession,state,returned,atomicConsume),{
+    valid:false,reason:'invalid_state',
+  });
+  assert.deepEqual(await consumeMessengerPilotCallbackOffline(
+    token,'x'.repeat(2049),returned,atomicConsume),{
+    valid:false,reason:'invalid_state',
+  });
   assert.equal(attempts,2,'Rejected callbacks must never consume a nonce');
   assert.deepEqual(await consumeMessengerPilotCallbackOffline(token,state,returned,
     async()=>{throw Error('database unavailable')}),{
