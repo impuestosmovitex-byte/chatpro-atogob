@@ -78,5 +78,7 @@ jobs:
         run: node --experimental-strip-types scripts/test-whatsapp-coexistence-sync-policy.mjs
       - name: Verify conventional WhatsApp signup cannot silently start coexistence
         run: node scripts/test-whatsapp-coexistence-conventional-guard.mjs
+      - name: Verify pilot WhatsApp coexistence diagnostics cannot connect or modify channels
+        run: node scripts/test-whatsapp-coexistence-pilot-page.mjs
       - name: Build web
         run: npm run build
