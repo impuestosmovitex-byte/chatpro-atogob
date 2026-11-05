@@ -12,6 +12,7 @@ import type { ChatProSession } from './inbox-auth';
  */
 export const MESSENGER_PILOT_SLUG = 'piloto-mw1-prueba';
 export const MESSENGER_STATE_MAX_AGE_MS = 10 * 60 * 1000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type SignedMessengerPayload = {
   v: 1;
@@ -34,8 +35,8 @@ export function getMessengerPilotIdentity(
   if (!session || session.type !== 'user' ||
       !['owner', 'admin'].includes(session.roleKey?.toLowerCase()) ||
       session.companySlug !== MESSENGER_PILOT_SLUG ||
-      typeof session.companyId !== 'string' || !session.companyId.trim() ||
-      typeof session.userId !== 'string' || !session.userId.trim() ||
+      typeof session.companyId !== 'string' || !UUID.test(session.companyId) ||
+      typeof session.userId !== 'string' || !UUID.test(session.userId) ||
       !Number.isSafeInteger(session.expiresAt) ||
       session.expiresAt <= Date.now()) return null;
 
@@ -57,7 +58,7 @@ function stateSecret(): string {
 export function createMessengerPilotOAuthState(
   identity: MessengerPilotIdentity,
 ): string {
-  if (!identity.companyId?.trim() || !identity.userId?.trim() ||
+  if (!UUID.test(identity.companyId ?? '') || !UUID.test(identity.userId ?? '') ||
       identity.companySlug !== MESSENGER_PILOT_SLUG) {
     throw new Error('Identidad de empresa piloto no válida.');
   }
@@ -98,6 +99,7 @@ export function verifyMessengerPilotOAuthState(
   if (result.v !== 1 || result.provider !== 'messenger' ||
       result.companyId !== identity.companyId ||
       result.userId !== identity.userId ||
+      !UUID.test(identity.companyId) || !UUID.test(identity.userId) ||
       identity.companySlug !== MESSENGER_PILOT_SLUG ||
       typeof result.nonce !== 'string' ||
       !/^[A-Za-z0-9_-]{32}$/.test(result.nonce) ||
