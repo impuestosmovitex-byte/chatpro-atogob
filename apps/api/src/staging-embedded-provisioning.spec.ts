@@ -24,6 +24,22 @@ describe('pilot-only Meta OAuth provisioning', () => {
       if(value===undefined) delete process.env[key]; else process.env[key]=value;
     }
   });
+  it('rejects missing or coexistence completion markers before any DB/Meta calls',async()=>{
+    let touched=0;
+    global.fetch=(async()=>{ touched++; throw Error('Meta must not be accessed'); }) as typeof fetch;
+    const db={ from:()=>{ touched++; throw Error('DB must not be accessed'); } };
+    const controller=new StagingIntegrationsController(
+      {getClient:()=>db} as unknown as SupabaseService,
+      {encrypt:()=>{ touched++; return 'unexpected'; }} as unknown as IntegrationCredentialsService,
+    );
+    for (const signupEvent of [undefined,'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING','CANCEL','ERROR']) {
+      await expect(controller.embeddedComplete(
+        'staging-internal-test-key','user','pilot','piloto-mw1-prueba',
+        {signupEvent,code:'code-authorization-long-enough',wabaId:'987654321',phoneNumberId:'123456789'},
+      )).rejects.toThrow(/flujo separado de coexistencia/);
+    }
+    expect(touched).toBe(0);
+  });
   it('does not allow a registered phone to be overwritten',async()=>{
     const rows: Record<string,Record<string,unknown>>={
       companies:{id:'pilot',name:'Pilot',slug:'piloto-mw1-prueba',status:'active'},
@@ -50,7 +66,7 @@ describe('pilot-only Meta OAuth provisioning', () => {
     const controller=new StagingIntegrationsController({getClient:()=>db} as unknown as SupabaseService,
       {encrypt:()=>'ciphertext-only'} as unknown as IntegrationCredentialsService);
     await expect(controller.embeddedComplete('staging-internal-test-key','user','pilot','piloto-mw1-prueba',
-      {code:'code-authorization-long-enough',wabaId:'987654321',phoneNumberId:'123456789'}))
+      {signupEvent:'FINISH',code:'code-authorization-long-enough',wabaId:'987654321',phoneNumberId:'123456789'}))
       .rejects.toThrow(/ya está registrado/);
     expect(writes).toBe(0);
   });
@@ -85,7 +101,7 @@ describe('pilot-only Meta OAuth provisioning', () => {
     const encrypted = {encrypt:(_value:Record<string,unknown>)=>'ciphertext-only'} as IntegrationCredentialsService;
     const controller=new StagingIntegrationsController({getClient:()=>db} as unknown as SupabaseService,encrypted);
     const result=await controller.embeddedComplete('staging-internal-test-key','user','pilot','piloto-mw1-prueba',
-      {code:'code-authorization-long-enough',wabaId:'987654321',phoneNumberId:'123456789'});
+      {signupEvent:'FINISH',code:'code-authorization-long-enough',wabaId:'987654321',phoneNumberId:'123456789'});
     expect(result.status).toBe('pending');
     expect(result.connectionEnabled).toBe(false);
     expect(saved).toHaveLength(1);
