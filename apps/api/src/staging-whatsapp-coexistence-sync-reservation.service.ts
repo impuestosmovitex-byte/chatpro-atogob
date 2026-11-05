@@ -31,7 +31,7 @@ export type WhatsappCoexistenceSyncReservationRequest = {
 const RPC = 'mw1_reserve_whatsapp_coexistence_sync';
 const STAGING_DB = 'https://zqfbxqszfnrbwpfukwak.supabase.co';
 const PILOT = 'piloto-mw1-prueba';
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PHONE_ID = /^[0-9]{6,30}$/;
 
 export class StagingWhatsappCoexistenceSyncReservationService {
