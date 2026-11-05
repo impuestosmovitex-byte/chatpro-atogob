@@ -4,6 +4,8 @@ import { StagingWhatsappCoexistenceMetaGraphService } from
   './staging-whatsapp-coexistence-meta-graph.service';
 import { StagingWhatsappCoexistenceMetaTokenReviewService } from
   './staging-whatsapp-coexistence-meta-token-review.service';
+import { StagingWhatsappCoexistenceBusinessOwnerService } from
+  './staging-whatsapp-coexistence-business-owner.service';
 
 /**
  * STAGING-ONLY, unregistered internal onboarding prerequisite.
@@ -20,6 +22,7 @@ export type PilotCoexistenceVerificationInput = {
   companySlug: string;
   companyId: string;
   userId: string;
+  onboardingId: string;
   wabaId: string;
   phoneNumberId: string;
   accessToken: string;
@@ -30,7 +33,8 @@ export type PilotCoexistenceVerificationOutcome =
       reason: 'staging_only' | 'unauthorized' | 'invalid_input'
       | 'tenant_not_authorized' | 'phone_already_registered'
       | 'database_unavailable' | 'meta_token_unconfirmed'
-      | 'meta_verification_failed' };
+      | 'business_binding_missing' | 'business_binding_expired'
+      | 'meta_business_owner_unconfirmed' | 'meta_verification_failed' };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const META_ID = /^[0-9]{6,30}$/;
@@ -47,6 +51,7 @@ export class StagingWhatsappCoexistenceTenantVerificationService {
     private readonly supabase: SupabaseService,
     private readonly graph: StagingWhatsappCoexistenceMetaGraphService,
     private readonly tokenReview: StagingWhatsappCoexistenceMetaTokenReviewService,
+    private readonly businessOwner: StagingWhatsappCoexistenceBusinessOwnerService,
   ) {}
 
   async verify(input: PilotCoexistenceVerificationInput): Promise<PilotCoexistenceVerificationOutcome> {
@@ -62,6 +67,7 @@ export class StagingWhatsappCoexistenceTenantVerificationService {
     if (input.companySlug !== PILOT ||
         typeof input.companyId !== 'string' || !UUID.test(input.companyId) ||
         typeof input.userId !== 'string' || !UUID.test(input.userId) ||
+        typeof input.onboardingId !== 'string' || !UUID.test(input.onboardingId) ||
         typeof input.wabaId !== 'string' || !META_ID.test(input.wabaId) ||
         typeof input.phoneNumberId !== 'string' || !META_ID.test(input.phoneNumberId) ||
         typeof input.accessToken !== 'string' ||
@@ -69,6 +75,7 @@ export class StagingWhatsappCoexistenceTenantVerificationService {
         /[\r\n\u0000]/.test(input.accessToken)) {
       return { readyForLaterProvisioningReview: false, reason: 'invalid_input' };
     }
+    let approvedBusinessId = '';
     try {
       const db = this.supabase.getClient();
       const { data: company, error: companyError } = await db.from('companies')
@@ -106,6 +113,38 @@ export class StagingWhatsappCoexistenceTenantVerificationService {
       if (assigned.length !== 0) {
         return { readyForLaterProvisioningReview: false, reason: 'phone_already_registered' };
       }
+
+      // The owner ID may NEVER come from an untrusted request. Read a
+      // temporary authorization record stored after future signed OAuth.
+      // This staging table starts EMPTY and has no public write path.
+      const { data: binding, error: bindingError } = await db
+        .from('mw1_whatsapp_coexistence_business_bindings')
+        .select('company_id,waba_id,meta_business_id,verified_by_user_id,onboarding_id,verification_state,verified_at,expires_at')
+        .eq('company_id', input.companyId)
+        .eq('waba_id', input.wabaId).maybeSingle();
+      if (bindingError) {
+        return { readyForLaterProvisioningReview: false, reason: 'database_unavailable' };
+      }
+      if (!binding || binding.company_id !== input.companyId ||
+          binding.waba_id !== input.wabaId ||
+          binding.verified_by_user_id !== input.userId ||
+          binding.onboarding_id !== input.onboardingId ||
+          binding.verification_state !== 'verified' ||
+          typeof binding.meta_business_id !== 'string' ||
+          !META_ID.test(binding.meta_business_id)) {
+        return { readyForLaterProvisioningReview: false, reason: 'business_binding_missing' };
+      }
+      const verifiedAt = typeof binding.verified_at === 'string'
+        ? Date.parse(binding.verified_at) : NaN;
+      const expiresAt = typeof binding.expires_at === 'string'
+        ? Date.parse(binding.expires_at) : NaN;
+      const now = Date.now();
+      if (!Number.isFinite(verifiedAt) || !Number.isFinite(expiresAt) ||
+          verifiedAt > now || now >= expiresAt || expiresAt <= verifiedAt ||
+          expiresAt > verifiedAt + 30 * 60 * 1000) {
+        return { readyForLaterProvisioningReview: false, reason: 'business_binding_expired' };
+      }
+      approvedBusinessId = binding.meta_business_id;
     } catch {
       // No internal database, credential or company data is returned or logged.
       return { readyForLaterProvisioningReview: false, reason: 'database_unavailable' };
@@ -123,6 +162,21 @@ export class StagingWhatsappCoexistenceTenantVerificationService {
       }
     } catch {
       return { readyForLaterProvisioningReview: false, reason: 'meta_token_unconfirmed' };
+    }
+    try {
+      const owner = await this.businessOwner.verify({
+        wabaId: input.wabaId,
+        expectedBusinessId: approvedBusinessId,
+        accessToken: input.accessToken,
+      });
+      if (!owner.verified || owner.wabaId !== input.wabaId ||
+          owner.ownerBusinessId !== approvedBusinessId) {
+        return { readyForLaterProvisioningReview: false,
+          reason: 'meta_business_owner_unconfirmed' };
+      }
+    } catch {
+      return { readyForLaterProvisioningReview: false,
+        reason: 'meta_business_owner_unconfirmed' };
     }
     try {
       const meta = await this.graph.verify({
