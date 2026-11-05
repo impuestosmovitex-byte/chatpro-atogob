@@ -30,9 +30,21 @@ export function assertStagingIsolation(env: NodeJS.ProcessEnv = process.env): vo
   // Do not crash the entire staging CRM when a non-test token is configured.
   // The Mercado Pago verification route rejects it before any provider request.
   // No checkout, payment, or subscription endpoints are enabled here.
+  // These two public identifiers are pinned to the isolated Instagram pilot.
+  // They cannot authorize requests, access accounts, or send messages alone.
+  // Keep every Instagram app secret and access token forbidden in staging.
+  const instagramPilotPublicIds: Record<string, string> = {
+    META_INSTAGRAM_APP_ID: '1079916404666757',
+    META_INSTAGRAM_UNIFIED_CONFIG_ID: '2371579683591784',
+  };
+  for (const [name, expected] of Object.entries(instagramPilotPublicIds)) {
+    if (env[name]?.trim() && env[name]?.trim() !== expected) {
+      throw new Error('STAGING BLOCKED: unexpected Instagram pilot identifier.');
+    }
+  }
   const forbidden = Object.keys(env).filter((name) =>
     /^(SHOPIFY_|META_|WHATSAPP_|OPENAI_|TIKTOK_|TELEGRAM_|WOMPI_|MERCADOPAGO_|MERCADO_PAGO_)/i.test(name) &&
-    !['MERCADOPAGO_ACCESS_TOKEN', 'META_WHATSAPP_APP_ID', 'META_WHATSAPP_EMBEDDED_CONFIG_ID', 'META_WHATSAPP_APP_SECRET'].includes(name) && Boolean(env[name]?.trim()),
+    !['MERCADOPAGO_ACCESS_TOKEN', 'META_WHATSAPP_APP_ID', 'META_WHATSAPP_EMBEDDED_CONFIG_ID', 'META_WHATSAPP_APP_SECRET', 'META_INSTAGRAM_APP_ID', 'META_INSTAGRAM_UNIFIED_CONFIG_ID'].includes(name) && Boolean(env[name]?.trim()),
   );
   if (forbidden.length) {
     throw new Error('STAGING BLOCKED: external messaging, store or AI credentials are configured.');
