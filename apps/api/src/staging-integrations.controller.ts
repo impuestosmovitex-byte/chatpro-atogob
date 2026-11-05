@@ -22,29 +22,33 @@ export class StagingIntegrationsController {
     const result = await this.list(key, userId, companyId, slug);
     const isPilot = result.company.slug === 'piloto-mw1-prueba';
     const enabled = process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED === 'true';
+    // Unified Login uses the parent Meta app, not the legacy Instagram app credentials.
     const appId = process.env.META_INSTAGRAM_APP_ID?.trim() || '';
     const appSecret = process.env.META_INSTAGRAM_APP_SECRET?.trim() || '';
+    const configurationId = process.env.META_INSTAGRAM_UNIFIED_CONFIG_ID?.trim() || '';
+    const correctSetup = appId === '1079916404666757' &&
+      configurationId === '2371579683591784';
     const encryptionReady = Boolean(process.env.CHATPRO_INTEGRATIONS_ENCRYPTION_KEY?.trim());
     const oauthEnabled = process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED === 'true';
     const exchangeEnabled = process.env.MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED === 'true';
-    const ready = isPilot && enabled && Boolean(appId && appSecret) &&
+    const ready = isPilot && enabled && correctSetup && Boolean(appSecret) &&
       encryptionReady && oauthEnabled && exchangeEnabled;
-    // Explicit opt-in. Keep OAuth blocked even if all other prerequisites are set.
     const pilotLoginEnabled = process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED === 'true';
     return {
       ok: true,
       company: result.company,
       provider: 'meta',
       integrationType: 'instagram',
-      loginMode: 'instagram_login',
-      appId: isPilot && enabled && appId ? appId : null,
-      scopes: ['instagram_business_basic', 'instagram_business_manage_messages'],
+      loginMode: 'unified_login',
+      appId: isPilot && enabled && correctSetup ? appId : null,
+      configurationId: isPilot && enabled && correctSetup ? configurationId : null,
+      scopes: ['instagram_basic', 'instagram_manage_messages'],
       ready,
       authorizationEnabled: ready && pilotLoginEnabled,
       connectionEnabled: false,
       webhookEnabled: false,
       missing: isPilot && enabled ? [
-        ...(!appId ? ['META_INSTAGRAM_APP_ID'] : []),
+        ...(!correctSetup ? ['META_INSTAGRAM_APP_ID / META_INSTAGRAM_UNIFIED_CONFIG_ID'] : []),
         ...(!appSecret ? ['META_INSTAGRAM_APP_SECRET'] : []),
         ...(!encryptionReady ? ['CHATPRO_INTEGRATIONS_ENCRYPTION_KEY'] : []),
         ...(!oauthEnabled ? ['MW1_STAGING_INSTAGRAM_OAUTH_ENABLED'] : []),
@@ -55,9 +59,9 @@ export class StagingIntegrationsController {
         ? 'La conexión de Instagram aún no está habilitada para esta empresa.'
         : ready
           ? (pilotLoginEnabled
-            ? 'Autorización piloto habilitada. La recepción de mensajes sigue deshabilitada.'
+            ? 'Autorización piloto Unified Login habilitada. La recepción de mensajes sigue deshabilitada.'
             : 'Requisitos técnicos preparados; falta habilitar explícitamente el piloto de autorización.')
-          : 'La configuración de Instagram en staging está incompleta.',
+          : 'La configuración de Unified Login en staging está incompleta.',
     };
   }
 
