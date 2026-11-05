@@ -64,7 +64,7 @@ export async function consumeMessengerPilotCallbackOffline(
   sessionCookie: string | null | undefined,
   oauthStateCookie: string | null | undefined,
   params: URLSearchParams,
-  consume: (identity: MessengerPilotIdentity, state: string, cookie: string) => Promise<void>,
+  consume: (identity: MessengerPilotIdentity, state: string, cookie: string) => Promise<void | boolean>,
 ): Promise<MessengerPilotCallback> {
   const identity = await getMessengerPilotIdentityFromSessionCookie(sessionCookie);
   if (!identity || typeof oauthStateCookie !== 'string' || !oauthStateCookie ||
@@ -84,7 +84,12 @@ export async function consumeMessengerPilotCallbackOffline(
   }
   if (!parsed.valid) return parsed;
   try {
-    await consume(identity, parsed.state, oauthStateCookie);
+    const acknowledged = await consume(identity, parsed.state, oauthStateCookie);
+    // Existing void-returning adapter signals success by resolving undefined.
+    // Explicit false, null or unexpected values must never release a code.
+    if (acknowledged !== undefined && acknowledged !== true) {
+      return { valid: false, reason: 'invalid_state' };
+    }
   } catch {
     return { valid: false, reason: 'invalid_state' };
   }
@@ -101,13 +106,14 @@ export async function consumeMessengerPilotCallbackOffline(
  */
 export async function prepareMessengerPilotStartOffline(
   sessionCookie: string | null | undefined,
-  register: (identity: MessengerPilotIdentity, state: string) => Promise<void>,
+  register: (identity: MessengerPilotIdentity, state: string) => Promise<void | boolean>,
 ): Promise<string | null> {
   const identity = await getMessengerPilotIdentityFromSessionCookie(sessionCookie);
   if (!identity || typeof register !== 'function') return null;
   try {
     const state = createMessengerPilotOAuthState(identity);
-    await register(identity, state);
+    const acknowledged = await register(identity, state);
+    if (acknowledged !== undefined && acknowledged !== true) return null;
     return state;
   } catch {
     return null;
