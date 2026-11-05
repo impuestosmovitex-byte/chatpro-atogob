@@ -401,8 +401,17 @@ export class StagingIntegrationsController {
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
     @Query('company') slug = '',
-    @Body() body: {code?: unknown; wabaId?: unknown; phoneNumberId?: unknown; businessId?: unknown} = {},
+    @Body() body: {signupEvent?: unknown; code?: unknown; wabaId?: unknown; phoneNumberId?: unknown; businessId?: unknown} = {},
   ) {
+    // Defense in depth against accidental routing of a coexistence completion
+    // through the conventional Cloud API signup. The browser supplies this
+    // marker, so it is NOT cryptographic proof of Meta's signup mode.
+    // A real coexistence flow must verify mode/number on Meta's server side.
+    if (body?.signupEvent !== 'FINISH') {
+      throw new ForbiddenException(
+        'La conexión de WhatsApp Business App requiere el flujo separado de coexistencia.',
+      );
+    }
     const context = await this.list(key, userId, companyId, slug);
     // Pilot-only provisioning; never silently enable connections on other tenants.
     if (process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED !== 'true' ||
