@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 /**
  * Pilot-only read-only Graph API verifier for future WhatsApp Business App
  * coexistence onboarding. NOT registered with AppModule, any controller or
@@ -32,6 +33,7 @@ function obj(value: unknown): JsonObject | null {
  * The Graph endpoint cannot be controlled by caller supplied URLs.
  * JSON and HTTP failures never expose the token or Meta response body.
  */
+@Injectable()
 export class StagingWhatsappCoexistenceMetaGraphService {
   constructor(private readonly request: Fetcher = fetch) {}
 
