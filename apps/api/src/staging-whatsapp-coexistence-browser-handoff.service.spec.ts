@@ -225,14 +225,14 @@ describe('isolated browser-to-server Meta coexistence signup return (offline)', 
     expect(review).toHaveBeenCalledTimes(1);
   });
 
-  it('never returns a connection claim on reviewer failure or private exceptions',async()=>{
+  it('never returns a connection claim when the future Meta reviewer denies',async()=>{
     review.mockResolvedValueOnce({exchangedAndReviewed:false});
     await expect(service.inspectBrowserReturn(makeInput())).resolves.toEqual({
       status:'rejected',reason:'meta_exchange_unconfirmed',
     });
-    const next=issueWhatsappCoexistenceSignedState(actor)!;
-    signedState=next.state;
-    onboardingId=next.onboardingId;
+  });
+
+  it('never leaks private errors from a future Meta code reviewer',async()=>{
     review.mockRejectedValueOnce(Error('PRIVATE_META_ACCESS_TOKEN'));
     const result=await service.inspectBrowserReturn(makeInput());
     expect(result).toEqual({status:'rejected',reason:'meta_exchange_unconfirmed'});
