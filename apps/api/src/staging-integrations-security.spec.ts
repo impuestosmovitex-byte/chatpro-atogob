@@ -13,6 +13,17 @@ describe('staging integration catalog and isolation',()=>{
  let controller:StagingIntegrationsController;
  let reads:string[];
  let duplicatePhone=false;
+ // Enable preflight only for the duration of each relevant unit test.
+ // Never change production runtime flags or the deployed environment.
+ async function withWhatsappPilot<T>(run:()=>Promise<T>):Promise<T>{
+  const previous=process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
+  process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED='true';
+  try{return await run();}
+  finally{
+   if(previous===undefined)delete process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED;
+   else process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED=previous;
+  }
+ }
  beforeEach(()=>{
   process.env.CHATPRO_INBOX_KEY=key;
   reads=[];
@@ -86,7 +97,7 @@ describe('staging integration catalog and isolation',()=>{
   expect(reads).toEqual([]);
  });
  test('preflight rejects malformed phone IDs before integration lookup',async()=>{
-  await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'bad'})).rejects.toThrow(/no válido/);
+  await expect(withWhatsappPilot(()=>controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'bad'}))).rejects.toThrow(/no válido/);
   expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
  });
  test('preflight rejects cross-tenant access without integration lookup',async()=>{
@@ -94,7 +105,7 @@ describe('staging integration catalog and isolation',()=>{
   expect(reads).toEqual(['companies']);
  });
  test('preflight does not claim to enable WhatsApp',async()=>{
-  const res=await controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'});
+  const res=await withWhatsappPilot(()=>controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'}));
   expect(res.connectionEnabled).toBe(false);
   expect(res.numberAvailable).toBe(true);
   expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations','company_integrations']);
@@ -102,9 +113,9 @@ describe('staging integration catalog and isolation',()=>{
  test('preflight blocks a number already assigned to another company',async()=>{
   rows.company_integrations={company_id:'another-tenant',provider:'meta',integration_type:'whatsapp',external_id:'123456789'};
   try {
-    await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'}))
+    await expect(withWhatsappPilot(()=>controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'})))
       .rejects.toThrow(/asignado a otra empresa/);
-    expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations']);
+    expect(reads).toEqual(['companies','company_memberships','app_roles','company_integrations','company_integrations']);
   } finally {
     delete rows.company_integrations;
   }
@@ -113,7 +124,7 @@ describe('staging integration catalog and isolation',()=>{
   rows.company_integrations={company_id:companyId,provider:'meta',integration_type:'whatsapp',external_id:'123456789'};
   duplicatePhone=true;
   try {
-    await expect(controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'}))
+    await expect(withWhatsappPilot(()=>controller.embeddedPreflight(key,ownerId,companyId,'piloto-mw1-prueba',{phoneNumberId:'123456789'})))
       .rejects.toThrow(/asignaciones duplicadas/);
   } finally {
     delete rows.company_integrations;
