@@ -33,7 +33,12 @@ export async function GET(
       'error_description',
     );
 
-  if (error) {
+  const isStaging =
+    request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app';
+
+  // Preserve the existing non-staging OAuth error handling unchanged.
+  // In staging, even a provider error must have a valid signed request state.
+  if (error && !isStaging) {
     return NextResponse.redirect(
       new URL(
         `/configuracion/integraciones?instagram_error=${encodeURIComponent(
@@ -44,7 +49,7 @@ export async function GET(
     );
   }
 
-  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
+  if (isStaging) {
     const expected = request.cookies.get('mw1_ig_oauth_state')?.value || '';
     const session = await getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
     let valid = Boolean(
@@ -72,6 +77,19 @@ export async function GET(
       denied.headers.set('Referrer-Policy', 'no-referrer');
       return denied;
     }
+  }
+
+  if (error) {
+    // Avoid reflecting arbitrary provider-supplied text into an OAuth error URL.
+    const denied = NextResponse.redirect(
+      new URL(
+        '/configuracion/integraciones?instagram_error=Meta%20no%20autorizo%20la%20conexion%20de%20Instagram',
+        publicOrigin,
+      ),
+    );
+    denied.headers.set('Cache-Control', 'no-store, private');
+    denied.headers.set('Referrer-Policy', 'no-referrer');
+    return denied;
   }
 
   if (!code) {
