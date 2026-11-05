@@ -11,7 +11,7 @@ const prod=read('../apps/api/src/app.module.ts');
 
 assert.match(page,/WhatsappCoexistencePilotMetaLaunch/);
 assert.match(page,/session\.companySlug === 'piloto-mw1-prueba'/);
-assert.match(client,/config\.metaLaunchEnabled===true/);
+assert.match(client,/config\?\.metaLaunchEnabled===true/);
 assert.match(client,/config\.codeExchangeEnabled===true/);
 assert.match(client,/config\.connectionEnabled===false/);
 assert.match(client,/script\.src='https:\/\/connect\.facebook\.net\/en_US\/sdk\.js'/);
