@@ -45,18 +45,30 @@ export async function GET(request: NextRequest) {
     });
     if (!r.ok) throw Error('staging API not ready');
     const data=await r.json() as {
-      ok?:unknown;beginReady?:unknown;message?:unknown;
+      ok?:unknown;beginReady?:unknown;metaLaunchEnabled?:unknown;
+      codeExchangeEnabled?:unknown;connectionEnabled?:unknown;
     };
     if (data.ok!==true) throw Error('bad status');
     const ready=data.beginReady===true &&
       process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_OAUTH_BEGIN_ENABLED==='true';
+    // Both staging services must opt into Meta popup and review separately.
+    // No other tenant, production host or conventional Embedded Signup gets this config.
+    const launchReady=ready && data.metaLaunchEnabled===true &&
+      data.codeExchangeEnabled===true && data.connectionEnabled===false &&
+      process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED==='true' &&
+      process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED==='true';
     return NextResponse.json({
       ok:true,beginReady:ready,
-      metaLaunchEnabled:false,codeExchangeEnabled:false,
+      metaLaunchEnabled:launchReady,codeExchangeEnabled:launchReady,
       connectionEnabled:false,
-      message:ready
-        ? 'Inicio seguro disponible exclusivamente para el piloto; Meta no se abrirá.'
-        : 'El inicio firmado de coexistencia aún necesita habilitación exclusiva en staging.',
+      // App and Business Login configuration IDs are public SDK settings.
+      // Return them only for the independently authorized pilot launch.
+      appId:launchReady?'1079916404666757':null,
+      configurationId:launchReady?'1431168516739052':null,
+      apiVersion:launchReady?'v26.0':null,
+      message:launchReady
+        ? 'Meta está disponible solo para la empresa piloto, previa autorización del titular.'
+        : 'La conexión real de Meta permanece bloqueada hasta completar las verificaciones del piloto.',
     },{headers:noStore});
   } catch {
     return NextResponse.json({ok:false,error:'No se pudo consultar la preparación del piloto.'},
