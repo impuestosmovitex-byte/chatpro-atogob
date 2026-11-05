@@ -74,3 +74,32 @@ export function matchWhatsappSignupMode(
   if (requestedMode === 'coexistence' && !completion.phoneNumberId) return null;
   return completion;
 }
+
+
+/**
+ * Stage a Meta coexistence FINISH event for LATER server-side verification.
+ * The session payload may contain only a WABA ID, not a phone_number_id.
+ * Neither ID is proof of tenant ownership: this return value is a browser
+ * hint ONLY and MUST NOT be used to write an integration, reserve history,
+ * exchange credentials or activate WhatsApp. The future server-side flow
+ * must verify the signed OAuth exchange, WABA and phone ID with Meta.
+ */
+export type WhatsappCoexistenceVerificationRequired = {
+  status: 'requires_meta_phone_verification';
+  wabaIdHint: string;
+  phoneNumberIdHint: string | null;
+};
+
+export function prepareWhatsappCoexistenceVerification(
+  completion: WhatsappSignupCompletion | null,
+  requestedMode: WhatsappSignupMode | null | undefined,
+): WhatsappCoexistenceVerificationRequired | null {
+  if (requestedMode !== 'coexistence' ||
+      !completion || completion.mode !== 'coexistence') return null;
+
+  return {
+    status: 'requires_meta_phone_verification',
+    wabaIdHint: completion.wabaId,
+    phoneNumberIdHint: completion.phoneNumberId,
+  };
+}
