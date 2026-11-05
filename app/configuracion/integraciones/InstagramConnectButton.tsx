@@ -152,13 +152,10 @@ export function InstagramConnectButton({
   }, []);
 
   useEffect(() => {
-    if (
-      !config?.ready ||
-      typeof window ===
-        'undefined' ||
-      (window.location.hostname === 'mw1-web-staging-staging.up.railway.app' &&
-        config.authorizationEnabled !== true)
-    ) {
+    // Read and remove OAuth parameters even when the pilot was disabled
+    // while Meta was redirecting back. Never keep an authorization code in
+    // the browser URL merely because the readiness check fails.
+    if (loading || !config || typeof window === 'undefined') {
       return;
     }
 
@@ -216,7 +213,18 @@ export function InstagramConnectButton({
       `${url.pathname}${url.search}${url.hash}`,
     );
 
+    const pilotDisabled =
+      window.location.hostname === 'mw1-web-staging-staging.up.railway.app' &&
+      config.authorizationEnabled !== true;
+
+    if (!config.ready || pilotDisabled) {
+      window.sessionStorage.removeItem('chatpro_instagram_oauth_state');
+      setMessage('La autorización de Instagram no está habilitada. No se procesó ningún código ni se guardaron credenciales.');
+      return;
+    }
+
     if (oauthError) {
+      window.sessionStorage.removeItem('chatpro_instagram_oauth_state');
       setMessage(oauthError);
       return;
     }
@@ -346,7 +354,7 @@ export function InstagramConnectButton({
     return () => {
       cancelled = true;
     };
-  }, [config?.ready, config?.authorizationEnabled]);
+  }, [loading, config?.ready, config?.authorizationEnabled]);
 
   async function startLogin() {
     if (!config?.ready || !config.appId) {
