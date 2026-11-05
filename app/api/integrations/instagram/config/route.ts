@@ -107,7 +107,17 @@ export async function GET(request: NextRequest) {
       missing: [
         ...(Array.isArray(body.missing) ? body.missing : []),
         ...(!webSecretReady ? ['MW1_INSTAGRAM_OAUTH_STATE_SECRET'] : []),
+        ...(!uiEnabled ? ['MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED (web)'] : []),
       ],
+      // Read-only status for an authenticated tenant admin. Never disclose
+      // credentials, OAuth codes, environment values or provider tokens.
+      diagnostics: {
+        apiReady: body.ready === true,
+        apiAuthorizationEnabled: body.authorizationEnabled === true,
+        webStateSecretReady: webSecretReady,
+        webAuthorizationEnabled: uiEnabled,
+        callbackRegisteredInMeta: 'not_verified_by_server',
+      },
       message: !webSecretReady
         ? 'Falta configurar la seguridad OAuth de Instagram en la web de staging.'
         : body.message,
