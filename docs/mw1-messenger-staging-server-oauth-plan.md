@@ -77,6 +77,18 @@ por un flujo de Messenger íntegramente gestionado por el servidor y aislado por
   reutilización, autorización caducada y nonce inexistente rechazados;
   un nonce válido solo se consume una vez. La transacción se revirtió y
   quedaron **0 registros persistentes**.
+- Protocolo de integración interna completado:
+  `apps/api/src/staging-messenger-oauth-signed-state.ts` verifica la misma
+  firma HMAC v1 emitida por la web y, tras validar empresa/usuario, caducidad
+  y cookie (al consumir), calcula SHA-256 del estado firmado.
+  `apps/api/src/staging-messenger-oauth-verified-flow.ts` encadena la
+  validación firmada con `StagingMessengerOAuthAuthorizedNonceService`,
+  que vuelve a comprobar empresa y permisos antes del registro o consumo
+  atómico. Pruebas Jest e interoperabilidad web/API prueban rechazos y
+  compatibilidad. **No registrado en AppModule, sin rutas, variables,
+  llamadas Meta, tokens ni conexión real.**
+  El futuro controlador deberá suministrar el estado y la cookie desde una
+  sesión de servidor verificada; no confiar en cuerpos JSON del navegador.
 - Supabase Advisor muestra el hallazgo informativo `rls_enabled_no_policy`
   sobre esta tabla. Es intencional: acceso cerrado para clientes públicos;
   no crear una política permisiva para eliminar el aviso.
