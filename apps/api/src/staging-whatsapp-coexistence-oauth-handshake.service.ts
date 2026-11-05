@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { Injectable } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 import {
   issueWhatsappCoexistenceSignedState,
@@ -43,6 +44,7 @@ function constantTimeKey(a: string, b: string): boolean {
   );
 }
 
+@Injectable()
 export class StagingWhatsappCoexistenceOAuthHandshakeService {
   constructor(private readonly supabase: SupabaseService) {}
 
