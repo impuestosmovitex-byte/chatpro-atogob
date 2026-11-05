@@ -5,6 +5,7 @@ import {
 
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../../lib/inbox-auth';
 import { verifyInstagramOAuthState } from '../../../../lib/instagram-oauth-state';
+import { parseStagingInstagramOAuthReturn } from '../../../../lib/staging-instagram-oauth-return';
 
 export const dynamic =
   'force-dynamic';
@@ -27,9 +28,13 @@ export async function GET(
   const url =
     new URL(request.url);
 
-  // Never trust caller-controlled forwarded host/protocol headers for OAuth redirects.
-  // Keep the authorization response on this application's own origin.
-  const publicOrigin = request.nextUrl.origin;
+  // Staging redirects must always stay on the fixed staging origin, never
+  // on an origin supplied through forwarded headers.
+  const isStaging =
+    request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app';
+  const publicOrigin = isStaging
+    ? 'https://mw1-web-staging-staging.up.railway.app'
+    : request.nextUrl.origin;
 
   const code =
     url.searchParams.get('code');
@@ -44,9 +49,6 @@ export async function GET(
     url.searchParams.get(
       'error_description',
     );
-
-  const isStaging =
-    request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app';
 
   // Preserve the existing non-staging OAuth error handling unchanged.
   // In staging, even a provider error must have a valid signed request state.
@@ -86,6 +88,20 @@ export async function GET(
         new URL('/configuracion/integraciones?instagram_error=Autorizacion%20de%20Instagram%20no%20valida', publicOrigin),
       );
       return rejectStagingReturn(denied);
+    }
+  }
+
+  if (isStaging) {
+    const parsed = parseStagingInstagramOAuthReturn(url.searchParams);
+    if (!parsed.ok) {
+      const errorMessage = parsed.reason === 'provider_error'
+        ? 'Meta no autorizó la conexión de Instagram.'
+        : parsed.reason === 'missing_code'
+          ? 'Meta no devolvió un código de autorización.'
+          : 'El retorno de Instagram contiene parámetros inválidos.';
+      const destination = new URL('/configuracion/integraciones', publicOrigin);
+      destination.searchParams.set('instagram_error', errorMessage);
+      return rejectStagingReturn(NextResponse.redirect(destination));
     }
   }
 
