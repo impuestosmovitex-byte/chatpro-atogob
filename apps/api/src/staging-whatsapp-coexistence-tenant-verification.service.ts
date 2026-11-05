@@ -2,6 +2,8 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { SupabaseService } from './supabase.service';
 import { StagingWhatsappCoexistenceMetaGraphService } from
   './staging-whatsapp-coexistence-meta-graph.service';
+import { StagingWhatsappCoexistenceMetaTokenReviewService } from
+  './staging-whatsapp-coexistence-meta-token-review.service';
 
 /**
  * STAGING-ONLY, unregistered internal onboarding prerequisite.
@@ -27,7 +29,8 @@ export type PilotCoexistenceVerificationOutcome =
   | { readyForLaterProvisioningReview: false;
       reason: 'staging_only' | 'unauthorized' | 'invalid_input'
       | 'tenant_not_authorized' | 'phone_already_registered'
-      | 'database_unavailable' | 'meta_verification_failed' };
+      | 'database_unavailable' | 'meta_token_unconfirmed'
+      | 'meta_verification_failed' };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const META_ID = /^[0-9]{6,30}$/;
@@ -43,6 +46,7 @@ export class StagingWhatsappCoexistenceTenantVerificationService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly graph: StagingWhatsappCoexistenceMetaGraphService,
+    private readonly tokenReview: StagingWhatsappCoexistenceMetaTokenReviewService,
   ) {}
 
   async verify(input: PilotCoexistenceVerificationInput): Promise<PilotCoexistenceVerificationOutcome> {
@@ -107,9 +111,19 @@ export class StagingWhatsappCoexistenceTenantVerificationService {
       return { readyForLaterProvisioningReview: false, reason: 'database_unavailable' };
     }
 
-    // IMPORTANT: input.accessToken must come only from a fresh verified Meta
-    // authorization in a future trusted caller. We do not exchange OAuth,
-    // validate token/app/business scopes or grant access here.
+    // IMPORTANT: a future trusted caller must exchange a one-time OAuth code
+    // and derive the tenant from the signed session. The token review proves
+    // the Meta app and selected WABA grant, NOT the tenant's business
+    // portfolio ownership. Until that ownership is independently bound to
+    // the pilot, do not expose or activate this unregistered service.
+    try {
+      const reviewed = await this.tokenReview.review(input.accessToken, input.wabaId);
+      if (!reviewed.reviewed || reviewed.wabaId !== input.wabaId) {
+        return { readyForLaterProvisioningReview: false, reason: 'meta_token_unconfirmed' };
+      }
+    } catch {
+      return { readyForLaterProvisioningReview: false, reason: 'meta_token_unconfirmed' };
+    }
     try {
       const meta = await this.graph.verify({
         wabaId: input.wabaId,
