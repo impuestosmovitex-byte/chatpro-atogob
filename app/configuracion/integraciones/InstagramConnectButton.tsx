@@ -386,8 +386,8 @@ export function InstagramConnectButton({
     oauthUrl.searchParams.set('config_id', config.configurationId);
     oauthUrl.searchParams.set('redirect_uri', redirectUri);
     oauthUrl.searchParams.set('response_type', 'code');
+    oauthUrl.searchParams.set('override_default_response_type', 'true');
     oauthUrl.searchParams.set('state', state);
-    oauthUrl.searchParams.set('prompt', 'login');
     window.location.assign(oauthUrl.toString());
   }
 
