@@ -35,8 +35,9 @@ describe('pilot-only Meta OAuth provisioning', () => {
       const q={
         select:(_s:string)=>q,
         eq:(_k:string,_v:unknown)=>q,
+        order:(_field:string,_options:{ascending:boolean})=>q,
         maybeSingle:async()=>({data:rows[table]||null,error:null}),
-        limit:async()=>({data:[{company_id:'other-company'}],error:null}),
+        limit:async()=>({data: table === 'company_integrations' ? [{company_id:'other-company'}] : [],error:null}),
         upsert:async()=>{writes++;return {error:null};},
       };return q;
     }};
@@ -65,9 +66,10 @@ describe('pilot-only Meta OAuth provisioning', () => {
       const q={
         select:(_s:string)=>q,
         eq:(k:string,v:unknown)=>{filters[k]=v;return q;},
+        order:(_field:string,_options:{ascending:boolean})=>q,
         maybeSingle:async()=>({data:rows[table]||null,error:null}),
         limit:async()=>({data:[],error:null}),
-        upsert:async(row:Record<string,unknown>)=>{saved.push(row);return {error:null};},
+        insert:async(row:Record<string,unknown>)=>{saved.push(row);return {error:null};},
       };
       return q;
     }};
