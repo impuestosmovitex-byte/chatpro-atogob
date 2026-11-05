@@ -41,17 +41,35 @@ por un flujo de Messenger íntegramente gestionado por el servidor y aislado por
 - Protocolo interno de OAuth firmado y validación del callback:
   `app/lib/staging-messenger-oauth-protocol.ts`. Comprueba rol y empresa
   piloto, nonce aleatorio, HMAC, expiración, cookie concordante y parámetros
-  ambiguos. **No está conectado a rutas públicas ni impide reutilización por
+  ambiguos. **No está conectado a rutas públicas y no impide reutilización por
   sí solo**. Requiere una clave independiente `MW1_MESSENGER_OAUTH_STATE_SECRET`
-  únicamente cuando se implemente el flujo autorizado, además de una tabla
-  de nonces con consumo atómico; no crear ni activar variables ahora.
+  únicamente cuando se implemente el flujo autorizado; no crear ni activar
+  variables ahora.
+- **Supabase staging preparado (5 nov 2026)**. Migración aplicada:
+  `20261105054129_mw1_staging_messenger_oauth_nonce_isolation`.
+  Tabla exclusiva `public.mw1_messenger_oauth_nonces` con nonce SHA-256 único,
+  empresa y usuario, vencimiento máximo de 10 minutos, marca `consumed_at`,
+  índice de expiración y RLS activo. Sin políticas públicas: `anon` y
+  `authenticated` no tienen acceso. Solo el rol del servidor puede guardar
+  y consumir registros.
+- La función `public.mw1_consume_messenger_oauth_nonce(text,uuid,uuid)`
+  realiza consumo atómico y comprueba empresa, usuario, no consumido y no
+  vencido. Usa `SECURITY INVOKER` y `search_path` restringido.
+  Prueba transaccional aprobada: empresa equivocada, usuario equivocado,
+  reutilización, autorización caducada y nonce inexistente rechazados;
+  un nonce válido solo se consume una vez. La transacción se revirtió y
+  quedaron **0 registros persistentes**.
+- Supabase Advisor muestra el hallazgo informativo `rls_enabled_no_policy`
+  sobre esta tabla. Es intencional: acceso cerrado para clientes públicos;
+  no crear una política permisiva para eliminar el aviso.
 - Pruebas sintéticas Jest aseguran permisos, empresa/usuario, selección de página,
   no-duplicación, cifrado, estado `pending` y webhooks apagados.
 - No se crearon variables nuevas ni se activó la conexión real.
 
 ## Próxima implementación (NO realizada aquí)
-- Crear la tabla de nonces separada y su consumo atómico para el estado OAuth
-  ya diseñado y probado localmente. Sin almacenamiento persistente todavía.
+- Integrar el registro y consumo atómico de nonces ya creado en Supabase
+  staging con endpoints de servidor seguros, **solo cuando se autorice el piloto**.
+  La existencia de la tabla no habilita OAuth ni reemplaza la validación de Meta.
 - Endpoints backend de begin, callback e intercambio server-to-server,
   sujetos a autorización explícita y seguridad revisada.
 - Confirmar en Meta configuración de Messenger, permisos, callback,
