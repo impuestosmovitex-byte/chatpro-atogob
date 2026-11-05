@@ -1,6 +1,7 @@
 import { getInboxSession } from './inbox-auth.ts';
 import {
   getMessengerPilotIdentity,
+  createMessengerPilotOAuthState,
   parseMessengerPilotCallback,
   type MessengerPilotCallback,
   type MessengerPilotIdentity,
@@ -88,4 +89,27 @@ export async function consumeMessengerPilotCallbackOffline(
     return { valid: false, reason: 'invalid_state' };
   }
   return parsed;
+}
+
+/**
+ * Prepare a one-time Messenger OAuth state entirely offline.
+ * Registration MUST be performed by the reviewed staging API operation
+ * checking the active tenant membership and persisting the nonce atomically.
+ * No state may leave this helper when registration fails. A future reviewed
+ * route must separately set the secure HttpOnly cookie and enforce the gate.
+ * This helper is deliberately not wired to any public endpoint or Meta.
+ */
+export async function prepareMessengerPilotStartOffline(
+  sessionCookie: string | null | undefined,
+  register: (identity: MessengerPilotIdentity, state: string) => Promise<void>,
+): Promise<string | null> {
+  const identity = await getMessengerPilotIdentityFromSessionCookie(sessionCookie);
+  if (!identity || typeof register !== 'function') return null;
+  try {
+    const state = createMessengerPilotOAuthState(identity);
+    await register(identity, state);
+    return state;
+  } catch {
+    return null;
+  }
 }
