@@ -58,6 +58,8 @@ jobs:
         run: node scripts/test-mw1-login-separation.cjs
       - name: Verify disabled Messenger OAuth in staging (offline)
         run: node --experimental-strip-types scripts/test-staging-messenger-disabled.mjs
+      - name: Test Messenger pilot signed OAuth state and callback (offline)
+        run: node --experimental-strip-types scripts/test-staging-messenger-oauth-protocol.mjs
       - name: Validate fail-closed Instagram connection labels (offline)
         run: node --experimental-strip-types scripts/test-instagram-display-status.mjs
       - name: Verify signed Instagram OAuth state (offline)

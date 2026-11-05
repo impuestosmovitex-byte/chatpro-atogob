@@ -38,12 +38,20 @@ por un flujo de Messenger íntegramente gestionado por el servidor y aislado por
 - Nuevo contrato de validación local:
   `apps/api/src/staging-messenger-authorization-policy.ts`, sin acceso a
   red, Meta, base de datos ni tráfico de usuarios.
+- Protocolo interno de OAuth firmado y validación del callback:
+  `app/lib/staging-messenger-oauth-protocol.ts`. Comprueba rol y empresa
+  piloto, nonce aleatorio, HMAC, expiración, cookie concordante y parámetros
+  ambiguos. **No está conectado a rutas públicas ni impide reutilización por
+  sí solo**. Requiere una clave independiente `MW1_MESSENGER_OAUTH_STATE_SECRET`
+  únicamente cuando se implemente el flujo autorizado, además de una tabla
+  de nonces con consumo atómico; no crear ni activar variables ahora.
 - Pruebas sintéticas Jest aseguran permisos, empresa/usuario, selección de página,
   no-duplicación, cifrado, estado `pending` y webhooks apagados.
 - No se crearon variables nuevas ni se activó la conexión real.
 
 ## Próxima implementación (NO realizada aquí)
-- Diseñar el estado OAuth de Messenger con almacenamiento de nonces separado.
+- Crear la tabla de nonces separada y su consumo atómico para el estado OAuth
+  ya diseñado y probado localmente. Sin almacenamiento persistente todavía.
 - Endpoints backend de begin, callback e intercambio server-to-server,
   sujetos a autorización explícita y seguridad revisada.
 - Confirmar en Meta configuración de Messenger, permisos, callback,
