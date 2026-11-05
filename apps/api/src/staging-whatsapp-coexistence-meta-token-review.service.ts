@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 /**
  * Isolated STAGING-only review of Meta's OAuth token introspection.
  * NOT registered in Nest AppModule, controllers, queues or signup flows.
@@ -85,6 +86,7 @@ export function reviewMetaTokenEvidence(
   return {reviewed:true,appId,wabaId};
 }
 
+@Injectable()
 export class StagingWhatsappCoexistenceMetaTokenReviewService {
   constructor(private readonly request: typeof fetch = fetch) {}
 
