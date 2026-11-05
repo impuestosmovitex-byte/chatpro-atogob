@@ -149,12 +149,16 @@ export function WhatsappCoexistencePilotMetaLaunch(){
     let origin='';
     let stopped=false;
     let submitted=false;
+    // Meta's exchangeable code has a short lifetime. Never hold it while
+    // waiting indefinitely for an unrelated browser session event.
+    let codeExpiry:ReturnType<typeof setTimeout>|null=null;
     const timeout=window.setTimeout(()=>
       fail('La autorización superó el tiempo de seguridad; vuelve a comenzar.'),
       6*60*1000);
 
     const cleanup=()=>{
       window.clearTimeout(timeout);
+      if(codeExpiry!==null){window.clearTimeout(codeExpiry);codeExpiry=null;}
       window.removeEventListener('message',onMessage);
       cancel.current=null;
       code='';sessionJson='';origin='';
@@ -220,6 +224,11 @@ export function WhatsappCoexistencePilotMetaLaunch(){
           return;
         }
         code=candidate;
+        // A missing coexistence session event must not leave a Meta code
+        // waiting until the popup's six-minute outer timeout.
+        codeExpiry=window.setTimeout(()=>
+          fail('Meta no confirmó la coexistencia a tiempo. Vuelve a iniciar con el número piloto.'),
+          25000);
         void finish();
       },{
         config_id:'1431168516739052',
