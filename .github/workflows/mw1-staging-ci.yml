@@ -72,6 +72,8 @@ jobs:
         run: node --experimental-strip-types scripts/test-staging-instagram-callback.mjs
       - name: Verify WhatsApp coexistence completion parsing (offline)
         run: node --experimental-strip-types scripts/test-whatsapp-coexistence-completion.mjs
+      - name: Verify Meta phone ownership and true coexistence status (offline)
+        run: node --experimental-strip-types scripts/test-whatsapp-coexistence-meta-phone-check.mjs
       - name: Verify WhatsApp coexistence webhook metadata isolation (offline)
         run: node --experimental-strip-types scripts/test-whatsapp-coexistence-webhook-summary.mjs
       - name: Verify consent and idempotency policy for WhatsApp Coexistence (offline)
