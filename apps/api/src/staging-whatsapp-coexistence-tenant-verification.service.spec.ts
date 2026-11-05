@@ -1,6 +1,8 @@
 import { SupabaseService } from './supabase.service';
 import { StagingWhatsappCoexistenceMetaGraphService } from
   './staging-whatsapp-coexistence-meta-graph.service';
+import { StagingWhatsappCoexistenceMetaTokenReviewService } from
+  './staging-whatsapp-coexistence-meta-token-review.service';
 import {
   StagingWhatsappCoexistenceTenantVerificationService,
   type PilotCoexistenceVerificationInput,
@@ -23,6 +25,7 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
   const from = jest.fn();
   const getClient = jest.fn();
   const metaVerify = jest.fn();
+  const tokenReview = jest.fn();
   let service: StagingWhatsappCoexistenceTenantVerificationService;
   const env = ['MW1_STAGING_MODE','SUPABASE_URL','CHATPRO_INBOX_KEY'] as const;
   const original = new Map<string,string | undefined>();
@@ -59,10 +62,14 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
     metaVerify.mockReset().mockResolvedValue({
       verified:true,wabaId:input.wabaId,phoneNumberId:input.phoneNumberId,
     });
+    tokenReview.mockReset().mockResolvedValue({
+      reviewed:true,wabaId:input.wabaId,appId:'123456789012345',
+    });
     setupDb();
     service = new StagingWhatsappCoexistenceTenantVerificationService(
       {getClient} as unknown as SupabaseService,
       {verify:metaVerify} as unknown as StagingWhatsappCoexistenceMetaGraphService,
+      {review:tokenReview} as unknown as StagingWhatsappCoexistenceMetaTokenReviewService,
     );
   });
 
@@ -76,6 +83,8 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
     expect(from.mock.calls.map(call=>call[0])).toEqual([
       'companies','company_memberships','app_roles','company_integrations',
     ]);
+    expect(tokenReview).toHaveBeenCalledTimes(1);
+    expect(tokenReview).toHaveBeenCalledWith(input.accessToken,input.wabaId);
     expect(metaVerify).toHaveBeenCalledTimes(1);
     expect(metaVerify).toHaveBeenCalledWith({
       wabaId:input.wabaId,phoneNumberId:input.phoneNumberId,
@@ -156,6 +165,31 @@ describe('MW1 pilot tenant authorization before Meta coexistence verification (o
     const result = await service.verify(input);
     expect(result).toEqual(blocked('meta_verification_failed'));
     expect(JSON.stringify(result)).not.toContain('PRIVATE_META_TOKEN');
+  });
+
+  it('does not query the Meta phone without a valid app/WABA token grant',async()=>{
+    tokenReview.mockResolvedValue({reviewed:false,reason:'waba_grant_unconfirmed'});
+    await expect(service.verify(input)).resolves.toEqual(
+      blocked('meta_token_unconfirmed'));
+    expect(tokenReview).toHaveBeenCalledTimes(1);
+    expect(metaVerify).not.toHaveBeenCalled();
+  });
+
+  it('never accepts another WABA in token evidence, even when the token reviewer returns success',async()=>{
+    tokenReview.mockResolvedValue({
+      reviewed:true,appId:'123456789012345',wabaId:'111111111111111',
+    });
+    await expect(service.verify(input)).resolves.toEqual(
+      blocked('meta_token_unconfirmed'));
+    expect(metaVerify).not.toHaveBeenCalled();
+  });
+
+  it('fails closed if the token review raises an exception',async()=>{
+    tokenReview.mockRejectedValue(Error('PRIVATE_ACCESS_TOKEN'));
+    const result=await service.verify(input);
+    expect(result).toEqual(blocked('meta_token_unconfirmed'));
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_ACCESS_TOKEN');
+    expect(metaVerify).not.toHaveBeenCalled();
   });
 
   it('has no method for registration, synchronization, message sending or webhook subscription',()=>{
