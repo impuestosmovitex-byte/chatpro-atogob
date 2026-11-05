@@ -326,10 +326,18 @@ export function WhatsappEmbeddedSignupButton() {
             return;
           }
 
-          if (
-            payload.event === 'FINISH' ||
-            payload.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'
-          ) {
+          // Do not send a WhatsApp Business App coexistence onboarding through
+          // the conventional Cloud API completion endpoint. Coexistence has
+          // separate ownership, consent and history-sync requirements.
+          // This fail-closed branch does NOT alter the existing FINISH path.
+          if (payload.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING') {
+            fail(new Error(
+              'Meta inició coexistencia con WhatsApp Business. No se registró como conexión convencional; utiliza el flujo de coexistencia cuando esté habilitado para el piloto.',
+            ));
+            return;
+          }
+
+          if (payload.event === 'FINISH') {
             const wabaId = text(payload.data?.waba_id);
             if (!wabaId) {
               fail(new Error('Meta terminó el proceso sin devolver la cuenta de WhatsApp.'));
