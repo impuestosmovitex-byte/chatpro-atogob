@@ -17,7 +17,7 @@ const COOKIE='__Host-mw1-wa-coexistence-state';
  * independent explicit review flag. Browser never supplies the signed state.
  */
 export async function POST(request:NextRequest){
-  if(request.nextUrl.hostname!==HOST||
+  if(request.headers.get('host')!==HOST||
       process.env.MW1_STAGING_MODE!=='true'||
       process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED!=='true'||
       process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED!=='true'||
