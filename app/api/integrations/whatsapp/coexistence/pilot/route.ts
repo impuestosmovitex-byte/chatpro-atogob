@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         request.cookies.get(INBOX_SESSION_COOKIE)?.value,
       )),
       allowedApiEndpoint: API_ENDPOINTS.has(
-        process.env.CHATPRO_API_URL?.trim().replace(/\\/$/, '') || '',
+        process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '') || '',
       ),
       internalKeyConfigured: Boolean(process.env.CHATPRO_INBOX_KEY?.trim()),
     });
