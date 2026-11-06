@@ -30,7 +30,17 @@ async function authorized(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const ctx=await authorized(request);
   if (!ctx) {
-    console.warn('[MW1 pilot] GET readiness rejected by authorization checks');
+    console.warn('[MW1 pilot] GET readiness rejected', {
+      hostMatch: request.nextUrl.hostname === HOST,
+      stagingMode: process.env.MW1_STAGING_MODE === 'true',
+      validPilotSession: Boolean(await getInboxSession(
+        request.cookies.get(INBOX_SESSION_COOKIE)?.value,
+      )),
+      allowedApiEndpoint: API_ENDPOINTS.has(
+        process.env.CHATPRO_API_URL?.trim().replace(/\\/$/, '') || '',
+      ),
+      internalKeyConfigured: Boolean(process.env.CHATPRO_INBOX_KEY?.trim()),
+    });
     return NextResponse.json({ok:false,error:'Piloto no autorizado.'},
       {status:403,headers:noStore});
   }
