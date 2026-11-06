@@ -147,6 +147,7 @@ export class ShopifyAutomaticTestSendService {
         .update({
           status: 'sent',
           sent_at: sentAt,
+          provider_message_id: sendResult.messageId,
           failed_at: null,
           next_retry_at: null,
           locked_at: null,
