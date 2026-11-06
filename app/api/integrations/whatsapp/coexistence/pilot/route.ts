@@ -12,7 +12,7 @@ const API_ENDPOINTS = new Set([
 const noStore = {'Cache-Control':'no-store'};
 
 async function authorized(request: NextRequest) {
-  if (request.nextUrl.hostname !== HOST ||
+  if (request.headers.get('host') !== HOST ||
       process.env.MW1_STAGING_MODE !== 'true') return null;
   const session = await getInboxSession(
     request.cookies.get(INBOX_SESSION_COOKIE)?.value,
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   const ctx=await authorized(request);
   if (!ctx) {
     console.warn('[MW1 pilot] GET readiness rejected', {
-      hostMatch: request.nextUrl.hostname === HOST,
+      hostMatch: request.headers.get('host') === HOST,
       stagingMode: process.env.MW1_STAGING_MODE === 'true',
       validPilotSession: Boolean(await getInboxSession(
         request.cookies.get(INBOX_SESSION_COOKIE)?.value,
