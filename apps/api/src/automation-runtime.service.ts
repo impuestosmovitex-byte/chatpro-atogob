@@ -780,6 +780,26 @@ export class AutomationRuntimeService {
       return false;
     }
 
+    // Meta notifications can arrive out of order. Never downgrade a confirmed
+    // delivery or read to an earlier state, or clear a terminal failure with
+    // a late 'sent' notification.
+    const previousStatus = this.text(
+      this.object(execution.payload).provider_status,
+    ).toLowerCase();
+    const successRank: Record<string, number> = {
+      sent: 1,
+      delivered: 2,
+      read: 3,
+    };
+    if (
+      (previousStatus === 'failed' && providerStatus === 'sent') ||
+      ((successRank[previousStatus] ?? 0) >= 2 &&
+        (providerStatus === 'failed' ||
+          (successRank[providerStatus] ?? 0) < successRank[previousStatus]))
+    ) {
+      return true;
+    }
+
     const now = new Date().toISOString();
     const statusAt = this.text(input.timestamp) || now;
     const payload: JsonObject = {
@@ -872,12 +892,17 @@ export class AutomationRuntimeService {
       return true;
     }
 
+    // A 'sent' webhook only acknowledges Meta's acceptance. It must not
+    // reopen a completed Shopify automation or schedule another send.
+    if (providerStatus !== 'sent') {
+      return false;
+    }
+
     const { error: updateError } = await client
       .from('automation_executions')
       .update({
-        status: 'running',
+        status: execution.status === 'sent' ? 'sent' : 'running',
         payload,
-        locked_at: now,
         updated_at: now,
       })
       .eq('id', execution.id);
