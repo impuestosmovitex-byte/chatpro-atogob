@@ -798,10 +798,28 @@ export class AutomationRuntimeService {
 
     if (providerStatus === 'failed') {
       if (execution.status === 'sent') {
+        // A send acceptance is not delivery. Meta may reject an already
+        // accepted message asynchronously; preserve that failure and avoid
+        // automatically retrying a customer-facing Shopify notification.
+        const { error: failedError } = await client
+          .from('automation_executions')
+          .update({
+            status: 'failed',
+            failed_at: now,
+            error_message: input.error || 'Meta reportó que el mensaje no pudo entregarse.',
+            next_retry_at: null,
+            payload,
+            updated_at: now,
+          })
+          .eq('id', execution.id);
+
+        if (failedError) {
+          throw new Error(`No se pudo registrar el fallo de entrega de Meta: ${failedError.message}`);
+        }
         return true;
       }
 
-      const { error: payloadError } = await client
+      const { error: payloadError } = client
         .from('automation_executions')
         .update({ payload, updated_at: now })
         .eq('id', execution.id);
