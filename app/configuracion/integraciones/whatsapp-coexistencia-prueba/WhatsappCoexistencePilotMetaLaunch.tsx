@@ -267,8 +267,8 @@ export function WhatsappCoexistencePilotMetaLaunch(){
       <input type="checkbox" checked={confirmed}
         disabled={!eligible||running||preparing}
         onChange={event=>setConfirmed(event.target.checked)}/>
-      Confirmo que usaré exclusivamente un número NUEVO de prueba, activo en
-      WhatsApp Business, sin relación con ATOGOB ni MAOGO.
+      Confirmo que usaré exclusivamente la SIM independiente del piloto,
+      activa en WhatsApp Business y sin relación con ATOGOB ni MAOGO.
     </label>
     <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:12}}>
       <button type="button" className={styles.testButton}
@@ -289,6 +289,11 @@ export function WhatsappCoexistencePilotMetaLaunch(){
         onClick={()=>cancel.current?.()}>Cancelar intento</button>:null}
     </div>
     {message?<p role="status">{message}</p>:null}
+    <p>
+      Meta decide si el número es apto para coexistencia. Una cuenta de
+      WhatsApp Business recién creada puede no reunir la actividad necesaria;
+      un rechazo de elegibilidad no autoriza a cambiar al registro convencional.
+    </p>
     <small>
       Requiere habilitación expresa en web y API del piloto, una empresa
       autorizada en Meta y un número independiente. No se enviarán mensajes,
