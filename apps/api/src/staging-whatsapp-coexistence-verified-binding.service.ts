@@ -20,7 +20,6 @@ export class StagingWhatsappCoexistenceVerifiedBindingService {
     private readonly supabase: SupabaseService,
     private readonly tokens: StagingWhatsappCoexistenceMetaTokenReviewService,
     private readonly graph: StagingWhatsappCoexistenceMetaGraphService,
-    private readonly request: typeof fetch = fetch,
   ) {}
 
   async bind(input: {
@@ -82,7 +81,7 @@ export class StagingWhatsappCoexistenceVerifiedBindingService {
     // ID can only narrow acceptance, never become proof of ownership.
     let ownerId:string;
     try{
-      const res=await this.request(
+      const res=await fetch(
         'https://graph.facebook.com/v26.0/'+input.wabaId+
         '?fields=id%2Cowner_business',{
         method:'GET',headers:{Authorization:'Bearer '+input.accessToken,
