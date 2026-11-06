@@ -5308,7 +5308,7 @@ export default function Home() {
                         ) : null}
                         {item.deliveryStatus === "failed" && item.deliveryError ? (
                           <p role="alert" style={{ fontSize: 12, color: "#b91c1c", marginTop: 5 }}>
-                            {/(?:^|\\D)131026(?:\\D|$)/.test(item.deliveryError)
+                            {/\b131026\b/.test(item.deliveryError)
                               ? "WhatsApp no pudo entregar este mensaje. El número podría no estar registrado; confirma el teléfono y contacta por otro canal. No se ha comprobado que carezca de WhatsApp."
                               : "Meta no entregó el mensaje. Revisa el error antes de intentar nuevamente."}
                           </p>
