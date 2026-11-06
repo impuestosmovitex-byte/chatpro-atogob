@@ -5,6 +5,7 @@ import { Body } from '@nestjs/common';
 import { StagingWhatsappCoexistenceBrowserHandoffService } from './staging-whatsapp-coexistence-browser-handoff.service';
 import { StagingWhatsappCoexistenceMetaCodeExchangeService } from './staging-whatsapp-coexistence-meta-code-exchange.service';
 import { StagingWhatsappCoexistenceTenantVerificationService } from './staging-whatsapp-coexistence-tenant-verification.service';
+import { StagingWhatsappCoexistenceVerifiedBindingService } from './staging-whatsapp-coexistence-verified-binding.service';
 
 /**
  * STAGING ONLY. A real server-to-server entry point for the isolated pilot
@@ -18,6 +19,7 @@ export class StagingWhatsappCoexistencePilotController {
     private readonly handshake: StagingWhatsappCoexistenceOAuthHandshakeService,
     private readonly exchange: StagingWhatsappCoexistenceMetaCodeExchangeService,
     private readonly tenant: StagingWhatsappCoexistenceTenantVerificationService,
+    private readonly binding: StagingWhatsappCoexistenceVerifiedBindingService,
   ) {}
 
   private authorize(key: string, userId: string, companyId: string, slug: string) {
@@ -123,9 +125,16 @@ export class StagingWhatsappCoexistencePilotController {
         const phone=request.phoneNumberIdHint ||
           await this.exchange.resolveSinglePhone(request.wabaIdHint,token);
         if(!phone)return {exchangedAndReviewed:false};
-        // The independent tenant review enforces the saved pilot business
-        // binding, active membership, WABA scopes, true coexistence phone
-        // and absence of ANY existing integration assignment.
+        // Write only short-lived, Graph-verified ownership evidence following
+        // the consumed nonce, never from browser-supplied business IDs.
+        const bound=await this.binding.bind({
+          actor, onboardingId:request.onboardingId,
+          wabaId:request.wabaIdHint, phoneNumberId:phone,
+          accessToken:token, metaBusinessIdHint:request.businessIdHint,
+        });
+        if(!bound)return {exchangedAndReviewed:false};
+        // Re-check tenant binding, grants, ownership and coexistence before
+        // declaring review complete. Never provision or persist credentials.
         const check=await this.tenant.verify({
           ...actor,onboardingId:request.onboardingId,
           wabaId:request.wabaIdHint,phoneNumberId:phone,
