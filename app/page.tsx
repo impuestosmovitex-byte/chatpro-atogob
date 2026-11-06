@@ -48,6 +48,8 @@ type InboxMessage = {
   mediaStoragePath?: string | null;
   mediaVoice: boolean;
   providerMessageId?: string | null;
+  deliveryStatus?: string | null;
+  deliveryError?: string | null;
   replyToProviderMessageId?: string | null;
   replyToMessage?: string | null;
   messageSource?: string | null;
@@ -5276,6 +5278,41 @@ export default function Home() {
                           <p>{item.message}</p>
                         )}
                         <time>{formatDate(item.createdAt)}</time>
+                        {item.authorType !== "customer" && item.providerMessageId ? (
+                          <span
+                            role="status"
+                            title={item.deliveryError || undefined}
+                            style={{
+                              display: "inline-flex",
+                              gap: 5,
+                              alignItems: "center",
+                              fontSize: 11,
+                              marginTop: 4,
+                              color: item.deliveryStatus === "failed"
+                                ? "#b91c1c"
+                                : item.deliveryStatus === "read"
+                                  ? "#2563eb"
+                                  : "#64748b",
+                            }}
+                          >
+                            <span aria-hidden="true">
+                              {item.deliveryStatus === "failed" ? "⚠" :
+                                item.deliveryStatus === "read" || item.deliveryStatus === "delivered"
+                                  ? "✓✓" : "✓"}
+                            </span>
+                            {item.deliveryStatus === "read" ? "Leído" :
+                              item.deliveryStatus === "delivered" ? "Entregado" :
+                              item.deliveryStatus === "failed" ? "No entregado" :
+                              "Enviado · pendiente de entrega"}
+                          </span>
+                        ) : null}
+                        {item.deliveryStatus === "failed" && item.deliveryError ? (
+                          <p role="alert" style={{ fontSize: 12, color: "#b91c1c", marginTop: 5 }}>
+                            {/\b131026\b/.test(item.deliveryError)
+                              ? "WhatsApp no pudo entregar este mensaje. El número podría no estar registrado; confirma el teléfono y contacta por otro canal. No se ha comprobado que carezca de WhatsApp."
+                              : "Meta no entregó el mensaje. Revisa el error antes de intentar nuevamente."}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   ))}

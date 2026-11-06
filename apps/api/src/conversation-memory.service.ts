@@ -68,6 +68,8 @@ export type InboxMessage = {
   mediaStoragePath: string | null;
   mediaVoice: boolean;
   providerMessageId: string | null;
+  deliveryStatus?: string | null;
+  deliveryError?: string | null;
   replyToProviderMessageId: string | null;
   replyToMessage: string | null;
   messageSource: string | null;
@@ -2102,7 +2104,7 @@ export class ConversationMemoryService {
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
       .select(
-        'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at',
+        'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at',
       )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false });
@@ -2235,7 +2237,7 @@ export class ConversationMemoryService {
     const sessionIds = sessions.map((session) => session.id);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
       .in('session_id', sessionIds)
       .order('created_at', { ascending: true });
 
@@ -2303,7 +2305,7 @@ export class ConversationMemoryService {
     const session = this.toSession(sessionRow);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
       .eq('session_id', session.id)
       .order('created_at', { ascending: true });
 
@@ -2444,7 +2446,7 @@ export class ConversationMemoryService {
         : 0;
 
     const messageFields =
-      'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at';
+      'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at';
 
     let messagesQuery = client
       .from('conversations')
@@ -2491,6 +2493,118 @@ export class ConversationMemoryService {
         ? (messageRows ?? [])
         : [...(messageRows ?? [])].reverse();
 
+    // Include Shopify notifications in the same human-facing inbox timeline.
+    // They are not inserted into conversations: this is a read-only projection
+    // and never triggers a WhatsApp send or a customer-facing automation.
+    let automationQuery = client
+      .from('automation_executions')
+      .select('id, recipient, status, sent_at, created_at, provider_message_id, payload, automation_key, error_message')
+      .eq('company_id', profile.id)
+      .eq('channel', 'whatsapp')
+      .in('recipient', phoneCandidates)
+      .in('status', ['sent', 'failed']);
+
+    if (validAfter) {
+      automationQuery = automationQuery.gte('created_at', validAfter);
+    }
+    if (validBefore) {
+      automationQuery = automationQuery.lt('created_at', validBefore);
+    }
+    const { data: automationRows, error: automationError } =
+      await automationQuery
+        .order('created_at', { ascending: false })
+        .limit(safeMessageLimit || 200);
+
+    // Some MW1 staging tenants do not have the Shopify automation module yet.
+    // Keep the normal inbox usable rather than breaking every chat view.
+    const automationModuleUnavailable =
+      automationError?.code === 'PGRST205' ||
+      automationError?.code === '42P01';
+    if (automationError && !automationModuleUnavailable) {
+      throw new Error(
+        `No se pudo consultar el historial de automatizaciones: ${automationError.message}`,
+      );
+    }
+
+    const manualMessages = orderedMessageRows.map((row) => this.toInboxMessage(row));
+    const knownProviderIds = new Set(
+      manualMessages.map((message) => message.providerMessageId).filter(Boolean),
+    );
+    const automaticMessages: InboxMessage[] = [];
+
+    for (const row of automationRows ?? []) {
+      const payload =
+        row.payload && typeof row.payload === 'object' && !Array.isArray(row.payload)
+          ? row.payload as JsonObject
+          : {};
+      if (payload.production_send !== true || payload.prepared_only !== true) {
+        continue;
+      }
+
+      const providerId =
+        typeof row.provider_message_id === 'string' && row.provider_message_id
+          ? row.provider_message_id
+          : typeof payload.provider_message_id === 'string'
+            ? payload.provider_message_id
+            : '';
+      if (!providerId || knownProviderIds.has(providerId)) {
+        continue;
+      }
+      const body =
+        typeof payload.prepared_message === 'string'
+          ? payload.prepared_message.trim()
+          : '';
+      if (!body) {
+        continue;
+      }
+      knownProviderIds.add(providerId);
+      const providerStatus =
+        typeof payload.provider_status === 'string'
+          ? payload.provider_status.toLowerCase()
+          : '';
+      automaticMessages.push({
+        id: `automation-${row.id}`,
+        sessionId: id,
+        message: body,
+        sender: 'assistant',
+        authorType: 'ai',
+        messageType: 'text',
+        messageMetadata: null,
+        mediaMimeType: null,
+        mediaStoragePath: null,
+        mediaVoice: false,
+        providerMessageId: providerId,
+        deliveryStatus:
+          providerStatus === 'read' ||
+          providerStatus === 'delivered' ||
+          providerStatus === 'sent' ||
+          providerStatus === 'failed'
+            ? providerStatus
+            : row.status === 'failed'
+              ? 'failed'
+              : 'sent',
+        deliveryError:
+          typeof payload.provider_error === 'string' && payload.provider_error.trim()
+            ? payload.provider_error
+            : typeof row.error_message === 'string' && row.error_message.trim()
+              ? row.error_message
+              : null,
+        replyToProviderMessageId: null,
+        replyToMessage: null,
+        messageSource: 'automation',
+        sourceName:
+          typeof row.automation_key === 'string'
+            ? row.automation_key.replace(/_/g, ' ')
+            : 'Notificación automática',
+        createdAt: row.sent_at || row.created_at || null,
+      });
+    }
+
+    const messages = [...manualMessages, ...automaticMessages]
+      .sort((left, right) =>
+        Date.parse(left.createdAt || '') - Date.parse(right.createdAt || ''),
+      );
+
     const contactsByPhone = await this.getContactsByPhones(
       profile.id,
       [session.customerPhone],
@@ -2500,7 +2614,7 @@ export class ConversationMemoryService {
       company: { id: profile.id, slug: profile.slug, name: profile.name },
       session,
       contact: contactsByPhone.get(session.customerPhone) ?? null,
-      messages: orderedMessageRows.map((row) => this.toInboxMessage(row)),
+      messages,
     };
   }
 
@@ -3440,6 +3554,8 @@ export class ConversationMemoryService {
     media_storage_path?: string | null;
     media_voice?: boolean | null;
     provider_message_id?: string | null;
+    status?: string | null;
+    provider_error?: string | null;
     reply_to_provider_message_id?: string | null;
     reply_to_message?: string | null;
     message_source?: string | null;
@@ -3495,6 +3611,8 @@ export class ConversationMemoryService {
         message.provider_message_id.trim()
           ? message.provider_message_id
           : null,
+      deliveryStatus: typeof message.status === 'string' ? message.status : null,
+      deliveryError: typeof message.provider_error === 'string' ? message.provider_error : null,
       replyToProviderMessageId:
         typeof message.reply_to_provider_message_id === 'string' &&
         message.reply_to_provider_message_id.trim()
