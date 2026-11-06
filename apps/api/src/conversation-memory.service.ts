@@ -68,8 +68,8 @@ export type InboxMessage = {
   mediaStoragePath: string | null;
   mediaVoice: boolean;
   providerMessageId: string | null;
-  deliveryStatus: string | null;
-  deliveryError: string | null;
+  deliveryStatus?: string | null;
+  deliveryError?: string | null;
   replyToProviderMessageId: string | null;
   replyToMessage: string | null;
   messageSource: string | null;
