@@ -74,6 +74,81 @@ describe('staging Meta coexistence verified binding',()=>{
     expect(getClient).not.toHaveBeenCalled();
     expect(review).not.toHaveBeenCalled();
   });
+  const mockDb=() => {
+    const insert=jest.fn().mockResolvedValue({error:null});
+    const eq=jest.fn().mockReturnThis();
+    const maybeSingle=jest.fn()
+      .mockResolvedValueOnce({data:{id:actor.companyId,status:'active'},error:null})
+      .mockResolvedValueOnce({data:{role_id:'role-1',active:true},error:null})
+      .mockResolvedValueOnce({data:{key:'owner',company_id:actor.companyId},error:null});
+    const limit=jest.fn().mockResolvedValue({data:[],error:null});
+    const select=jest.fn().mockReturnValue({eq,maybeSingle,limit});
+    const from=jest.fn().mockImplementation((table:string)=>
+      table==='mw1_whatsapp_coexistence_business_bindings'
+        ? {insert} : {select});
+    getClient.mockReturnValue({from});
+    review.mockResolvedValue({reviewed:true,wabaId:valid.wabaId,appId:'1079916404666757'});
+    verify.mockResolvedValue({verified:true,wabaId:valid.wabaId,
+      phoneNumberId:valid.phoneNumberId});
+    return {insert,from};
+  };
+
+  it('accepts valid isolated evidence and writes only time-limited owner IDs',async()=>{
+    process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED='true';
+    process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED='true';
+    const {insert}=mockDb();
+    const spy=jest.spyOn(global,'fetch').mockResolvedValue({
+      ok:true,headers:new Headers(),text:async()=>JSON.stringify({
+        id:valid.wabaId,owner_business:{id:'555555555555'},
+      }),
+    } as Response);
+    try{
+      expect(await binder.bind({...valid,metaBusinessIdHint:'555555555555'}))
+        .toBe(true);
+      expect(insert).toHaveBeenCalledTimes(1);
+      const stored=insert.mock.calls[0][0];
+      expect(stored).toMatchObject({
+        company_id:actor.companyId,waba_id:valid.wabaId,
+        meta_business_id:'555555555555',
+        verified_by_user_id:actor.userId,onboarding_id:valid.onboardingId,
+        verification_state:'verified',
+      });
+      expect(Date.parse(stored.expires_at)-Date.parse(stored.verified_at))
+        .toBe(15*60*1000);
+      expect(JSON.stringify(stored)).not.toContain(valid.accessToken);
+    }finally{spy.mockRestore();}
+  });
+
+  it('rejects a browser business hint that differs from actual Graph owner',async()=>{
+    process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED='true';
+    process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED='true';
+    const {insert}=mockDb();
+    const spy=jest.spyOn(global,'fetch').mockResolvedValue({
+      ok:true,headers:new Headers(),text:async()=>JSON.stringify({
+        id:valid.wabaId,owner_business:{id:'555555555555'},
+      }),
+    } as Response);
+    try{
+      expect(await binder.bind({...valid,metaBusinessIdHint:'666666666666'}))
+        .toBe(false);
+      expect(insert).not.toHaveBeenCalled();
+    }finally{spy.mockRestore();}
+  });
+
+  it('rejects missing WABA grant before any ownership request or write',async()=>{
+    process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED='true';
+    process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED='true';
+    const {insert}=mockDb();
+    review.mockResolvedValue({reviewed:false,reason:'permissions_missing'});
+    const spy=jest.spyOn(global,'fetch');
+    try{
+      expect(await binder.bind(valid)).toBe(false);
+      expect(verify).not.toHaveBeenCalled();
+      expect(spy).not.toHaveBeenCalled();
+      expect(insert).not.toHaveBeenCalled();
+    }finally{spy.mockRestore();}
+  });
+
   it('rejects invalid Meta business hints and credentials',async()=>{
     process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_LAUNCH_ENABLED='true';
     process.env.MW1_STAGING_WHATSAPP_COEXISTENCE_META_REVIEW_ENABLED='true';
