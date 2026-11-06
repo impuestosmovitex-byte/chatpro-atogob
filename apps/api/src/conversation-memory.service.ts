@@ -2515,7 +2515,12 @@ export class ConversationMemoryService {
         .order('created_at', { ascending: false })
         .limit(safeMessageLimit || 200);
 
-    if (automationError) {
+    // Some MW1 staging tenants do not have the Shopify automation module yet.
+    // Keep the normal inbox usable rather than breaking every chat view.
+    const automationModuleUnavailable =
+      automationError?.code === 'PGRST205' ||
+      automationError?.code === '42P01';
+    if (automationError && !automationModuleUnavailable) {
       throw new Error(
         `No se pudo consultar el historial de automatizaciones: ${automationError.message}`,
       );
