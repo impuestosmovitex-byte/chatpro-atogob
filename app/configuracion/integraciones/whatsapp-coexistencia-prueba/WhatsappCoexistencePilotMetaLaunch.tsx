@@ -151,7 +151,7 @@ export function WhatsappCoexistencePilotMetaLaunch(){
     let submitted=false;
     // Meta's exchangeable code has a short lifetime. Never hold it while
     // waiting indefinitely for an unrelated browser session event.
-    let codeExpiry:ReturnType<typeof setTimeout>|null=null;
+    let codeExpiry:number|null=null;
     const timeout=window.setTimeout(()=>
       fail('La autorización superó el tiempo de seguridad; vuelve a comenzar.'),
       6*60*1000);
