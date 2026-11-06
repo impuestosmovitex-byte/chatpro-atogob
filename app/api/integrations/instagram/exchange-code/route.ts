@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import {
   getInboxSession,
   INBOX_SESSION_COOKIE,
 } from '../../../../lib/inbox-auth';
+
+import { verifyInstagramOAuthState } from '../../../../lib/instagram-oauth-state';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +48,91 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
+    if (process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED !== 'true' || process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true' ||
+        process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED !== 'true') {
+      return NextResponse.json({ ok: false, error: 'Instagram no habilitado en staging.' }, { status: 403 });
+    }
+    const submitted = await request.json().catch(() => null) as
+      | { state?: unknown; code?: unknown; redirectUri?: unknown }
+      | null;
+    const state = typeof submitted?.state === 'string' ? submitted.state : '';
+    const code = typeof submitted?.code === 'string' ? submitted.code.trim() : '';
+    const expectedRedirect = 'https://mw1-web-staging-staging.up.railway.app/api/integrations/instagram/callback';
+    if (!code || code.length > 4096 || submitted?.redirectUri !== expectedRedirect) {
+      return NextResponse.json(
+        { ok: false, error: 'El retorno de Instagram es inválido.' },
+        { status: 400 },
+      );
+    }
+    const stored = request.cookies.get('mw1_ig_oauth_state')?.value || '';
+    let signedStateValid = false;
+    try {
+      signedStateValid = Boolean(
+        state && stored && state === stored && session.userId &&
+        verifyInstagramOAuthState(state, session.companyId, session.userId),
+      );
+    } catch {
+      signedStateValid = false;
+    }
+    if (!signedStateValid) {
+      return NextResponse.json(
+        { ok: false, error: 'Autorización de Instagram no válida o vencida.' },
+        { status: 403 },
+      );
+    }
+    const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
+    const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
+    if (!apiBase || !inboxKey) {
+      return NextResponse.json({ ok: false, error: 'API de staging no configurada.' }, { status: 503 });
+    }
+    if (apiBase !== 'https://mw1-api-staging-staging.up.railway.app' ||
+        session.companySlug !== 'piloto-mw1-prueba') {
+      return NextResponse.json(
+        { ok: false, error: 'Esta autorización solo se procesa en la empresa piloto.' },
+        { status: 403 },
+      );
+    }
+    const nonceHash = createHash('sha256').update(state).digest('hex');
+    // The API consumes the nonce atomically during exchange. Do not consume it here.
+    if (process.env.MW1_STAGING_INSTAGRAM_TOKEN_EXCHANGE_ENABLED !== 'true') {
+      return NextResponse.json(
+        { ok: false, error: 'El intercambio de Instagram todavía está deshabilitado.' },
+        { status: 403 },
+      );
+    }
+    const target = new URL(apiBase + '/integrations/instagram/exchange-code');
+    target.searchParams.set('company', session.companySlug);
+    const upstream = await fetch(target, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-chatpro-inbox-key': inboxKey,
+        'x-chatpro-company-id': session.companyId,
+        'x-chatpro-user-id': session.userId ?? '',
+      },
+      body: JSON.stringify({ code, redirectUri: expectedRedirect, nonceHash }),
+      cache: 'no-store',
+    }).catch(() => null);
+    if (!upstream) {
+      return NextResponse.json(
+        { ok: false, error: 'No se pudo contactar con la API de Instagram.' },
+        { status: 502 },
+      );
+    }
+    const response = new NextResponse(await upstream.text(), {
+      status: upstream.status,
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    });
+    if (upstream.ok) {
+      response.cookies.set('mw1_ig_oauth_state', '', {
+        httpOnly: true, secure: true, sameSite: 'lax', maxAge: 0,
+        path: '/api/integrations/instagram',
+      });
+    }
+    return response;
+  }
+
   const apiBase =
     process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
   const inboxKey =
@@ -75,6 +163,8 @@ export async function POST(request: NextRequest) {
     headers: {
       'content-type': 'application/json',
       'x-chatpro-inbox-key': inboxKey,
+      'x-chatpro-user-id': session.userId ?? '',
+      'x-chatpro-company-id': session.companyId,
     },
     body: JSON.stringify(
       await request.json(),

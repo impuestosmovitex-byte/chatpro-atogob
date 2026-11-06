@@ -39,9 +39,13 @@ function config() {
 }
 
 function cleanCompany(value: unknown): string {
-  return typeof value === 'string'
-    ? value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
-    : '';
+  if(typeof value!=='string')return '';
+  const raw=value.trim().toLowerCase();
+  // Never silently rewrite an invalid company name into another tenant's slug.
+  if(!raw)return '';
+  if(!/^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/.test(raw))
+    throw new Error('Identificador de empresa inválido.');
+  return raw;
 }
 
 function companyFrom(body: LoginBody): string {
@@ -104,12 +108,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const platformLogin=process.env.MW1_STAGING_MODE==='true' &&
+      body.company==='__platform__';
+    if(platformLogin){
+      if(!identifier)return NextResponse.json({ok:false,error:'Escribe el usuario administrador.'},{status:400});
+      const {apiBase,inboxKey}=config();
+      const response=await fetch(new URL('/access/platform-login',apiBase),{
+        method:'POST',headers:{'content-type':'application/json','x-chatpro-inbox-key':inboxKey},
+        body:JSON.stringify({identifier,password}),cache:'no-store',
+      });
+      const data=await response.json() as AccessResponse;
+      if(!response.ok||!data.ok||!data.session)
+        return NextResponse.json({ok:false,error:data.error||'Acceso de plataforma denegado.'},{status:response.status||401});
+      return responseWithSession(data.session);
+    }
+
     const { apiBase, inboxKey } = config();
-    const companySlug = companyFrom(body);
+    const companySlug = process.env.MW1_STAGING_MODE === 'true' && !cleanCompany(body.company)
+      ? ''
+      : companyFrom(body);
 
     if (identifier) {
-      const target = new URL(`${apiBase}/access/login`);
-      target.searchParams.set('company', companySlug);
+      const target = new URL(companySlug
+        ? `${apiBase}/access/login`
+        : `${apiBase}/access/staging-user-login`);
+      if (companySlug) target.searchParams.set('company', companySlug);
 
       const accessResponse = await fetch(target, {
         method: 'POST',
@@ -135,6 +158,15 @@ export async function POST(request: NextRequest) {
       }
 
       return responseWithSession(data.session);
+    }
+
+    // Staging never enables the legacy shared bootstrap password.
+    // All demo access must authenticate a real, company-bound user.
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      return NextResponse.json(
+        { ok: false, error: 'Para entrar a la demo usa el código MW1DEMO y la contraseña de pruebas.' },
+        { status: 400 },
+      );
     }
 
     if (!(await passwordMatches(password))) {

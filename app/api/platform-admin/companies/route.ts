@@ -19,7 +19,7 @@ async function currentUser(request: NextRequest) {
     request.cookies.get(INBOX_SESSION_COOKIE)?.value,
   );
 
-  if (!session?.userId || session.type !== 'user') {
+  if (!session?.userId || session.type !== 'platform') {
     return null;
   }
 

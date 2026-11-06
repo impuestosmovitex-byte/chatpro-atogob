@@ -36,7 +36,7 @@ export class SupabaseService {
 
   async checkConnection(): Promise<boolean> {
     const { error } = await this.getClient()
-      .from('customers')
+      .from('companies')
       .select('id', { head: true, count: 'exact' })
       .limit(1);
 

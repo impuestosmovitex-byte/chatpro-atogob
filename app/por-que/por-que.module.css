@@ -1,0 +1,84 @@
+.hero {
+ width:min(1180px,calc(100% - 40px)); margin:0 auto; padding:90px 0 84px;
+ display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.86fr);
+ gap:64px;align-items:center;
+}
+.heroText h1 {font-size:clamp(39px,4.6vw,65px);line-height:1.04;letter-spacing:-.055em;margin:3px 0 25px;}
+.heroText h1 span {background:linear-gradient(180deg,transparent 58%,#ffe27b 58%);}
+.lead {font-size:18px;line-height:1.65;color:#4c5b71;margin-bottom:17px!important;}
+.sublead {font-size:16px;color:#4c5b71;line-height:1.7;}
+.sublead strong {color:#172235;}
+.actions {display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:26px;}
+.heroDisclaimer {display:block;margin-top:22px;color:#657187;font-size:12px;line-height:1.65;}
+.visual {overflow:hidden;border:1px solid #e0e6ef;border-radius:26px;background:#fff;padding:0 22px 20px;box-shadow:0 24px 70px rgba(23,34,53,.095);}
+.visualTop {margin:0 -22px 0;padding:18px 22px;display:flex;justify-content:space-between;gap:10px;background:#172235;color:#fff;align-items:center;}
+.visualTop strong {font-size:24px;letter-spacing:-.06em;}
+.visualTop span {font-size:11px;color:#d9e0eb;}
+.visualTabs {display:flex;gap:9px;margin:17px 0 25px;flex-wrap:wrap;}
+.visualTabs span {font-size:12px;padding:8px 12px;background:#f1f4f8;border-radius:99px;font-weight:750;color:#40516a;}
+.visualTabs span:first-child {color:#13683c;background:#e8f8ed;}
+.chatBubbleClient,.chatBubbleAgent {max-width:83%;font-size:13px;line-height:1.55;padding:14px 16px;border-radius:15px;margin-bottom:15px;}
+.chatBubbleClient {background:#f1f4f8;color:#27364c;}
+.chatBubbleAgent {margin-left:auto;background:#fff0b0;border:1px solid #f9dc75;color:#3b3015;}
+.chatBubbleAgent span {display:block;font-size:10px;text-transform:uppercase;font-weight:850;color:#7c6411;letter-spacing:.07em;margin-bottom:7px;}
+.handoff {display:flex;align-items:center;gap:11px;margin-top:25px;padding:13px;background:#f4f7fb;border:1px solid #e4e9f0;border-radius:12px;color:#55667b;font-size:12px;line-height:1.5;}
+.handoff svg {width:25px;height:25px;color:#172235;flex-shrink:0;}
+.handoff strong {color:#172235;}
+.visualFooter {text-align:right;margin-top:15px;color:#8490a0;font-size:10px;}
+.section {width:min(1180px,calc(100% - 40px));margin:0 auto;padding:84px 0;}
+.intro {max-width:840px;margin-bottom:38px;}
+.kicker {font-size:12px!important;text-transform:uppercase;font-weight:900;letter-spacing:.1em;color:#987200;margin-bottom:16px!important;}
+.intro h2,.paymentPanel h2,.cta h2 {font-size:clamp(32px,3.6vw,48px);line-height:1.1;letter-spacing:-.045em;margin-bottom:18px;}
+.intro>p:last-child,.paymentPanel p:not(.kicker):not(.pendingLabel) {font-size:16px;line-height:1.75;color:#5e6b7f;}
+.benefitGrid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
+.benefitCard {background:#fff;padding:25px;min-height:238px;border:1px solid #e4e8ef;border-radius:19px;box-shadow:0 13px 28px rgba(25,34,53,.035);}
+.benefitIcon {display:grid;place-items:center;width:48px;height:48px;background:#fff0b5;color:#172235;border-radius:12px;margin-bottom:20px;}
+.benefitCard h3 {font-size:19px;letter-spacing:-.015em;line-height:1.25;margin-bottom:10px;}
+.benefitCard p {font-size:14px;color:#627188;line-height:1.6;}
+.workflowSection {background:#f0f3f8;border-top:1px solid #e3e8f0;border-bottom:1px solid #e3e8f0;}
+.steps {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;}
+.step {padding:21px;background:#fff;border-radius:16px;border:1px solid #e0e5ed;}
+.step>span {display:block;font-size:22px;font-weight:950;color:#b08b15;margin-bottom:14px;}
+.step h3 {font-size:17px;line-height:1.3;margin-bottom:10px;}
+.step p {font-size:13px;line-height:1.65;color:#6b788c;}
+.paymentPanel {border-radius:28px;background:#172235;color:#fff;display:grid;grid-template-columns:1.08fr .92fr;align-items:center;gap:52px;padding:48px;overflow:hidden;}
+.paymentPanel .kicker {color:#f4bf00;}
+.paymentPanel h2 {color:#fff;}
+.paymentPanel p:not(.kicker):not(.pendingLabel) {color:#cad4e0;margin-bottom:15px;}
+.pendingLabel {font-size:12px;color:#f8e19e;background:rgba(244,191,0,.11);border:1px solid rgba(244,191,0,.24);padding:12px 14px;border-radius:10px;line-height:1.6;margin:15px 0 26px!important;}
+.paymentVisual {padding:24px;background:#fbfcff;color:#172235;border-radius:22px;}
+.paymentMessage {font-size:13px;background:#f0f3f8;padding:12px 16px;border-radius:15px 15px 15px 3px;width:fit-content;margin-bottom:18px;}
+.paymentExample {border:1px solid #dfe4ef;border-radius:16px;padding:18px;max-width:330px;margin-left:auto;background:#fff;}
+.paymentExample>span {display:flex;align-items:center;gap:7px;color:#7a6527;text-transform:uppercase;font-weight:800;font-size:11px;letter-spacing:.03em;margin-bottom:14px;}
+.paymentExample>span svg {width:17px;height:17px;}
+.paymentExample strong,.paymentExample small {display:block;}
+.paymentExample strong {margin-bottom:6px;}
+.paymentExample small {font-size:12px;color:#78879a;line-height:1.5;}
+.fakePayButton {background:#f4bf00;padding:12px;border-radius:10px;text-align:center;font-weight:850;margin-top:15px;font-size:13px;}
+.paymentVisual>p {font-size:10px;color:#77859a;line-height:1.6;text-align:center;margin:17px 0 0!important;}
+.cta {max-width:1180px;width:calc(100% - 40px);margin:10px auto 74px;text-align:center;background:#fff;border:1px solid #e6e9ef;border-radius:26px;padding:68px 30px;}
+.cta h2 {max-width:850px;margin:0 auto 20px;}
+.cta>p:not(.kicker) {font-size:16px;color:#5d6a7f;max-width:650px;margin:0 auto;line-height:1.65;}
+.cta .actions {justify-content:center;}
+@media(max-width:960px){
+ .hero {grid-template-columns:1fr;gap:36px;padding:55px 0;}
+ .visual {max-width:640px;width:100%;margin:0 auto;}
+ .benefitGrid {grid-template-columns:repeat(2,minmax(0,1fr));}
+ .steps {grid-template-columns:repeat(2,minmax(0,1fr));}
+ .paymentPanel {grid-template-columns:1fr;gap:30px;}
+}
+@media(max-width:600px){
+ .hero {width:calc(100% - 32px);padding:43px 0 40px;}
+ .heroText h1 {font-size:40px;}
+ .lead {font-size:16px;}
+ .sublead {font-size:14px;}
+ .actions {align-items:stretch;flex-direction:column;}
+ .actions a {width:100%;}
+ .visual {border-radius:18px;}
+ .chatBubbleClient,.chatBubbleAgent {max-width:96%;}
+ .section {width:calc(100% - 32px);padding:52px 0;}
+ .benefitGrid,.steps {grid-template-columns:1fr;}
+ .benefitCard {min-height:0;}
+ .paymentPanel {padding:24px;border-radius:20px;}
+ .cta {width:calc(100% - 32px);padding:46px 22px;}
+}

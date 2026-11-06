@@ -9,7 +9,7 @@ RUN npm ci
 
 COPY . .
 
-RUN npm run build
+RUN npm run build -- --webpack
 
 ENV NODE_ENV=production
 ENV PORT=3000

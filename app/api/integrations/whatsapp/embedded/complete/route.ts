@@ -43,6 +43,8 @@ export async function POST(request: NextRequest) {
     headers: {
       'content-type': 'application/json',
       'x-chatpro-inbox-key': inboxKey,
+      'x-chatpro-user-id': session.userId ?? '',
+      'x-chatpro-company-id': session.companyId,
     },
     body: JSON.stringify(await request.json()),
     cache: 'no-store',

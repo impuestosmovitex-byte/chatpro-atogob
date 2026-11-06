@@ -61,6 +61,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app' &&
+      apiBase !== 'https://mw1-api-staging-staging.up.railway.app') {
+    return NextResponse.json(
+      { ok: false, error: 'La configuración de Instagram debe consultarse en la API de staging.' },
+      { status: 503 },
+    );
+  }
+
   const target = new URL(
     `${apiBase}/integrations/instagram/config`,
   );
@@ -73,18 +81,56 @@ export async function GET(request: NextRequest) {
   const response = await fetch(target, {
     headers: {
       'x-chatpro-inbox-key': inboxKey,
+      'x-chatpro-user-id': session.userId ?? '',
+      'x-chatpro-company-id': session.companyId,
     },
     cache: 'no-store',
   });
+
+  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app' &&
+      response.ok) {
+    const body = await response.json().catch(() => null) as
+      | { ready?: boolean; missing?: string[]; authorizationEnabled?: boolean;
+          message?: string; [key: string]: unknown }
+      | null;
+    if (!body) {
+      return NextResponse.json({ ok: false, error: 'Configuración inválida.' }, { status: 502 });
+    }
+    const stateSecret = process.env.MW1_INSTAGRAM_OAUTH_STATE_SECRET?.trim() || '';
+    const webSecretReady = stateSecret.length >= 32;
+    const uiEnabled = process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED === 'true';
+    return NextResponse.json({
+      ...body,
+      ready: body.ready === true && webSecretReady,
+      authorizationEnabled: body.ready === true && webSecretReady &&
+        body.authorizationEnabled === true && uiEnabled,
+      missing: [
+        ...(Array.isArray(body.missing) ? body.missing : []),
+        ...(!webSecretReady ? ['MW1_INSTAGRAM_OAUTH_STATE_SECRET'] : []),
+        ...(!uiEnabled ? ['MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED (web)'] : []),
+      ],
+      // Read-only status for an authenticated tenant admin. Never disclose
+      // credentials, OAuth codes, environment values or provider tokens.
+      diagnostics: {
+        apiReady: body.ready === true,
+        apiAuthorizationEnabled: body.authorizationEnabled === true,
+        webStateSecretReady: webSecretReady,
+        webAuthorizationEnabled: uiEnabled,
+        callbackRegisteredInMeta: 'not_verified_by_server',
+      },
+      message: !webSecretReady
+        ? 'Falta configurar la seguridad OAuth de Instagram en la web de staging.'
+        : body.message,
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  }
 
   return new NextResponse(
     await response.text(),
     {
       status: response.status,
       headers: {
-        'content-type':
-          response.headers.get('content-type') ??
-          'application/json',
+        'content-type': response.headers.get('content-type') ?? 'application/json',
+        'cache-control': 'no-store',
       },
     },
   );

@@ -2361,6 +2361,17 @@ export class InboxController {
       throw new UnauthorizedException(
         'Tu acceso a esta empresa no está activo.',
       );
+    // Resolve current role from the active membership. The signed web cookie
+    // may contain an older owner/admin role after a permission change.
+    const { data: currentRole, error: roleError } = await c
+      .from('app_roles')
+      .select('key,company_id')
+      .eq('id', membership.role_id)
+      .maybeSingle();
+    if (roleError || !currentRole?.key ||
+        (currentRole.company_id && currentRole.company_id !== companyId))
+      throw new UnauthorizedException('El rol de esta empresa ya no es válido.');
+    const effectiveRole = String(currentRole.key).trim().toLowerCase();
     const { data: links, error: le } = await c
       .from('app_role_permissions')
       .select('permission_id')
@@ -2390,7 +2401,7 @@ export class InboxController {
       userId: id,
       fullName: name,
       permissions,
-      isFullAccess: role === 'owner' || role === 'admin',
+      isFullAccess: effectiveRole === 'owner' || effectiveRole === 'admin',
     };
   }
   private async resolveBootstrapOwner(

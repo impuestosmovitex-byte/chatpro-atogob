@@ -3,8 +3,24 @@ import {
   NextResponse,
 } from 'next/server';
 
+import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../../lib/inbox-auth';
+import { verifyInstagramOAuthState } from '../../../../lib/instagram-oauth-state';
+import { parseStagingInstagramOAuthReturn } from '../../../../lib/staging-instagram-oauth-return';
+
 export const dynamic =
   'force-dynamic';
+
+// A rejected staging authorization cannot be resumed with its old cookie.
+// Keep the cookie path identical to the one used by the OAuth begin route.
+function rejectStagingReturn(response: NextResponse): NextResponse {
+  response.headers.set('Cache-Control', 'no-store, private');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  response.cookies.set('mw1_ig_oauth_state', '', {
+    httpOnly: true, secure: true, sameSite: 'lax',
+    maxAge: 0, path: '/api/integrations/instagram',
+  });
+  return response;
+}
 
 export async function GET(
   request: NextRequest,
@@ -12,20 +28,13 @@ export async function GET(
   const url =
     new URL(request.url);
 
-  const forwardedHost =
-    request.headers
-      .get('x-forwarded-host')
-      ?.trim() || '';
-
-  const forwardedProto =
-    request.headers
-      .get('x-forwarded-proto')
-      ?.trim() || 'https';
-
-  const publicOrigin =
-    forwardedHost
-      ? `${forwardedProto}://${forwardedHost}`
-      : 'https://chatpro-web-production.up.railway.app';
+  // Staging redirects must always stay on the fixed staging origin, never
+  // on an origin supplied through forwarded headers.
+  const isStaging =
+    request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app';
+  const publicOrigin = isStaging
+    ? 'https://mw1-web-staging-staging.up.railway.app'
+    : request.nextUrl.origin;
 
   const code =
     url.searchParams.get('code');
@@ -41,7 +50,9 @@ export async function GET(
       'error_description',
     );
 
-  if (error) {
+  // Preserve the existing non-staging OAuth error handling unchanged.
+  // In staging, even a provider error must have a valid signed request state.
+  if (error && !isStaging) {
     return NextResponse.redirect(
       new URL(
         `/configuracion/integraciones?instagram_error=${encodeURIComponent(
@@ -52,16 +63,70 @@ export async function GET(
     );
   }
 
+  if (isStaging) {
+    const expected = request.cookies.get('mw1_ig_oauth_state')?.value || '';
+    const session = await getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
+    let valid = Boolean(
+      session?.type === 'user' &&
+      (session.roleKey === 'owner' || session.roleKey === 'admin') &&
+      session.companySlug === 'piloto-mw1-prueba' &&
+      state && expected && state === expected &&
+      process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED === 'true' &&
+      process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED === 'true',
+    );
+    if (valid && session?.userId && session.companyId) {
+      try {
+        valid = Boolean(verifyInstagramOAuthState(state!, session.companyId, session.userId));
+      } catch {
+        valid = false;
+      }
+    } else {
+      valid = false;
+    }
+    if (!valid) {
+      const denied = NextResponse.redirect(
+        new URL('/configuracion/integraciones?instagram_error=Autorizacion%20de%20Instagram%20no%20valida', publicOrigin),
+      );
+      return rejectStagingReturn(denied);
+    }
+  }
+
+  if (isStaging) {
+    const parsed = parseStagingInstagramOAuthReturn(url.searchParams);
+    if (!parsed.ok) {
+      const errorMessage = parsed.reason === 'provider_error'
+        ? 'Meta no autorizó la conexión de Instagram.'
+        : parsed.reason === 'missing_code'
+          ? 'Meta no devolvió un código de autorización.'
+          : 'El retorno de Instagram contiene parámetros inválidos.';
+      const destination = new URL('/configuracion/integraciones', publicOrigin);
+      destination.searchParams.set('instagram_error', errorMessage);
+      return rejectStagingReturn(NextResponse.redirect(destination));
+    }
+  }
+
+  if (error) {
+    // Avoid reflecting arbitrary provider-supplied text into an OAuth error URL.
+    const denied = NextResponse.redirect(
+      new URL(
+        '/configuracion/integraciones?instagram_error=Meta%20no%20autorizo%20la%20conexion%20de%20Instagram',
+        publicOrigin,
+      ),
+    );
+    return isStaging ? rejectStagingReturn(denied) : denied;
+  }
+
   if (!code) {
-    return NextResponse.redirect(
+    const denied = NextResponse.redirect(
       new URL(
         '/configuracion/integraciones?instagram_error=Meta no devolvió el código de autorización.',
         publicOrigin,
       ),
     );
+    return isStaging ? rejectStagingReturn(denied) : denied;
   }
 
-  return NextResponse.redirect(
+  const response = NextResponse.redirect(
     new URL(
       `/configuracion/integraciones?instagram_code=${encodeURIComponent(
         code,
@@ -71,4 +136,7 @@ export async function GET(
       publicOrigin,
     ),
   );
+  response.headers.set('Cache-Control', 'no-store, private');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  return response;
 }

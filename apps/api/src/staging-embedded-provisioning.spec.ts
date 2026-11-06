@@ -1,0 +1,113 @@
+import { StagingIntegrationsController } from './staging-integrations.controller';
+import { SupabaseService } from './supabase.service';
+import { IntegrationCredentialsService } from './integration-credentials.service';
+
+describe('pilot-only Meta OAuth provisioning', () => {
+  const before = {
+    key:process.env.CHATPRO_INBOX_KEY,
+    flag:process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED,
+    appId:process.env.META_WHATSAPP_APP_ID,
+    appSecret:process.env.META_WHATSAPP_APP_SECRET,
+  };
+  let originalFetch: typeof fetch;
+  beforeEach(() => {
+    process.env.CHATPRO_INBOX_KEY='staging-internal-test-key';
+    process.env.MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED='true';
+    process.env.META_WHATSAPP_APP_ID='123456789';
+    process.env.META_WHATSAPP_APP_SECRET='test-only-app-secret';
+    originalFetch=global.fetch;
+  });
+  afterEach(() => {global.fetch=originalFetch;});
+  afterAll(() => {
+    for (const [name,value] of Object.entries(before)) {
+      const key = {key:'CHATPRO_INBOX_KEY',flag:'MW1_STAGING_WHATSAPP_ONBOARDING_ENABLED',appId:'META_WHATSAPP_APP_ID',appSecret:'META_WHATSAPP_APP_SECRET'}[name as keyof typeof before];
+      if(value===undefined) delete process.env[key]; else process.env[key]=value;
+    }
+  });
+  it('rejects missing or coexistence completion markers before any DB/Meta calls',async()=>{
+    let touched=0;
+    global.fetch=(async()=>{ touched++; throw Error('Meta must not be accessed'); }) as typeof fetch;
+    const db={ from:()=>{ touched++; throw Error('DB must not be accessed'); } };
+    const controller=new StagingIntegrationsController(
+      {getClient:()=>db} as unknown as SupabaseService,
+      {encrypt:()=>{ touched++; return 'unexpected'; }} as unknown as IntegrationCredentialsService,
+    );
+    for (const signupEvent of [undefined,'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING','CANCEL','ERROR']) {
+      await expect(controller.embeddedComplete(
+        'staging-internal-test-key','user','pilot','piloto-mw1-prueba',
+        {signupEvent,code:'code-authorization-long-enough',wabaId:'987654321',phoneNumberId:'123456789'},
+      )).rejects.toThrow(/flujo separado de coexistencia/);
+    }
+    expect(touched).toBe(0);
+  });
+  it('does not allow a registered phone to be overwritten',async()=>{
+    const rows: Record<string,Record<string,unknown>>={
+      companies:{id:'pilot',name:'Pilot',slug:'piloto-mw1-prueba',status:'active'},
+      company_memberships:{role_id:'owner',active:true},
+      app_roles:{key:'owner',company_id:null},
+    };
+    let writes=0;
+    const db={from:(table:string)=>{
+      const q={
+        select:(_s:string)=>q,
+        eq:(_k:string,_v:unknown)=>q,
+        order:(_field:string,_options:{ascending:boolean})=>q,
+        maybeSingle:async()=>({data:rows[table]||null,error:null}),
+        limit:async()=>({data: table === 'company_integrations' ? [{company_id:'other-company'}] : [],error:null}),
+        upsert:async()=>{writes++;return {error:null};},
+      };return q;
+    }};
+    global.fetch=(async(url:string|URL|Request)=>{
+      const address=String(url);
+      if(address.includes('/oauth/access_token')) return {ok:true,json:async()=>({access_token:'test-company-token-very-long'})} as Response;
+      if(address.includes('/phone_numbers')) return {ok:true,json:async()=>({data:[{id:'123456789'}]})} as Response;
+      throw Error('Unexpected external request');
+    }) as typeof fetch;
+    const controller=new StagingIntegrationsController({getClient:()=>db} as unknown as SupabaseService,
+      {encrypt:()=>'ciphertext-only'} as unknown as IntegrationCredentialsService);
+    await expect(controller.embeddedComplete('staging-internal-test-key','user','pilot','piloto-mw1-prueba',
+      {signupEvent:'FINISH',code:'code-authorization-long-enough',wabaId:'987654321',phoneNumberId:'123456789'}))
+      .rejects.toThrow(/ya está registrado/);
+    expect(writes).toBe(0);
+  });
+  it('encrypts a pilot authorization as pending without subscribing webhooks',async()=>{
+    const saved: Array<Record<string,unknown>>=[];
+    const rows: Record<string,Record<string,unknown>>={
+      companies:{id:'pilot',name:'Pilot',slug:'piloto-mw1-prueba',status:'active'},
+      company_memberships:{role_id:'owner',active:true},
+      app_roles:{key:'owner',company_id:null},
+    };
+    const db={from:(table:string)=>{
+      const filters:Record<string,unknown>={};
+      const q={
+        select:(_s:string)=>q,
+        eq:(k:string,v:unknown)=>{filters[k]=v;return q;},
+        order:(_field:string,_options:{ascending:boolean})=>q,
+        maybeSingle:async()=>({data:rows[table]||null,error:null}),
+        limit:async()=>({data:[],error:null}),
+        insert:async(row:Record<string,unknown>)=>{saved.push(row);return {error:null};},
+      };
+      return q;
+    }};
+    const endpoints:string[]=[];
+    global.fetch=(async(url: string | URL | Request)=>{
+      const address=String(url);endpoints.push(address);
+      if(address.includes('/oauth/access_token'))
+        return {ok:true,json:async()=>({access_token:'test-company-token-very-long'})} as Response;
+      if(address.includes('/phone_numbers'))
+        return {ok:true,json:async()=>({data:[{id:'123456789',verified_name:'Pilot'}]})} as Response;
+      throw Error('Unexpected external request');
+    }) as typeof fetch;
+    const encrypted = {encrypt:(_value:Record<string,unknown>)=>'ciphertext-only'} as IntegrationCredentialsService;
+    const controller=new StagingIntegrationsController({getClient:()=>db} as unknown as SupabaseService,encrypted);
+    const result=await controller.embeddedComplete('staging-internal-test-key','user','pilot','piloto-mw1-prueba',
+      {signupEvent:'FINISH',code:'code-authorization-long-enough',wabaId:'987654321',phoneNumberId:'123456789'});
+    expect(result.status).toBe('pending');
+    expect(result.connectionEnabled).toBe(false);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].credentials_encrypted).toBe('ciphertext-only');
+    expect(saved[0].status).toBe('pending');
+    expect(endpoints).toHaveLength(2);
+    expect(endpoints.every(u=>!u.includes('subscribed_apps'))).toBe(true);
+  });
+});

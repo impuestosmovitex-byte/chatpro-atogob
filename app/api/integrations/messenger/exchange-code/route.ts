@@ -4,6 +4,8 @@ import {
   INBOX_SESSION_COOKIE,
 } from '../../../../lib/inbox-auth';
 
+import { isMessengerDisabledInStaging } from '../../../../lib/staging-messenger-gate';
+
 export const dynamic = 'force-dynamic';
 
 function canManage(
@@ -23,6 +25,13 @@ function canManage(
 }
 
 export async function POST(request: NextRequest) {
+  if (isMessengerDisabledInStaging(request.nextUrl.hostname)) {
+    return NextResponse.json(
+      { ok: false, error: 'La autorización de Messenger no está habilitada en MW1 staging.' },
+      { status: 403, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
+
   const session = await getInboxSession(
     request.cookies.get(INBOX_SESSION_COOKIE)?.value,
   );

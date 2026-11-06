@@ -118,6 +118,20 @@ export class UsersController {
       );
     }
 
+    // Enforce the tenant's purchased seat limit before provisioning a new auth user.
+    const { data: entitlement, error: entitlementError } = await client
+      .from('company_entitlements')
+      .select('max_users')
+      .eq('company_id', company.id)
+      .maybeSingle();
+    if (entitlementError || !entitlement ||
+        !Number.isInteger(entitlement.max_users) || entitlement.max_users < 1) {
+      throw new BadRequestException('No se pudo validar el límite de usuarios del plan.');
+    }
+    if ((count ?? 0) >= entitlement.max_users) {
+      throw new BadRequestException('Se alcanzó el máximo de usuarios del plan contratado.');
+    }
+
     if ((count ?? 0) === 0 && role.key !== 'owner') {
       throw new BadRequestException(
         'El primer usuario de la empresa debe tener el rol Propietario.',
@@ -488,14 +502,18 @@ export class UsersController {
       ? await client.from('advisor_service_areas').select('user_id, area_id').eq('company_id', companyId).in('user_id', userIds)
       : { data: [], error: null };
 
-    if (mappings.error) {
+    // The staging database may not yet contain the optional advisor/area mapping table.
+    // Only tolerate PostgreSQL's undefined_table condition, never hide other DB errors.
+    const mappingTableAbsent = process.env.MW1_STAGING_MODE === 'true' &&
+      mappings.error?.code === '42P01';
+    if (mappings.error && !mappingTableAbsent) {
       throw new BadRequestException(
         `No se pudieron consultar las áreas asignadas: ${mappings.error.message}`,
       );
     }
 
     const areaIdsByUser = new Map<string, string[]>();
-    for (const item of mappings.data ?? []) {
+    for (const item of mappingTableAbsent ? [] : (mappings.data ?? [])) {
       const list = areaIdsByUser.get(item.user_id) ?? [];
       list.push(item.area_id);
       areaIdsByUser.set(item.user_id, list);

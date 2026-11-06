@@ -90,32 +90,8 @@ export class AccessController {
       throw new BadRequestException('Falta el usuario.');
     }
 
-    if (await this.isPlatformAdmin(userId)) {
-      const { data: companyData, error: companyError } =
-        await this.supabaseService
-          .getClient()
-          .from('companies')
-          .select('id, slug, name, status')
-          .eq('status', 'active')
-          .order('name', { ascending: true });
-
-      if (companyError) {
-        throw new BadRequestException(
-          `No se pudieron cargar las empresas: ${companyError.message}`,
-        );
-      }
-
-      return {
-        ok: true,
-        companies: (companyData ?? []).map((company: any) => ({
-          id: company.id as string,
-          slug: company.slug as string,
-          name: company.name as string,
-          roleKey: 'owner',
-          roleName: 'Super Admin MW1',
-        })),
-      };
-    }
+    if(await this.isPlatformAdmin(userId))
+      throw new UnauthorizedException('La administración de plataforma no es una cuenta de empresa.');
 
     const { data: membershipData, error: membershipError } =
       await this.supabaseService
@@ -231,21 +207,8 @@ export class AccessController {
       );
     }
 
-    if (await this.isPlatformAdmin(userId)) {
-      return {
-        ok: true,
-        session: {
-          type: 'user',
-          userId,
-          companyId: company.id,
-          companySlug: company.slug,
-          companyName: company.name,
-          fullName: profileData.full_name || 'Super Admin',
-          roleKey: 'owner',
-          roleName: 'Super Admin MW1',
-        },
-      };
-    }
+    if(await this.isPlatformAdmin(userId))
+      throw new UnauthorizedException('El superadministrador no cambia de empresa.');
 
     const { data: membershipData, error: membershipError } =
       await this.supabaseService
@@ -307,6 +270,70 @@ export class AccessController {
     };
   }
 
+  // Staging-only: resolve tenant after verifying the user's password.
+  // Never reveal which company owns an identifier to unauthenticated callers.
+  @Post('staging-user-login')
+  async stagingUserLogin(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Body() body: LoginBody,
+  ) {
+    this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE !== 'true') {
+      throw new UnauthorizedException('Acceso no disponible.');
+    }
+    const identifier = this.normalizeIdentifier(body?.identifier);
+    const password = this.requiredText(body?.password, 'Escribe la contraseña.');
+    const client = this.supabaseService.getClient();
+    const { data: profile, error: profileError } = await client
+      .from('app_profiles')
+      .select('user_id,password_hash,active')
+      .eq('login_identifier', identifier).maybeSingle();
+    if (profileError || !profile?.active || !profile.password_hash ||
+        !this.accessAuthService.verify(password, profile.password_hash) ||
+        await this.isPlatformAdmin(profile.user_id)) {
+      throw new UnauthorizedException('Código o contraseña incorrectos.');
+    }
+    const { data: memberships, error: membershipsError } = await client
+      .from('company_memberships').select('company_id')
+      .eq('user_id', profile.user_id).eq('active', true);
+    if (membershipsError || !memberships || memberships.length !== 1) {
+      throw new UnauthorizedException('Elige tu empresa desde un enlace de acceso específico.');
+    }
+    const { data: company, error: companyError } = await client
+      .from('companies').select('slug,status').eq('id', memberships[0].company_id).maybeSingle();
+    if (companyError || company?.status !== 'active') {
+      throw new UnauthorizedException('Empresa no disponible.');
+    }
+    return this.login(providedKey, company.slug, {identifier,password});
+  }
+
+  // The platform operator signs in without any tenant association.
+  @Post('platform-login')
+  async platformLogin(
+    @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Body() body: LoginBody,
+  ) {
+    this.assertInternalKey(providedKey);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Inicio de plataforma disponible solo en staging.');
+    const identifier=this.normalizeIdentifier(body?.identifier);
+    const password=this.requiredText(body?.password,'Escribe la contraseña.');
+    const {data:profile,error}=await this.supabaseService.getClient()
+      .from('app_profiles').select('user_id,full_name,login_identifier,password_hash,active')
+      .eq('login_identifier',identifier).maybeSingle();
+    if(error||!profile?.active||!profile.password_hash||
+       !this.accessAuthService.verify(password,profile.password_hash)||
+       !(await this.isPlatformAdmin(profile.user_id))){
+      throw new UnauthorizedException('Credenciales de administración incorrectas.');
+    }
+    return {ok:true,session:{
+      type:'platform' as const,userId:profile.user_id,
+      companyId:'',companySlug:'',companyName:'',
+      fullName:profile.full_name||'Administrador MW1',
+      roleKey:'platform_admin',roleName:'Superadministrador MW1',
+    }};
+  }
+
   @Post('login')
   async login(
     @Headers('x-chatpro-inbox-key') providedKey = '',
@@ -322,7 +349,7 @@ export class AccessController {
     const { data: profileData, error: profileError } = await this.supabaseService
       .getClient()
       .from('app_profiles')
-      .select('user_id, full_name, login_identifier, password_hash')
+      .select('user_id, full_name, login_identifier, password_hash, active')
       .eq('login_identifier', identifier)
       .maybeSingle();
 
@@ -333,8 +360,13 @@ export class AccessController {
     }
 
     const profile = profileData as ProfileRow | null;
+    // Platform operators never acquire a tenant session through a company login.
+    if(profile?.user_id && await this.isPlatformAdmin(profile.user_id))
+      throw new UnauthorizedException('Ingresa desde el acceso de administración MW1.');
+
 
     if (
+      profileData?.active !== true ||
       !profile?.password_hash ||
       !this.accessAuthService.verify(password, profile.password_hash)
     ) {

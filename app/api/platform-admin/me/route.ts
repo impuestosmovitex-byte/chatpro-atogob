@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       request.cookies.get(INBOX_SESSION_COOKIE)?.value,
     );
 
-    if (!session?.userId || session.type !== 'user') {
+    if (!session?.userId || session.type !== 'platform') {
       return NextResponse.json(
         { ok: false, platformAdmin: false, error: 'Sesión de usuario requerida.' },
         { status: 401 },

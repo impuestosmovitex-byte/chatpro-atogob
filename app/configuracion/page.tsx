@@ -13,6 +13,12 @@ type SessionResponse = {
 
 const cards = [
   {
+    title: 'Mi plan y facturación',
+    description: 'Consulta tu plan, cupos y módulos. Los pagos y cancelaciones se habilitarán cuando exista facturación verificada.',
+    icon: '▤',
+    href: '/configuracion/mi-plan',
+  },
+  {
     title: 'Empresa e identidad',
     description:
       'Nombre, logo, datos comerciales y apariencia del espacio de trabajo.',

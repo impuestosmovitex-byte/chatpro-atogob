@@ -48,6 +48,8 @@ type InboxMessage = {
   mediaStoragePath?: string | null;
   mediaVoice: boolean;
   providerMessageId?: string | null;
+  deliveryStatus?: string | null;
+  providerError?: string | null;
   replyToProviderMessageId?: string | null;
   replyToMessage?: string | null;
   messageSource?: string | null;
@@ -1226,6 +1228,7 @@ export default function Home() {
   const [transferTargetUserId, setTransferTargetUserId] = useState("");
   const [internalTestLoading, setInternalTestLoading] = useState(false);
   const [error, setError] = useState("");
+  const [stagingNotice,setStagingNotice]=useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactTags, setContactTags] = useState("");
@@ -1251,7 +1254,8 @@ export default function Home() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [imageSending, setImageSending] = useState(false);
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const attachmentFile = attachmentFiles[0] || null;
   const [attachmentSending, setAttachmentSending] = useState(false);
   const [draggingFile, setDraggingFile] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1377,6 +1381,12 @@ export default function Home() {
       const data = (await readJson(
         presenceResponse,
       )) as AdvisorPresenceResponse;
+      if (presenceResponse.status===503 &&
+        (data as AdvisorPresenceResponse & {code?:string}).code==='STAGING_INBOX_DISABLED'){
+        setPresence({status:'offline'});
+        setStagingNotice('Tu empresa está conectada al entorno de pruebas. La bandeja permite consultar conversaciones guardadas en staging; todavía no está habilitado enviar mensajes, atender en vivo ni conectar canales reales.');
+        return;
+      }
       if (!presenceResponse.ok || !data.ok || !data.advisor)
         throw new Error(data.error || "No se pudo cargar la disponibilidad.");
       setPresence(data.advisor);
@@ -1514,6 +1524,11 @@ export default function Home() {
       const data =
         (await readJson(response)) as TransferTargetsResponse;
 
+      if(response.status===503 &&
+        (data as TransferTargetsResponse & {code?:string}).code==='STAGING_INBOX_DISABLED'){
+        setAdvisorFilters([]);
+        return;
+      }
       if (!response.ok || !data.ok) {
         throw new Error(
           data.error || "No se pudieron cargar los asesores.",
@@ -1609,6 +1624,16 @@ export default function Home() {
         return;
       }
 
+      if (response.status===503 &&
+        (data as ApiList & {code?:string}).code==='STAGING_INBOX_DISABLED'){
+        setSessions([]);
+        setHasMoreSessions(false);
+        nextSessionsOffsetRef.current=0;
+        setNextSessionsOffset(0);
+        setStagingNotice('Tu empresa está conectada al entorno de pruebas. La bandeja permite consultar conversaciones guardadas en staging; todavía no está habilitado enviar mensajes, atender en vivo ni conectar canales reales.');
+        setError('');
+        return;
+      }
       if (!response.ok || !data.ok) {
         throw new Error(data.error || "No se pudo cargar la bandeja.");
       }
@@ -1884,7 +1909,7 @@ export default function Home() {
       await openConversation(sessionId, true);
       setActionMessage(
         data.warning?.trim() ||
-          "Plantilla enviada por WhatsApp. La conversación quedó abierta para continuar como asesor.",
+          "Solicitud de plantilla aceptada por Meta. La entrega aún NO está confirmada; comprueba el estado del mensaje antes de considerar contactado al cliente.",
       );
     } catch (caught) {
       setError(
@@ -2819,17 +2844,18 @@ export default function Home() {
   function selectImages(files: File[]) {
     if (!files.length) return;
 
-    const allowed = new Set([
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/webp",
-    ]);
-
-    const invalidFile = files.find((file) => !allowed.has(file.type));
-
+    const allowed = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+    const supportedImage = (file: File) => {
+      const mime = file.type.toLowerCase().trim();
+      const ext = file.name.toLowerCase().split(".").pop() || "";
+      return allowed.has(mime) || ((!mime || mime === "application/octet-stream") &&
+        ["jpg", "jpeg", "png", "webp"].includes(ext));
+    };
+    const invalidFile = files.find((file) => !supportedImage(file));
     if (invalidFile) {
-      setError("Formato no permitido. Usa JPG, PNG o WEBP.");
+      const name = invalidFile.name || "archivo";
+      const format = invalidFile.type || "sin tipo MIME";
+      setError(`No se puede enviar "${name}" (formato ${format}). Usa JPG, PNG o WEBP. Si es HEIC de iPhone, conviértelo a JPG.`);
       return;
     }
 
@@ -2866,7 +2892,7 @@ export default function Home() {
   }
 
   function clearAttachmentDraft() {
-    setAttachmentFile(null);
+    setAttachmentFiles([]);
 
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
@@ -2877,114 +2903,96 @@ export default function Home() {
     inputFiles?: FileList | File[] | null,
   ) {
     const files = Array.from(inputFiles ?? []);
-
     if (!files.length) return;
 
-    const allImages = files.every((file) =>
-      file.type.startsWith("image/"),
+    const allImages = files.every(file =>
+      file.type.toLowerCase().startsWith("image/") ||
+      ((!file.type || file.type === "application/octet-stream") &&
+        /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)),
     );
-
     if (allImages) {
       selectImages(files);
       return;
     }
-
-    if (files.length > 1) {
-      setError(
-        "Puedes seleccionar varias imágenes a la vez. Videos y documentos se envían uno por uno.",
-      );
+    if (files.length > 10) {
+      setError("Selecciona hasta 10 archivos por envío.");
       return;
     }
-
-    const file = files[0];
-
     const allowed = new Set([
-      "video/mp4",
-      "video/3gpp",
-      "application/pdf",
-      "text/plain",
+      "video/mp4", "video/3gpp", "application/pdf", "text/plain",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/vnd.ms-excel",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ]);
-
-    if (!allowed.has(file.type)) {
-      setError(
-        "Formato no permitido. Usa JPG, PNG, WEBP, MP4, 3GP, PDF, TXT, DOC, DOCX, XLS o XLSX.",
-      );
+    const supported = (file:File) => {
+      const mime=file.type.toLowerCase();
+      const ext=file.name.toLowerCase().split(".").pop()||"";
+      return allowed.has(mime) ||
+        ((!mime||mime==="application/octet-stream") &&
+         ["mp4","3gp","3gpp","pdf","txt","doc","docx","xls","xlsx"].includes(ext));
+    };
+    const invalid = files.find(file=>!supported(file));
+    if (invalid) {
+      setError(`El archivo "${invalid.name}" no es compatible (${invalid.type||"tipo desconocido"}). Los videos MOV deben convertirse a MP4.`);
       return;
     }
-
-    if (file.size > 25 * 1024 * 1024) {
-      setError("El archivo supera el límite de 25 MB.");
+    const oversized = files.find(file=>file.size>25*1024*1024);
+    if (oversized) {
+      setError(`El archivo "${oversized.name}" supera el límite de 25 MB.`);
       return;
     }
-
     clearImageDraft();
-    setAttachmentFile(file);
-
-    if (imageInputRef.current) {
-      imageInputRef.current.value = "";
-    }
-
+    setAttachmentFiles(files);
+    if (imageInputRef.current) imageInputRef.current.value="";
     setQuickReplyOpen(false);
     setError("");
   }
 
   async function sendSelectedAttachment() {
-    if (!selected?.session.id || !attachmentFile) return;
-
+    if (!selected?.session.id || !attachmentFiles.length) return;
     setAttachmentSending(true);
     setError("");
     setActionMessage("");
-
+    let sentCount = 0;
     try {
-      const form = new FormData();
-
-      form.set("sessionId", selected.session.id);
-      form.set(
-        "file",
-        attachmentFile,
-        attachmentFile.name || "archivo",
-      );
-
-      if (message.trim()) {
-        form.set(
-          "caption",
-          message.trim().slice(0, 1024),
-        );
+      for (const file of attachmentFiles) {
+        const form = new FormData();
+        form.set("sessionId", selected.session.id);
+        form.set("file", file, file.name || "archivo");
+        if (sentCount === 0 && message.trim()) {
+          form.set("caption", message.trim().slice(0, 1024));
+        }
+        const response = await fetch("/api/inbox/file", {
+          method: "POST",
+          body: form,
+        });
+        const data = (await readJson(response)) as ApiConversation & {
+          message?: string;
+        };
+        if (!response.ok || !data.ok || !data.conversation) {
+          throw new Error(data.error || data.message ||
+            `No se pudo enviar "${file.name}".`);
+        }
+        sentCount += 1;
+        setSelected(data.conversation);
       }
-
-      const response = await fetch("/api/inbox/file", {
-        method: "POST",
-        body: form,
-      });
-
-      const data = (await readJson(response)) as ApiConversation & {
-        message?: string;
-      };
-
-      if (!response.ok || !data.ok || !data.conversation) {
-        throw new Error(
-          data.error ||
-            data.message ||
-            "No se pudo enviar el archivo.",
-        );
-      }
-
-      setSelected(data.conversation);
-      conversationDraftsRef.current[data.conversation.session.id] = "";
+      const sentTotal = attachmentFiles.length;
+      conversationDraftsRef.current[selected.session.id] = "";
       clearAttachmentDraft();
       setMessage("");
-      setActionMessage("Archivo enviado.");
+      setActionMessage(sentTotal === 1 ? "Archivo enviado." :
+        `${sentTotal} archivos enviados.`);
       await loadList(false);
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "No se pudo enviar el archivo.",
-      );
+      if (sentCount > 0) {
+        setAttachmentFiles(current=>current.slice(sentCount));
+        conversationDraftsRef.current[selected.session.id] = "";
+        setMessage("");
+        await loadList(false);
+      }
+      setError(caught instanceof Error ? caught.message :
+        "No se pudieron enviar todos los archivos.");
     } finally {
       setAttachmentSending(false);
     }
@@ -4254,6 +4262,12 @@ export default function Home() {
           </div>
         ) : null}
 
+        {stagingNotice ? <div role="status" style={{
+          background:'#eef3fc',border:'1px solid #cddcf1',color:'#233c59',
+          padding:'14px 17px',borderRadius:12,fontSize:13,lineHeight:1.6,
+          marginBottom:14,
+        }}><strong>Modo de incorporación MW1:</strong> {stagingNotice}
+        </div> : null}
         {error ? <div className="error-banner">{error}</div> : null}
         {actionMessage ? (
           <div className="success-banner">{actionMessage}</div>
@@ -5176,6 +5190,20 @@ export default function Home() {
                           : "No hay mensajes todavía."}
                     </p>
                   ) : null}
+                  {selected.messages.some(item =>
+                    item.sender !== "customer" && item.deliveryStatus === "failed"
+                  ) && (
+                    <div role="alert" style={{
+                      padding: "10px 14px", margin: "8px", borderRadius: 8,
+                      border: "1px solid currentColor", fontSize: 13,
+                    }}>
+                      <strong>⚠ Hay mensajes que no llegaron al cliente.</strong>
+                      <div>No consideres estos intentos como contacto exitoso.
+                        Revisa el mensaje marcado como fallido y utiliza otra vía
+                        de contacto autorizada. No reenvíes automáticamente
+                        plantillas de marketing rechazadas por Meta.</div>
+                    </div>
+                  )}
                   {selected.messages.map((item) => (
                     <div
                       key={
@@ -5187,6 +5215,23 @@ export default function Home() {
                         item.providerMessageId || undefined
                       }
                     >
+                      {item.sender !== "customer" && item.providerMessageId && (
+                        <div role="status" style={{fontSize:"11px",marginBottom:4}}>
+                          {item.deliveryStatus === "read" ? "✓✓ Leído" :
+                           item.deliveryStatus === "delivered" ? "✓✓ Entregado" :
+                           item.deliveryStatus === "failed" ? "⚠ No entregado — Meta rechazó el mensaje" :
+                           "◷ Enviado a Meta — entrega sin confirmar"}
+                          {item.deliveryStatus === "failed" && item.providerError && (
+                            <div style={{fontSize:"11px",fontWeight:500}}>
+                              {item.providerError.includes("131049")
+                                ? "131049: Meta restringió la entrega. Contacta por otra vía autorizada."
+                                : item.providerError.includes("131026")
+                                  ? "131026: posiblemente no disponible en WhatsApp. Verifica el número; este error no confirma por sí solo que no tenga WhatsApp."
+                                  : item.providerError.slice(0,180)}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="message-bubble">
                         {item.replyToMessage ? (
                           <button
@@ -5588,7 +5633,7 @@ export default function Home() {
                               </span>
 
                               <div>
-                                <strong>{attachmentFile.name}</strong>
+                                <strong>{attachmentFile.name}{attachmentFiles.length > 1 ? ` y ${attachmentFiles.length - 1} archivo(s) más` : ''}</strong>
                                 <small>
                                   {(attachmentFile.size / 1024 / 1024).toFixed(2)} MB
                                 </small>

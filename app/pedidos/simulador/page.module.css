@@ -1,0 +1,48 @@
+.columns{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(330px,0.75fr);gap:20px;align-items:start}
+.chatPanel,.cartPanel{border:1px solid #e5e5e9;background:white;border-radius:14px;overflow:hidden;min-width:0}
+.chatHeader{display:flex;gap:10px;align-items:center;padding:15px 20px;background:#faf8f5;border-bottom:1px solid #eee}
+.chatHeader strong,.chatHeader small{display:block}.chatHeader strong{font-size:14px}.chatHeader small{font-size:11px;color:#666;margin-top:3px}
+.avatar{height:40px;width:40px;background:#741d3c;color:white;display:flex;justify-content:center;align-items:center;border-radius:40px;font-size:12px;font-weight:800}
+.messages{padding:20px;display:flex;flex-direction:column;gap:13px;min-height:380px;max-height:525px;overflow-y:auto;background:#f7f8f7;white-space:pre-wrap}
+.assistantMessage,.customerMessage{padding:13px 16px;border-radius:13px;max-width:85%;line-height:1.55;font-size:14px;overflow-wrap:anywhere}
+.assistantMessage{background:white;border:1px solid #eee;align-self:flex-start}
+.customerMessage{background:#ddf5e4;align-self:flex-end}
+.inputBar{display:flex;gap:9px;padding:14px;border-top:1px solid #eee}
+.inputBar input{min-width:0;flex:1;border:1px solid #ddd;border-radius:10px;padding:12px 14px;font-size:14px}
+.inputBar button,.confirm{border:0;border-radius:9px;padding:12px 18px;background:#1e1e22;color:white;cursor:pointer;font-size:13px;font-weight:650}
+.inputBar button:disabled,.confirm:disabled{opacity:0.45;cursor:not-allowed}
+.hint{padding:0 16px 14px;margin:0;color:#777;font-size:11px}
+.cartPanel{padding:18px}
+.cartPanel h2{font-weight:750;font-size:20px;margin:0 0 18px}
+.catalogChoices{padding:12px;background:#fafafa;border:1px solid #eee;border-radius:10px;max-height:230px;overflow:auto;margin-bottom:12px}
+.catalogChoices>small{color:#777;display:block;margin:0 0 12px}
+.choice{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #eee;font-size:13px}
+.choice>span{flex:1}.choice small{color:#666;display:block;font-size:11px;padding-top:4px}
+.choice button{border:1px solid #ddd;background:white;border-radius:8px;padding:7px 13px;cursor:pointer}
+.choice button:disabled{opacity:.5}
+.cartItems{border-top:1px solid #eee;margin-top:12px}
+.cartItem{padding:12px 0;border-bottom:1px solid #eee;font-size:13px}
+.cartItem>div{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px}
+.cartItem input{border:1px solid #ddd;border-radius:7px;padding:7px;width:70px}
+.total{padding:15px 0;display:flex;justify-content:space-between;font-size:18px;border-top:1px solid #ddd;margin-top:10px}
+.muted{font-size:12px;color:#666;line-height:1.55}
+.details{display:flex;flex-direction:column;gap:11px;margin:20px 0}
+.details h3{font-size:15px;margin:0 0 3px}
+.details label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:650}
+.details input,.details select{padding:10px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:white;max-width:100%}
+.confirm{width:100%;background:#761e3d}
+.success{border:1px solid #a7dbb7;padding:14px;background:#f0fbf3;border-radius:10px;font-size:13px}
+.success p{margin:8px 0}.success a{color:#206940;font-weight:650}
+@media(max-width:1050px){.columns{grid-template-columns:1fr}.chatPanel{min-height:460px}.messages{min-height:310px}}
+@media(max-width:600px){.inputBar{padding:8px}.inputBar input{padding:10px}.messages{padding:12px;min-height:280px}.cartPanel{padding:12px}.assistantMessage,.customerMessage{max-width:94%}}
+
+.recommendations{border-top:1px solid #e6e3e5;background:#fffdfd;padding:13px 17px;max-height:235px;overflow:auto}
+.recommendations>strong{font-size:12px;color:#4b2432}
+.recommendation{display:flex;align-items:center;justify-content:space-between;gap:13px;padding:9px 0;border-bottom:1px solid #eee;font-size:12px}
+.recommendation:last-child{border-bottom:0}
+.recommendation span{min-width:0;overflow-wrap:anywhere}
+.recommendation small{display:block;font-size:11px;color:#777;margin-top:4px}
+.recommendation button{background:white;border:1px solid #8b3b56;color:#75203b;font-weight:600;border-radius:7px;padding:8px 12px;cursor:pointer}
+.recommendation button:disabled{opacity:.5;cursor:not-allowed}
+
+.recommendationImage{width:58px;height:68px;object-fit:contain;border-radius:7px;border:1px solid #eee;background:#fff;flex-shrink:0}

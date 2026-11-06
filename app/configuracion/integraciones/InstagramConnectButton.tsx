@@ -5,16 +5,27 @@ import {
   useState,
 } from 'react';
 
+import { getInstagramDisplayStatus } from '../../lib/instagram-display-status';
 import styles from './page.module.css';
 
 type InstagramConfig = {
   ok?: boolean;
   ready?: boolean;
+  authorizationEnabled?: boolean;
+  connectionEnabled?: boolean;
   appId?: string;
+  configurationId?: string;
   apiVersion?: string;
   scopes?: string[];
   loginMode?: string;
   missing?: string[];
+  diagnostics?: {
+    apiReady?: boolean;
+    apiAuthorizationEnabled?: boolean;
+    webStateSecretReady?: boolean;
+    webAuthorizationEnabled?: boolean;
+    callbackRegisteredInMeta?: string;
+  };
   error?: string;
   message?: string;
 };
@@ -70,6 +81,16 @@ export function InstagramConnectButton({
     setLoading,
   ] =
     useState(true);
+
+  // Avoid reading browser-only location during the server render.
+  const [isStaging, setIsStaging] = useState(false);
+  const [showOnboardingDiagnostics, setShowOnboardingDiagnostics] = useState(false);
+
+  useEffect(() => {
+    setIsStaging(
+      window.location.hostname === 'mw1-web-staging-staging.up.railway.app',
+    );
+  }, []);
 
   const [
     connecting,
@@ -150,11 +171,10 @@ export function InstagramConnectButton({
   }, []);
 
   useEffect(() => {
-    if (
-      !config?.ready ||
-      typeof window ===
-        'undefined'
-    ) {
+    // Read and remove OAuth parameters even when the pilot was disabled
+    // while Meta was redirecting back. Never keep an authorization code in
+    // the browser URL merely because the readiness check fails.
+    if (loading || !config || typeof window === 'undefined') {
       return;
     }
 
@@ -212,7 +232,18 @@ export function InstagramConnectButton({
       `${url.pathname}${url.search}${url.hash}`,
     );
 
+    const pilotDisabled =
+      window.location.hostname === 'mw1-web-staging-staging.up.railway.app' &&
+      config.authorizationEnabled !== true;
+
+    if (!config.ready || pilotDisabled) {
+      window.sessionStorage.removeItem('chatpro_instagram_oauth_state');
+      setMessage('La autorización de Instagram no está habilitada. No se procesó ningún código ni se guardaron credenciales.');
+      return;
+    }
+
     if (oauthError) {
+      window.sessionStorage.removeItem('chatpro_instagram_oauth_state');
       setMessage(oauthError);
       return;
     }
@@ -234,7 +265,7 @@ export function InstagramConnectButton({
         expectedState
     ) {
       setMessage(
-        'Instagram regresó una autorización que no coincide con la solicitud iniciada en ChatPro.',
+        'Instagram regresó una autorización que no coincide con la solicitud iniciada en MW1.',
       );
 
       return;
@@ -268,6 +299,7 @@ export function InstagramConnectButton({
                 JSON.stringify({
                   code,
                   redirectUri,
+                  state: returnedState,
                 }),
             },
           );
@@ -275,6 +307,7 @@ export function InstagramConnectButton({
         const data =
           (await response.json()) as {
             ok?: boolean;
+            pending?: boolean;
             message?: string;
             error?: string;
             instagram?: {
@@ -305,10 +338,14 @@ export function InstagramConnectButton({
             ?.trim();
 
         setMessage(
-          username
-            ? `Instagram @${username} quedó conectado.`
-            : data.message ||
-                'Instagram quedó conectado.',
+          data.pending
+            ? (username
+                ? `Instagram @${username} quedó pendiente de activación. Aún no recibe mensajes.`
+                : 'Instagram quedó pendiente de activación. Aún no recibe mensajes.')
+            : username
+              ? `Instagram @${username} quedó conectado.`
+              : data.message ||
+                  'Instagram quedó conectado.',
         );
 
         window.setTimeout(
@@ -336,77 +373,51 @@ export function InstagramConnectButton({
     return () => {
       cancelled = true;
     };
-  }, [config?.ready]);
+  }, [loading, config?.ready, config?.authorizationEnabled]);
 
-  function startLogin() {
-    if (
-      !config?.ready ||
-      !config.appId
-    ) {
-      setMessage(
-        config?.message ||
-          'Falta preparar Instagram en Meta.',
-      );
-
+  async function startLogin() {
+    if (!config?.ready || !config.appId) {
+      setMessage(config?.message || 'Falta preparar Instagram en Meta.');
       return;
     }
-
+    const isStaging = window.location.hostname === 'mw1-web-staging-staging.up.railway.app';
+    if (isStaging && config.authorizationEnabled !== true) {
+      setMessage(config.message || 'Instagram sigue en preparación.');
+      return;
+    }
+    if (config.loginMode !== 'unified_login' || !config.configurationId) {
+      setMessage('Unified Login no está configurado. No se iniciará el flujo anterior.');
+      return;
+    }
     setMessage('');
-
-    const redirectUri =
-      `${window.location.origin}/api/integrations/instagram/callback`;
-
-    const state =
-      crypto.randomUUID()
-        .replace(
-          /-/g,
-          '',
-        );
-
-    window.sessionStorage.setItem(
-      'chatpro_instagram_oauth_state',
-      state,
-    );
-
-    const oauthUrl =
-      new URL(
-        'https://www.instagram.com/oauth/authorize',
-      );
-
-    oauthUrl.searchParams.set(
-      'client_id',
-      config.appId,
-    );
-
-    oauthUrl.searchParams.set(
-      'redirect_uri',
-      redirectUri,
-    );
-
-    oauthUrl.searchParams.set(
-      'scope',
-      config.scopes?.join(',') ||
-        '',
-    );
-
-    oauthUrl.searchParams.set(
-      'response_type',
-      'code',
-    );
-
-    oauthUrl.searchParams.set(
-      'state',
-      state,
-    );
-
-    oauthUrl.searchParams.set(
-      'force_reauth',
-      'true',
-    );
-
-    window.location.assign(
-      oauthUrl.toString(),
-    );
+    const redirectUri = window.location.origin + '/api/integrations/instagram/callback';
+    let state = '';
+    if (isStaging) {
+      try {
+        const response = await fetch('/api/integrations/instagram/begin', { method: 'POST', cache: 'no-store' });
+        const payload = await response.json() as { ok?: boolean; state?: string; error?: string };
+        if (!response.ok || !payload.ok || !payload.state) {
+          throw new Error(payload.error || 'No se pudo iniciar la autorización segura.');
+        }
+        state = payload.state;
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'No se pudo preparar la conexión.');
+        return;
+      }
+    } else {
+      state = crypto.randomUUID().replace(/-/g, '');
+    }
+    window.sessionStorage.setItem('chatpro_instagram_oauth_state', state);
+    const oauthUrl = new URL('https://www.facebook.com/dialog/oauth');
+    oauthUrl.searchParams.set('client_id', config.appId);
+    oauthUrl.searchParams.set('config_id', config.configurationId);
+    oauthUrl.searchParams.set('redirect_uri', redirectUri);
+    oauthUrl.searchParams.set('response_type', 'code');
+    oauthUrl.searchParams.set('override_default_response_type', 'true');
+    // Rely on the Meta configuration to manage sign-in and consent.
+    // Do not force a login prompt unsupported by the configured dialog.
+    oauthUrl.searchParams.set('state', state);
+    window.location.assign(oauthUrl.toString());
   }
 
   async function testConnection() {
@@ -460,8 +471,8 @@ export function InstagramConnectButton({
           'Conexión correcta',
         detail:
           verifiedUsername
-            ? `Instagram respondió correctamente. @${verifiedUsername} está conectado y disponible para ChatPro.`
-            : 'Instagram respondió correctamente y la conexión está disponible para ChatPro.',
+            ? `Instagram respondió correctamente. @${verifiedUsername} está conectado y disponible para MW1.`
+            : 'Instagram respondió correctamente y la conexión está disponible para MW1.',
         checkedAt:
           new Date()
             .toLocaleString(
@@ -505,7 +516,7 @@ export function InstagramConnectButton({
   async function disconnectInstagram() {
     const confirmed =
       window.confirm(
-        '¿Desconectar Instagram de ChatPro? La cuenta de Instagram no se elimina, pero ChatPro dejará de procesar sus mensajes hasta que la vuelvas a autorizar.',
+        '¿Desconectar Instagram de MW1? La cuenta de Instagram no se elimina, pero MW1 dejará de procesar sus mensajes hasta que la vuelvas a autorizar.',
       );
 
     if (!confirmed) {
@@ -566,15 +577,19 @@ export function InstagramConnectButton({
     }
   }
 
-  const status =
-    integration?.status ||
-    'disconnected';
+  const status = integration?.status || 'disconnected';
 
-  const connected =
-    status === 'active';
-
-  const requiresReconnect =
-    status === 'error';
+  const {
+    connected,
+    pending,
+    requiresReconnect,
+    authorizationBlocked,
+  } = getInstagramDisplayStatus({
+    status,
+    isStaging,
+    connectionEnabled: config?.connectionEnabled,
+    authorizationEnabled: config?.authorizationEnabled,
+  });
 
   const hasConnection =
     connected ||
@@ -616,16 +631,33 @@ export function InstagramConnectButton({
       <strong>
         {connected
           ? 'Instagram conectado'
-          : requiresReconnect
-            ? 'Instagram requiere reconexión'
-            : 'Conectar Instagram'}
+          : pending
+            ? 'Instagram pendiente de activación'
+            : requiresReconnect
+              ? 'Instagram requiere reconexión'
+              : authorizationBlocked
+                ? 'Instagram aún no habilitado'
+                : 'Conectar Instagram'}
       </strong>
 
-      {hasConnection ? (
+      {pending ? (
+        <>
+          <p>
+            {status === 'active' && isStaging
+              ? 'MW1 no tiene la mensajería de Instagram habilitada en este entorno de prueba.'
+              : username
+                ? `Instagram @${username} está autorizado, pero la recepción de mensajes todavía está deshabilitada.`
+                : 'La cuenta de Instagram está pendiente de activación. Todavía no recibe mensajes.'}
+          </p>
+          <small>
+            La activación debe realizarse después de las verificaciones de seguridad.
+          </small>
+        </>
+      ) : hasConnection ? (
         <>
           <p>
             {connected
-              ? 'ChatPro verificó la cuenta y las credenciales guardadas con Meta.'
+              ? 'MW1 verificó la cuenta y las credenciales guardadas con Meta.'
               : health?.error ||
                 'La conexión guardada ya no pudo verificarse correctamente con Meta.'}
           </p>
@@ -805,7 +837,8 @@ export function InstagramConnectButton({
               connecting ||
               testing ||
               disconnecting ||
-              !config?.ready
+              !config?.ready ||
+              authorizationBlocked
             }
           >
             {connecting
@@ -854,7 +887,8 @@ export function InstagramConnectButton({
             disabled={
               loading ||
               connecting ||
-              !config?.ready
+              !config?.ready ||
+              authorizationBlocked
             }
           >
             {loading
@@ -867,8 +901,10 @@ export function InstagramConnectButton({
       )}
 
       <small>
-        {config?.ready
-          ? 'La autorización se realiza directamente con Instagram. Las credenciales se procesan y guardan cifradas en el servidor.'
+        {authorizationBlocked
+          ? config?.message || 'El piloto de Instagram está en preparación. No se permiten conexiones todavía.'
+          : config?.ready
+            ? 'La autorización se realiza directamente con Instagram. Las credenciales se procesan y guardan cifradas en el servidor.'
           : config?.message ||
             (
               config?.missing
@@ -877,6 +913,30 @@ export function InstagramConnectButton({
                 : 'Instagram todavía no está configurado.'
             )}
       </small>
+
+      {isStaging && !hasConnection ? (
+        <div style={{marginTop: 12}}>
+          <button type="button" className={styles.testButton}
+            onClick={() => setShowOnboardingDiagnostics(value => !value)}>
+            {showOnboardingDiagnostics ? 'Ocultar diagnóstico' : 'Diagnosticar conexión de Instagram'}
+          </button>
+          {showOnboardingDiagnostics ? (
+            <div role="status" style={{marginTop: 10, padding: 12, borderRadius: 10,
+              border: '1px solid #d7deeb', background: '#f6f8fc', display: 'grid', gap: 6}}>
+              <strong>Diagnóstico seguro del piloto</strong>
+              <small>API preparada: {config?.diagnostics?.apiReady === true ? 'Sí' : 'No confirmado'}</small>
+              <small>Autorización API: {config?.diagnostics?.apiAuthorizationEnabled === true ? 'Habilitada' : 'Bloqueada o no confirmada'}</small>
+              <small>Firma OAuth web: {config?.diagnostics?.webStateSecretReady === true ? 'Preparada' : 'Falta verificar'}</small>
+              <small>Autorización web: {config?.diagnostics?.webAuthorizationEnabled === true ? 'Habilitada' : 'No habilitada'}</small>
+              {config?.missing?.length ? (
+                <small>Requisitos pendientes: {config.missing.join(', ')}</small>
+              ) : null}
+              <small>Meta (callback y permisos): comprobación independiente; este diagnóstico no abre OAuth ni genera tokens.</small>
+              <small>La habilitación del piloto requiere el procedimiento de seguridad autorizado.</small>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {message ? (
         <p>{message}</p>

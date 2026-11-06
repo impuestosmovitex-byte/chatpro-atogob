@@ -39,7 +39,11 @@ export async function GET(request: NextRequest) {
   const target = new URL(`${apiBase}/integrations/whatsapp/embedded/config`);
   target.searchParams.set('company', session.companySlug);
   const response = await fetch(target, {
-    headers: { 'x-chatpro-inbox-key': inboxKey },
+    headers: {
+      'x-chatpro-inbox-key': inboxKey,
+      'x-chatpro-user-id': session.userId ?? '',
+      'x-chatpro-company-id': session.companyId,
+    },
     cache: 'no-store',
   });
 
