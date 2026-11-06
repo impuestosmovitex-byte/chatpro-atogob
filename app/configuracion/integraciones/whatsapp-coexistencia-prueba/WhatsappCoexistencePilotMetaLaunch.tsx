@@ -237,7 +237,7 @@ export function WhatsappCoexistencePilotMetaLaunch(){
         override_default_response_type:true,
         // V4 credentials and permissions are set in Meta's configuration.
         // Only WhatsApp Business App coexistence is permitted here.
-        extras:{setup:{},featureType:'whatsapp_business_app_onboarding'},
+        extras:{setup:{},featureType:'whatsapp_business_app_onboarding',sessionInfoVersion:'3'},
       });
     }catch{
       fail('El navegador no pudo abrir el registro seguro de Meta.');
