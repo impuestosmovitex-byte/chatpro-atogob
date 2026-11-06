@@ -36,6 +36,8 @@ describe('Pilot-only WhatsApp coexistence OAuth begin route (staging)',()=>{
         ConstructorParameters<typeof StagingWhatsappCoexistencePilotController>[1],
       {verify:jest.fn()} as unknown as
         ConstructorParameters<typeof StagingWhatsappCoexistencePilotController>[2],
+      {bind:jest.fn()} as unknown as
+        ConstructorParameters<typeof StagingWhatsappCoexistencePilotController>[3],
     );
   });
 
