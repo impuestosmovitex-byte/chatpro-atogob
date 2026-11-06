@@ -16,6 +16,7 @@ import { StagingWhatsappCoexistenceMetaTokenReviewService } from './staging-what
 import { StagingWhatsappCoexistenceMetaGraphService } from './staging-whatsapp-coexistence-meta-graph.service';
 import { StagingWhatsappCoexistenceBusinessOwnerService } from './staging-whatsapp-coexistence-business-owner.service';
 import { StagingWhatsappCoexistenceTenantVerificationService } from './staging-whatsapp-coexistence-tenant-verification.service';
+import { StagingWhatsappCoexistenceVerifiedBindingService } from './staging-whatsapp-coexistence-verified-binding.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { StagingWhatsappWebhookController } from './staging-whatsapp-webhook.controller';
 import { UsersController } from './users.controller';
@@ -63,6 +64,7 @@ class StagingHealthController {
       useFactory:()=>new StagingWhatsappCoexistenceMetaGraphService()},
     {provide:StagingWhatsappCoexistenceBusinessOwnerService,
       useFactory:()=>new StagingWhatsappCoexistenceBusinessOwnerService()},
-    StagingWhatsappCoexistenceTenantVerificationService],
+    StagingWhatsappCoexistenceTenantVerificationService,
+    StagingWhatsappCoexistenceVerifiedBindingService],
 })
 export class StagingAppModule {}
