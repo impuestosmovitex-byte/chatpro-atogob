@@ -5224,8 +5224,10 @@ export default function Home() {
                           {item.deliveryStatus === "failed" && item.providerError && (
                             <div style={{fontSize:"11px",fontWeight:500}}>
                               {item.providerError.includes("131049")
-                                ? "131049: restricción de entrega de marketing. Contactar por otra vía permitida."
-                                : item.providerError.slice(0,180)}
+                                ? "131049: Meta restringió la entrega. Contacta por otra vía autorizada."
+                                : item.providerError.includes("131026")
+                                  ? "131026: posiblemente no disponible en WhatsApp. Verifica el número; este error no confirma por sí solo que no tenga WhatsApp."
+                                  : item.providerError.slice(0,180)}
                             </div>
                           )}
                         </div>
