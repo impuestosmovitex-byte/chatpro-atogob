@@ -29,8 +29,11 @@ async function authorized(request: NextRequest) {
 /** Pure readiness lookup; no SDK, cookies or Meta authorization issued. */
 export async function GET(request: NextRequest) {
   const ctx=await authorized(request);
-  if (!ctx) return NextResponse.json({ok:false,error:'Piloto no autorizado.'},
-    {status:403,headers:noStore});
+  if (!ctx) {
+    console.warn('[MW1 pilot] GET readiness rejected by authorization checks');
+    return NextResponse.json({ok:false,error:'Piloto no autorizado.'},
+      {status:403,headers:noStore});
+  }
   try {
     const url=new URL(ctx.apiBase+'/integrations/whatsapp/coexistence/pilot/readiness');
     url.searchParams.set('company',ctx.session.companySlug);
