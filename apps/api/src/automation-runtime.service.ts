@@ -819,7 +819,7 @@ export class AutomationRuntimeService {
         return true;
       }
 
-      const { error: payloadError } = client
+      const { error: payloadError } = await client
         .from('automation_executions')
         .update({ payload, updated_at: now })
         .eq('id', execution.id);
