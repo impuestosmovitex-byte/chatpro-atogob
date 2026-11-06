@@ -1,0 +1,47 @@
+name: WhatsApp delivery tracking checks
+
+on:
+  push:
+    branches:
+      - fix/whatsapp-delivery-tracking-20261106
+    paths:
+      - 'apps/api/src/automation-runtime.service.ts'
+      - 'apps/api/src/automation-runtime.delivery.spec.ts'
+      - 'apps/api/src/shopify-automatic-test-send.service.ts'
+      - 'apps/api/src/conversation-memory.service.ts'
+      - 'app/page.tsx'
+      - '.github/workflows/whatsapp-delivery-checks.yml'
+  pull_request:
+    paths:
+      - 'apps/api/src/**'
+      - 'app/page.tsx'
+      - '.github/workflows/whatsapp-delivery-checks.yml'
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npm test -- --runInBand automation-runtime.delivery.spec.ts
+      - run: npm run build
+
+  inbox-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build
