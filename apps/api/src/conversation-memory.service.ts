@@ -2498,7 +2498,7 @@ export class ConversationMemoryService {
     // and never triggers a WhatsApp send or a customer-facing automation.
     let automationQuery = client
       .from('automation_executions')
-      .select('id, recipient, status, sent_at, created_at, provider_message_id, payload, automation_key')
+      .select('id, recipient, status, sent_at, created_at, provider_message_id, payload, automation_key, error_message')
       .eq('company_id', profile.id)
       .eq('channel', 'whatsapp')
       .in('recipient', phoneCandidates)
@@ -2584,9 +2584,11 @@ export class ConversationMemoryService {
               ? 'failed'
               : 'sent',
         deliveryError:
-          typeof payload.provider_error === 'string'
+          typeof payload.provider_error === 'string' && payload.provider_error.trim()
             ? payload.provider_error
-            : null,
+            : typeof row.error_message === 'string' && row.error_message.trim()
+              ? row.error_message
+              : null,
         replyToProviderMessageId: null,
         replyToMessage: null,
         messageSource: 'automation',
