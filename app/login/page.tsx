@@ -18,7 +18,12 @@ export default function LoginPage() {
     setStaging(window.location.hostname === 'mw1-web-staging-staging.up.railway.app');
     const params=new URLSearchParams(window.location.search);
     setPlatformLogin(params.get('mode')==='platform');
-    setCompanySlug(params.get('company')||'');
+    const selectedCompany=params.get('company')||'';
+    const pilotDestination='/configuracion/integraciones/whatsapp-coexistencia-prueba';
+    // Recover the pilot company only for this exact staging return path.
+    const pilotReturn=window.location.hostname==='mw1-web-staging-staging.up.railway.app' &&
+      params.get('next')===pilotDestination;
+    setCompanySlug(selectedCompany || (pilotReturn?'piloto-mw1-prueba':''));
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
