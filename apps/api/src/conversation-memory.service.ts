@@ -68,6 +68,8 @@ export type InboxMessage = {
   mediaStoragePath: string | null;
   mediaVoice: boolean;
   providerMessageId: string | null;
+  deliveryStatus?: string | null;
+  providerError?: string | null;
   replyToProviderMessageId: string | null;
   replyToMessage: string | null;
   messageSource: string | null;
@@ -2102,7 +2104,7 @@ export class ConversationMemoryService {
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
       .select(
-        'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at',
+        'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at',
       )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false });
@@ -2235,7 +2237,7 @@ export class ConversationMemoryService {
     const sessionIds = sessions.map((session) => session.id);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
       .in('session_id', sessionIds)
       .order('created_at', { ascending: true });
 
@@ -2303,7 +2305,7 @@ export class ConversationMemoryService {
     const session = this.toSession(sessionRow);
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
-      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
+      .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
       .eq('session_id', session.id)
       .order('created_at', { ascending: true });
 
@@ -2444,7 +2446,7 @@ export class ConversationMemoryService {
         : 0;
 
     const messageFields =
-      'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at';
+      'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at';
 
     let messagesQuery = client
       .from('conversations')
@@ -3440,6 +3442,8 @@ export class ConversationMemoryService {
     media_storage_path?: string | null;
     media_voice?: boolean | null;
     provider_message_id?: string | null;
+    status?: string | null;
+    provider_error?: string | null;
     reply_to_provider_message_id?: string | null;
     reply_to_message?: string | null;
     message_source?: string | null;
@@ -3495,6 +3499,8 @@ export class ConversationMemoryService {
         message.provider_message_id.trim()
           ? message.provider_message_id
           : null,
+      deliveryStatus: typeof message.status === 'string' ? message.status : null,
+      providerError: typeof message.provider_error === 'string' ? message.provider_error : null,
       replyToProviderMessageId:
         typeof message.reply_to_provider_message_id === 'string' &&
         message.reply_to_provider_message_id.trim()
