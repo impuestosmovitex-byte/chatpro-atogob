@@ -48,8 +48,11 @@ export default function LoginPage() {
   return (
     <main className={styles.shell}>
       <section className={styles.card}>
-        <div className={styles.mark}>MW1</div>
-        <p className={styles.eyebrow}>CHAT PRO MW1</p>
+        <div className={styles.brand} aria-label="ChatPro MW1">
+          <span className={styles.brandSymbol} aria-hidden="true">MW1</span>
+          <span className={styles.brandName}>ChatPro <span>MW1</span></span>
+        </div>
+        <p className={styles.eyebrow}>ACCESO EMPRESARIAL</p>
         <h1>Iniciar sesión</h1>
         <p className={styles.copy}>
           Ingresa tu identificación o código de acceso y tu contraseña.
