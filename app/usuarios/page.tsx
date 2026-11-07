@@ -82,6 +82,8 @@ export default function UsuariosPage() {
   const [error, setError] = useState('');
   const [resetUserId, setResetUserId] = useState('');
   const [resetPassword, setResetPassword] = useState('');
+  const [metaReviewCreating, setMetaReviewCreating] = useState(false);
+  const [metaReviewCredentials, setMetaReviewCredentials] = useState<{identifier:string; password:string} | null>(null);
 
   const isFirstUser = users.length === 0;
   const availableRoles = useMemo(
@@ -179,6 +181,29 @@ export default function UsuariosPage() {
       );
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function createMetaReviewer() {
+    if (metaReviewCreating) return;
+    setMetaReviewCreating(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/meta-review/create-atogob', {method:'POST'});
+      const data = await response.json() as {
+        ok?:boolean; error?:string; identifier?:string; password?:string;
+      };
+      if (!response.ok || !data.ok || !data.identifier || !data.password) {
+        throw new Error(data.error || 'No se pudo crear el acceso.');
+      }
+      setMetaReviewCredentials({identifier:data.identifier, password:data.password});
+      setMessage('Usuario exclusivo de revisión creado. Guarda sus credenciales una sola vez.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear el acceso.');
+    } finally {
+      setMetaReviewCreating(false);
     }
   }
 
@@ -292,6 +317,24 @@ export default function UsuariosPage() {
 
         {error ? <div className={styles.error}>{error}</div> : null}
         {message ? <div className={styles.success}>{message}</div> : null}
+
+        {companyName.toLowerCase().includes('atogob') ? (
+          <section style={{padding:'20px',border:'1px solid #e9d99d',background:'#fffaea',borderRadius:14,marginBottom:18}}>
+            <h2 style={{fontSize:20,fontWeight:800,marginBottom:8}}>Acceso exclusivo para revisión de Meta</h2>
+            <p style={{marginBottom:12}}>Crea automáticamente una cuenta NUEVA para ATOGOB, con rol propio y sin permisos para responder mensajes, consultar clientes, editar plantillas, automatizaciones o usuarios. No modifica a ninguno de tus tres usuarios actuales.</p>
+            <button className={styles.refresh} type="button" onClick={() => void createMetaReviewer()} disabled={metaReviewCreating || users.some(u => u.identifier === 'META-MW1-REVIEW')}>
+              {metaReviewCreating ? 'Creando usuario seguro…' : users.some(u => u.identifier === 'META-MW1-REVIEW') ? 'El usuario revisor ya existe' : 'Crear usuario exclusivo para Meta'}
+            </button>
+            {metaReviewCredentials ? (
+              <div style={{marginTop:15,padding:15,background:'#fff',borderRadius:10}}>
+                <p><strong>Identificación:</strong> <code>{metaReviewCredentials.identifier}</code></p>
+                <p><strong>Contraseña temporal:</strong> <code>{metaReviewCredentials.password}</code></p>
+                <p>Guarda estas credenciales ahora. Por seguridad no volverán a mostrarse. Nunca las compartas en capturas.</p>
+                <button type="button" onClick={() => setMetaReviewCredentials(null)}>Ya guardé los datos. Ocultarlos</button>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         <div className={styles.grid}>
           <section className={styles.createCard}>
