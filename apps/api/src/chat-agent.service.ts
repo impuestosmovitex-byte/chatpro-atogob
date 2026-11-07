@@ -3784,7 +3784,7 @@ export class ChatAgentService {
       .replace(/[\u0300-\u036f]/g, '');
     const configured = [
       profile.aiInstructions || '',
-      this.getKnowledgeBaseRules(profile.settings),
+      this.getKnowledgeBaseRules(profile.settings ?? {}),
     ].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const providesCopywriting = /\b(?:servicio de copywriting|redaccion de contenidos|servicio de marketing digital)\b/.test(configured);
     if (providesCopywriting) return false;
@@ -3837,7 +3837,7 @@ export class ChatAgentService {
           'Nunca adoptes el rol de ChatGPT genérico, creador de contenido o redactor salvo que la empresa lo venda explícitamente.',
           'Empresa activa: ' + profile.name + '.',
           'Política e instrucciones autorizadas: ' + (profile.aiInstructions || 'Sin instrucciones adicionales.'),
-          'Conocimientos y servicios configurados: ' + this.getKnowledgeBaseRules(profile.settings),
+          'Conocimientos y servicios configurados: ' + this.getKnowledgeBaseRules(profile.settings ?? {}),
         ].join('\n'),
         input: JSON.stringify({ mensaje_actual: customerMessage }),
       });
