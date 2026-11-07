@@ -446,6 +446,14 @@ export class ChatAgentService {
         session,
       );
 
+    // ATOGOB: expressed refund/return/cancellation requests always go to a
+    // human before any AI-generated response or approval is produced.
+    if (this.isAtogob(profile) && this.isAtogobRestrictedCustomerRequest(customerMessage)) {
+      return this.requestAtogobPolicyReview(
+        activeSession,
+        'Cliente solicita revisión de postventa reservada a un asesor',
+      );
+    }
 
     const routingStartedAt = Date.now();
     const routing = await this.resolveMessageRouting(
@@ -615,7 +623,10 @@ export class ChatAgentService {
           typeof result === 'object' &&
           typeof (result as { customer_message?: unknown }).customer_message === 'string'
         ) {
-          return (result as { customer_message: string }).customer_message;
+          return this.sanitizeAtogobHandoffMessage(
+            profile,
+            (result as { customer_message: string }).customer_message,
+          );
         }
 
         toolOutputs.push({
@@ -639,7 +650,8 @@ export class ChatAgentService {
               `total_duration_ms=${Date.now() - agentStartedAt}`,
             );
             await this.clearTechnicalFailureState(activeSession.id);
-            return this.enforceSalesReply(
+            return this.enforceAtogobReply(
+              profile,
               activeSession,
               clean,
             );
@@ -2482,6 +2494,73 @@ export class ChatAgentService {
     }
 
     return output;
+  }
+
+  private isAtogob(profile: CompanyProfile): boolean {
+    return profile.slug.trim().toLowerCase() === 'atogob';
+  }
+
+  private containsAtogobRestrictedTerms(text: string): boolean {
+    const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return /\b(?:devolucion(?:es)?|devolver|devuelv(?:e|es|a|an|en|as)|reembols\w*|reintegr\w*|cancelaci\w*|cancelar|anulaci\w*|anular)\b/.test(normalized)
+      || /\b(?:regresar|retornar|restituir)\b.{0,35}\b(?:dinero|plata|pago)\b/.test(normalized);
+  }
+
+  private isAtogobRestrictedCustomerRequest(message: string): boolean {
+    // A clear exchange request with an explicit denial of a refund must
+    // remain eligible for the normal change process.
+    const normalized = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const withoutDeniedAlternatives = normalized
+      .replace(/\bno\s+(?:quiero|deseo|necesito|busco|estoy pidiendo)\s+(?:una?\s+)?(?:devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?|cancelar|devolver)\b/g, '')
+      .replace(/\b(?:sin|nada de)\s+(?:devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?)\b/g, '');
+    return this.containsAtogobRestrictedTerms(withoutDeniedAlternatives);
+  }
+
+  private sanitizeAtogobHandoffMessage(
+    profile: CompanyProfile,
+    message: string,
+  ): string {
+    if (!this.isAtogob(profile) || !this.containsAtogobRestrictedTerms(message)) {
+      return message;
+    }
+    return 'Para revisar si tu solicitud es viable, uno de nuestros asesores te atenderá.';
+  }
+
+  private async requestAtogobPolicyReview(
+    session: ConversationSession,
+    reason: string,
+  ): Promise<string> {
+    try {
+      const updated = await this.agentSessionRuntimeService.requestHumanAttention(
+        session.id,
+        {
+          reason,
+          summary: 'Cliente requiere revisión humana de una solicitud de postventa; no se ha aprobado ninguna gestión.',
+        },
+      );
+      return updated.attentionStatus === 'human'
+        ? 'Para revisar si tu solicitud es viable, te voy a comunicar con uno de nuestros asesores.'
+        : 'Tu solicitud quedó pendiente para que uno de nuestros asesores la revise.';
+    } catch (error) {
+      console.error('[ATOGOB][postventa] No se pudo realizar la transferencia:', error);
+      return 'Este caso requiere revisión de un asesor. Por favor, comunícate con nuestro equipo de atención.';
+    }
+  }
+
+  private async enforceAtogobReply(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    reply: string,
+  ): Promise<string> {
+    const clean = await this.enforceSalesReply(session, reply);
+    if (!this.isAtogob(profile) || !this.containsAtogobRestrictedTerms(clean)) {
+      return clean;
+    }
+    // Never send the AI's prohibited proposal, even if it ignored the prompt.
+    return this.requestAtogobPolicyReview(
+      session,
+      'Respuesta de postventa bloqueada por política de ATOGOB',
+    );
   }
 
   private async enforceSalesReply(
@@ -6497,7 +6576,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (clean) {
         await this.clearTechnicalFailureState(session.id);
-        return this.enforceSalesReply(session, clean);
+        return this.enforceAtogobReply(profile, session, clean);
       }
 
       return this.handleTechnicalFailure(
