@@ -2547,20 +2547,47 @@ export class ChatAgentService {
     }
   }
 
+  private offersUnsolicitedEconomicOption(reply: string): boolean {
+    const text = reply.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const economic =
+      /\b(?:devolucion(?:es)?|devolver|reembolso(?:s)?|reembolsar|cancelacion(?:es)?|cancelar|anulacion(?:es)?|anular)\b/.test(text) ||
+      /\b(?:regresar|reintegrar|retornar|devolver)\b.{0,35}\b(?:dinero|plata|pago)\b/.test(text);
+    if (!economic) return false;
+
+    // Avoid turning a customer's ordinary request for a change into a
+    // disallowed monetary option, including negative-choice questions.
+    return (
+      /[¿?].{0,120}\b(?:quieres|queres|deseas|prefieres|preferis|te gustaria|optarias|elegirias)\b.{0,100}\b(?:devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?|cancelar|devolver)\b/.test(text) ||
+      /\b(?:prefieres|preferis|quieres|queres|deseas|elige|escoge|opcion)\b.{0,90}\b(?:cambio|devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?)\b.{0,35}\bo\b.{0,35}\b(?:cambio|devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?)\b/.test(text) ||
+      /\b(?:cambio|cambiar|talla|color)\b.{0,70}\bo\b.{0,45}\b(?:devolucion(?:es)?|devolver|reembolso(?:s)?|cancelacion(?:es)?|cancelar)\b/.test(text) ||
+      /\b(?:podemos|puedes|podrias|te ofrecemos|ofrecemos|opcion de|alternativa de)\b.{0,50}\b(?:devolucion(?:es)?|devolver|reembolso(?:s)?|reembolsar|cancelacion(?:es)?|cancelar)\b/.test(text)
+    );
+  }
+
   private async enforceAtogobReply(
     profile: CompanyProfile,
     session: ConversationSession,
     reply: string,
   ): Promise<string> {
     const clean = await this.enforceSalesReply(session, reply);
-    if (!this.isAtogob(profile) || !this.containsAtogobRestrictedTerms(clean)) {
-      return clean;
+    if (this.isAtogob(profile) && this.containsAtogobRestrictedTerms(clean)) {
+      // ATOGOB requires human review even if the model merely mentions
+      // the restricted outcome. Never disclose that alternative to clients.
+      return this.requestAtogobPolicyReview(
+        session,
+        'Respuesta de postventa bloqueada por política de ATOGOB',
+      );
     }
-    // Never send the AI's prohibited proposal, even if it ignored the prompt.
-    return this.requestAtogobPolicyReview(
-      session,
-      'Respuesta de postventa bloqueada por política de ATOGOB',
-    );
+
+    if (this.offersUnsolicitedEconomicOption(clean)) {
+      // Universal safety net: no company should have a monetary alternative
+      // inserted into a conversation as an unsolicited question or offer.
+      // Do not infer that a return, exchange or exception was approved.
+      console.warn('[ChatPro][policy] Propuesta económica espontánea bloqueada');
+      return 'Con gusto revisamos tu solicitud según las condiciones de la tienda.';
+    }
+
+    return clean;
   }
 
   private async enforceSalesReply(
@@ -2692,10 +2719,9 @@ export class ChatAgentService {
       profile.settings,
       instructionScope,
     );
-    const knowledgeRules =
-      instructionScope === 'service' || instructionScope === 'sales'
-        ? this.getKnowledgeBaseRules(profile.settings)
-        : '';
+    // Company-approved policies must also be available before the model
+    // has classified a conversation as sales or post-sale service.
+    const knowledgeRules = this.getKnowledgeBaseRules(profile.settings);
     const shippingTrackingRules =
       instructionScope === 'service' || instructionScope === 'sales'
         ? this.getShippingTrackingRules(profile.settings)
@@ -2727,6 +2753,11 @@ export class ChatAgentService {
       '',
       'FORMA DE ATENDER:',
       '- Las INSTRUCCIONES ESPECÍFICAS DE LA EMPRESA y la BASE DE CONOCIMIENTO APROBADA tienen prioridad y definen cómo conversar, vender y resolver políticas.',
+      '- REGLA TRANSVERSAL DE POSTVENTA PARA TODAS LAS EMPRESAS: antes de explicar o sugerir un trámite consulta las políticas de la empresa ACTIVA en su configuración aprobada. Nunca inventes derechos, excepciones, autorizaciones, plazos ni alternativas.',
+      '- Si la persona solamente pide un cambio de talla, color o producto, responde exclusivamente sobre cambios conforme a la política real. Está prohibido introducir por tu cuenta opciones de devolución de dinero, reembolso, cancelación o anulación, aunque sea para preguntar “¿no quieres devolución?” o “¿prefieres cambio o devolución?”.',
+      '- Nunca sugieras ni nombres una opción económica o cancelación que el cliente no haya solicitado de forma expresa. Tampoco lo hagas como aclaración, negación, lista de alternativas o pregunta para descartar opciones.',
+      '- Si el cliente solicita expresamente una gestión económica, sigue SOLO las instrucciones y políticas específicas de su empresa; no prometas que será viable ni afirmes haber transferido el caso antes de ejecutar realmente la acción autorizada.',
+      '- Antes de enviar cada respuesta comprueba que no hayas añadido espontáneamente una alternativa prohibida por la política de esa empresa. Ante la duda, céntrate en el cambio solicitado o solicita revisión humana sin prometer resultados.',
       '- ORDEN DE RESOLUCIÓN OBLIGATORIO: primero usa la configuración vigente y la base de conocimiento de la empresa; después usa las herramientas reales disponibles; si falta un único dato, pide solamente ese dato; transfiere a una persona únicamente cuando después de esos pasos el caso realmente no pueda resolverse o una instrucción específica exija intervención humana.',
       '- RESOLVER ANTES DE TRANSFERIR: nunca uses request_human_attention como sustituto de consultar una configuración, una política, el carrito, el contexto comercial, un pedido o una herramienta disponible.',
       '- Una ciudad, un medio de pago, una talla, una referencia, una sede, una dirección, un horario o una respuesta corta del cliente no son por sí mismos motivos para transferir. Interpreta el dato dentro del contexto y continúa la atención.',
