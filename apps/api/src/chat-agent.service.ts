@@ -456,19 +456,6 @@ export class ChatAgentService {
     }
 
 
-    // Validate the business role before the model can answer as a general
-    // assistant or follow a promotional message written as the merchant.
-    const scope = await this.classifyBusinessScope(profile, customerMessage);
-    if (scope === 'outside') {
-      return this.handleOutsideBusinessMessage(profile, activeSession);
-    }
-    if (Number(activeSession.context.out_of_scope_streak) > 0) {
-      activeSession = await this.agentSessionRuntimeService.updateSession(
-        activeSession.id,
-        { context: { ...activeSession.context, out_of_scope_streak: 0 } },
-      );
-    }
-
     const routingStartedAt = Date.now();
     const routing = await this.resolveMessageRouting(
       profile,
@@ -481,6 +468,19 @@ export class ChatAgentService {
       );
 
       return '__CHATPRO_INTERNAL_SUPPRESS_EXTERNAL_AUTOMATION_7F4D__';
+    }
+
+    // Respect the bot-to-bot filter first; then enforce the company's actual
+    // business scope before the OpenAI agent generates customer-facing text.
+    const scope = await this.classifyBusinessScope(profile, customerMessage);
+    if (scope === 'outside') {
+      return this.handleOutsideBusinessMessage(profile, activeSession);
+    }
+    if (Number(activeSession.context.out_of_scope_streak) > 0) {
+      activeSession = await this.agentSessionRuntimeService.updateSession(
+        activeSession.id,
+        { context: { ...activeSession.context, out_of_scope_streak: 0 } },
+      );
     }
 
     const clarificationReply = await this.applyMessageUnderstanding(
