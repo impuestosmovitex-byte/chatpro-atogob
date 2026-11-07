@@ -448,7 +448,7 @@ export class ChatAgentService {
 
     // ATOGOB: expressed refund/return/cancellation requests always go to a
     // human before any AI-generated response or approval is produced.
-    if (this.isAtogob(profile) && this.containsAtogobRestrictedTerms(customerMessage)) {
+    if (this.isAtogob(profile) && this.isAtogobRestrictedCustomerRequest(customerMessage)) {
       return this.requestAtogobPolicyReview(
         activeSession,
         'Cliente solicita revisión de postventa reservada a un asesor',
@@ -2504,6 +2504,16 @@ export class ChatAgentService {
     const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     return /\b(?:devolucion(?:es)?|devolver|devuelv(?:e|es|a|an|en|as)|reembols\w*|reintegr\w*|cancelaci\w*|cancelar|anulaci\w*|anular)\b/.test(normalized)
       || /\b(?:regresar|retornar|restituir)\b.{0,35}\b(?:dinero|plata|pago)\b/.test(normalized);
+  }
+
+  private isAtogobRestrictedCustomerRequest(message: string): boolean {
+    // A clear exchange request with an explicit denial of a refund must
+    // remain eligible for the normal change process.
+    const normalized = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const withoutDeniedAlternatives = normalized
+      .replace(/\bno\s+(?:quiero|deseo|necesito|busco|estoy pidiendo)\s+(?:una?\s+)?(?:devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?|cancelar|devolver)\b/g, '')
+      .replace(/\b(?:sin|nada de)\s+(?:devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?)\b/g, '');
+    return this.containsAtogobRestrictedTerms(withoutDeniedAlternatives);
   }
 
   private sanitizeAtogobHandoffMessage(
