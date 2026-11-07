@@ -118,6 +118,29 @@ export async function proxy(request: NextRequest) {
     return secureResponse(NextResponse.redirect(loginUrl));
   }
 
+  // Isolated, non-operational Meta reviewer. No customer PII or write APIs.
+  // This check precedes every normal advisor/manager route.
+  if (
+    session.type === 'user' &&
+    session.companySlug === 'atogob' &&
+    session.roleKey === 'meta_reviewer_atogob'
+  ) {
+    if (pathname === '/revision-atogob') {
+      return secureResponse(NextResponse.next());
+    }
+    if (pathname.startsWith('/api/')) {
+      return secureResponse(
+        NextResponse.json(
+          { ok: false, error: 'Revisor Meta: las API operativas no están autorizadas.' },
+          { status: 403, headers: { 'Cache-Control': 'no-store' } },
+        ),
+      );
+    }
+    return secureResponse(
+      NextResponse.redirect(new URL('/revision-atogob', request.url)),
+    );
+  }
+
   if (isAutomationPath(pathname)) {
     let allowed = false;
 
