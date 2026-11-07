@@ -41,6 +41,19 @@ describe('ATOGOB strict post-sale policy', () => {
     expect(requestHumanAttention).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps exchange requests with expressly declined refunds in the normal flow', () => {
+    const { agent } = harness();
+    expect(agent.isAtogobRestrictedCustomerRequest(
+      'Quiero un cambio por talla, no quiero devolución',
+    )).toBe(false);
+    expect(agent.isAtogobRestrictedCustomerRequest(
+      'No quiero devolución, solo cambio por color',
+    )).toBe(false);
+    expect(agent.isAtogobRestrictedCustomerRequest(
+      'No quiero devolución, quiero cancelar el pedido',
+    )).toBe(true);
+  });
+
   it('preserves valid exchanges without automatic transfer', async () => {
     const { agent, requestHumanAttention } = harness();
     const valid = 'Podemos revisar las condiciones de cambio de la prenda. ¿Tienes el número de pedido?';
