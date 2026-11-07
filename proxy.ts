@@ -148,6 +148,30 @@ export async function proxy(request: NextRequest) {
     return secureResponse(NextResponse.redirect(new URL('/admin',request.url)));
   }
 
+  // Deny by default for the future isolated ATOGOB Meta review account.
+  // This role does not exist yet; current ATOGOB/MAOGO users are unaffected.
+  // Never allow this account through the normal inbox or other operational APIs.
+  if (
+    session.type === 'user' &&
+    session.companySlug === 'atogob' &&
+    session.roleKey === 'meta_reviewer_atogob'
+  ) {
+    if (pathname.startsWith('/api/')) {
+      return secureResponse(
+        NextResponse.json(
+          { ok: false, error: 'Acceso de revisión: API operativa no disponible.' },
+          { status: 403, headers: { 'Cache-Control': 'no-store' } },
+        ),
+      );
+    }
+
+    // A dedicated, audited read-only review page will be allowlisted only
+    // after its own data minimization and tenant isolation tests pass.
+    return secureResponse(
+      NextResponse.redirect(new URL('/inicio', request.url)),
+    );
+  }
+
   if (isAutomationPath(pathname)) {
     let allowed = false;
 
