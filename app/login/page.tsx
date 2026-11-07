@@ -39,7 +39,7 @@ export default function LoginPage() {
       );
       router.refresh();
     } catch {
-      setError('No se pudo conectar con Chat Pro. Intenta nuevamente.');
+      setError('No se pudo conectar con Chat Pro MW1. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }
@@ -48,8 +48,8 @@ export default function LoginPage() {
   return (
     <main className={styles.shell}>
       <section className={styles.card}>
-        <div className={styles.mark}>CP</div>
-        <p className={styles.eyebrow}>CHAT PRO</p>
+        <div className={styles.mark}>MW1</div>
+        <p className={styles.eyebrow}>CHAT PRO MW1</p>
         <h1>Iniciar sesión</h1>
         <p className={styles.copy}>
           Ingresa tu identificación o código de acceso y tu contraseña.
