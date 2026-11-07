@@ -1,0 +1,39 @@
+name: Production inbox delivery UI validation
+
+on:
+  push:
+    branches:
+      - fix/production-inbox-delivery-ui-20261106
+  pull_request:
+    paths:
+      - 'app/page.tsx'
+      - 'apps/api/src/conversation-memory.service.ts'
+      - '.github/workflows/production-inbox-delivery-ui.yml'
+
+jobs:
+  api-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  inbox-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build
