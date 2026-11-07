@@ -59,7 +59,12 @@ describe('MW1 company-scoped replies', () => {
     agent.getContextStatus = () => ({ is_within_context_window: true });
     agent.prepareSessionForIncomingActivity = jest.fn(async () => session);
     agent.classifyBusinessScope = jest.fn(async () => 'outside');
-    agent.resolveMessageRouting = jest.fn(() => { throw new Error('Must not invoke general agent'); });
+    agent.resolveMessageRouting = jest.fn(async () => ({
+      messageOrigin: 'customer',
+      understanding: 'clear',
+      intent: 'other',
+      source: 'local',
+    }));
 
     const reply = await agent.reply(atogob, session, ad);
     expect(reply).toBe('Cuéntame, ¿en qué te puedo ayudar?');
@@ -67,7 +72,27 @@ describe('MW1 company-scoped replies', () => {
       context: expect.objectContaining({ out_of_scope_streak: 1 }),
     });
     expect(requestHumanAttention).not.toHaveBeenCalled();
-    expect(agent.resolveMessageRouting).not.toHaveBeenCalled();
+    expect(agent.resolveMessageRouting).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps external automated messages suppressed without responding', async () => {
+    const { agent, requestHumanAttention } = harness();
+    const session = { id: 'session-bot', context: {} };
+    agent.getContextStatus = () => ({ is_within_context_window: true });
+    agent.prepareSessionForIncomingActivity = jest.fn(async () => session);
+    agent.resolveMessageRouting = jest.fn(async () => ({
+      messageOrigin: 'probable_external_automation',
+      understanding: 'clear',
+      intent: 'other',
+      source: 'local',
+    }));
+    agent.classifyBusinessScope = jest.fn(() => {
+      throw new Error('Must skip scope for external bots');
+    });
+    const reply = await agent.reply(atogob, session, ad);
+    expect(reply).toContain('INTERNAL_SUPPRESS_EXTERNAL_AUTOMATION');
+    expect(agent.classifyBusinessScope).not.toHaveBeenCalled();
+    expect(requestHumanAttention).not.toHaveBeenCalled();
   });
 
   it('reminds the customer of the actual brand and assistant on second off-topic request', async () => {
