@@ -52,6 +52,9 @@ describe('ATOGOB strict post-sale policy', () => {
     expect(agent.isAtogobRestrictedCustomerRequest(
       'No quiero devolución, quiero cancelar el pedido',
     )).toBe(true);
+    expect(agent.isAtogobRestrictedCustomerRequest(
+      'Quiero cambiar de talla. No quiero que me devuelvan el dinero',
+    )).toBe(false);
   });
 
   it('preserves valid exchanges without automatic transfer', async () => {
@@ -61,11 +64,51 @@ describe('ATOGOB strict post-sale policy', () => {
     expect(requestHumanAttention).not.toHaveBeenCalled();
   });
 
-  it('does not change other company policies', async () => {
+  it('blocks unsolicited monetary alternatives for every company without changing their policies', async () => {
     const { agent, requestHumanAttention } = harness();
     const text = '¿Prefieres cambio o devolución?';
+    expect(await agent.enforceAtogobReply(maogo, session, text))
+      .toBe('Con gusto revisamos tu solicitud según las condiciones de la tienda.');
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '¿No quieres una devolución de dinero?',
+    '¿Quieres cambio de talla o devolución?',
+    '¿Prefieres el cambio o un reembolso?',
+    'Podemos ofrecer una devolución del valor pagado.',
+    '¿Quieres cancelar o cambiar el pedido?',
+  ])('never offers an unrequested economic option: %s', async (draft) => {
+    const { agent, requestHumanAttention } = harness();
+    const result = await agent.enforceAtogobReply(maogo, session, draft);
+    expect(result).not.toMatch(/devoluci[oó]n|reembolso|cancelaci[oó]n|cancelar/i);
+    expect(result).toContain('condiciones de la tienda');
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it('preserves policy responses without economic options', async () => {
+    const { agent, requestHumanAttention } = harness();
+    const text = 'Los cambios se revisan según las condiciones de cada producto.';
     expect(await agent.enforceAtogobReply(maogo, session, text)).toBe(text);
     expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it('loads approved company policies before a chat has a service classification', () => {
+    const { agent } = harness();
+    agent.readConversationCategory = () => 'unclassified';
+    agent.getCommercialFlowRules = () => '';
+    const profile = {
+      slug: 'other-brand',
+      name: 'Empresa piloto',
+      assistantName: 'Asistente',
+      aiInstructions: 'No prometas resultados.',
+      settings: {
+        knowledge_base: { exchanges_returns: 'CAMBIOS: consultar primero el producto real.' },
+      },
+    };
+    const prompt = agent.buildInstructions(profile, session, false);
+    expect(prompt).toContain('CAMBIOS: consultar primero el producto real.');
+    expect(prompt).toContain('Está prohibido introducir por tu cuenta opciones de devolución de dinero');
   });
 
   it('sanitizes a handoff message and does not pretend a failed transfer succeeded', async () => {
