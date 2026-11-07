@@ -48,6 +48,8 @@ type InboxMessage = {
   mediaStoragePath?: string | null;
   mediaVoice: boolean;
   providerMessageId?: string | null;
+  deliveryStatus?: string | null;
+  providerError?: string | null;
   replyToProviderMessageId?: string | null;
   replyToMessage?: string | null;
   messageSource?: string | null;
@@ -5276,6 +5278,61 @@ export default function Home() {
                           <p>{item.message}</p>
                         )}
                         <time>{formatDate(item.createdAt)}</time>
+                        {item.authorType !== "customer" && !isInternalTest && (
+                          <div
+                            role="status"
+                            aria-label={
+                              item.deliveryStatus === "read"
+                                ? "Mensaje leído"
+                                : item.deliveryStatus === "delivered"
+                                  ? "Mensaje entregado"
+                                  : item.deliveryStatus === "failed"
+                                    ? "Mensaje no entregado"
+                                    : item.deliveryStatus === "sent"
+                                      ? "Enviado a Meta, entrega no confirmada"
+                                      : "Estado de entrega sin confirmar"
+                            }
+                            title={item.providerError || undefined}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "flex-end",
+                              gap: 5,
+                              fontSize: 11,
+                              marginTop: 4,
+                              color:
+                                item.deliveryStatus === "failed"
+                                  ? "#b91c1c"
+                                  : item.deliveryStatus === "read"
+                                    ? "#2563eb"
+                                    : "#64748b",
+                            }}
+                          >
+                            <span aria-hidden="true">
+                              {item.deliveryStatus === "failed" ? "⚠" :
+                                item.deliveryStatus === "read" || item.deliveryStatus === "delivered"
+                                  ? "✓✓" : item.deliveryStatus === "sent" ? "✓" : "◷"}
+                            </span>
+                            <span>
+                              {item.deliveryStatus === "read" ? "Leído" :
+                                item.deliveryStatus === "delivered" ? "Entregado" :
+                                item.deliveryStatus === "failed" ? "No entregado" :
+                                item.deliveryStatus === "sent" ? "Enviado · pendiente de entrega" :
+                                "Entrega sin confirmar"}
+                            </span>
+                          </div>
+                        )}
+                        {item.authorType !== "customer" &&
+                          item.deliveryStatus === "failed" &&
+                          item.providerError && (
+                            <p role="alert" style={{ fontSize: 11, color: "#b91c1c", marginTop: 4 }}>
+                              {item.providerError.includes("131026")
+                                ? "Este número podría no estar disponible en WhatsApp. Verifícalo; Meta no lo confirma con certeza."
+                                : item.providerError.includes("131049")
+                                  ? "Meta restringió esta entrega. Utiliza otra vía autorizada."
+                                  : item.providerError.slice(0, 180)}
+                            </p>
+                          )}
                       </div>
                     </div>
                   ))}
