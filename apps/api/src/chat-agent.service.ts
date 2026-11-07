@@ -455,6 +455,7 @@ export class ChatAgentService {
       );
     }
 
+
     const routingStartedAt = Date.now();
     const routing = await this.resolveMessageRouting(
       profile,
@@ -467,6 +468,19 @@ export class ChatAgentService {
       );
 
       return '__CHATPRO_INTERNAL_SUPPRESS_EXTERNAL_AUTOMATION_7F4D__';
+    }
+
+    // Respect the bot-to-bot filter first; then enforce the company's actual
+    // business scope before the OpenAI agent generates customer-facing text.
+    const scope = await this.classifyBusinessScope(profile, customerMessage);
+    if (scope === 'outside') {
+      return this.handleOutsideBusinessMessage(profile, activeSession);
+    }
+    if (Number(activeSession.context.out_of_scope_streak) > 0) {
+      activeSession = await this.agentSessionRuntimeService.updateSession(
+        activeSession.id,
+        { context: { ...activeSession.context, out_of_scope_streak: 0 } },
+      );
     }
 
     const clarificationReply = await this.applyMessageUnderstanding(
@@ -2588,6 +2602,10 @@ export class ChatAgentService {
       return 'Con gusto revisamos tu solicitud según las condiciones de la tienda.';
     }
 
+    if (this.isUnrelatedAssistantOffer(profile, clean)) {
+      console.warn('[ChatPro][scope] respuesta de asistente genérico bloqueada');
+      return this.handleOutsideBusinessMessage(profile, session);
+    }
     return clean;
   }
 
@@ -3713,32 +3731,125 @@ export class ChatAgentService {
     return 'No logré entender bien a qué te refieres. ¿Puedes explicarme un poco más o decirme qué necesitas revisar?';
   }
 
+  private async handleOutsideBusinessMessage(
+    profile: CompanyProfile,
+    session: ConversationSession,
+  ): Promise<string> {
+    const previous = Number(session.context.out_of_scope_streak);
+    const count = Number.isFinite(previous)
+      ? Math.min(3, Math.max(0, Math.floor(previous)) + 1)
+      : 1;
+    const updated = await this.agentSessionRuntimeService.updateSession(
+      session.id,
+      {
+        context: {
+          ...session.context,
+          out_of_scope_streak: count,
+        },
+      },
+    );
+
+    if (count === 1) {
+      return 'Cuéntame, ¿en qué te puedo ayudar?';
+    }
+
+    if (count === 2) {
+      const assistantName = profile.assistantName?.trim() || 'tu asistente';
+      return 'Recuerda que soy ' + assistantName +
+        ', del equipo de ' + profile.name +
+        '. Estoy aquí para ayudarte únicamente con temas de nuestra empresa. ¿En qué puedo ayudarte?';
+    }
+
+    try {
+      const handoff = await this.agentSessionRuntimeService.requestHumanAttention(
+        updated.id,
+        {
+          reason: 'Solicitud reiterada fuera del alcance de atención de la empresa',
+          summary: 'La persona insistió en un tema ajeno al negocio después de dos redirecciones. Revisar si necesita atención humana.',
+        },
+      );
+      return this.humanAttentionMessage(handoff);
+    } catch (error) {
+      console.error('[ChatPro][scope] no se pudo transferir el caso:', error);
+      return 'Puedo ayudarte únicamente con temas de ' + profile.name +
+        '. Si necesitas otra atención, por favor comunícate con nuestro equipo.';
+    }
+  }
+
+  private isUnrelatedAssistantOffer(
+    profile: CompanyProfile,
+    reply: string,
+  ): boolean {
+    const normalized = reply.toLowerCase().normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const configured = [
+      profile.aiInstructions || '',
+      this.getKnowledgeBaseRules(profile.settings ?? {}),
+    ].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const providesCopywriting = /\b(?:servicio de copywriting|redaccion de contenidos|servicio de marketing digital)\b/.test(configured);
+    if (providesCopywriting) return false;
+
+    return /\b(?:te mejore|mejoro|te corrijo|te redacto|te escribo)\b.{0,45}\b(?:texto|copy|caption|publicacion|post)\b/.test(normalized)
+      || /\b(?:texto|contenido)\b.{0,55}\bpara publicar en (?:instagram|tiktok|facebook)\b/.test(normalized)
+      || /\b(?:looks|productos)\b.{0,50}\bpara que los compartas\b/.test(normalized);
+  }
+
+  private isPromotionalTextFromMerchant(
+    profile: CompanyProfile,
+    message: string,
+  ): boolean {
+    const normalized = message.toLowerCase().normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    // Do not confuse a customer shopping for outfits with someone pasting
+    // advertisement copy from the viewpoint of the store owner.
+    if (/\b(?:quiero comprar|quiero pedir|precio|cuanto cuesta|tienen|disponible|necesito un|busco|quiero ver|me muestras|me puedes mostrar)\b/.test(normalized)) {
+      return false;
+    }
+    if (
+      profile.slug.trim().toLowerCase() === 'atogob' &&
+      /\b(?:nuestra tienda virtual|tenemos el look perfecto|compr(?:es|en|a) ahora en nuestra tienda)\b/.test(normalized) &&
+      /\b(?:navidad|temporada|fiestas|aprovech|promocion|compr)\b/.test(normalized)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
   private async classifyBusinessScope(
     profile: CompanyProfile,
     customerMessage: string,
   ): Promise<'business' | 'outside'> {
-    const response = await this.getClient().responses.create({
-      model: this.getModel(),
-      instructions: [
-        'Clasifica sin responder la pregunta.',
-        'Devuelve únicamente JSON válido: {"scope":"business"} o {"scope":"outside"}.',
-        'business: consulta relacionada con la empresa, sus productos, servicios, pedidos, pagos, envíos, políticas, integraciones o una solicitud ambigua que podría ser comercial.',
-        'outside: cultura general o información externa que no depende de la empresa ni de sus integraciones.',
-        `Empresa: ${profile.name}.`,
-        `Instrucciones de la empresa: ${profile.aiInstructions || 'No hay instrucciones adicionales.'}`,
-      ].join('\n'),
-      input: JSON.stringify({ mensaje_actual: customerMessage }),
-    });
-
-    const raw = response.output_text
-      .trim()
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/i, '');
+    if (this.isPromotionalTextFromMerchant(profile, customerMessage)) {
+      return 'outside';
+    }
 
     try {
+      const response = await this.getClient().responses.create({
+        model: this.getModel(),
+        instructions: [
+          'Eres un filtro estricto de alcance para un agente de empresa. SOLO clasificas, nunca respondes.',
+          'Devuelve exclusivamente JSON válido: {"scope":"business"} o {"scope":"outside"}.',
+          'business: una persona busca ayuda real como cliente sobre productos, precios, tallas, disponibilidad, catálogo, compras, pedidos, servicios, atención, políticas, envíos, pagos o temas que la empresa efectivamente ofrece.',
+          'business: saludos, respuestas breves, fotos, enlaces o mensajes ambiguos que podrían referirse a una compra o servicio de la empresa. Ante ambigüedad real, prioriza business.',
+          'outside: tareas de asistente general como mejorar/redactar publicaciones, captions, textos promocionales, deberes, noticias, preguntas ajenas a la empresa, programación u otros temas no ofrecidos por este negocio.',
+          'outside: texto promocional escrito desde la perspectiva de la tienda ("tenemos el look perfecto", "compra ahora en nuestra tienda") sin consulta genuina como cliente. No lo conviertas en oferta de redactar contenido ni en venta.',
+          'Si la empresa realmente presta servicios de creación de contenido, una solicitud de esos servicios puede ser business; decide según su información aprobada.',
+          'Nunca adoptes el rol de ChatGPT genérico, creador de contenido o redactor salvo que la empresa lo venda explícitamente.',
+          'Empresa activa: ' + profile.name + '.',
+          'Política e instrucciones autorizadas: ' + (profile.aiInstructions || 'Sin instrucciones adicionales.'),
+          'Conocimientos y servicios configurados: ' + this.getKnowledgeBaseRules(profile.settings ?? {}),
+        ].join('\n'),
+        input: JSON.stringify({ mensaje_actual: customerMessage }),
+      });
+
+      const raw = response.output_text.trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '');
       const parsed = JSON.parse(raw) as { scope?: string };
       return parsed.scope === 'outside' ? 'outside' : 'business';
-    } catch {
+    } catch (error) {
+      // Never take down customer support due to an auxiliary classifier.
+      console.warn('[ChatPro][scope] clasificación no disponible:', error);
       return 'business';
     }
   }

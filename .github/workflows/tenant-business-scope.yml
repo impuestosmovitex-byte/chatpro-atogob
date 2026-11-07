@@ -1,0 +1,28 @@
+name: Tenant business-scope guard
+
+on:
+  push:
+    branches:
+      - fix/tenant-role-business-scope-20261107
+  pull_request:
+    paths:
+      - 'apps/api/src/chat-agent.service.ts'
+      - 'apps/api/src/chat-agent.business-scope.spec.ts'
+      - '.github/workflows/tenant-business-scope.yml'
+
+jobs:
+  api-tests-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npm test -- --runInBand chat-agent.business-scope.spec.ts chat-agent.atogob-postsale.spec.ts
+      - run: npm run build
