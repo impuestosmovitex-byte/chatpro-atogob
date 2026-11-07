@@ -2512,7 +2512,8 @@ export class ChatAgentService {
     const normalized = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const withoutDeniedAlternatives = normalized
       .replace(/\bno\s+(?:quiero|deseo|necesito|busco|estoy pidiendo)\s+(?:una?\s+)?(?:devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?|cancelar|devolver)\b/g, '')
-      .replace(/\b(?:sin|nada de)\s+(?:devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?)\b/g, '');
+      .replace(/\b(?:sin|nada de)\s+(?:devolucion(?:es)?|reembolso(?:s)?|cancelacion(?:es)?)\b/g, '')
+      .replace(/\bno\s+(?:quiero|deseo|necesito)\s+que\s+me\s+(?:devuelvan|regresen|reintegren|reembolsen)\s+(?:el\s+)?(?:dinero|pago|valor|plata)\b/g, '');
     return this.containsAtogobRestrictedTerms(withoutDeniedAlternatives);
   }
 
