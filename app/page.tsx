@@ -2017,9 +2017,11 @@ export default function Home() {
               ),
           );
 
+          // Refreshed server messages must win when the same message has a
+          // newer Meta delivery status. Preserve older, unreturned history.
           const combined = [
-            ...confirmedCurrentMessages,
             ...(data.messages ?? []),
+            ...confirmedCurrentMessages,
           ];
 
           const uniqueMessages: InboxMessage[] = [];
@@ -3381,9 +3383,6 @@ export default function Home() {
     };
   }, [filter, debouncedSearch, advisorFilter]);
 
-  const selectedLastMessageAt =
-    selected?.messages[selected.messages.length - 1]?.createdAt ?? "";
-
   useEffect(() => {
     const sessionId = selected?.session.id;
     const isInternal =
@@ -3395,17 +3394,16 @@ export default function Home() {
 
     const refreshVisibleConversation = () => {
       if (document.visibilityState === "visible") {
-        void openConversation(
-          sessionId,
-          true,
-          selectedLastMessageAt,
-        );
+        // Do not request only messages newer than the last bubble:
+        // Meta can update an existing bubble from sent -> delivered -> read.
+        // Fetch the latest page and merge it over the previous history.
+        void openConversation(sessionId, true);
       }
     };
 
     const timer = window.setInterval(
       refreshVisibleConversation,
-      2000,
+      4000,
     );
 
     const onVisibilityChange = () => {
@@ -3437,7 +3435,6 @@ export default function Home() {
   }, [
     selected?.session.id,
     selected?.session.context?.internal_test,
-    selectedLastMessageAt,
   ]);
 
   const isInternalTest = Boolean(
