@@ -2336,6 +2336,271 @@ export class ConversationMemoryService {
     };
   }
 
+  /**
+   * Read-only representation of WhatsApp automation activity. No session is
+   * created: creating a real session would alter AI routing, assignments and
+   * unread counts solely because a scheduled notification was sent.
+   */
+  private toAutomaticInboxMessage(row: any, sessionId: string): InboxMessage | null {
+    const payload: JsonObject =
+      row.payload && typeof row.payload === 'object' && !Array.isArray(row.payload)
+        ? row.payload as JsonObject
+        : {};
+    const automationKey =
+      typeof row.automation_key === 'string' ? row.automation_key : '';
+    const isShopifyProduction =
+      payload.production_send === true && payload.prepared_only === true;
+    const isRealCartTemplate =
+      automationKey === 'abandoned_cart' && payload.deliveryMode === 'template';
+    if (!isShopifyProduction && !isRealCartTemplate) {
+      return null;
+    }
+
+    const providerId =
+      typeof row.provider_message_id === 'string' && row.provider_message_id.trim()
+        ? row.provider_message_id.trim()
+        : typeof payload.provider_message_id === 'string'
+          ? payload.provider_message_id.trim()
+          : '';
+    if (!providerId) {
+      // A prepared, blocked or failed-before-Meta-acceptance event is not
+      // an outgoing WhatsApp bubble.
+      return null;
+    }
+
+    const labels: Record<string, string> = {
+      order_created: 'Confirmación de pedido',
+      fulfillment_created: 'Actualización de envío',
+      cod_order_created: 'Pedido contraentrega',
+      payment_pending: 'Pago pendiente',
+      order_cancelled: 'Actualización del pedido',
+      post_purchase_bonus: 'Bono de compra',
+      abandoned_cart: 'Recordatorio de carrito',
+    };
+    const label = labels[automationKey] || 'Notificación automática';
+    const orderNumber =
+      typeof payload.order_number === 'string' ||
+      typeof payload.order_number === 'number'
+        ? String(payload.order_number).trim().slice(0, 32)
+        : '';
+    const message = '📨 Plantilla automática: ' + label +
+      (orderNumber ? ' · Pedido #' + orderNumber.replace(/^#/, '') : '');
+    const providerStatus =
+      typeof payload.provider_status === 'string'
+        ? payload.provider_status.trim().toLowerCase()
+        : '';
+    // HTTP acceptance is not delivery; do not fabricate read receipts.
+    const deliveryStatus =
+      ['sent', 'delivered', 'read', 'failed'].includes(providerStatus)
+        ? providerStatus
+        : 'sent';
+
+    return {
+      id: 'automation-' + String(row.id),
+      sessionId,
+      message,
+      sender: 'assistant',
+      authorType: 'ai',
+      messageType: 'text',
+      messageMetadata: null,
+      mediaMimeType: null,
+      mediaStoragePath: null,
+      mediaVoice: false,
+      providerMessageId: providerId,
+      deliveryStatus,
+      providerError:
+        providerStatus === 'failed'
+          ? typeof payload.provider_error === 'string' && payload.provider_error.trim()
+            ? payload.provider_error
+            : typeof row.error_message === 'string' && row.error_message.trim()
+              ? row.error_message
+              : 'Meta notificó un fallo de entrega.'
+          : null,
+      replyToProviderMessageId: null,
+      replyToMessage: null,
+      messageSource: 'automation',
+      sourceName: 'Automatización · ' + label,
+      createdAt: row.sent_at || row.created_at || null,
+    };
+  }
+
+  private automationPhoneCandidates(phone: string): string[] {
+    const digits = this.normalizePhone(phone);
+    const local = digits.slice(-10);
+    return Array.from(new Set([
+      digits, '+' + digits, local, '+' + local,
+    ].filter((value) => value.length >= 7)));
+  }
+
+  private automaticHistorySession(
+    companyId: string,
+    phone: string,
+    latestAt: string,
+  ): ConversationSession {
+    return {
+      id: 'automation:' + phone,
+      companyId,
+      customerPhone: phone,
+      stage: 'automation_history',
+      context: { read_only_automation: true, channel: 'whatsapp' },
+      lastMessageAt: latestAt,
+      pendingCount: 0,
+      pendingSince: null,
+      attentionStatus: 'closed',
+      assignedToUserId: null,
+      assignedToName: null,
+      takenAt: null,
+      closedAt: null,
+    };
+  }
+
+  async listAutomaticOnlyInboxSessions(
+    companySlug: string,
+    options: { status?: string; offset?: number; search?: string } = {},
+  ): Promise<InboxSessionSummary[]> {
+    // Only supplement the normal WhatsApp "Todos" list and phone searches.
+    // Never contaminate advisor, unread or IA queues.
+    if (options.offset && options.offset > 0) return [];
+    if (options.status && options.status !== 'all') return [];
+
+    const profile = await this.getCompanyProfile(companySlug);
+    const client = this.supabaseService.getClient();
+    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: rows, error } = await client
+      .from('automation_executions')
+      .select('id, automation_key, recipient, status, sent_at, created_at, provider_message_id, error_message, payload')
+      .eq('company_id', profile.id)
+      .eq('channel', 'whatsapp')
+      .in('status', ['sent', 'failed', 'running'])
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: false })
+      .limit(300);
+
+    if (error) {
+      console.error('[MW1][inbox] No se pudo consultar la actividad automática:', error.message);
+      return [];
+    }
+
+    const search = (options.search || '').trim();
+    const normalizedSearch = this.normalizePhone(search);
+    const latestByPhone = new Map<string, InboxMessage>();
+    for (const row of rows ?? []) {
+      const phone = this.normalizePhone(row.recipient || '');
+      if (phone.length < 10 || phone.length > 16) continue;
+      if (search && !(normalizedSearch && phone.includes(normalizedSearch))) continue;
+      const message = this.toAutomaticInboxMessage(row, 'automation:' + phone);
+      if (!message) continue;
+      if (!latestByPhone.has(phone)) latestByPhone.set(phone, message);
+      if (latestByPhone.size >= 70) break;
+    }
+
+    if (!latestByPhone.size) return [];
+
+    // Real chat sessions must win over synthetic display-only timelines.
+    // Checking company-owned sessions here avoids duplicate chat entries.
+    const phones = Array.from(latestByPhone.keys());
+    const candidates = Array.from(new Set(
+      phones.flatMap((phone) => this.automationPhoneCandidates(phone)),
+    ));
+    const { data: sessions, error: sessionsError } = await client
+      .from('conversation_sessions')
+      .select('customer_phone')
+      .eq('company_id', profile.id)
+      .neq('attention_status', 'closed')
+      .in('customer_phone', candidates)
+      .limit(500);
+
+    if (sessionsError) {
+      console.error('[MW1][inbox] No se pudo verificar chats existentes:', sessionsError.message);
+      return [];
+    }
+    const existingPhones = new Set(
+      (sessions ?? []).map((row) => this.normalizePhone(row.customer_phone || '').slice(-10)),
+    );
+
+    const visiblePhones = phones.filter(
+      (phone) => !existingPhones.has(phone.slice(-10)),
+    ).slice(0, 30);
+    const contacts = await this.getContactsByPhones(profile.id, visiblePhones);
+    return visiblePhones.map((phone) => {
+      const lastMessage = latestByPhone.get(phone)!;
+      const session = this.automaticHistorySession(
+        profile.id, phone, lastMessage.createdAt || new Date().toISOString(),
+      );
+      return {
+        ...session,
+        contact: contacts.get(phone) ?? null,
+        lastMessage,
+      };
+    });
+  }
+
+  async getAutomaticOnlyInboxConversation(
+    companySlug: string,
+    virtualSessionId: string,
+    after = '',
+    before = '',
+    messageLimitInput = '',
+  ): Promise<InboxConversation | null> {
+    const match = /^automation:(\d{10,16})$/.exec(virtualSessionId);
+    if (!match) return null;
+
+    const profile = await this.getCompanyProfile(companySlug);
+    const phone = match[1];
+    const client = this.supabaseService.getClient();
+    let query = client
+      .from('automation_executions')
+      .select('id, automation_key, recipient, status, sent_at, created_at, provider_message_id, error_message, payload')
+      .eq('company_id', profile.id)
+      .eq('channel', 'whatsapp')
+      .in('recipient', this.automationPhoneCandidates(phone))
+      .in('status', ['sent', 'failed', 'running']);
+
+    if (after && !Number.isNaN(Date.parse(after))) {
+      query = query.gte('created_at', after);
+    }
+    if (before && !Number.isNaN(Date.parse(before))) {
+      query = query.lt('created_at', before);
+    }
+    const parsedLimit = Number.parseInt(messageLimitInput, 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(200, Math.max(20, parsedLimit))
+      : 120;
+    const { data: rows, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) {
+      throw new Error('No se pudo consultar el historial automático: ' + error.message);
+    }
+
+    const seen = new Set<string>();
+    const messages: InboxMessage[] = [];
+    for (const row of rows ?? []) {
+      const message = this.toAutomaticInboxMessage(row, virtualSessionId);
+      if (!message || !message.providerMessageId ||
+          seen.has(message.providerMessageId)) continue;
+      seen.add(message.providerMessageId);
+      messages.push(message);
+    }
+    if (!messages.length) {
+      throw new Error('No hay notificaciones WhatsApp enviadas para este cliente.');
+    }
+    messages.sort((a, b) =>
+      Date.parse(a.createdAt || '') - Date.parse(b.createdAt || ''),
+    );
+    const lastMessage = messages[messages.length - 1];
+    const session = this.automaticHistorySession(
+      profile.id, phone, lastMessage.createdAt || new Date().toISOString(),
+    );
+    const contacts = await this.getContactsByPhones(profile.id, [phone]);
+    return {
+      company: { id: profile.id, slug: profile.slug, name: profile.name },
+      session,
+      contact: contacts.get(phone) ?? null,
+      messages,
+    };
+  }
+
   async getInboxConversation(
     companySlug: string,
     sessionId: string,
@@ -2532,87 +2797,12 @@ export class ConversationMemoryService {
         .filter((value): value is string => Boolean(value)),
     );
     const automaticMessages: InboxMessage[] = [];
-    const labels: Record<string, string> = {
-      order_created: 'Confirmación de pedido',
-      fulfillment_created: 'Actualización de envío',
-      cod_order_created: 'Pedido contraentrega',
-      payment_pending: 'Pago pendiente',
-      order_cancelled: 'Actualización del pedido',
-      post_purchase_bonus: 'Bono de compra',
-      abandoned_cart: 'Recordatorio de carrito',
-    };
-
     for (const row of automationError ? [] : (automationRows ?? [])) {
-      const payload: JsonObject =
-        row.payload && typeof row.payload === 'object' && !Array.isArray(row.payload)
-          ? row.payload as JsonObject
-          : {};
-      const automationKey =
-        typeof row.automation_key === 'string' ? row.automation_key : '';
-      const isShopifyProduction =
-        payload.production_send === true && payload.prepared_only === true;
-      const isRealCartTemplate =
-        automationKey === 'abandoned_cart' && payload.deliveryMode === 'template';
-      if (!isShopifyProduction && !isRealCartTemplate) {
-        // Exclude test-only, blocked, simulated or merely scheduled sends.
-        continue;
-      }
-
-      const providerId =
-        typeof row.provider_message_id === 'string' && row.provider_message_id.trim()
-          ? row.provider_message_id.trim()
-          : typeof payload.provider_message_id === 'string'
-            ? payload.provider_message_id.trim()
-            : '';
-      if (!providerId || knownProviderIds.has(providerId)) {
-        continue;
-      }
-      knownProviderIds.add(providerId);
-
-      const label = labels[automationKey] || 'Notificación automática';
-      const orderNumber = typeof payload.order_number === 'string' ||
-        typeof payload.order_number === 'number'
-          ? String(payload.order_number).trim().slice(0, 32)
-          : '';
-      // The prepared Shopify copy is NOT necessarily the actual Meta template.
-      // Show an honest activity label, not fabricated message contents.
-      const message = '📨 Plantilla automática: ' + label +
-        (orderNumber ? ' · Pedido #' + orderNumber.replace(/^#/, '') : '');
-      const providerStatus =
-        typeof payload.provider_status === 'string'
-          ? payload.provider_status.trim().toLowerCase()
-          : '';
-      const deliveryStatus =
-        ['sent', 'delivered', 'read', 'failed'].includes(providerStatus)
-          ? providerStatus
-          : 'sent'; // HTTP acceptance only; no inferred delivery.
-      automaticMessages.push({
-        id: 'automation-' + String(row.id),
-        sessionId: id,
-        message,
-        sender: 'assistant',
-        authorType: 'ai',
-        messageType: 'text',
-        messageMetadata: null,
-        mediaMimeType: null,
-        mediaStoragePath: null,
-        mediaVoice: false,
-        providerMessageId: providerId,
-        deliveryStatus,
-        providerError:
-          providerStatus === 'failed'
-            ? typeof payload.provider_error === 'string' && payload.provider_error.trim()
-              ? payload.provider_error
-              : typeof row.error_message === 'string'
-                ? row.error_message
-                : null
-            : null,
-        replyToProviderMessageId: null,
-        replyToMessage: null,
-        messageSource: 'automation',
-        sourceName: 'Automatización · ' + label,
-        createdAt: row.sent_at || row.created_at || null,
-      });
+      const item = this.toAutomaticInboxMessage(row, id);
+      if (!item || !item.providerMessageId ||
+          knownProviderIds.has(item.providerMessageId)) continue;
+      knownProviderIds.add(item.providerMessageId);
+      automaticMessages.push(item);
     }
 
     const messages = [...manualMessages, ...automaticMessages]
