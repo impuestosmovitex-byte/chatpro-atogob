@@ -473,8 +473,8 @@ export function InstagramConnectButton({
           'Conexión correcta',
         detail:
           verifiedUsername
-            ? `Instagram respondió correctamente. @${verifiedUsername} está conectado y disponible para MW1.`
-            : 'Instagram respondió correctamente y la conexión está disponible para MW1.',
+            ? `Meta confirmó la autorización de @${verifiedUsername}. La recepción de mensajes sigue deshabilitada.`
+            : 'Instagram confirmó la autorización del piloto. La recepción de mensajes sigue deshabilitada.',
         checkedAt:
           new Date()
             .toLocaleString(
@@ -654,6 +654,26 @@ export function InstagramConnectButton({
           <small>
             La activación debe realizarse después de las verificaciones de seguridad.
           </small>
+          {isStaging ? (
+            <>
+              <button type="button" className={styles.testButton}
+                onClick={() => void testConnection()}
+                disabled={testing || connecting}>
+                {testing ? 'Comprobando autorización…' : 'Verificar autorización con Meta'}
+              </button>
+              {testFeedback ? (
+                <div role={testFeedback.ok ? 'status' : 'alert'} style={{
+                  marginTop: 10, padding: 12, borderRadius: 9,
+                  background: testFeedback.ok ? '#eff8f0' : '#fff2f2',
+                  border: testFeedback.ok ? '1px solid #b7dfbf' : '1px solid #efc0c0',
+                }}>
+                  <strong>{testFeedback.title}</strong>
+                  <p>{testFeedback.detail}</p>
+                  <small>Esta verificación no activa los mensajes ni modifica la autorización.</small>
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </>
       ) : hasConnection ? (
         <>
