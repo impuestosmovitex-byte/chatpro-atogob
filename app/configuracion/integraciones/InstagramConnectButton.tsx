@@ -100,6 +100,8 @@ export function InstagramConnectButton({
     ok?: boolean;
     accountSubscribed?: boolean | null;
     messageSubscribed?: boolean | null;
+    subscriptionRecordsFound?: number;
+    status?: string;
     error?: string;
   } | null>(null);
 
@@ -538,7 +540,9 @@ export function InstagramConnectButton({
         { cache: 'no-store' });
       const data = await response.json() as {
         ok?: boolean; accountSubscribed?: boolean | null;
-        messageSubscribed?: boolean | null; error?: string;
+        messageSubscribed?: boolean | null;
+        subscriptionRecordsFound?: number;
+        status?: string; error?: string;
       };
       setSubscriptionResult(response.ok ? data : {
         ok: false,
@@ -703,8 +707,16 @@ export function InstagramConnectButton({
                   <strong>Suscripción de la cuenta piloto</strong>
                   {subscriptionResult.ok ? (
                     <p>
-                      Cuenta suscrita: {subscriptionResult.accountSubscribed ? 'Sí' : 'No'}.{' '}
-                      Evento messages: {subscriptionResult.messageSubscribed ? 'Confirmado' : 'No confirmado'}.
+                      Cuenta suscrita: {subscriptionResult.accountSubscribed === true ? 'Sí' :
+                        subscriptionResult.accountSubscribed === false ? 'No' : 'No se pudo determinar'}.{' '}
+                      Evento messages: {subscriptionResult.messageSubscribed === true ? 'Confirmado' :
+                        subscriptionResult.messageSubscribed === false ? 'No confirmado' : 'Sin determinar'}.
+                      {subscriptionResult.status === 'unrecognized_app_id' ? (
+                        <span> Meta devolvió suscripciones, pero MW1 todavía no identifica la app asociada. No se modificó nada.</span>
+                      ) : null}
+                      {typeof subscriptionResult.subscriptionRecordsFound === 'number' ? (
+                        <span> Registros de suscripción encontrados: {subscriptionResult.subscriptionRecordsFound}.</span>
+                      ) : null}
                     </p>
                   ) : (
                     <p>{subscriptionResult.error || 'Meta no confirmó la suscripción.'}</p>
