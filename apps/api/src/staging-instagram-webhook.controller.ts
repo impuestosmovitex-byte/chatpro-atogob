@@ -72,11 +72,11 @@ export class StagingInstagramWebhookController {
   }
 
   @Post()
-  @HttpCode(503)
+  @HttpCode(200)
   async receive(
     @Req() request: RawBodyRequest<Request>,
     @Headers('x-hub-signature-256') signature?: string,
-  ): Promise<never> {
+  ): Promise<{ok:true;stored:number;duplicates:number}> {
     if (process.env.MW1_STAGING_MODE !== 'true' ||
       !request.rawBody ||
       !validMetaSignature(request.rawBody, signature,
@@ -89,7 +89,7 @@ export class StagingInstagramWebhookController {
     }
     const db = this.supabase.getClient();
     const { data: rows, error } = await db.from('company_integrations')
-      .select('company_id,status,config')
+      .select('id,company_id,status,config')
       .eq('provider', 'meta')
       .eq('integration_type', 'instagram')
       .eq('external_id', ids[0])
@@ -110,8 +110,71 @@ export class StagingInstagramWebhookController {
       company.status !== 'active') {
       throw new ForbiddenException('Empresa piloto no autorizada.');
     }
-    // Fail closed: until explicitly implemented, Meta receives a retriable
-    // response rather than a false 200 implying an event was processed.
-    throw new ServiceUnavailableException('Recepción de Instagram aún no activada en staging.');
+    // Do not subscribe the Meta application webhook until the pilot is
+    // specifically enabled. This switch remains OFF in Railway by default.
+    if (process.env.MW1_STAGING_INSTAGRAM_RECEIVE_ENABLED !== 'true') {
+      throw new ServiceUnavailableException('Recepción de Instagram aún no activada en staging.');
+    }
+    const payload = asObject(request.body);
+    const entries = payload?.entry;
+    if (!Array.isArray(entries) || entries.length > 20) {
+      throw new ForbiddenException('Paquete de mensajes inválido.');
+    }
+    const messages: Array<{
+      company_id: string;
+      integration_id: string;
+      provider_message_id: string;
+      sender_id: string;
+      recipient_ig_id: string;
+      message_text: string | null;
+      provider_timestamp: number | null;
+    }> = [];
+    for (const rawEntry of entries) {
+      const entry = asObject(rawEntry);
+      if (!entry || !Array.isArray(entry.messaging) || entry.messaging.length > 20) {
+        throw new ForbiddenException('Lote de mensajes de Instagram inválido.');
+      }
+      for (const rawEvent of entry.messaging) {
+        const event = asObject(rawEvent);
+        const sender = asObject(event?.sender);
+        const recipient = asObject(event?.recipient);
+        const message = asObject(event?.message);
+        // Only user-originated text messages are supported in the initial pilot.
+        // Do not acknowledge unsupported payloads as successfully stored.
+        if (message?.is_echo === true || !sender || !recipient || !message ||
+          typeof sender.id !== 'string' || !/^[0-9]{5,100}$/.test(sender.id) ||
+          recipient.id !== ids[0] || sender.id === ids[0] ||
+          typeof message.mid !== 'string' || message.mid.length < 1 ||
+          message.mid.length > 255 || message.is_echo === true ||
+          typeof message.text !== 'string' || message.text.length > 5000 ||
+          typeof integration.id !== 'string' ||
+          typeof integration.company_id !== 'string') {
+          throw new ServiceUnavailableException('Evento de Instagram aún no soportado por el piloto.');
+        }
+        const timestamp = event?.timestamp;
+        messages.push({
+          company_id: integration.company_id,
+          integration_id: integration.id,
+          provider_message_id: message.mid,
+          sender_id: sender.id,
+          recipient_ig_id: ids[0],
+          message_text: message.text,
+          provider_timestamp: typeof timestamp === 'number' && Number.isSafeInteger(timestamp)
+            ? timestamp : null,
+        });
+      }
+    }
+    if (!messages.length || messages.length > 20) {
+      throw new ForbiddenException('No hay mensajes válidos para guardar.');
+    }
+    // One atomic-ish batch upsert (idempotent on provider message ID).
+    // Never leak customer data to browser responses or logs.
+    const { error: writeError } = await db
+      .from('mw1_instagram_staging_inbox')
+      .upsert(messages, { onConflict: 'integration_id,provider_message_id', ignoreDuplicates: true });
+    if (writeError) {
+      throw new ServiceUnavailableException('No se pudo guardar el mensaje. Meta puede reintentar.');
+    }
+    return {ok:true,stored:messages.length,duplicates:0};
   }
 }
