@@ -3207,14 +3207,15 @@ export default function Home() {
     };
 
     const handleDragEnter = (event: DragEvent) => {
-      if (!selected?.session.id || !hasFiles(event)) return;
+      if (!hasFiles(event)) return;
       event.preventDefault();
+      if (!selected?.session.id) return;
       dragDepth += 1;
       setDraggingFile(true);
     };
 
     const handleDragOver = (event: DragEvent) => {
-      if (!selected?.session.id || !hasFiles(event)) return;
+      if (!hasFiles(event)) return;
       event.preventDefault();
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect =
@@ -3231,9 +3232,13 @@ export default function Home() {
     };
 
     const handleDrop = (event: DragEvent) => {
-      if (!selected?.session.id || !hasFiles(event)) return;
+      if (!hasFiles(event)) return;
       event.preventDefault();
       resetDrag();
+      if (!selected?.session.id) {
+        setError("Abre primero el chat al que quieres adjuntar el archivo.");
+        return;
+      }
 
       const files = Array.from(event.dataTransfer?.files ?? []);
       if (!files.length) {
