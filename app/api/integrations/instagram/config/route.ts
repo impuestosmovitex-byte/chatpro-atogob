@@ -113,6 +113,8 @@ export async function GET(request: NextRequest) {
       // Read-only status for an authenticated tenant admin. Never disclose
       // credentials, OAuth codes, environment values or provider tokens.
       diagnostics: {
+        pilotOnly: true,
+        multiCompanyActivationEnabled: false,
         apiReady: body.ready === true,
         apiAuthorizationEnabled: body.authorizationEnabled === true,
         webStateSecretReady: webSecretReady,
