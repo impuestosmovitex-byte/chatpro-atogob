@@ -70,6 +70,7 @@ export class InboxController {
     @Query('status') status = 'all',
     @Query('limit') limit = '20',
     @Query('offset') offset = '0',
+    @Query('includeAutomations') includeAutomations = 'true',
     @Query('search') search = '',
     @Query('advisor') advisor = '',
   ) {
@@ -109,11 +110,12 @@ export class InboxController {
         advisorUserId: advisor,
       });
 
-    const automationSessions =
-      await this.conversationMemoryService.listAutomaticOnlyInboxSessions(
-        companySlug,
-        { status, offset: Number(offset), search },
-      );
+    const automationSessions = includeAutomations === 'false'
+      ? []
+      : await this.conversationMemoryService.listAutomaticOnlyInboxSessions(
+          companySlug,
+          { status, offset: Number(offset), search },
+        );
 
     const mergedSessions = [
       ...payload.sessions,
