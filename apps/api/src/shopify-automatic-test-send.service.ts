@@ -50,7 +50,13 @@ export class ShopifyAutomaticTestSendService {
     const message = this.text(payload.prepared_message);
     const recipient = this.normalizePhone(execution.recipient);
 
-    if (execution.status === 'sent') {
+    // A previous Meta acceptance is already a real customer-facing send.
+    // Even if Meta later reports a delivery failure, do not accidentally
+    // re-send the same Shopify notification on webhook replay or retry.
+    if (
+      execution.status === 'sent' ||
+      this.text(execution.payload && payload.provider_message_id)
+    ) {
       return 'already_sent';
     }
 
