@@ -19,6 +19,14 @@ type InstagramConfig = {
   scopes?: string[];
   loginMode?: string;
   missing?: string[];
+  webhookPreflight?: {
+    endpointDeployed?: boolean;
+    verificationTokenConfigured?: boolean;
+    receiptEnabled?: boolean;
+    appSubscriptionConfirmed?: boolean;
+    inboxRepliesEnabled?: boolean;
+    warning?: string;
+  };
   diagnostics?: {
     pilotOnly?: boolean;
     multiCompanyActivationEnabled?: boolean;
@@ -942,6 +950,22 @@ export function InstagramConnectButton({
                 : 'Instagram todavía no está configurado.'
             )}
       </small>
+
+      {isStaging && config?.webhookPreflight ? (
+        <div style={{
+          marginTop: 12, padding: 12, borderRadius: 10,
+          border: '1px solid #d7deeb', background: '#f6f8fc',
+          display: 'grid', gap: 6,
+        }}>
+          <strong>Preparación de mensajes de Instagram (piloto)</strong>
+          <small>Receptor de mensajes: {config.webhookPreflight.endpointDeployed ? 'Preparado' : 'No confirmado'}</small>
+          <small>Verificación de Meta: {config.webhookPreflight.verificationTokenConfigured ? 'Token preparado' : 'Sin configurar'}</small>
+          <small>Suscripción en Meta: {config.webhookPreflight.appSubscriptionConfirmed ? 'Confirmada' : 'Pendiente de comprobar'}</small>
+          <small>Recepción de mensajes: {config.webhookPreflight.receiptEnabled ? 'Habilitada para el piloto' : 'Deshabilitada'}</small>
+          <small>Responder desde MW1: {config.webhookPreflight.inboxRepliesEnabled ? 'Habilitado' : 'Pendiente'}</small>
+          <small>{config.webhookPreflight.warning}</small>
+        </div>
+      ) : null}
 
       {isStaging && !hasConnection ? (
         <div style={{marginTop: 12}}>
