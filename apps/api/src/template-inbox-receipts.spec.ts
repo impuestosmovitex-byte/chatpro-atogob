@@ -18,6 +18,41 @@ function queryResult(result: { data: any; error: any }) {
 }
 
 describe('Shopify automatic template Meta receipt tracking', () => {
+  it('does not re-send a template after a provider-accepted message fails delivery', async () => {
+    const execution = {
+      id: 'execution-previous',
+      company_id: companyId,
+      automation_key: 'order_created',
+      status: 'failed',
+      recipient: phone,
+      attempt_count: 1,
+      payload: {
+        prepared_only: true,
+        prepared_message: 'Aviso previo',
+        provider_message_id: 'wamid.previously-accepted',
+        provider_status: 'failed',
+      },
+    };
+    const update = jest.fn();
+    const db = {
+      from: jest.fn(() => ({
+        select: jest.fn(() => queryResult({ data: execution, error: null })),
+        update,
+      })),
+    };
+    const sendTemplate = jest.fn();
+    const sendText = jest.fn();
+    const service = new ShopifyAutomaticTestSendService(
+      { getClient: () => db } as any,
+      { sendText } as any,
+      { sendAssignedTemplate: sendTemplate } as any,
+    );
+    expect(await service.sendIfAllowed(companyId, execution.id)).toBe('already_sent');
+    expect(update).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+    expect(sendTemplate).not.toHaveBeenCalled();
+  });
+
   it('persists the provider message ID in both the tracked column and payload without resending', async () => {
     const changes: Record<string, unknown>[] = [];
     const data = {
