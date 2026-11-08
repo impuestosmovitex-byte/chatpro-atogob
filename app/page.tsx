@@ -5002,7 +5002,7 @@ export default function Home() {
                           ? "Conversación real con el agente y las integraciones de esta empresa."
                           : readOnlyAutomation
                             ? "Historial de notificaciones de WhatsApp · solo lectura"
-                            : `${statusLabel[selected.session.attentionStatus]}${selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}`
+                            : `${statusLabel[selected.session.attentionStatus]}${selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}`}
                       </p>
                     </div>
 
