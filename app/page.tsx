@@ -3219,7 +3219,7 @@ export default function Home() {
       event.preventDefault();
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect =
-          canSendMedia && selected.session.attentionStatus === "human"
+          canSendMedia && selected?.session.attentionStatus === "human"
             ? "copy"
             : "none";
       }
