@@ -167,14 +167,22 @@ export class StagingInstagramWebhookController {
     if (!messages.length || messages.length > 20) {
       throw new ForbiddenException('No hay mensajes válidos para guardar.');
     }
-    // One atomic-ish batch upsert (idempotent on provider message ID).
-    // Never leak customer data to browser responses or logs.
-    const { error: writeError } = await db
+    // Let the unique index enforce idempotency and return only inserted IDs.
+    // Never report a duplicate as a newly received message.
+    const { data: inserted, error: writeError } = await db
       .from('mw1_instagram_staging_inbox')
-      .upsert(messages, { onConflict: 'integration_id,provider_message_id', ignoreDuplicates: true });
-    if (writeError) {
+      .upsert(messages, {
+        onConflict: 'integration_id,provider_message_id',
+        ignoreDuplicates: true,
+      })
+      .select('id');
+    if (writeError || !Array.isArray(inserted)) {
       throw new ServiceUnavailableException('No se pudo guardar el mensaje. Meta puede reintentar.');
     }
-    return {ok:true,stored:messages.length,duplicates:0};
+    return {
+      ok: true,
+      stored: inserted.length,
+      duplicates: Math.max(0, messages.length - inserted.length),
+    };
   }
 }
