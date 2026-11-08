@@ -1,3 +1,4 @@
+import { isInstagramStagingRequest, isInstagramStagingApi } from '../../../../lib/instagram-staging-guard';
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import {
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app') {
+  if (isInstagramStagingRequest(request)) {
     if (process.env.MW1_STAGING_INSTAGRAM_ONBOARDING_ENABLED !== 'true' || process.env.MW1_STAGING_INSTAGRAM_OAUTH_ENABLED !== 'true' ||
         process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED !== 'true') {
       return NextResponse.json({ ok: false, error: 'Instagram no habilitado en staging.' }, { status: 403 });
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     if (!apiBase || !inboxKey) {
       return NextResponse.json({ ok: false, error: 'API de staging no configurada.' }, { status: 503 });
     }
-    if (apiBase !== 'https://mw1-api-staging-staging.up.railway.app' ||
+    if (!isInstagramStagingApi(apiBase) ||
         session.companySlug !== 'piloto-mw1-prueba') {
       return NextResponse.json(
         { ok: false, error: 'Esta autorización solo se procesa en la empresa piloto.' },
