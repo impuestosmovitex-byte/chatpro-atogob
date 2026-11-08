@@ -101,7 +101,7 @@ export class StagingInstagramWebhookController {
     const cfg = asObject(integration.config);
     if (integration.status !== 'pending' ||
       cfg?.username !== 'chatpro_mw1' ||
-      cfg?.webhooks_subscribed !== false) {
+      typeof cfg?.webhooks_subscribed !== 'boolean') {
       throw new ForbiddenException('Cuenta Instagram fuera del piloto autorizado.');
     }
     const { data: company, error: companyError } = await db.from('companies')
