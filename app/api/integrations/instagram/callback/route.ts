@@ -1,3 +1,4 @@
+import { isInstagramStagingRequest } from '../../../../lib/instagram-staging-guard';
 import {
   NextRequest,
   NextResponse,
@@ -31,7 +32,7 @@ export async function GET(
   // Staging redirects must always stay on the fixed staging origin, never
   // on an origin supplied through forwarded headers.
   const isStaging =
-    request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app';
+    isInstagramStagingRequest(request);
   const publicOrigin = isStaging
     ? 'https://mw1-web-staging-staging.up.railway.app'
     : request.nextUrl.origin;
