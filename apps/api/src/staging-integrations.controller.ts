@@ -8,6 +8,58 @@ export class StagingIntegrationsController {
   constructor(private readonly supabase: SupabaseService, private readonly credentials?: IntegrationCredentialsService) {}
 
   /**
+   * Read-only Messenger onboarding preflight, isolated to the staging pilot.
+   * This does not grant permissions, invoke Meta, exchange tokens or enable
+   * Page subscriptions. The OAuth flow MUST have server-side state and
+   * encrypted server-side credentials before launch is considered safe.
+   */
+  @Get('messenger/config')
+  async messengerConfig(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+  ) {
+    const result = await this.list(key, userId, companyId, slug);
+    const isPilot = result.company.slug === 'piloto-mw1-prueba';
+    const appId = process.env.META_WHATSAPP_APP_ID?.trim() || '';
+    const appPresent = appId === '1079916404666757';
+    const appSecretPresent = Boolean(process.env.META_WHATSAPP_APP_SECRET?.trim());
+    const encryptionPresent = Boolean(
+      process.env.CHATPRO_INTEGRATIONS_ENCRYPTION_KEY?.trim(),
+    );
+    return {
+      ok: true,
+      provider: 'meta',
+      integrationType: 'messenger',
+      ready: false,
+      authorizationEnabled: false,
+      connectionEnabled: false,
+      message: isPilot
+        ? 'Messenger está en preparación segura. Falta completar OAuth de servidor, validar los permisos de Páginas y mantener el token fuera del navegador. No se conectará ninguna cuenta todavía.'
+        : 'Messenger no está autorizado para esta empresa en staging.',
+      checks: isPilot ? {
+        isolatedPilot: true,
+        metaAppConfigured: appPresent,
+        metaAppSecretConfigured: appSecretPresent,
+        encryptedCredentialStorageConfigured: encryptionPresent,
+        serverSideOAuthStateVerified: false,
+        pageOwnershipVerified: false,
+        approvedPageMessagingAccessVerified: false,
+        webhookSubscriptionEnabled: false,
+      } : undefined,
+      missing: isPilot ? [
+        ...(!appPresent ? ['Aplicación Meta MW1'] : []),
+        ...(!appSecretPresent ? ['Clave privada Meta en servidor'] : []),
+        ...(!encryptionPresent ? ['Cifrado de credenciales en servidor'] : []),
+        'OAuth de Messenger validado en servidor',
+        'Confirmación de permisos y titularidad de Páginas',
+        'Autorización de mensajería de Páginas por Meta',
+      ] : [],
+    };
+  }
+
+  /**
    * Instagram onboarding readiness is intentionally read-only in staging.
    * We use Instagram Login, not the WhatsApp Embedded Signup configuration.
    * Do not enable subscriptions, exchange tokens, or touch production channels.
