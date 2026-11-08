@@ -166,8 +166,8 @@ export class StagingIntegrationsController {
     if (appId !== '1079916404666757' || !appSecret) {
       throw new ForbiddenException('La aplicación Meta del piloto no está configurada.');
     }
-    const version = process.env.META_INSTAGRAM_API_VERSION || 'v26.0';
-    if (!/^v[0-9]+\\.[0-9]+$/.test(version)) {
+    const version = (process.env.META_INSTAGRAM_API_VERSION || 'v26.0').trim();
+    if (!/^v[0-9]+\.[0-9]+$/.test(version.trim())) {
       throw new ForbiddenException('Versión de Meta no válida.');
     }
     let confirmed = false;
