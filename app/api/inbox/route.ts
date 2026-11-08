@@ -113,6 +113,12 @@ export async function GET(request: NextRequest) {
       target.searchParams.set('status', status);
       target.searchParams.set('limit', limit);
       target.searchParams.set('offset', offset);
+      target.searchParams.set(
+        'includeAutomations',
+        request.nextUrl.searchParams.get('includeAutomations') === 'false'
+          ? 'false'
+          : 'true',
+      );
 
       if (search) {
         target.searchParams.set('search', search);
