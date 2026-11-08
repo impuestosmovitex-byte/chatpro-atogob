@@ -26,6 +26,10 @@ import { SupabaseService } from './supabase.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { MetaSocialInboxService } from './meta-social-inbox.service';
 import { MetaSocialMessagingService } from './meta-social-messaging.service';
+import {
+  resolveInboxMediaFilename,
+  resolveInboxMediaMimeType,
+} from './inbox-media-content.util';
 
 type InboxBody = {
   message?: unknown;
@@ -1749,38 +1753,21 @@ export class InboxController {
 
         media = {
           buffer: Buffer.from(await data.arrayBuffer()),
-          mimeType:
-            data.type ||
-            row.media_mime_type ||
-            row.message_type === 'image'
-              ? 'image/jpeg'
-              : row.message_type === 'audio'
-                ? 'audio/ogg'
-                : row.message_type === 'video'
-                  ? 'video/mp4'
-                  : 'application/octet-stream',
-          filename:
-            row.media_storage_path.split('/').pop() ||
-            row.message_type === 'image'
-              ? 'imagen'
-              : row.message_type === 'audio'
-                ? 'audio.ogg'
-                : row.message_type === 'video'
-                  ? 'video.mp4'
-                  : 'archivo',
+          mimeType: resolveInboxMediaMimeType(
+            row.message_type,
+            data.type,
+            row.media_mime_type,
+          ),
+          filename: resolveInboxMediaFilename(
+            row.message_type,
+            row.media_storage_path,
+          ),
         };
       } else {
         media = await this.whatsappMessagingService.downloadRawMedia(
           conversation.company.id,
           row.media_id,
-          row.media_mime_type ||
-            row.message_type === 'image'
-              ? 'image/jpeg'
-              : row.message_type === 'audio'
-                ? 'audio/ogg'
-                : row.message_type === 'video'
-                  ? 'video/mp4'
-                  : 'application/octet-stream',
+          resolveInboxMediaMimeType(row.message_type, null, row.media_mime_type),
         );
       }
     } catch (error) {
