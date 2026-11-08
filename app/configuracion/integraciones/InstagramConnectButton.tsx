@@ -95,6 +95,13 @@ export function InstagramConnectButton({
   // Avoid reading browser-only location during the server render.
   const [isStaging, setIsStaging] = useState(false);
   const [showOnboardingDiagnostics, setShowOnboardingDiagnostics] = useState(false);
+  const [checkingSubscription, setCheckingSubscription] = useState(false);
+  const [subscriptionResult, setSubscriptionResult] = useState<{
+    ok?: boolean;
+    accountSubscribed?: boolean | null;
+    messageSubscribed?: boolean | null;
+    error?: string;
+  } | null>(null);
 
   useEffect(() => {
     setIsStaging(
@@ -523,6 +530,27 @@ export function InstagramConnectButton({
     }
   }
 
+  async function checkSubscription() {
+    setCheckingSubscription(true);
+    setSubscriptionResult(null);
+    try {
+      const response = await fetch('/api/integrations/instagram/webhook-subscription',
+        { cache: 'no-store' });
+      const data = await response.json() as {
+        ok?: boolean; accountSubscribed?: boolean | null;
+        messageSubscribed?: boolean | null; error?: string;
+      };
+      setSubscriptionResult(response.ok ? data : {
+        ok: false,
+        error: data.error || 'No se pudo consultar la suscripción en Meta.',
+      });
+    } catch {
+      setSubscriptionResult({ok:false,error:'No se pudo consultar la suscripción en Meta.'});
+    } finally {
+      setCheckingSubscription(false);
+    }
+  }
+
   async function disconnectInstagram() {
     const confirmed =
       window.confirm(
@@ -664,6 +692,26 @@ export function InstagramConnectButton({
           </small>
           {isStaging ? (
             <>
+              <button type="button" className={styles.testButton}
+                onClick={() => void checkSubscription()}
+                disabled={checkingSubscription || testing || connecting}>
+                {checkingSubscription ? 'Consultando suscripción…' : 'Comprobar suscripción de mensajes en Meta'}
+              </button>
+              {subscriptionResult ? (
+                <div role="status" style={{padding:12,marginTop:8,borderRadius:8,
+                  border:'1px solid #d7deeb',background:'#f6f8fc'}}>
+                  <strong>Suscripción de la cuenta piloto</strong>
+                  {subscriptionResult.ok ? (
+                    <p>
+                      Cuenta suscrita: {subscriptionResult.accountSubscribed ? 'Sí' : 'No'}.{' '}
+                      Evento messages: {subscriptionResult.messageSubscribed ? 'Confirmado' : 'No confirmado'}.
+                    </p>
+                  ) : (
+                    <p>{subscriptionResult.error || 'Meta no confirmó la suscripción.'}</p>
+                  )}
+                  <small>Esta consulta no activa eventos ni cambia las suscripciones.</small>
+                </div>
+              ) : null}
               <button type="button" className={styles.testButton}
                 onClick={() => void testConnection()}
                 disabled={testing || connecting}>
