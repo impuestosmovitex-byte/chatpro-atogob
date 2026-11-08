@@ -14,6 +14,16 @@ type MessengerConfig = {
   apiVersion?: string;
   scopes?: string[];
   missing?: string[];
+  checks?: {
+    isolatedPilot?: boolean;
+    metaAppConfigured?: boolean;
+    metaAppSecretConfigured?: boolean;
+    encryptedCredentialStorageConfigured?: boolean;
+    serverSideOAuthStateVerified?: boolean;
+    pageOwnershipVerified?: boolean;
+    approvedPageMessagingAccessVerified?: boolean;
+    webhookSubscriptionEnabled?: boolean;
+  };
   error?: string;
   message?: string;
 };
@@ -528,6 +538,23 @@ export function MessengerConnectButton() {
               ? `Falta configurar: ${config.missing.join(', ')}`
               : 'Messenger todavía no está configurado.')}
       </small>
+
+      {config?.checks ? (
+        <div style={{marginTop:12,padding:12,background:'#f8fafc',border:'1px solid #dce5ed',borderRadius:10}}>
+          <strong>Preparación de Messenger (solo piloto)</strong>
+          <ul style={{marginTop:9,paddingLeft:20,lineHeight:1.8}}>
+            <li>Empresa de prueba aislada: {config.checks.isolatedPilot ? 'Confirmada' : 'Pendiente'}</li>
+            <li>Aplicación Meta: {config.checks.metaAppConfigured ? 'Configurada' : 'Pendiente'}</li>
+            <li>Credenciales privadas: {config.checks.metaAppSecretConfigured ? 'Configuradas' : 'Pendientes'}</li>
+            <li>Cifrado de credenciales: {config.checks.encryptedCredentialStorageConfigured ? 'Configurado' : 'Pendiente'}</li>
+            <li>Autorización segura OAuth: {config.checks.serverSideOAuthStateVerified ? 'Verificada' : 'Pendiente'}</li>
+            <li>Titularidad de la página: {config.checks.pageOwnershipVerified ? 'Verificada' : 'Pendiente'}</li>
+            <li>Permiso de mensajes de Páginas: {config.checks.approvedPageMessagingAccessVerified ? 'Verificado' : 'Pendiente'}</li>
+            <li>Recepción de mensajes: {config.checks.webhookSubscriptionEnabled ? 'Habilitada' : 'Deshabilitada'}</li>
+          </ul>
+          <small>Esta comprobación no inicia sesión en Meta, no conecta páginas y no almacena tokens.</small>
+        </div>
+      ) : null}
 
       {message ? (
         <p>{message}</p>
