@@ -201,28 +201,37 @@ export class StagingIntegrationsController {
       const body = resultData && typeof resultData === 'object' &&
         !Array.isArray(resultData) ? resultData as Record<string,unknown> : {};
       const subscriptions = Array.isArray(body.data) ? body.data : [];
-      const appId = process.env.META_INSTAGRAM_APP_ID?.trim() || '';
-      // Meta returns app subscription records; NEVER infer subscription merely
-      // from the app's dashboard field toggles or a successful HTTP response.
-      const found = subscriptions.some(item => {
-        if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
-        const record = item as Record<string, unknown>;
-        return String(record.id ?? '') === appId;
-      });
-      const records = subscriptions.filter(item => {
-        return item && typeof item === 'object' && !Array.isArray(item) &&
-          String((item as Record<string, unknown>).id ?? '') === appId;
-      }) as Array<Record<string, unknown>>;
-      const fields = records.flatMap(item =>
-        Array.isArray(item.subscribed_fields) ? item.subscribed_fields : []);
+      // Unified Login can return the Instagram app ID rather than the parent
+      // Facebook app ID. Do not mistake an unknown app ID for no subscription.
+      const parentAppId = process.env.META_INSTAGRAM_APP_ID?.trim() || '';
+      const instagramAppId = process.env.META_INSTAGRAM_PLATFORM_APP_ID?.trim() || '';
+      const knownIds = [parentAppId, instagramAppId].filter(Boolean);
+      const records = subscriptions.filter(item =>
+        item !== null && typeof item === 'object' && !Array.isArray(item)) as Array<Record<string,unknown>>;
+      const matched = records.filter(record =>
+        knownIds.includes(String(record.id ?? '')));
+      const hasAnyRecords = records.length > 0;
+      const verified = matched.length > 0;
+      const fields = matched.flatMap(record =>
+        Array.isArray(record.subscribed_fields)
+          ? record.subscribed_fields.filter(v => typeof v === 'string')
+          : []);
+      const status = verified
+        ? 'subscribed'
+        : hasAnyRecords ? 'unrecognized_app_id' : 'not_subscribed';
       return {
         ok: true,
         account: 'chatpro_mw1',
-        status: found ? 'subscribed' : 'not_subscribed',
-        accountSubscribed: found,
-        messageSubscribed: found ? fields.includes('messages') : false,
+        status,
+        accountSubscribed: verified ? true : hasAnyRecords ? null : false,
+        messageSubscribed: verified
+          ? fields.includes('messages')
+          : hasAnyRecords ? null : false,
+        subscriptionRecordsFound: records.length,
+        matchingAppFound: verified,
+        fieldsReturnedForMatch: verified && fields.length > 0,
         receivedMessagesEnabled: false,
-        // No raw Graph response or tokens exposed to the browser.
+        // No raw Graph response, identifiers, access tokens or customer data.
       };
     } catch {
       return {
