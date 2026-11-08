@@ -22,7 +22,8 @@ export default function LoginPage() {
     const pilotDestination='/configuracion/integraciones/whatsapp-coexistencia-prueba';
     // Recover the pilot company only for this exact staging return path.
     const pilotReturn=window.location.hostname==='mw1-web-staging-staging.up.railway.app' &&
-      params.get('next')===pilotDestination;
+      (params.get('next')===pilotDestination ||
+       params.get('next')==='/configuracion/integraciones');
     setCompanySlug(selectedCompany || (pilotReturn?'piloto-mw1-prueba':''));
   }, []);
 
