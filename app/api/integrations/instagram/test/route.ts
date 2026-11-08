@@ -1,3 +1,4 @@
+import { isInstagramStagingRequest, isInstagramStagingApi } from '../../../../lib/instagram-staging-guard';
 import {
   NextRequest,
   NextResponse,
@@ -113,6 +114,14 @@ export async function POST(
     );
   }
 
+  if (isInstagramStagingRequest(request) && (!isInstagramStagingApi(apiBase) ||
+      session.type !== 'user' || session.companySlug !== 'piloto-mw1-prueba')) {
+    return NextResponse.json(
+      { ok: false, error: 'Esta prueba solo está disponible para la empresa piloto de staging.' },
+      { status: 403 },
+    );
+  }
+
   try {
     const target =
       new URL(
@@ -131,8 +140,9 @@ export async function POST(
           method:
             'POST',
           headers: {
-            'x-chatpro-inbox-key':
-              inboxKey,
+            'x-chatpro-inbox-key': inboxKey,
+            'x-chatpro-user-id': session.userId ?? '',
+            'x-chatpro-company-id': session.companyId,
           },
           cache:
             'no-store',
