@@ -147,6 +147,9 @@ export class ShopifyAutomaticTestSendService {
         .update({
           status: 'sent',
           sent_at: sentAt,
+          // Meta's delivery/read callbacks look up this top-level field.
+          // Keeping the ID only inside payload caused silent status losses.
+          provider_message_id: sendResult.messageId,
           failed_at: null,
           next_retry_at: null,
           locked_at: null,
@@ -166,6 +169,9 @@ export class ShopifyAutomaticTestSendService {
             send_blocked_reason: null,
             used_assigned_template: Boolean(templateResult),
             provider_message_id: sendResult.messageId,
+            provider_status: 'accepted',
+            provider_status_at: sentAt,
+            provider_error: null,
           },
           updated_at: sentAt,
         })
