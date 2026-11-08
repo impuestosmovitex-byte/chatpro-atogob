@@ -170,9 +170,15 @@ export class StagingIntegrationsController {
     if (!/^v[0-9]+\.[0-9]+$/.test(version)) {
       throw new ForbiddenException('Versión de API Meta no válida.');
     }
+    // Unified Login returns a Facebook Business Integration System User token.
+    // Query the assigned Instagram asset on Facebook Graph, not Instagram Login's /me.
+    // Restrict the path to numeric IDs from Meta to avoid arbitrary URL traversal.
+    if (!/^[0-9]{5,30}$/.test(String(data[0].external_id))) {
+      throw new ForbiddenException('Identificador Instagram no válido.');
+    }
     try {
       const res = await fetch(
-        `https://graph.instagram.com/${version}/me/subscribed_apps`, {
+        `https://graph.facebook.com/${version}/${data[0].external_id}/subscribed_apps`, {
           method: 'GET',
           headers: { Authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(12000),
@@ -184,6 +190,7 @@ export class StagingIntegrationsController {
           ok: false,
           account: 'chatpro_mw1',
           status: 'meta_unavailable',
+          providerStatus: res.status,
           accountSubscribed: null,
           messageSubscribed: null,
           error: 'Meta no permitió consultar la suscripción de esta cuenta. No se cambió nada.',
