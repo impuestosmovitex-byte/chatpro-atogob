@@ -128,6 +128,109 @@ export class StagingIntegrationsController {
   }
 
   /**
+   * Inspect the specific pilot account's webhook subscription directly in Meta.
+   * The Meta app's webhook field toggles are NOT a per-account subscription.
+   * This endpoint never subscribes, sends, or updates the integration.
+   */
+  @Get('instagram/webhook-subscription')
+  async instagramWebhookSubscription(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+  ) {
+    const result = await this.list(key, userId, companyId, slug);
+    if (result.company.slug !== 'piloto-mw1-prueba' || !this.credentials) {
+      throw new ForbiddenException('Solo se permite consultar la cuenta piloto.');
+    }
+    const { data, error } = await this.supabase.getClient()
+      .from('company_integrations')
+      .select('external_id,status,config,credentials_encrypted')
+      .eq('company_id', result.company.id)
+      .eq('provider', 'meta')
+      .eq('integration_type', 'instagram')
+      .eq('status', 'pending')
+      .limit(2);
+    if (error || !Array.isArray(data) || data.length !== 1 ||
+      !data[0].external_id || !data[0].credentials_encrypted ||
+      data[0].config?.username !== 'chatpro_mw1') {
+      throw new ForbiddenException('La cuenta piloto no tiene autorización pendiente única.');
+    }
+    let token = '';
+    try {
+      const decrypted = this.credentials.decrypt(data[0].credentials_encrypted);
+      token = typeof decrypted.access_token === 'string' ? decrypted.access_token : '';
+    } catch {
+      throw new ForbiddenException('No se pudieron verificar las credenciales del piloto.');
+    }
+    if (token.length < 20) {
+      throw new ForbiddenException('Token del piloto inválido.');
+    }
+    const version = (process.env.META_INSTAGRAM_API_VERSION || 'v26.0').trim();
+    if (!/^v[0-9]+\.[0-9]+$/.test(version)) {
+      throw new ForbiddenException('Versión de API Meta no válida.');
+    }
+    try {
+      const res = await fetch(
+        `https://graph.instagram.com/${version}/me/subscribed_apps`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(12000),
+          cache: 'no-store',
+        },
+      );
+      if (!res.ok) {
+        return {
+          ok: false,
+          account: 'chatpro_mw1',
+          status: 'meta_unavailable',
+          accountSubscribed: null,
+          messageSubscribed: null,
+          error: 'Meta no permitió consultar la suscripción de esta cuenta. No se cambió nada.',
+          connectionEnabled: false,
+        };
+      }
+      const resultData: unknown = await res.json();
+      const body = resultData && typeof resultData === 'object' &&
+        !Array.isArray(resultData) ? resultData as Record<string,unknown> : {};
+      const subscriptions = Array.isArray(body.data) ? body.data : [];
+      const appId = process.env.META_INSTAGRAM_APP_ID?.trim() || '';
+      // Meta returns app subscription records; NEVER infer subscription merely
+      // from the app's dashboard field toggles or a successful HTTP response.
+      const found = subscriptions.some(item => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+        const record = item as Record<string, unknown>;
+        return String(record.id ?? '') === appId;
+      });
+      const records = subscriptions.filter(item => {
+        return item && typeof item === 'object' && !Array.isArray(item) &&
+          String((item as Record<string, unknown>).id ?? '') === appId;
+      }) as Array<Record<string, unknown>>;
+      const fields = records.flatMap(item =>
+        Array.isArray(item.subscribed_fields) ? item.subscribed_fields : []);
+      return {
+        ok: true,
+        account: 'chatpro_mw1',
+        status: found ? 'subscribed' : 'not_subscribed',
+        accountSubscribed: found,
+        messageSubscribed: found ? fields.includes('messages') : false,
+        receivedMessagesEnabled: false,
+        // No raw Graph response or tokens exposed to the browser.
+      };
+    } catch {
+      return {
+        ok: false,
+        account: 'chatpro_mw1',
+        status: 'check_failed',
+        accountSubscribed: null,
+        messageSubscribed: null,
+        error: 'No fue posible confirmar la suscripción con Meta.',
+        connectionEnabled: false,
+      };
+    }
+  }
+
+  /**
    * Read-only Instagram token preflight for the isolated staging pilot.
    * No webhook subscription, sending, activation or database mutation.
    */
