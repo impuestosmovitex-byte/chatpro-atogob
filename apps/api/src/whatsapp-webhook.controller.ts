@@ -488,7 +488,7 @@ export class WhatsappWebhookController {
       }
 
       try {
-        await this.whatsappMessagingService.sendText(
+        const sentAiMessage1 = await this.whatsappMessagingService.sendText(
           profile.id,
           input.phone,
           handoffReply,
@@ -501,6 +501,7 @@ export class WhatsappWebhookController {
           message: handoffReply,
           sender: 'assistant',
           authorType: 'ai',
+          providerMessageId: sentAiMessage1.messageId,
           aiResponse: handoffReply,
         });
 
@@ -670,7 +671,7 @@ export class WhatsappWebhookController {
         return;
       }
 
-      await this.whatsappMessagingService.sendText(
+      const sentAiMessage2 = await this.whatsappMessagingService.sendText(
         profile.id,
         input.phone,
         reply,
@@ -685,6 +686,7 @@ export class WhatsappWebhookController {
         message: reply,
         sender: 'assistant',
         authorType: 'ai',
+          providerMessageId: sentAiMessage2.messageId,
         aiResponse: reply,
       });
 
@@ -896,7 +898,7 @@ export class WhatsappWebhookController {
         return;
       }
 
-      await this.whatsappMessagingService.sendText(
+      const sentAiMessage3 = await this.whatsappMessagingService.sendText(
         profile.id,
         input.phone,
         reply,
@@ -911,6 +913,7 @@ export class WhatsappWebhookController {
         message: reply,
         sender: 'assistant',
         authorType: 'ai',
+          providerMessageId: sentAiMessage3.messageId,
         aiResponse: reply,
       });
 
@@ -1323,7 +1326,7 @@ export class WhatsappWebhookController {
           return;
         }
 
-        await this.whatsappMessagingService.sendText(
+        const sentAiMessage4 = await this.whatsappMessagingService.sendText(
           profile.id,
           input.phone,
           serviceReply,
@@ -1338,6 +1341,7 @@ export class WhatsappWebhookController {
           message: serviceReply,
           sender: 'assistant',
           authorType: 'ai',
+          providerMessageId: sentAiMessage4.messageId,
           aiResponse: serviceReply,
         });
 
@@ -1447,7 +1451,7 @@ export class WhatsappWebhookController {
           return;
         }
 
-        await this.whatsappMessagingService.sendText(
+        const sentAiMessage5 = await this.whatsappMessagingService.sendText(
           profile.id,
           input.phone,
           contextualReply,
@@ -1461,6 +1465,7 @@ export class WhatsappWebhookController {
           message: contextualReply,
           sender: 'assistant',
           authorType: 'ai',
+          providerMessageId: sentAiMessage5.messageId,
           aiResponse: contextualReply,
         });
 
@@ -1689,7 +1694,7 @@ export class WhatsappWebhookController {
           `Claro 😊 Cuéntame qué necesitas con lo que me enviaste y te ayudo ` +
           `con lo relacionado con ${profile.name}.`;
 
-        await this.whatsappMessagingService.sendText(
+        const sentAiMessage6 = await this.whatsappMessagingService.sendText(
           profile.id,
           input.phone,
           clarification,
@@ -1704,6 +1709,7 @@ export class WhatsappWebhookController {
           message: clarification,
           sender: 'assistant',
           authorType: 'ai',
+          providerMessageId: sentAiMessage6.messageId,
           aiResponse: clarification,
         });
 
@@ -1756,7 +1762,7 @@ export class WhatsappWebhookController {
           return;
         }
 
-        await this.whatsappMessagingService.sendText(
+        const sentAiMessage7 = await this.whatsappMessagingService.sendText(
           profile.id,
           input.phone,
           burstReply,
@@ -1770,6 +1776,7 @@ export class WhatsappWebhookController {
           message: burstReply,
           sender: 'assistant',
           authorType: 'ai',
+          providerMessageId: sentAiMessage7.messageId,
           aiResponse: burstReply,
         });
 
@@ -1846,7 +1853,7 @@ export class WhatsappWebhookController {
         return;
       }
 
-      await this.whatsappMessagingService.sendText(
+      const sentAiMessage8 = await this.whatsappMessagingService.sendText(
         profile.id,
         input.phone,
         reply,
@@ -1860,6 +1867,7 @@ export class WhatsappWebhookController {
         message: reply,
         sender: 'assistant',
         authorType: 'ai',
+          providerMessageId: sentAiMessage8.messageId,
         aiResponse: reply,
       });
 
@@ -1889,7 +1897,7 @@ export class WhatsappWebhookController {
         let fallbackSentToCustomer = false;
 
         try {
-          await this.whatsappMessagingService.sendText(
+          const sentAiMessage9 = await this.whatsappMessagingService.sendText(
             profile.id,
             input.phone,
             fallback,
@@ -1904,6 +1912,7 @@ export class WhatsappWebhookController {
             message: fallback,
             sender: 'assistant',
             authorType: 'ai',
+          providerMessageId: sentAiMessage9.messageId,
             aiResponse: fallback,
           });
 
@@ -2210,7 +2219,7 @@ export class WhatsappWebhookController {
       return;
     }
 
-    await this.whatsappMessagingService.sendText(
+    const sentAiMessage10 = await this.whatsappMessagingService.sendText(
       input.profile.id,
       input.phone,
       reply,
@@ -2223,6 +2232,7 @@ export class WhatsappWebhookController {
       message: reply,
       sender: 'assistant',
       authorType: 'ai',
+          providerMessageId: sentAiMessage10.messageId,
       aiResponse: reply,
     });
 
@@ -2707,7 +2717,7 @@ export class WhatsappWebhookController {
         return;
       }
 
-      await this.whatsappMessagingService.sendText(
+      const sentAiMessage11 = await this.whatsappMessagingService.sendText(
         profile.id,
         input.phone,
         reply,
@@ -2722,6 +2732,7 @@ export class WhatsappWebhookController {
         message: reply,
         sender: 'assistant',
         authorType: 'ai',
+          providerMessageId: sentAiMessage11.messageId,
         aiResponse: reply,
       });
 
@@ -2853,7 +2864,7 @@ export class WhatsappWebhookController {
       const reply =
         this.chatAgentService.humanAttentionReply(updated);
 
-      await this.whatsappMessagingService.sendText(
+      const sentAiMessage12 = await this.whatsappMessagingService.sendText(
         input.profile.id,
         input.phone,
         reply,
@@ -2866,6 +2877,7 @@ export class WhatsappWebhookController {
         message: reply,
         sender: 'assistant',
         authorType: 'ai',
+          providerMessageId: sentAiMessage12.messageId,
         aiResponse: reply,
       });
 
@@ -2888,7 +2900,7 @@ export class WhatsappWebhookController {
       'No logré escuchar bien el audio. Por favor envíalo nuevamente ' +
       'o escríbeme el mensaje para poder ayudarte.';
 
-    await this.whatsappMessagingService.sendText(
+    const sentAiMessage13 = await this.whatsappMessagingService.sendText(
       input.profile.id,
       input.phone,
       reply,
@@ -2901,6 +2913,7 @@ export class WhatsappWebhookController {
       message: reply,
       sender: 'assistant',
       authorType: 'ai',
+          providerMessageId: sentAiMessage13.messageId,
       aiResponse: reply,
     });
 
@@ -3036,7 +3049,7 @@ export class WhatsappWebhookController {
             }
           } else {
             if (reply) {
-              await this.whatsappMessagingService.sendText(
+              const sentAiMessage14 = await this.whatsappMessagingService.sendText(
                 profile.id,
                 input.phone,
                 reply,
@@ -3049,6 +3062,7 @@ export class WhatsappWebhookController {
                 message: reply,
                 sender: 'assistant',
                 authorType: 'ai',
+          providerMessageId: sentAiMessage14.messageId,
                 aiResponse: reply,
               });
 
@@ -3149,7 +3163,7 @@ export class WhatsappWebhookController {
           return;
         }
 
-        await this.whatsappMessagingService.sendText(
+        const sentAiMessage15 = await this.whatsappMessagingService.sendText(
           profile.id,
           input.phone,
           reply,
@@ -3164,6 +3178,7 @@ export class WhatsappWebhookController {
           message: reply,
           sender: 'assistant',
           authorType: 'ai',
+          providerMessageId: sentAiMessage15.messageId,
           aiResponse: reply,
         });
 
@@ -3216,7 +3231,7 @@ export class WhatsappWebhookController {
         }
 
         try {
-          await this.whatsappMessagingService.sendText(
+          const sentAiMessage16 = await this.whatsappMessagingService.sendText(
             profile.id,
             input.phone,
             handoffReply,
@@ -3229,6 +3244,7 @@ export class WhatsappWebhookController {
             message: handoffReply,
             sender: 'assistant',
             authorType: 'ai',
+          providerMessageId: sentAiMessage16.messageId,
             aiResponse: handoffReply,
           });
 
