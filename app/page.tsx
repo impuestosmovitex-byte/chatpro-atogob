@@ -3009,6 +3009,9 @@ export default function Home() {
       .filter((item) => item.kind === "file")
       .map((item) => item.getAsFile())
       .filter((item): item is File => item !== null);
+    if (!files.length) {
+      files.push(...Array.from(event.clipboardData?.files ?? []));
+    }
     if (!files.length) return;
     event.preventDefault();
     selectMediaFiles(files);
@@ -3195,6 +3198,7 @@ export default function Home() {
     let dragDepth = 0;
     const hasFiles = (event: DragEvent) =>
       Array.from(event.dataTransfer?.types ?? []).includes("Files") ||
+      Boolean(event.dataTransfer?.files?.length) ||
       Array.from(event.dataTransfer?.items ?? []).some((item) => item.kind === "file");
 
     const resetDrag = () => {
