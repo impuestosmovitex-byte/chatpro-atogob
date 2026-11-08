@@ -20,6 +20,8 @@ type InstagramConfig = {
   loginMode?: string;
   missing?: string[];
   diagnostics?: {
+    pilotOnly?: boolean;
+    multiCompanyActivationEnabled?: boolean;
     apiReady?: boolean;
     apiAuthorizationEnabled?: boolean;
     webStateSecretReady?: boolean;
@@ -924,6 +926,8 @@ export function InstagramConnectButton({
             <div role="status" style={{marginTop: 10, padding: 12, borderRadius: 10,
               border: '1px solid #d7deeb', background: '#f6f8fc', display: 'grid', gap: 6}}>
               <strong>Diagnóstico seguro del piloto</strong>
+              <small>Alcance actual: {config?.diagnostics?.pilotOnly === true ? 'Solo empresa piloto' : 'No confirmado'}.</small>
+              <small>Activación para empresas nuevas: {config?.diagnostics?.multiCompanyActivationEnabled === true ? 'Habilitada' : 'Aún no habilitada'}.</small>
               <small>API preparada: {config?.diagnostics?.apiReady === true ? 'Sí' : 'No confirmado'}</small>
               <small>Autorización API: {config?.diagnostics?.apiAuthorizationEnabled === true ? 'Habilitada' : 'Bloqueada o no confirmada'}</small>
               <small>Firma OAuth web: {config?.diagnostics?.webStateSecretReady === true ? 'Preparada' : 'Falta verificar'}</small>
