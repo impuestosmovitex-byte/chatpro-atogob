@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     session.companySlug !== 'piloto-mw1-prueba') {
     return NextResponse.json({ok:false,error:'Acceso no autorizado.'}, {status:403});
   }
-  const base = process.env.CHATPRO_API_URL?.trim().replace(/\\/$/, '');
+  const base = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
   const key = process.env.CHATPRO_INBOX_KEY?.trim();
   if (!isInstagramStagingApi(base) || !key) {
     return NextResponse.json({ok:false,error:'API de pruebas no configurada.'}, {status:503});
