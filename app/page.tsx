@@ -1596,6 +1596,11 @@ export default function Home() {
         limit: String(requestedLimit),
         offset: String(requestedOffset),
       });
+      // Five-second refreshes reuse the already loaded read-only automation
+      // threads; full refresh still reloads them once a minute.
+      if (lightRefresh) {
+        params.set("includeAutomations", "false");
+      }
 
       if (debouncedSearch.trim()) {
         params.set("search", debouncedSearch.trim());
