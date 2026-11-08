@@ -118,6 +118,93 @@ export class StagingIntegrationsController {
   }
 
   /**
+   * Read-only Instagram token preflight for the isolated staging pilot.
+   * No webhook subscription, sending, activation or database mutation.
+   */
+  @Post('instagram/test')
+  async testInstagram(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+  ) {
+    const result = await this.list(key, userId, companyId, slug);
+    if (result.company.slug !== 'piloto-mw1-prueba' || !this.credentials) {
+      throw new ForbiddenException('Esta verificación solo está permitida para el piloto.');
+    }
+    const { data, error } = await this.supabase.getClient()
+      .from('company_integrations')
+      .select('id,external_id,status,config,credentials_encrypted')
+      .eq('company_id', companyId)
+      .eq('provider', 'meta')
+      .eq('integration_type', 'instagram')
+      .eq('status', 'pending')
+      .limit(2);
+    if (error || !Array.isArray(data) || data.length !== 1 ||
+        !data[0].external_id || !data[0].credentials_encrypted) {
+      throw new ForbiddenException('No existe una única autorización pendiente para este piloto.');
+    }
+    const row = data[0];
+    const metadata = row.config && typeof row.config === 'object'
+      ? row.config as Record<string, unknown> : {};
+    if (metadata.username !== 'chatpro_mw1' || metadata.webhooks_subscribed !== false) {
+      throw new ForbiddenException('La cuenta no corresponde a la prueba aislada.');
+    }
+    let accessToken = '';
+    try {
+      const decrypted = this.credentials.decrypt(row.credentials_encrypted);
+      accessToken = typeof decrypted.access_token === 'string'
+        ? decrypted.access_token : '';
+    } catch {
+      throw new ForbiddenException('No fue posible comprobar las credenciales guardadas.');
+    }
+    if (!accessToken || accessToken.length < 20) {
+      throw new ForbiddenException('La autorización guardada es inválida.');
+    }
+    const appId = process.env.META_INSTAGRAM_APP_ID?.trim() || '';
+    const appSecret = process.env.META_INSTAGRAM_APP_SECRET?.trim() || '';
+    if (appId !== '1079916404666757' || !appSecret) {
+      throw new ForbiddenException('La aplicación Meta del piloto no está configurada.');
+    }
+    const version = process.env.META_INSTAGRAM_API_VERSION || 'v26.0';
+    if (!/^v[0-9]+\\.[0-9]+$/.test(version)) {
+      throw new ForbiddenException('Versión de Meta no válida.');
+    }
+    let confirmed = false;
+    try {
+      const target = new URL(`https://graph.facebook.com/${version}/debug_token`);
+      target.searchParams.set('input_token', accessToken);
+      const response = await fetch(target, {
+        headers: { Authorization: `Bearer ${appId}|${appSecret}` },
+        cache: 'no-store', signal: AbortSignal.timeout(12000),
+      });
+      const parsed = await response.json() as {
+        data?: { app_id?: unknown; is_valid?: unknown; type?: unknown; scopes?: unknown };
+      };
+      const details = parsed.data;
+      const scopes = Array.isArray(details?.scopes) ? details.scopes : [];
+      confirmed = response.ok && details?.is_valid === true &&
+        String(details?.app_id || '') === appId &&
+        details?.type === 'SYSTEM_USER' &&
+        ['instagram_basic', 'instagram_manage_messages'].every(s => scopes.includes(s));
+    } catch {
+      throw new ForbiddenException('No se pudo consultar la validez en Meta. No se cambió la conexión.');
+    }
+    if (!confirmed) {
+      throw new ForbiddenException('Meta no confirmó los permisos de la autorización pendiente.');
+    }
+    return {
+      ok: true,
+      pending: true,
+      authorizationValid: true,
+      connectionEnabled: false,
+      webhooksEnabled: false,
+      instagram: { username: 'chatpro_mw1' },
+      message: 'Meta confirmó la autorización del piloto. La recepción de mensajes continúa deshabilitada.',
+    };
+  }
+
+  /**
    * Isolated Instagram Login token exchange. This never subscribes webhooks,
    * sends messages or activates a channel. The feature flag is OFF by default.
    */
