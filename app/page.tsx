@@ -5240,11 +5240,13 @@ export default function Home() {
                         ) : null}
 
                         <span className="message-author">
-                          {item.authorType === "customer"
-                            ? "Cliente"
-                            : item.authorType === "advisor"
-                              ? "Asesor"
-                              : "IA"}
+                          {item.messageSource === "automation"
+                            ? "Plantilla automática"
+                            : item.authorType === "customer"
+                              ? "Cliente"
+                              : item.authorType === "advisor"
+                                ? "Asesor"
+                                : "IA"}
                         </span>
                         {item.messageType === "audio" && item.id ? (
                           <AudioMessagePlayer item={item} />

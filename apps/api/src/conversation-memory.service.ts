@@ -2493,6 +2493,133 @@ export class ConversationMemoryService {
         ? (messageRows ?? [])
         : [...(messageRows ?? [])].reverse();
 
+    // Display confirmed WhatsApp automation activity in the existing inbox.
+    // This is read-only: never insert fake customer messages or trigger sends.
+    // Manual template sends already live in conversations and are deduplicated.
+    let automationQuery = client
+      .from('automation_executions')
+      .select('id, automation_key, status, sent_at, created_at, provider_message_id, error_message, payload')
+      .eq('company_id', profile.id)
+      .eq('channel', 'whatsapp')
+      .in('recipient', phoneCandidates)
+      .in('status', ['running', 'sent', 'failed']);
+
+    if (validAfter) {
+      automationQuery = automationQuery.gte('created_at', validAfter);
+    }
+    if (validBefore) {
+      automationQuery = automationQuery.lt('created_at', validBefore);
+    }
+
+    const { data: automationRows, error: automationError } =
+      await automationQuery
+        .order('created_at', { ascending: false })
+        .limit(safeMessageLimit || 100);
+
+    // A misconfigured/missing optional automation table must not take down
+    // the human inbox. Delivery tracking failures stay visible in server logs.
+    if (automationError) {
+      console.error(
+        '[MW1][inbox] No se pudo consultar el historial de plantillas:',
+        automationError.message,
+      );
+    }
+
+    const manualMessages = orderedMessageRows.map((row) => this.toInboxMessage(row));
+    const knownProviderIds = new Set(
+      manualMessages
+        .map((message) => message.providerMessageId)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const automaticMessages: InboxMessage[] = [];
+    const labels: Record<string, string> = {
+      order_created: 'Confirmación de pedido',
+      fulfillment_created: 'Actualización de envío',
+      cod_order_created: 'Pedido contraentrega',
+      payment_pending: 'Pago pendiente',
+      order_cancelled: 'Actualización del pedido',
+      post_purchase_bonus: 'Bono de compra',
+      abandoned_cart: 'Recordatorio de carrito',
+    };
+
+    for (const row of automationError ? [] : (automationRows ?? [])) {
+      const payload: JsonObject =
+        row.payload && typeof row.payload === 'object' && !Array.isArray(row.payload)
+          ? row.payload as JsonObject
+          : {};
+      const automationKey =
+        typeof row.automation_key === 'string' ? row.automation_key : '';
+      const isShopifyProduction =
+        payload.production_send === true && payload.prepared_only === true;
+      const isRealCartTemplate =
+        automationKey === 'abandoned_cart' && payload.deliveryMode === 'template';
+      if (!isShopifyProduction && !isRealCartTemplate) {
+        // Exclude test-only, blocked, simulated or merely scheduled sends.
+        continue;
+      }
+
+      const providerId =
+        typeof row.provider_message_id === 'string' && row.provider_message_id.trim()
+          ? row.provider_message_id.trim()
+          : typeof payload.provider_message_id === 'string'
+            ? payload.provider_message_id.trim()
+            : '';
+      if (!providerId || knownProviderIds.has(providerId)) {
+        continue;
+      }
+      knownProviderIds.add(providerId);
+
+      const label = labels[automationKey] || 'Notificación automática';
+      const orderNumber = typeof payload.order_number === 'string' ||
+        typeof payload.order_number === 'number'
+          ? String(payload.order_number).trim().slice(0, 32)
+          : '';
+      // The prepared Shopify copy is NOT necessarily the actual Meta template.
+      // Show an honest activity label, not fabricated message contents.
+      const message = '📨 Plantilla automática: ' + label +
+        (orderNumber ? ' · Pedido #' + orderNumber.replace(/^#/, '') : '');
+      const providerStatus =
+        typeof payload.provider_status === 'string'
+          ? payload.provider_status.trim().toLowerCase()
+          : '';
+      const deliveryStatus =
+        ['sent', 'delivered', 'read', 'failed'].includes(providerStatus)
+          ? providerStatus
+          : 'sent'; // HTTP acceptance only; no inferred delivery.
+      automaticMessages.push({
+        id: 'automation-' + String(row.id),
+        sessionId: id,
+        message,
+        sender: 'assistant',
+        authorType: 'ai',
+        messageType: 'text',
+        messageMetadata: null,
+        mediaMimeType: null,
+        mediaStoragePath: null,
+        mediaVoice: false,
+        providerMessageId: providerId,
+        deliveryStatus,
+        providerError:
+          providerStatus === 'failed'
+            ? typeof payload.provider_error === 'string' && payload.provider_error.trim()
+              ? payload.provider_error
+              : typeof row.error_message === 'string'
+                ? row.error_message
+                : null
+            : null,
+        replyToProviderMessageId: null,
+        replyToMessage: null,
+        messageSource: 'automation',
+        sourceName: 'Automatización · ' + label,
+        createdAt: row.sent_at || row.created_at || null,
+      });
+    }
+
+    const messages = [...manualMessages, ...automaticMessages]
+      .sort((left, right) =>
+        Date.parse(left.createdAt || '') - Date.parse(right.createdAt || ''),
+      );
+
     const contactsByPhone = await this.getContactsByPhones(
       profile.id,
       [session.customerPhone],
@@ -2502,7 +2629,7 @@ export class ConversationMemoryService {
       company: { id: profile.id, slug: profile.slug, name: profile.name },
       session,
       contact: contactsByPhone.get(session.customerPhone) ?? null,
-      messages: orderedMessageRows.map((row) => this.toInboxMessage(row)),
+      messages,
     };
   }
 
