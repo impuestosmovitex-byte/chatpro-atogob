@@ -1,3 +1,4 @@
+import { isInstagramStagingRequest, isInstagramStagingApi } from '../../../../lib/instagram-staging-guard';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getInboxSession,
@@ -61,8 +62,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app' &&
-      apiBase !== 'https://mw1-api-staging-staging.up.railway.app') {
+  if (isInstagramStagingRequest(request) &&
+      !isInstagramStagingApi(apiBase)) {
     return NextResponse.json(
       { ok: false, error: 'La configuración de Instagram debe consultarse en la API de staging.' },
       { status: 503 },
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
     cache: 'no-store',
   });
 
-  if (request.nextUrl.hostname === 'mw1-web-staging-staging.up.railway.app' &&
+  if (isInstagramStagingRequest(request) &&
       response.ok) {
     const body = await response.json().catch(() => null) as
       | { ready?: boolean; missing?: string[]; authorizationEnabled?: boolean;
