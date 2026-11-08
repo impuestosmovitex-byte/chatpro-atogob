@@ -1257,6 +1257,10 @@ export default function Home() {
   const [attachmentSending, setAttachmentSending] = useState(false);
   const [draggingFile, setDraggingFile] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  // Keep global drag handlers bound to the latest image queue and permissions.
+  const selectMediaFilesRef = useRef<
+    (files?: FileList | File[] | null) => void
+  >(() => undefined);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const conversationRequestRef = useRef(0);
   const silentConversationRequestRef = useRef(0);
@@ -2880,14 +2884,57 @@ export default function Home() {
   function selectMediaFiles(
     inputFiles?: FileList | File[] | null,
   ) {
-    const files = Array.from(inputFiles ?? []);
+    const files = Array.from(inputFiles ?? []).map((file) => {
+      // Some desktop drag sources omit MIME but preserve the extension.
+      // Only restore formats already supported by the server.
+      if (file.type) return file;
+      const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const mime = ({
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        webp: "image/webp",
+        mp4: "video/mp4",
+        "3gp": "video/3gpp",
+        pdf: "application/pdf",
+        txt: "text/plain",
+        mp3: "audio/mpeg",
+        m4a: "audio/mp4",
+        ogg: "audio/ogg",
+        opus: "audio/ogg",
+        webm: "audio/webm",
+        wav: "audio/wav",
+      } as Record<string, string>)[extension];
+      return mime
+        ? new File([file], file.name, {
+            type: mime,
+            lastModified: file.lastModified,
+          })
+        : file;
+    });
 
     if (!files.length) return;
+
+    if (!selected?.session.id) {
+      setError("Primero abre la conversación para adjuntar archivos.");
+      return;
+    }
+    if (selected.session.attentionStatus !== "human") {
+      setError("Primero toma la conversación como asesor para adjuntar archivos.");
+      return;
+    }
+    if (!canSendMedia) {
+      setError("Este usuario no tiene permisos para adjuntar archivos. Revisa el acceso a medios.");
+      return;
+    }
+    if (imageSending || attachmentSending || audioSending || recording) {
+      setError("Termina el envío o la grabación actual antes de agregar otro archivo.");
+      return;
+    }
 
     const allImages = files.every((file) =>
       file.type.startsWith("image/"),
     );
-
     if (allImages) {
       selectImages(files);
       return;
@@ -2895,16 +2942,24 @@ export default function Home() {
 
     if (files.length > 1) {
       setError(
-        "Puedes seleccionar varias imágenes a la vez. Videos y documentos se envían uno por uno.",
+        "Puedes seleccionar hasta 10 imágenes a la vez. Los videos, audios y documentos se adjuntan uno por uno.",
       );
       return;
     }
 
     const file = files[0];
-
     const allowed = new Set([
       "video/mp4",
       "video/3gpp",
+      "audio/aac",
+      "audio/amr",
+      "audio/mpeg",
+      "audio/mp3",
+      "audio/mp4",
+      "audio/ogg",
+      "audio/webm",
+      "audio/wav",
+      "audio/x-wav",
       "application/pdf",
       "text/plain",
       "application/msword",
@@ -2915,29 +2970,62 @@ export default function Home() {
 
     if (!allowed.has(file.type)) {
       setError(
-        "Formato no permitido. Usa JPG, PNG, WEBP, MP4, 3GP, PDF, TXT, DOC, DOCX, XLS o XLSX.",
+        "Formato no permitido. Usa JPG, PNG, WEBP, MP4, 3GP, audio compatible, PDF, TXT, DOC, DOCX, XLS o XLSX.",
       );
       return;
     }
 
-    if (file.size > 25 * 1024 * 1024) {
-      setError("El archivo supera el límite de 25 MB.");
+    const isAudio = file.type.startsWith("audio/");
+    if (isAudio && !canSendAudio) {
+      setError("Este usuario no tiene permiso para enviar audios.");
+      return;
+    }
+
+    const maxBytes = (isAudio ? 12 : 25) * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setError(
+        isAudio
+          ? "El audio supera el límite de 12 MB."
+          : "El archivo supera el límite de 25 MB.",
+      );
       return;
     }
 
     clearImageDraft();
     setAttachmentFile(file);
-
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
     }
-
     setQuickReplyOpen(false);
     setError("");
   }
 
+  selectMediaFilesRef.current = selectMediaFiles;
+
+  function handleComposerPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    // Preserve normal text paste (including links and multiline text).
+    // Only take over clipboard operations that genuinely contain files.
+    const files = Array.from(event.clipboardData?.items ?? [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((item): item is File => item !== null);
+    if (!files.length) return;
+    event.preventDefault();
+    selectMediaFiles(files);
+  }
+
   async function sendSelectedAttachment() {
     if (!selected?.session.id || !attachmentFile) return;
+
+    const isAudioFile = attachmentFile.type.startsWith("audio/");
+    if (isAudioFile && !canSendAudio) {
+      setError("Este usuario no tiene permiso para enviar audios.");
+      return;
+    }
+    if (isAudioFile && message.trim()) {
+      setError("Envía el texto por separado del audio, o borra el texto antes de enviar el archivo.");
+      return;
+    }
 
     setAttachmentSending(true);
     setError("");
@@ -2948,7 +3036,7 @@ export default function Home() {
 
       form.set("sessionId", selected.session.id);
       form.set(
-        "file",
+        isAudioFile ? "audio" : "file",
         attachmentFile,
         attachmentFile.name || "archivo",
       );
@@ -2960,7 +3048,7 @@ export default function Home() {
         );
       }
 
-      const response = await fetch("/api/inbox/file", {
+      const response = await fetch(isAudioFile ? "/api/inbox/audio" : "/api/inbox/file", {
         method: "POST",
         body: form,
       });
@@ -2981,7 +3069,7 @@ export default function Home() {
       conversationDraftsRef.current[data.conversation.session.id] = "";
       clearAttachmentDraft();
       setMessage("");
-      setActionMessage("Archivo enviado.");
+      setActionMessage(isAudioFile ? "Audio enviado." : "Archivo enviado.");
       await loadList(false);
     } catch (caught) {
       setError(
@@ -3105,67 +3193,57 @@ export default function Home() {
 
   useEffect(() => {
     let dragDepth = 0;
-
     const hasFiles = (event: DragEvent) =>
-      Array.from(event.dataTransfer?.types ?? []).includes("Files");
+      Array.from(event.dataTransfer?.types ?? []).includes("Files") ||
+      Array.from(event.dataTransfer?.items ?? []).some((item) => item.kind === "file");
+
+    const resetDrag = () => {
+      dragDepth = 0;
+      setDraggingFile(false);
+    };
 
     const handleDragEnter = (event: DragEvent) => {
-      if (
-        !selected?.session.id ||
-        !canSendMedia ||
-        !hasFiles(event)
-      ) {
-        return;
-      }
-
+      if (!selected?.session.id || !hasFiles(event)) return;
       event.preventDefault();
       dragDepth += 1;
       setDraggingFile(true);
     };
 
     const handleDragOver = (event: DragEvent) => {
-      if (
-        !selected?.session.id ||
-        !canSendMedia ||
-        !hasFiles(event)
-      ) {
-        return;
-      }
-
+      if (!selected?.session.id || !hasFiles(event)) return;
       event.preventDefault();
-
       if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = "copy";
+        event.dataTransfer.dropEffect =
+          canSendMedia && selected.session.attentionStatus === "human"
+            ? "copy"
+            : "none";
       }
     };
 
     const handleDragLeave = (event: DragEvent) => {
       if (!hasFiles(event)) return;
-
       dragDepth = Math.max(0, dragDepth - 1);
-
-      if (dragDepth === 0) {
-        setDraggingFile(false);
-      }
+      if (dragDepth === 0) setDraggingFile(false);
     };
 
     const handleDrop = (event: DragEvent) => {
-      if (
-        !selected?.session.id ||
-        !canSendMedia ||
-        !hasFiles(event)
-      ) {
-        return;
-      }
-
+      if (!selected?.session.id || !hasFiles(event)) return;
       event.preventDefault();
-      dragDepth = 0;
-      setDraggingFile(false);
+      resetDrag();
 
-      const files = event.dataTransfer?.files;
-
-      if (files?.length) {
-        selectMediaFiles(files);
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (!files.length) {
+        for (const item of Array.from(event.dataTransfer?.items ?? [])) {
+          const file = item.kind === "file" ? item.getAsFile() : null;
+          if (file) files.push(file);
+        }
+      }
+      if (files.length) {
+        selectMediaFilesRef.current(files);
+      } else {
+        setError(
+          "No se detectó un archivo al arrastrar. Guarda la imagen en tu equipo o cópiala y pégala en el cuadro de mensaje.",
+        );
       }
     };
 
@@ -3173,14 +3251,18 @@ export default function Home() {
     window.addEventListener("dragover", handleDragOver);
     window.addEventListener("dragleave", handleDragLeave);
     window.addEventListener("drop", handleDrop);
+    window.addEventListener("dragend", resetDrag);
+    window.addEventListener("blur", resetDrag);
 
     return () => {
       window.removeEventListener("dragenter", handleDragEnter);
       window.removeEventListener("dragover", handleDragOver);
       window.removeEventListener("dragleave", handleDragLeave);
       window.removeEventListener("drop", handleDrop);
+      window.removeEventListener("dragend", resetDrag);
+      window.removeEventListener("blur", resetDrag);
     };
-  }, [selected?.session.id, canSendMedia]);
+  }, [selected?.session.id, selected?.session.attentionStatus, canSendMedia]);
 
   useEffect(() => {
     if (!audioBlob || recording || audioSending) {
@@ -5148,9 +5230,15 @@ export default function Home() {
                   <div className="wa-file-drop-overlay">
                     <div>
                       <span aria-hidden="true">📎</span>
-                      <strong>Suelta aquí para adjuntar</strong>
+                      <strong>
+                        {selected?.session.attentionStatus !== "human"
+                          ? "Toma la conversación para adjuntar"
+                          : !canSendMedia
+                            ? "Sin permiso para adjuntar archivos"
+                            : "Suelta aquí para adjuntar"}
+                      </strong>
                       <small>
-                        Imagen, video o documento
+                        Imágenes (hasta 10), video, audio o documento
                       </small>
                     </div>
                   </div>
@@ -5583,6 +5671,7 @@ export default function Home() {
                                     message.trimStart().startsWith("/"),
                                 )
                               }
+                              onPaste={handleComposerPaste}
                               onKeyDown={(event) => {
                                 if (
                                   event.key === "Enter" &&
@@ -5640,7 +5729,9 @@ export default function Home() {
                               <span aria-hidden="true">
                                 {attachmentFile.type.startsWith("video/")
                                   ? "🎥"
-                                  : "📄"}
+                                  : attachmentFile.type.startsWith("audio/")
+                                    ? "🎵"
+                                    : "📄"}
                               </span>
 
                               <div>
@@ -5666,7 +5757,7 @@ export default function Home() {
                             ref={imageInputRef}
                             type="file"
                             multiple
-                            accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/aac,audio/amr,audio/mpeg,audio/mp4,audio/ogg,audio/webm,audio/wav,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             hidden
                             onChange={(event) =>
                               selectMediaFiles(event.target.files)
