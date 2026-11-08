@@ -1,0 +1,37 @@
+name: Efficient automation inbox refresh
+on:
+  push:
+    branches: [fix/automation-readonly-refresh-efficiency-20261108]
+  pull_request:
+    paths:
+      - 'app/page.tsx'
+      - 'app/api/inbox/route.ts'
+      - 'apps/api/src/inbox.controller.ts'
+      - '.github/workflows/automation-inbox-efficiency.yml'
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npm test -- --runInBand automation-inbox-readonly.spec.ts template-inbox-receipts.spec.ts
+      - run: npm run build
