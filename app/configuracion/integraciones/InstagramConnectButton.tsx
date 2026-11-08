@@ -870,13 +870,20 @@ export function InstagramConnectButton({
       ) : (
         <>
           <p>
-            Conecta directamente una
-            cuenta profesional de
-            Instagram, ya sea Empresa o
-            Creador. No necesita estar
-            vinculada a una Página de
-            Facebook.
+            Autoriza una cuenta profesional de Instagram (Empresa o Creador).
+            Meta puede mostrar una pantalla de acceso empresarial con las
+            opciones «Continuar con Facebook» o «Continuar con Instagram».
+            Para la prueba de MW1, utiliza la cuenta profesional independiente
+            @chatpro_mw1 y completa la pantalla de permisos de Meta.
           </p>
+          {isStaging ? (
+            <small>
+              Entrar a la página principal de Facebook no es una autorización.
+              Si Meta no muestra los permisos ni te devuelve a MW1,
+              cierra esa ventana y revisa el diagnóstico; no selecciones
+              cuentas operativas.
+            </small>
+          ) : null}
 
           <button
             type="button"
