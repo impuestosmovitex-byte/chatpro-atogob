@@ -19,6 +19,7 @@ import { StagingWhatsappCoexistenceTenantVerificationService } from './staging-w
 import { StagingWhatsappCoexistenceVerifiedBindingService } from './staging-whatsapp-coexistence-verified-binding.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { StagingWhatsappWebhookController } from './staging-whatsapp-webhook.controller';
+import { StagingInstagramWebhookController } from './staging-instagram-webhook.controller';
 import { UsersController } from './users.controller';
 import { StagingMyPlanController } from './staging-my-plan.controller';
 import { StagingSubscriptionAdminController } from './staging-subscription-admin.controller';
@@ -44,6 +45,7 @@ class StagingHealthController {
     StagingIntegrationsController,
     StagingWhatsappCoexistencePilotController,
     StagingWhatsappWebhookController,
+    StagingInstagramWebhookController,
     UsersController,
     StagingMyPlanController,
     StagingSubscriptionAdminController,
