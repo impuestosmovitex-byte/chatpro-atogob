@@ -1,0 +1,41 @@
+name: Automatic WhatsApp conversations - safe read-only history
+on:
+  push:
+    branches:
+      - fix/read-only-automation-conversations-20261108
+  pull_request:
+    paths:
+      - 'apps/api/src/conversation-memory.service.ts'
+      - 'apps/api/src/automation-runtime.service.ts'
+      - 'apps/api/src/inbox.controller.ts'
+      - 'app/page.tsx'
+      - 'app/automatizaciones/page.tsx'
+      - 'apps/api/src/automation-inbox-readonly.spec.ts'
+      - '.github/workflows/automation-inbox-readonly.yml'
+jobs:
+  api-regression:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npm test -- --runInBand --testPathIgnorePatterns=customer-order.service.spec.ts
+      - run: npm run build
+  inbox-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build

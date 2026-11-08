@@ -4260,9 +4260,12 @@ export default function Home() {
     !mobileSearch.trim();
 
   const selectedStatus = selected?.session.attentionStatus;
+  const readOnlyAutomation =
+    selected?.session.context?.read_only_automation === true;
   const showTakeButton =
-    !isInternalTest && selected?.session.takeAvailable === true;
-  const showHumanActions = !isInternalTest && selectedStatus === "human";
+    !isInternalTest && !readOnlyAutomation && selected?.session.takeAvailable === true;
+  const showHumanActions =
+    !isInternalTest && !readOnlyAutomation && selectedStatus === "human";
 
   return (
     <main
@@ -4800,7 +4803,9 @@ export default function Home() {
                 );
 
                 const assignmentLabel =
-                  session.attentionStatus === "ai"
+                  session.context?.read_only_automation === true
+                    ? "Solo historial de automatizaciones"
+                    : session.attentionStatus === "ai"
                     ? session.takeAvailable
                       ? "Atendido por IA · disponible"
                       : "Atendido por IA"
@@ -4995,7 +5000,9 @@ export default function Home() {
                       <p className="chat-subtitle">
                         {isInternalTest
                           ? "Conversación real con el agente y las integraciones de esta empresa."
-                          : `${statusLabel[selected.session.attentionStatus]}${selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}`}
+                          : readOnlyAutomation
+                            ? "Historial de notificaciones de WhatsApp · solo lectura"
+                            : `${statusLabel[selected.session.attentionStatus]}${selected.session.assignedToName ? ` · ${selected.session.assignedToName}` : ""}`}
                       </p>
                     </div>
 
@@ -5054,6 +5061,7 @@ export default function Home() {
 
                             {!isInternalTest &&
                             canSendTemplates &&
+                            !readOnlyAutomation &&
                             selected.historyRestricted !== true ? (
                               <button
                                 type="button"
@@ -5150,6 +5158,7 @@ export default function Home() {
 
                     {!isInternalTest &&
                     canSendTemplates &&
+                    !readOnlyAutomation &&
                     selected.historyRestricted !== true ? (
                       <button
                         className="button quiet"
@@ -5204,7 +5213,9 @@ export default function Home() {
                     ) : null}
                     {!isInternalTest &&
                     selected.session.attentionStatus === "closed" ? (
-                      <span className="history-badge">En historial</span>
+                      <span className="history-badge">
+                        {readOnlyAutomation ? "Solo lectura · automatizaciones" : "En historial"}
+                      </span>
                     ) : null}
                   </div>
                 </header>
@@ -5857,8 +5868,10 @@ export default function Home() {
                   </form>
                 ) : (
                   <div className="reply-disabled">
-                    {selected.session.attentionStatus === "closed"
-                      ? "Esta conversación está finalizada. Si el cliente vuelve a escribir, la IA retomará automáticamente desde el historial."
+                    {readOnlyAutomation
+                      ? "Historial de notificaciones enviado por WhatsApp. Si el cliente responde, aparecerá una conversación normal que podrás atender."
+                      : selected.session.attentionStatus === "closed"
+                        ? "Esta conversación está finalizada. Si el cliente vuelve a escribir, la IA retomará automáticamente desde el historial."
                       : selected.session.attentionStatus === "waiting"
                         ? "Este chat está pendiente de asesor. Tómalo para responder como persona."
                         : selected.session.takeBlockedReason ||

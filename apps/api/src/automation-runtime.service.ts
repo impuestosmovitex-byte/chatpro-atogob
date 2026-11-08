@@ -228,7 +228,9 @@ export class AutomationRuntimeService {
         recipient: row.recipient,
         status: row.status,
         providerMessageId:
-          this.text(row.provider_message_id) || null,
+          this.text(row.provider_message_id) ||
+          this.text(payload.provider_message_id) ||
+          null,
         providerStatus:
           this.text(payload.provider_status) || null,
         providerStatusAt:
@@ -238,13 +240,19 @@ export class AutomationRuntimeService {
         nextRetryAt: row.next_retry_at,
         sentAt: row.sent_at,
         failedAt: row.failed_at,
-        error: this.text(row.error_message) || null,
+        // Meta's callback is more informative than a generic worker error.
+        error:
+          this.text(payload.provider_error) ||
+          this.text(row.error_message) ||
+          null,
         preparedOnly: payload.prepared_only === true,
         preparedMessage:
           this.text(payload.prepared_message) || null,
         testSendAllowed:
           payload.prepared_only === true &&
           row.status !== 'sent' &&
+          !this.text(row.provider_message_id) &&
+          !this.text(payload.provider_message_id) &&
           (deliveryMode === 'production' ||
             (typeof row.recipient === 'string' &&
               allowedTestPhones.includes(row.recipient))),

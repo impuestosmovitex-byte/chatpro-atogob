@@ -81,8 +81,12 @@ const statusLabels: Record<string, string> = {
 };
 
 function executionStatusLabel(execution: Execution): string {
+  if (execution.providerStatus === 'failed') {
+    return 'No entregado · Meta';
+  }
+
   if (execution.status === 'failed') {
-    return 'Fallido';
+    return 'Falló el envío';
   }
 
   if (execution.providerStatus === 'read') {
@@ -94,11 +98,11 @@ function executionStatusLabel(execution: Execution): string {
   }
 
   if (execution.providerStatus === 'sent') {
-    return 'Enviado por Meta';
+    return 'Enviado · entrega pendiente';
   }
 
   if (execution.providerStatus === 'accepted') {
-    return 'Aceptado por Meta';
+    return 'Aceptado · entrega sin confirmar';
   }
 
   if (execution.status === 'sent') {
@@ -133,6 +137,42 @@ function executionStatusLabel(execution: Execution): string {
   }
 
   return statusLabels[execution.status] || execution.status;
+}
+
+function deliveryMeaning(execution: Execution): string | null {
+  if (execution.providerStatus === 'read') {
+    return 'Meta confirmó que el cliente leyó este mensaje.';
+  }
+  if (execution.providerStatus === 'delivered') {
+    return 'Meta confirmó la entrega. Todavía no hay confirmación de lectura; esto no demuestra que no lo haya leído.';
+  }
+  if (execution.providerStatus === 'sent' || execution.providerStatus === 'accepted') {
+    return 'Meta aceptó el envío, pero todavía no hay confirmación de entrega ni de lectura.';
+  }
+  if (execution.providerStatus === 'failed') {
+    return 'Meta confirmó que este mensaje no se pudo entregar.';
+  }
+  if (execution.status === 'failed') {
+    return 'La automatización falló. No se puede confirmar la entrega.';
+  }
+  if (execution.status === 'sent') {
+    return 'Mensaje registrado como enviado. Todavía no se ha confirmado la entrega ni la lectura.';
+  }
+  return null;
+}
+
+function automationHistoryLink(execution: Execution): string | null {
+  if (
+    !execution.providerMessageId ||
+    !execution.recipient ||
+    !(
+      execution.automationKey === 'abandoned_cart' ||
+      execution.preparedOnly
+    )
+  ) return null;
+  const phone = execution.recipient.replace(/\D/g, '');
+  if (phone.length < 10 || phone.length > 16) return null;
+  return '/?session=' + encodeURIComponent('automation:' + phone);
 }
 
 function delayLabel(minutes: number): string {
@@ -742,6 +782,21 @@ export default function AutomationsPage() {
                                 )}`
                               : '—')
                         )}
+                        {deliveryMeaning(execution) ? (
+                          <small
+                            style={{ display: 'block', marginTop: 6, color: '#64748b', maxWidth: 400 }}
+                          >
+                            {deliveryMeaning(execution)}
+                          </small>
+                        ) : null}
+                        {automationHistoryLink(execution) ? (
+                          <a
+                            href={automationHistoryLink(execution) || '#'}
+                            style={{ display: 'inline-block', marginTop: 8, fontWeight: 650 }}
+                          >
+                            Ver notificación en el chat ↗
+                          </a>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
