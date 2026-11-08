@@ -122,7 +122,11 @@ export class WhatsappMessagingService {
       type: 'audio',
       audio: {
         id: mediaId,
-        voice: true,
+        // Meta only accepts the voice-note flag for OGG/Opus.
+        // MP3, AAC and M4A must remain ordinary audio attachments.
+        ...(prepared.mimeType.split(';')[0].trim().toLowerCase() === 'audio/ogg'
+          ? { voice: true }
+          : {}),
       },
     });
 

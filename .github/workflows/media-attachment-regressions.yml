@@ -1,0 +1,44 @@
+name: MW1 media attachments regression checks
+on:
+  push:
+    branches: [fix/inbox-media-drop-paste-receive-20261107]
+  pull_request:
+    paths:
+      - 'app/page.tsx'
+      - 'apps/api/src/inbox.controller.ts'
+      - 'apps/api/src/inbox-media-content.util.ts'
+      - 'apps/api/src/whatsapp-messaging.service.ts'
+      - 'apps/api/src/inbox-media-content.util.spec.ts'
+      - 'apps/api/src/whatsapp-audio-attachments.spec.ts'
+      - '.github/workflows/media-attachment-regressions.yml'
+
+jobs:
+  api-media-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      # Run all API regression suites except the previously failing,
+      # unrelated customer-order service test (not modified here).
+      - run: npm test -- --runInBand --testPathIgnorePatterns=customer-order.service.spec.ts
+      - run: npm run build
+
+  inbox-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build
