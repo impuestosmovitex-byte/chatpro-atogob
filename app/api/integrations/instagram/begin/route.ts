@@ -1,3 +1,4 @@
+import { isInstagramStagingRequest, isInstagramStagingApi } from '../../../../lib/instagram-staging-guard';
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../../lib/inbox-auth';
@@ -6,7 +7,7 @@ import { createInstagramOAuthState } from '../../../../lib/instagram-oauth-state
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  if (request.nextUrl.hostname !== 'mw1-web-staging-staging.up.railway.app') {
+  if (!isInstagramStagingRequest(request)) {
     return NextResponse.json({ ok: false, error: 'Solo staging.' }, { status: 403 });
   }
   const session = await getInboxSession(request.cookies.get(INBOX_SESSION_COOKIE)?.value);
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     const apiBase = process.env.CHATPRO_API_URL?.trim().replace(/\/$/, '');
     const inboxKey = process.env.CHATPRO_INBOX_KEY?.trim();
     if (!apiBase || !inboxKey) throw new Error('API de staging no configurada.');
-    if (apiBase !== 'https://mw1-api-staging-staging.up.railway.app') {
+    if (!isInstagramStagingApi(apiBase)) {
       throw new Error('El inicio OAuth debe utilizar la API de staging.');
     }
     const nonceHash = createHash('sha256').update(state).digest('hex');
