@@ -99,6 +99,16 @@ export class StagingIntegrationsController {
       authorizationEnabled: ready && pilotLoginEnabled,
       connectionEnabled: false,
       webhookEnabled: false,
+      webhookPreflight: isPilot ? {
+        endpointDeployed: true,
+        verificationTokenConfigured: Boolean(
+          process.env.MW1_STAGING_INSTAGRAM_WEBHOOK_VERIFY_TOKEN?.trim(),
+        ),
+        receiptEnabled: process.env.MW1_STAGING_INSTAGRAM_RECEIVE_ENABLED === 'true',
+        appSubscriptionConfirmed: false,
+        inboxRepliesEnabled: false,
+        warning: 'No cambies el webhook de la aplicación Meta compartida hasta verificar que no afecte otras integraciones.',
+      } : undefined,
       missing: isPilot && enabled ? [
         ...(!correctSetup ? ['META_INSTAGRAM_APP_ID / META_INSTAGRAM_UNIFIED_CONFIG_ID'] : []),
         ...(!appSecret ? ['META_INSTAGRAM_APP_SECRET'] : []),
