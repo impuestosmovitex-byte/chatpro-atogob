@@ -109,9 +109,16 @@ export class InboxController {
         advisorUserId: advisor,
       });
 
+    const automationSessions =
+      await this.conversationMemoryService.listAutomaticOnlyInboxSessions(
+        companySlug,
+        { status, offset: Number(offset), search },
+      );
+
     const mergedSessions = [
       ...payload.sessions,
       ...socialSessions,
+      ...automationSessions,
     ].sort(
       (left, right) =>
         new Date(right.lastMessageAt).getTime() -
@@ -218,20 +225,30 @@ export class InboxController {
         companySlug,
       );
 
-    const socialConversation =
-      await this.metaSocialInboxService.getConversation(
-        {
-          id: profile.id,
-          slug: profile.slug,
-          name: profile.name,
-        },
-        sessionId,
-        after,
-        before,
-        messageLimit,
-      );
+    // A display-only activity thread must never be mistaken for a real
+    // conversation session. Resolve it without creating a DB session.
+    const automationConversation =
+      sessionId.startsWith('automation:')
+        ? await this.conversationMemoryService.getAutomaticOnlyInboxConversation(
+            companySlug, sessionId, after, before, messageLimit,
+          )
+        : null;
+    const socialConversation = automationConversation
+      ? null
+      : await this.metaSocialInboxService.getConversation(
+          {
+            id: profile.id,
+            slug: profile.slug,
+            name: profile.name,
+          },
+          sessionId,
+          after,
+          before,
+          messageLimit,
+        );
 
     const conversation =
+      automationConversation ??
       socialConversation ??
       (await this.conversationMemoryService.getInboxConversation(
         companySlug,
@@ -248,6 +265,26 @@ export class InboxController {
       roleKey,
       conversation.company.id,
     );
+
+    const readonlyAutomation =
+      conversation.session.context?.read_only_automation === true;
+
+    if (readonlyAutomation) {
+      // actor() has checked the active user, company and inbox.view;
+      // never show take/send/transfer actions on a synthetic thread.
+      return {
+        ok: true,
+        ...conversation,
+        session: {
+          ...conversation.session,
+          takeAvailable: false,
+          takeBlockedReason:
+            'Historial de notificaciones de solo lectura. Cuando el cliente responda, tendrá un chat normal.',
+        },
+        historyRestricted: false,
+        readOnlyAutomation: true,
+      };
+    }
 
     if (conversation.session.attentionStatus === 'closed') {
       throw new BadRequestException(
