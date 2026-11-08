@@ -55,7 +55,7 @@ export class ShopifyAutomaticTestSendService {
     // re-send the same Shopify notification on webhook replay or retry.
     if (
       execution.status === 'sent' ||
-      this.text(execution.payload && payload.provider_message_id)
+      this.text(payload.provider_message_id)
     ) {
       return 'already_sent';
     }
