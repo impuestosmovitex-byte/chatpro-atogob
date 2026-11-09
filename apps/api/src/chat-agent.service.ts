@@ -4196,7 +4196,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'add_visual_products_to_cart',
   description:
-    'Agrega en una sola operación dos o más productos provenientes de referencias visuales exactas que el cliente pidió comprar. Usa únicamente matched_product.url con match_type exact. Valida cada producto y variante contra el catálogo real. Si falta una variante o alguna referencia no es exacta, no modifica el carrito y devuelve únicamente lo que falta aclarar.',
+    'Agrega en una sola operación de 2 a 10 productos DISTINTOS que el cliente pidió comprar. Utiliza todas las referencias pertinentes de la última ráfaga visual salvo que el cliente haya indicado expresamente un subconjunto; nunca omitas silenciosamente un producto. Cada línea debe corresponder a un producto diferente del catálogo real de la empresa activa. Si dos prendas de una imagen apuntan a la misma publicación de conjunto, aclara cómo se venden en vez de agregar el conjunto dos veces. Si falta una referencia exacta o variante, no modifica el carrito y devuelve los datos faltantes.',
   strict: true,
   parameters: {
     type: 'object',
@@ -4575,6 +4575,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         const result = await this.addVisualProductsToCart(
           currentSession,
           this.readVisualCartItems(args),
+          customerMessage,
         );
 
         if (
@@ -5395,26 +5396,85 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   private async addVisualProductsToCart(
     session: ConversationSession,
     items: VisualCartItemRequest[],
+    currentCustomerMessage = '',
   ) {
-    if (items.length < 2) {
+    if (items.length < 2 || items.length > 10) {
       return {
         ok: false,
         cart_unchanged: true,
         error:
-          'Se requieren al menos dos referencias visuales válidas para usar el agregado multiproducto.',
+          'El lote multiproducto debe contener entre 2 y 10 referencias completas y distintas. No se puede omitir ni recortar ninguna referencia.',
       };
     }
 
     const exactVisualKeys =
       this.readExactVisualProductKeys(session.context);
 
+    // Never use a global legacy store for a tenant that has no configured
+    // company-scoped Shopify integration. This tool must fail closed.
     const usesCompanyCommerce =
       await this.usesCompanyCommerce(session);
+    if (!usesCompanyCommerce) {
+      return {
+        ok: false,
+        cart_unchanged: true,
+        next_action: 'connect_company_catalog',
+        error: 'Esta empresa no tiene una integración comercial propia activa. No se puede consultar una tienda global ni agregar productos de otra empresa.',
+      };
+    }
+
+    const burst =
+      session.context.visual_reference_burst &&
+      typeof session.context.visual_reference_burst === 'object' &&
+      !Array.isArray(session.context.visual_reference_burst)
+        ? session.context.visual_reference_burst as Record<string, unknown>
+        : null;
+    const burstReferences = Array.isArray(burst?.references)
+      ? burst.references.filter((item) =>
+          Boolean(item && typeof item === 'object' && !Array.isArray(item)),
+        )
+      : [];
+
+    // A batch tool is for a complete visual selection. A partial selection
+    // is permitted only when the CUSTOMER, not the model, says so.
+    const normalizedCustomerRequest =
+      this.normalizeText(currentCustomerMessage);
+    const explicitSubset =
+      /\b(solo|solamente|unicamente|excepto|menos|sin el|sin la|primero|primera|segundo|segunda|tercero|tercera|only|except|without|first|second|third)\b/.test(normalizedCustomerRequest);
+    if (
+      burstReferences.length >= 2 &&
+      burstReferences.length <= 10 &&
+      items.length < burstReferences.length &&
+      !explicitSubset
+    ) {
+      return {
+        ok: false,
+        cart_unchanged: true,
+        next_action: 'clarify_omitted_visual_references',
+        expected_visual_references: burstReferences.length,
+        provided_items: items.length,
+        error: 'La propuesta de carrito omite referencias de la última imagen o ráfaga. Conserva todas las referencias solicitadas o confirma con el cliente qué prendas excluye; no se agregó ningún producto.',
+      };
+    }
+
+    const distinctProducts = new Set<string>();
+    for (const item of items) {
+      const key = this.visualProductKey(item.productUrl);
+      if (!key || distinctProducts.has(key)) {
+        return {
+          ok: false,
+          cart_unchanged: true,
+          next_action: 'clarify_shared_product_reference',
+          error: 'Dos prendas visuales apuntan a la misma publicación del catálogo o falta una URL válida. No se debe agregar dos veces un conjunto o tratar dos fotos de una referencia como dos unidades sin confirmación.',
+        };
+      }
+      distinctProducts.add(key);
+    }
 
     const lines: CartLine[] = [];
     const unresolved: Array<Record<string, unknown>> = [];
 
-    for (const item of items.slice(0, 10)) {
+    for (const item of items) {
       const visualKey = this.visualProductKey(item.productUrl);
 
       if (!visualKey || !exactVisualKeys.has(visualKey)) {
@@ -5469,6 +5529,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           options: variant.options.map((option) => ({ ...option })),
         }));
       } else {
+        // An unscoped global commerce fallback must remain unreachable.
         const product =
           await this.shopifyService.getProductFromUrl(item.productUrl);
 
@@ -6577,13 +6638,13 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   ): VisualCartItemRequest[] {
     const value = args.items;
 
-    if (!Array.isArray(value)) {
+    if (!Array.isArray(value) || value.length > 10) {
       return [];
     }
 
     const items: VisualCartItemRequest[] = [];
 
-    for (const item of value.slice(0, 10)) {
+    for (const item of value) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) {
         return [];
       }
