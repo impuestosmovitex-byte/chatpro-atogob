@@ -295,3 +295,102 @@ describe('MW1 continuous outfit sales and stalled-checkout safeguards', () => {
     expect(prompt).not.toContain('Blazer talla 8 + Falda talla 10');
   });
 });
+
+describe('MW1 multi-product purchase plan prevents incomplete checkout', () => {
+  function fixture() {
+    const blazer = 'https://tienda-ejemplo.com/products/conjunto-blazer-falda';
+    const dress = 'https://tienda-ejemplo.com/products/vestido-negro';
+    const pants = 'https://tienda-ejemplo.com/products/pantalon-cuadros';
+    const session = {
+      id: 'cart-plan-test',
+      companyId: 'fictional-tenant',
+      context: {
+        conversation_category: 'sales',
+        cart: [{ productUrl: dress, variantId: 'variant-dress' }],
+        commercial_visual_references: [blazer, dress, pants].map((url) => ({
+          match_type: 'exact',
+          matched_product: { url, title: url },
+        })),
+      },
+    } as any;
+    const getCart = jest.fn(async () => ({
+      ok: true,
+      cart: {
+        lines: [{
+          product_url: dress,
+          product_title: 'Vestido negro',
+          variant_id: 'variant-dress',
+          quantity: 1,
+        }],
+        items_count: 1,
+        products_total_cop: '67900',
+      },
+    }));
+    const createCheckoutLink = jest.fn(async () => ({
+      ok: true, checkout_url: 'https://tienda-ejemplo.com/cart/one-product:1',
+    }));
+    const agent = Object.create(ChatAgentService.prototype) as any;
+    agent.cartService = { getCart, createCheckoutLink };
+    agent.agentSessionRuntimeService = {
+      getSessionById: jest.fn(async () => session),
+      updateSession: jest.fn(async (_id: string, patch: any) => {
+        session.context = patch.context;
+        return session;
+      }),
+    };
+    return { agent, session, blazer, dress, pants, getCart, createCheckoutLink };
+  }
+
+  it('records all confirmed references using existing verified catalog evidence', async () => {
+    const h = fixture();
+    const result = await h.agent.recordPurchasePlan(
+      h.session,
+      { product_urls: [h.blazer, h.dress, h.pants] },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.expected_items_count).toBe(3);
+    expect(h.session.context.sale_context.expected_purchase_handles)
+      .toEqual(['conjunto-blazer-falda', 'vestido-negro', 'pantalon-cuadros']);
+  });
+
+  it('blocks a one-product checkout when three confirmed products were requested', async () => {
+    const h = fixture();
+    await h.agent.recordPurchasePlan(
+      h.session,
+      { product_urls: [h.blazer, h.dress, h.pants] },
+    );
+    const result = await h.agent.executeTool(
+      'create_checkout_link', '{}', h.session,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.next_action).toBe('complete_confirmed_cart');
+    expect(result.actual_cart_product_count).toBe(1);
+    expect(result.missing_product_urls).toEqual([h.blazer, h.pants]);
+    expect(h.createCheckoutLink).not.toHaveBeenCalled();
+  });
+
+  it('does not record invented unverified products from another shop', async () => {
+    const h = fixture();
+    const result = await h.agent.recordPurchasePlan(
+      h.session,
+      { product_urls: ['https://otra-tienda.com/products/inventado'] },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.next_action).toBe('verify_product_references');
+    expect(h.session.context.sale_context).toBeUndefined();
+  });
+
+  it('allows updating the plan when the customer explicitly chooses one item', async () => {
+    const h = fixture();
+    const result = await h.agent.recordPurchasePlan(
+      h.session, { product_urls: [h.dress] },
+    );
+    expect(result.expected_items_count).toBe(1);
+    const guard = await h.agent.executeTool(
+      'create_checkout_link', '{}', h.session,
+    );
+    // All expected articles exist, so checkout advances to shipping
+    // verification; the missing-product safeguard no longer blocks it.
+    expect(guard?.next_action).not.toBe('complete_confirmed_cart');
+  });
+});
