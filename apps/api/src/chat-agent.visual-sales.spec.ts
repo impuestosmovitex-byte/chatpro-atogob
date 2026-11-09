@@ -463,3 +463,57 @@ describe('MW1 last-resort checkout continuation (never a confirmation loop)', ()
     expect(requestHumanAttention).not.toHaveBeenCalled();
   });
 });
+
+describe('MW1 ask which piece of an outfit BEFORE searching', () => {
+  const agent = Object.create(ChatAgentService.prototype) as any;
+
+  it('asks which garment for an ambiguous two-piece outfit', () => {
+    expect(agent.outfitClarificationForImage({
+      summary: 'Fotografía de una blusa negra y un pantalón',
+      category: 'conjunto',
+      parts: ['Blusa negra', 'Pantalón beige'],
+      caption: 'Hola, quiero información de estos productos',
+    })).toBe(
+      '¿Quieres información de la blusa, del pantalón o del conjunto completo?',
+    );
+  });
+
+  it('does not interrupt after a clear choice of one garment', () => {
+    expect(agent.outfitClarificationForImage({
+      summary: 'Blusa y pantalón',
+      category: 'outfit',
+      parts: ['blusa', 'pantalón'],
+      caption: 'Solo la blusa, por favor',
+    })).toBeNull();
+  });
+
+  it('does not ask again if the customer requested the complete outfit', () => {
+    expect(agent.outfitClarificationForImage({
+      summary: 'Look combinado',
+      category: 'conjunto',
+      parts: ['falda', 'blazer'],
+      caption: 'Quiero el conjunto completo',
+    })).toBeNull();
+  });
+
+  it('does not turn ordinary single-product search terms into a combo', () => {
+    expect(agent.outfitClarificationForImage({
+      summary: 'Vestido negro',
+      category: 'vestido',
+      parts: ['Vestido corto'],
+      searchTerms: ['negro', 'talla M', 'vestido'],
+      caption: '¿Cuánto cuesta?',
+    })).toBeNull();
+  });
+
+  it('asks a neutral question for an outfit without clear garment labels', () => {
+    expect(agent.outfitClarificationForImage({
+      summary: 'Look de dos prendas',
+      category: 'outfit',
+      parts: ['Parte superior', 'Parte inferior'],
+      caption: '',
+    })).toBe(
+      '¿Quieres información del conjunto completo o de alguna prenda en particular?',
+    );
+  });
+});
