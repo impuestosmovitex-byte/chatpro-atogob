@@ -2890,6 +2890,7 @@ export class ChatAgentService {
       '- El motivo y el resumen de una transferencia deben estar basados exclusivamente en peticiones y hechos confirmados; jamás conviertas “pedido así” o “regálame” en regalo de dinero, precio cero, envío gratis u otra excepción no solicitada.',
       '- Si una referencia anterior tiene matched_product.url y el cliente decide comprar o configurar un solo producto, usa select_product_by_url antes de consultar variantes o agregarlo al carrito.',
       '- commercial_visual_references son referencias comerciales, no productos del carrito. Nunca asumas que fueron agregadas hasta que una herramienta de carrito lo confirme.',
+      '- Si session.context.visual_cart_draft tiene status needs_clarification, contiene el lote que el cliente quería comprar, las referencias ya identificadas pero NO agregadas y las opciones faltantes. Conserva los productos resueltos y pregunta únicamente por cada dato pendiente del lote; cuando el cliente aclare la variante, vuelve a invocar add_visual_products_to_cart con el lote completo corregido. Nunca afirmes que una línea del borrador ya está en el carrito.',
       '- Una ráfaga visual no agrega productos automáticamente al carrito. Solo ejecuta acciones de compra cuando la intención del cliente sea explícita y las variantes necesarias estén realmente resueltas.',
       '- Cuando el cliente pida explícitamente comprar dos o más referencias visuales, usa add_visual_products_to_cart en una sola operación únicamente cuando todas las referencias que forman parte de ese pedido tengan match_type exact.',
       '- Si dentro del conjunto que el cliente pidió comprar existe siquiera una referencia con match_type similar o none, no agregues todavía ninguna de las referencias de ese conjunto al carrito. Conserva las exactas y pide una sola aclaración breve únicamente por las referencias no resueltas.',
@@ -4196,7 +4197,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   type: 'function',
   name: 'add_visual_products_to_cart',
   description:
-    'Agrega en una sola operación dos o más productos provenientes de referencias visuales exactas que el cliente pidió comprar. Usa únicamente matched_product.url con match_type exact. Valida cada producto y variante contra el catálogo real. Si falta una variante o alguna referencia no es exacta, no modifica el carrito y devuelve únicamente lo que falta aclarar.',
+    'Agrega en una sola operación de 2 a 10 productos DISTINTOS que el cliente pidió comprar. Utiliza todas las referencias pertinentes de la última ráfaga visual salvo que el cliente haya indicado expresamente un subconjunto; nunca omitas silenciosamente un producto. Cada línea debe corresponder a un producto diferente del catálogo real de la empresa activa. Si dos prendas de una imagen apuntan a la misma publicación de conjunto, aclara cómo se venden en vez de agregar el conjunto dos veces. Si falta una referencia exacta o variante, no modifica el carrito y devuelve los datos faltantes.',
   strict: true,
   parameters: {
     type: 'object',
@@ -4575,6 +4576,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         const result = await this.addVisualProductsToCart(
           currentSession,
           this.readVisualCartItems(args),
+          customerMessage,
         );
 
         if (
@@ -5163,27 +5165,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       };
     }
 
-    const products = await this.shopifyService.searchCatalog(query, 8);
-
     return {
-      ok: true,
-      query,
-      products: products.map((product) => ({
-        id: product.id,
-        title: product.title,
-        url: product.onlineStoreUrl,
-        image_url: product.featuredImage?.url ?? null,
-        image_urls: product.images.edges
-          .map(({ node }) => node.url)
-          .filter((url) => /^https?:\/\//i.test(url)),
-        price_from_cop: this.getStartingPrice(product),
-        variants: product.variants.edges.slice(0, 10).map(({ node }) => ({
-          id: node.id,
-          title: node.title,
-          price_cop: node.price,
-          options: node.selectedOptions,
-        })),
-      })),
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
     };
   }
 
@@ -5208,6 +5193,20 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         .replace(/\/+$/, '')
         .toLowerCase()}`;
     }
+  }
+
+  /**
+   * The same product handle can exist in two merchants' shops.
+   * Match the full normalized catalog URL before reusing a visual product
+   * or a previous selection from any chat session.
+   */
+  private matchesCompanyProductUrl(
+    requested: string,
+    companyCatalogUrl: string | null | undefined,
+  ): boolean {
+    const source = this.visualProductKey(requested);
+    const current = this.visualProductKey(companyCatalogUrl || '');
+    return Boolean(source && current && source === current);
   }
 
   private readExactVisualProductKeys(context: JsonObject): Set<string> {
@@ -5392,29 +5391,151 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     };
   }
 
+  /**
+   * Store only a pending intent, never items as cart lines. This belongs to
+   * the current company-scoped session and cannot trigger Shopify writes.
+   */
+  private async rememberUnresolvedVisualCart(
+    session: ConversationSession,
+    items: VisualCartItemRequest[],
+    resolvedNotAdded: Array<Record<string, unknown>>,
+    unresolved: Array<Record<string, unknown>>,
+  ): Promise<void> {
+    try {
+      const fresh = await this.agentSessionRuntimeService.getSessionById(
+        session.id,
+      );
+      if (fresh.companyId !== session.companyId) {
+        throw new Error('Session company changed while saving a cart draft.');
+      }
+      await this.agentSessionRuntimeService.updateSession(session.id, {
+        context: {
+          ...fresh.context,
+          visual_cart_draft: {
+            status: 'needs_clarification',
+            requested_items: items.map((item) => ({
+              product_url: item.productUrl,
+              option_values: [...item.optionValues],
+              quantity: item.quantity,
+            })),
+            resolved_not_added: resolvedNotAdded,
+            unresolved,
+            updated_at: new Date().toISOString(),
+          },
+        },
+      });
+    } catch (error) {
+      // A memory failure cannot transform an unresolved request into a cart
+      // operation, and must never lead to an invented confirmation.
+      console.error('[MW1][cart] pending visual draft not saved:',
+        error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private async clearVisualCartDraftAfterSuccess(
+    session: ConversationSession,
+  ): Promise<void> {
+    try {
+      const fresh = await this.agentSessionRuntimeService.getSessionById(
+        session.id,
+      );
+      if (fresh.companyId !== session.companyId) return;
+      if (!fresh.context.visual_cart_draft) return;
+      const nextContext = { ...fresh.context };
+      delete nextContext.visual_cart_draft;
+      await this.agentSessionRuntimeService.updateSession(session.id, {
+        context: nextContext,
+      });
+    } catch (error) {
+      // Cart writes have already succeeded. Never falsely report a failed
+      // checkout nor retry a cart addition because cleaning context failed.
+      console.error('[MW1][cart] could not clear visual draft:',
+        error instanceof Error ? error.message : String(error));
+    }
+  }
+
   private async addVisualProductsToCart(
     session: ConversationSession,
     items: VisualCartItemRequest[],
+    currentCustomerMessage = '',
   ) {
-    if (items.length < 2) {
+    if (items.length < 2 || items.length > 10) {
       return {
         ok: false,
         cart_unchanged: true,
         error:
-          'Se requieren al menos dos referencias visuales válidas para usar el agregado multiproducto.',
+          'El lote multiproducto debe contener entre 2 y 10 referencias completas y distintas. No se puede omitir ni recortar ninguna referencia.',
       };
     }
 
     const exactVisualKeys =
       this.readExactVisualProductKeys(session.context);
 
+    // Never use a global legacy store for a tenant that has no configured
+    // company-scoped Shopify integration. This tool must fail closed.
     const usesCompanyCommerce =
       await this.usesCompanyCommerce(session);
+    if (!usesCompanyCommerce) {
+      return {
+        ok: false,
+        cart_unchanged: true,
+        next_action: 'connect_company_catalog',
+        error: 'Esta empresa no tiene una integración comercial propia activa. No se puede consultar una tienda global ni agregar productos de otra empresa.',
+      };
+    }
+
+    const burst =
+      session.context.visual_reference_burst &&
+      typeof session.context.visual_reference_burst === 'object' &&
+      !Array.isArray(session.context.visual_reference_burst)
+        ? session.context.visual_reference_burst as Record<string, unknown>
+        : null;
+    const burstReferences = Array.isArray(burst?.references)
+      ? burst.references.filter((item) =>
+          Boolean(item && typeof item === 'object' && !Array.isArray(item)),
+        )
+      : [];
+
+    // A batch tool is for a complete visual selection. A partial selection
+    // is permitted only when the CUSTOMER, not the model, says so.
+    const normalizedCustomerRequest =
+      this.normalizeText(currentCustomerMessage);
+    const explicitSubset =
+      /\b(solo|solamente|unicamente|excepto|menos|sin el|sin la|primero|primera|segundo|segunda|tercero|tercera|only|except|without|first|second|third)\b/.test(normalizedCustomerRequest);
+    if (
+      burstReferences.length >= 2 &&
+      burstReferences.length <= 10 &&
+      items.length < burstReferences.length &&
+      !explicitSubset
+    ) {
+      return {
+        ok: false,
+        cart_unchanged: true,
+        next_action: 'clarify_omitted_visual_references',
+        expected_visual_references: burstReferences.length,
+        provided_items: items.length,
+        error: 'La propuesta de carrito omite referencias de la última imagen o ráfaga. Conserva todas las referencias solicitadas o confirma con el cliente qué prendas excluye; no se agregó ningún producto.',
+      };
+    }
+
+    const distinctProducts = new Set<string>();
+    for (const item of items) {
+      const key = this.visualProductKey(item.productUrl);
+      if (!key || distinctProducts.has(key)) {
+        return {
+          ok: false,
+          cart_unchanged: true,
+          next_action: 'clarify_shared_product_reference',
+          error: 'Dos prendas visuales apuntan a la misma publicación del catálogo o falta una URL válida. No se debe agregar dos veces un conjunto o tratar dos fotos de una referencia como dos unidades sin confirmación.',
+        };
+      }
+      distinctProducts.add(key);
+    }
 
     const lines: CartLine[] = [];
     const unresolved: Array<Record<string, unknown>> = [];
 
-    for (const item of items.slice(0, 10)) {
+    for (const item of items) {
       const visualKey = this.visualProductKey(item.productUrl);
 
       if (!visualKey || !exactVisualKeys.has(visualKey)) {
@@ -5458,6 +5579,17 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           continue;
         }
 
+        if (!this.matchesCompanyProductUrl(
+          item.productUrl, product.onlineStoreUrl,
+        )) {
+          unresolved.push({
+            product_url: item.productUrl,
+            reason: 'product_belongs_to_different_catalog',
+            requested_options: item.optionValues,
+          });
+          continue;
+        }
+
         productId = product.id;
         productTitle = product.title;
         productUrl = product.onlineStoreUrl || item.productUrl;
@@ -5467,29 +5599,6 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           title: variant.title,
           price: variant.price,
           options: variant.options.map((option) => ({ ...option })),
-        }));
-      } else {
-        const product =
-          await this.shopifyService.getProductFromUrl(item.productUrl);
-
-        if (!product) {
-          unresolved.push({
-            product_url: item.productUrl,
-            reason: 'product_not_available',
-            requested_options: item.optionValues,
-          });
-          continue;
-        }
-
-        productId = product.id;
-        productTitle = product.title;
-        productUrl = product.onlineStoreUrl || item.productUrl;
-        variants = product.variants.edges.map(({ node }) => ({
-          id: node.id,
-          legacyResourceId: node.legacyResourceId,
-          title: node.title,
-          price: node.price,
-          options: node.selectedOptions.map((option) => ({ ...option })),
         }));
       }
 
@@ -5531,16 +5640,20 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     }
 
     if (unresolved.length) {
+      const resolvedNotAdded = lines.map((line) => ({
+        product_title: line.productTitle,
+        product_url: line.productUrl,
+        options: line.options,
+        quantity: line.quantity,
+      }));
+      await this.rememberUnresolvedVisualCart(
+        session, items, resolvedNotAdded, unresolved,
+      );
       return {
         ok: false,
         cart_unchanged: true,
         next_action: 'clarify_unresolved_visual_products',
-        resolved_not_added: lines.map((line) => ({
-          product_title: line.productTitle,
-          product_url: line.productUrl,
-          options: line.options,
-          quantity: line.quantity,
-        })),
+        resolved_not_added: resolvedNotAdded,
         unresolved,
       };
     }
@@ -5558,6 +5671,11 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       session,
       lines,
     );
+
+    if (result && typeof result === 'object' &&
+        (result as { ok?: unknown }).ok === true) {
+      await this.clearVisualCartDraftAfterSuccess(session);
+    }
 
     return {
       ...result,
@@ -5592,19 +5710,22 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         };
       }
 
+      if (!this.matchesCompanyProductUrl(url, product.onlineStoreUrl)) {
+        return {
+          ok: false,
+          next_action: 'verify_company_product_url',
+          error: 'El enlace no coincide con una publicación de la tienda conectada a esta empresa.',
+        };
+      }
+
       return this.saveSelectedCompanyProduct(session, product);
     }
 
-    const product = await this.shopifyService.getProductFromUrl(url);
-
-    if (!product) {
-      return {
-        ok: false,
-        error: 'No encontré un producto válido en ese enlace.',
-      };
-    }
-
-    return this.saveSelectedProduct(session, product);
+    return {
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
+    };
   }
 
   private async selectProductByName(
@@ -5639,27 +5760,11 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       return this.saveSelectedCompanyProduct(session, exactProduct);
     }
 
-    const products = await this.shopifyService.searchCatalog(name, 5);
-
-    const exactProduct =
-      products.find(
-        (product) =>
-          this.normalizeText(product.title) === this.normalizeText(name),
-      ) ?? null;
-
-    if (!exactProduct) {
-      return {
-        ok: false,
-        error:
-          'No encontré una coincidencia exacta. Pide a la persona el enlace del producto o más detalles.',
-        candidates: products.map((product) => ({
-          title: product.title,
-          url: product.onlineStoreUrl,
-        })),
-      };
-    }
-
-    return this.saveSelectedProduct(session, exactProduct);
+    return {
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
+    };
   }
 
   private async saveSelectedProduct(
@@ -5714,26 +5819,29 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         };
       }
 
+      if (
+        selectedProduct.url &&
+        !this.matchesCompanyProductUrl(
+          selectedProduct.url, product.onlineStoreUrl,
+        )
+      ) {
+        return {
+          ok: false,
+          next_action: 'verify_company_product_url',
+          error: 'La referencia guardada pertenece a una URL distinta de la tienda conectada. Selecciona nuevamente un producto propio.',
+        };
+      }
+
       return {
         ok: true,
         selected_product: this.companyProductSnapshot(product),
       };
     }
 
-    const product = await this.shopifyService.getProductByHandle(
-      selectedProduct.handle,
-    );
-
-    if (!product) {
-      return {
-        ok: false,
-        error: 'El producto seleccionado ya no está disponible.',
-      };
-    }
-
     return {
-      ok: true,
-      selected_product: this.productSnapshot(product),
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
     };
   }
 
@@ -6014,135 +6122,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       return this.selectCompanyVariant(session, selections);
     }
 
-    const selectedProduct = this.readSelectedProduct(session.context);
-
-    if (!selectedProduct) {
-      return {
-        ok: false,
-        error: 'No hay producto seleccionado.',
-      };
-    }
-
-    if (!selections.length) {
-      return {
-        ok: false,
-        error: 'No se recibieron variantes para validar.',
-      };
-    }
-
-    const product = await this.shopifyService.getProductByHandle(
-      selectedProduct.handle,
-    );
-
-    if (!product) {
-      return {
-        ok: false,
-        error: 'El producto seleccionado ya no está disponible.',
-      };
-    }
-
-    const resolved = new Map<string, SelectedVariantSelection>();
-
-    for (const selection of selections) {
-      const values = selection.optionValues
-        .map((value) => this.normalizeText(value))
-        .filter(Boolean);
-
-      if (!values.length) {
-        return {
-          ok: false,
-          error: 'Falta color, talla o medida para validar una variante.',
-          product: this.productSnapshot(product),
-        };
-      }
-
-      const matches = product.variants.edges
-        .map(({ node }) => node)
-        .filter((variant) =>
-          values.every((value) =>
-            variant.selectedOptions.some(
-              (option) =>
-                this.normalizeText(option.value) === value,
-            ),
-          ),
-        );
-
-      if (!matches.length) {
-        return {
-          ok: false,
-          error: 'No existe una variante con esas opciones.',
-          product: this.productSnapshot(product),
-        };
-      }
-
-      if (matches.length > 1) {
-        return {
-          ok: false,
-          error: 'Todavía faltan opciones para elegir una variante única.',
-          matching_variants: matches.slice(0, 10).map((variant) => ({
-            id: variant.id,
-            title: variant.title,
-            price_cop: variant.price,
-            options: variant.selectedOptions,
-          })),
-        };
-      }
-
-      const variant = matches[0];
-      const existing = resolved.get(variant.id);
-
-      if (existing) {
-        existing.quantity += selection.quantity;
-        continue;
-      }
-
-      resolved.set(variant.id, {
-        id: variant.id,
-        legacyResourceId: variant.legacyResourceId,
-        title: variant.title,
-        price: variant.price,
-        options: variant.selectedOptions,
-        quantity: selection.quantity,
-      });
-    }
-
-    const selectedVariants = Array.from(resolved.values());
-
-    if (!selectedVariants.length) {
-      return {
-        ok: false,
-        error: 'No se encontró una variante válida.',
-      };
-    }
-
-    const first = selectedVariants[0];
-
-    await this.agentSessionRuntimeService.updateSession(session.id, {
-      stage: 'variant',
-      context: {
-        ...session.context,
-        selectedVariant: {
-          id: first.id,
-          legacyResourceId: first.legacyResourceId,
-          title: first.title,
-          price: first.price,
-          options: first.options,
-        },
-        selectedVariants,
-        selectedVariantAt: new Date().toISOString(),
-      },
-    });
-
     return {
-      ok: true,
-      selected_variants: selectedVariants.map((variant) => ({
-        id: variant.id,
-        legacy_resource_id: variant.legacyResourceId,
-        title: variant.title,
-        price_cop: variant.price,
-        options: variant.options,
-        quantity: variant.quantity,
-      })),
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
     };
   }
 
@@ -6160,7 +6143,9 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       );
     }
 
-    return this.shopifyService.getCollections();
+    // Non-commerce tenants must still answer service inquiries without
+    // inheriting a legacy globally configured Shopify store.
+    return [];
   }
 
   private async saveSelectedCompanyProduct(
@@ -6219,6 +6204,19 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       return {
         ok: false,
         error: 'El producto seleccionado ya no está disponible.',
+      };
+    }
+
+    if (
+      selectedProduct.url &&
+      !this.matchesCompanyProductUrl(
+        selectedProduct.url, product.onlineStoreUrl,
+      )
+    ) {
+      return {
+        ok: false,
+        next_action: 'verify_company_product_url',
+        error: 'La referencia seleccionada no coincide con el catálogo de esta empresa.',
       };
     }
 
@@ -6577,13 +6575,13 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
   ): VisualCartItemRequest[] {
     const value = args.items;
 
-    if (!Array.isArray(value)) {
+    if (!Array.isArray(value) || value.length > 10) {
       return [];
     }
 
     const items: VisualCartItemRequest[] = [];
 
-    for (const item of value.slice(0, 10)) {
+    for (const item of value) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) {
         return [];
       }

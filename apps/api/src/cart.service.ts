@@ -683,11 +683,11 @@ export class CartService {
       };
     }
 
-    return this.shopifyService.buildCartLinks(
-      cart.map((line) => ({
-        variantLegacyId: line.variantLegacyId,
-        quantity: line.quantity,
-      })),
+    // No global Shopify environment fallback in the multi-company runtime:
+    // an account without its own active commerce integration cannot create
+    // a cart or checkout in an unrelated company's store.
+    throw new Error(
+      'Esta empresa no tiene una tienda comercial propia conectada. No se puede generar un checkout desde un catálogo global.',
     );
   }
 
