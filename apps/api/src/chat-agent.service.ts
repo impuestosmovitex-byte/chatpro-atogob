@@ -3041,7 +3041,7 @@ export class ChatAgentService {
       if (
         sale.shipping_quote_validated !== true ||
         Number(sale.shipping_cost_cop) !== 0 ||
-        sale.delivery_method !== 'shipping'
+        sale.delivery_method === 'pickup'
       ) return message;
 
       const quoteTotal = String(sale.shipping_quote_products_total_cop ?? '');
