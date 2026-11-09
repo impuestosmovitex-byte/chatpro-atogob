@@ -2927,6 +2927,42 @@ export class ChatAgentService {
       return null;
     }
 
+    // If the customer explicitly approved a *verified complete* cart plan,
+    // finish using the REAL checkout tool instead of asking yet again.
+    // Never auto-create checkout from a single item when a multi-item plan
+    // is absent: that was the cause of the reported lost sale.
+    try {
+      const latest = await this.agentSessionRuntimeService.getSessionById(
+        session.id,
+      );
+      const sale = this.readSaleContext(latest.context);
+      const plan = Array.isArray(sale.expected_purchase_handles)
+        ? sale.expected_purchase_handles : [];
+      if (plan.length > 0) {
+        const outcome = await this.executeTool(
+          'create_checkout_link', '{}', latest,
+        ) as Record<string, unknown>;
+        if (
+          outcome.ok === true &&
+          typeof outcome.checkout_url === 'string' &&
+          /^https:\/\//i.test(outcome.checkout_url)
+        ) {
+          return `Aquí tienes el enlace para finalizar tu compra: ${outcome.checkout_url}`;
+        }
+        if (outcome.next_action === 'ask_city' && !sale.city) {
+          return '¿Para qué ciudad sería el envío?';
+        }
+        if (outcome.next_action === 'ask_payment_method' && !sale.payment_method) {
+          return '¿Con qué medio de pago te gustaría finalizar?';
+        }
+        if (outcome.next_action === 'ask_delivery_method' && !sale.delivery_method) {
+          return '¿Prefieres recibir el pedido a domicilio o recogerlo?';
+        }
+      }
+    } catch (error) {
+      console.error('[ChatPro][checkout-loop] No fue posible finalizar el carrito:', error);
+    }
+
     try {
       const changed = await this.agentSessionRuntimeService.requestHumanAttention(
         session.id,
