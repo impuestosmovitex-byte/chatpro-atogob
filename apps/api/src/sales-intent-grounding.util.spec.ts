@@ -25,6 +25,8 @@ describe('Tenant-neutral sales intent safeguards', () => {
     '¿Pueden enviármelo gratis?',
     'Necesito el domicilio sin costo',
     '¿Me lo pueden dar sin pagar?',
+    '¿Me regalas el envío?',
+    'Can I get free delivery?',
   ])('preserves an explicit concession request: %s', (phrase) => {
     expect(customerExplicitlyAskedForFreeBenefit(phrase)).toBe(true);
     expect(handoffAssertsUnrequestedFreeBenefit(
@@ -47,6 +49,7 @@ describe('Tenant-neutral sales intent safeguards', () => {
     '¿Me puedes comunicar con una persona real?',
     'Asesora',
     'Quiero un agente humano',
+    'I need to speak with a human agent',
   ])('recognizes direct customer requests for an advisor: %s', (phrase) => {
     expect(customerExplicitlyAskedForAdvisor(phrase)).toBe(true);
   });
