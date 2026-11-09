@@ -255,6 +255,32 @@ export class StagingIntegrationsController {
       throw new ForbiddenException('Meta no confirmó que el token pertenezca solo a @chatpro_mw1.');
     }
 
+    // Recovery path after Meta accepted a previous request but our local
+    // application-ID mapping was incomplete. Reconcile first, do NOT send a
+    // second POST or alter Meta when the correct app already owns 'messages'.
+    const existing = await this.instagramWebhookSubscription(key,userId,companyId,slug);
+    if (!existing.ok) {
+      return {ok:false,status:'preflight_unavailable',
+        message:'No se pudo confirmar la suscripción existente con Meta. No se repitió la solicitud.'};
+    }
+    if (existing.accountSubscribed === true &&
+      existing.messageSubscribed === true) {
+      const {error: savedError} = await client.from('company_integrations')
+        .update({config:{...integration.config,webhooks_subscribed:true}})
+        .eq('id',integration.id).eq('company_id',companyId)
+        .eq('status','pending');
+      if (savedError) {
+        return {ok:false,status:'db_confirmation_pending',
+          message:'La suscripción está confirmada en Meta, pero no se pudo guardar el estado local.'};
+      }
+      return {ok:true,account:'chatpro_mw1',subscribed:true,
+        message:'La suscripción de @chatpro_mw1 ya existía en Meta; MW1 la confirmó sin volver a suscribir.'};
+    }
+    if (existing.status !== 'not_subscribed') {
+      return {ok:false,status:'existing_subscription_unverified',
+        message:'Meta devolvió una suscripción que MW1 no ha podido verificar para esta app y el evento messages. No se repitió la solicitud.'};
+    }
+
     const target = new URL(`https://graph.facebook.com/${version}/${externalId}/subscribed_apps`);
     target.searchParams.set('subscribed_fields', 'messages');
     const subscribed = await fetch(target, {
