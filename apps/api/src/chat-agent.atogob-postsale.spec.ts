@@ -190,3 +190,72 @@ describe('MW1 tenant-configured economic handoffs', () => {
     expect(prompt).toContain('preguntas generales sobre sedes');
   });
 });
+
+describe('MW1 company-configured silence on return inquiries', () => {
+  const returnOnlyProfile = {
+    ...companyWithEconomicHandoff,
+    settings: { return_inquiry_handoff_policy: 'required' },
+  };
+  it.each([
+    '¿Hacen devoluciones?',
+    '¿Cómo funciona la política de devoluciones?',
+    'Quiero devolver la prenda',
+    '¿Puedo devolver esta blusa?',
+    'Necesito un reembolso',
+    'Quiero que me devuelvan el dinero',
+  ])('sends %s to a human without a policy answer or model call', async (message) => {
+    const { agent, requestHumanAttention, create } = harness('waiting');
+    agent.resolveMessageRouting = jest.fn(() => {
+      throw new Error('Must not generate a policy answer');
+    });
+    const reply = await agent.reply(returnOnlyProfile, session, message);
+    expect(reply).toContain('asesores');
+    expect(reply).not.toMatch(/devoluci[oó]n|reembolso|30 d[ií]as|7 d[ií]as|pol[ií]tica/i);
+    expect(requestHumanAttention).toHaveBeenCalledTimes(1);
+    expect(agent.resolveMessageRouting).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '¿Hacen cambios de talla?',
+    '¿Cuánto demora el envío?',
+    'No quiero devolución, quiero cambiar la talla',
+    'No necesito reembolso, solo cambio de color',
+  ])('does not transfer normal questions or negated return intent: %s', async (message) => {
+    const { agent, requestHumanAttention } = harness();
+    const result = await agent.routeReturnInquiryToHuman(
+      returnOnlyProfile, session, message,
+    );
+    expect(result).toBeNull();
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it('never applies the return-only rule to a different company', async () => {
+    const { agent, requestHumanAttention } = harness();
+    expect(await agent.routeReturnInquiryToHuman(
+      companyWithoutEconomicHandoff, session, '¿Hacen devoluciones?',
+    )).toBeNull();
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it('blocks policy disclosure even if an AI draft mentions return conditions', async () => {
+    const { agent, requestHumanAttention } = harness('waiting');
+    const reply = await agent.enforceCompanyReply(
+      returnOnlyProfile, session,
+      'Sí. Tenemos devoluciones durante 30 días con estas condiciones...',
+    );
+    expect(reply).toContain('asesores');
+    expect(reply).not.toMatch(/devoluci[oó]n|30 d[ií]as|condiciones/i);
+    expect(requestHumanAttention).toHaveBeenCalledTimes(1);
+  });
+
+  it('instructs the model about the tenant-owned no-policy/no-refund rule', () => {
+    const { agent } = harness();
+    const text = agent.buildInstructions(returnOnlyProfile, session, false);
+    expect(text).toContain('Nunca expliques la política');
+    const otherText = agent.buildInstructions(
+      companyWithoutEconomicHandoff, session, false,
+    );
+    expect(otherText).not.toContain('Nunca expliques la política');
+  });
+});
