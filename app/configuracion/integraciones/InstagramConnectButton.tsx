@@ -113,6 +113,16 @@ export function InstagramConnectButton({
     accountSubscribed?: boolean | null;
     messageSubscribed?: boolean | null;
     subscriptionRecordsFound?: number;
+    reportedApps?: Array<{
+      id: string | null;
+      app_id: string | null;
+      appId: string | null;
+      applicationId: string | null;
+      applicationAppId: string | null;
+      appObjectId: string | null;
+      subscribedFields: string[] | null;
+      schemaKeys: string[];
+    }>;
     status?: string;
     error?: string;
   } | null>(null);
@@ -571,6 +581,12 @@ export function InstagramConnectButton({
         ok?: boolean; accountSubscribed?: boolean | null;
         messageSubscribed?: boolean | null;
         subscriptionRecordsFound?: number;
+        reportedApps?: Array<{
+          id: string | null; app_id: string | null; appId: string | null;
+          applicationId: string | null; applicationAppId: string | null;
+          appObjectId: string | null; subscribedFields: string[] | null;
+          schemaKeys: string[];
+        }>;
         status?: string; error?: string;
       };
       setSubscriptionResult(response.ok ? data : {
@@ -834,12 +850,41 @@ export function InstagramConnectButton({
                   ) : (
                     <p>{subscriptionResult.error || 'Meta no confirmó la suscripción.'}</p>
                   )}
+                  {subscriptionResult.ok &&
+                  subscriptionResult.status === 'unrecognized_app_id' &&
+                  Array.isArray(subscriptionResult.reportedApps) ? (
+                    <div style={{marginTop:8,padding:10,borderRadius:8,
+                      background:'#fff',border:'1px solid #d7deeb'}}>
+                      <strong>Diagnóstico de aplicación (sin claves privadas)</strong>
+                      {subscriptionResult.reportedApps.map((item,index) => (
+                        <div key={index} style={{marginTop:6}}>
+                          <small>Registro {index+1} —
+                            ID: {item.id ?? 'no incluido'} ·
+                            app_id: {item.app_id ?? item.appId ?? 'no incluido'} ·
+                            application.id: {item.applicationId ?? 'no incluido'} ·
+                            application.app_id: {item.applicationAppId ?? 'no incluido'} ·
+                            app.id: {item.appObjectId ?? 'no incluido'}</small>
+                          <small>Campos: {item.subscribedFields === null
+                            ? 'no devueltos por Meta'
+                            : item.subscribedFields.length
+                              ? item.subscribedFields.join(', ')
+                              : 'lista vacía'}</small>
+                          <small>Claves estructurales: {item.schemaKeys.join(', ') || 'sin datos'}</small>
+                        </div>
+                      ))}
+                      <small>Estos son identificadores públicos de aplicaciones,
+                        nunca tokens, contraseñas o información de clientes.</small>
+                    </div>
+                  ) : null}
                   <small>Esta consulta no activa eventos ni cambia las suscripciones.</small>
                 </div>
               ) : null}
               {config?.webhookPreflight?.subscriptionPilotReady &&
               integration?.details?.username?.trim().toLowerCase() === 'chatpro_mw1' &&
-              config.webhookPreflight.appSubscriptionConfirmed !== true ? (
+              config.webhookPreflight.appSubscriptionConfirmed !== true &&
+              (subscriptionResult?.status === 'not_subscribed' ||
+               (subscriptionResult?.accountSubscribed === true &&
+                subscriptionResult?.messageSubscribed === true)) ? (
                 <button type="button" className={styles.connectButton}
                   onClick={() => void subscribeInstagramPilot()}
                   disabled={subscribingPilot || checkingSubscription || testing || connecting}>
