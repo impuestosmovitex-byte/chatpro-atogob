@@ -1,125 +1,261 @@
 import { ChatAgentService } from './chat-agent.service';
 
-const atogob = { slug: 'atogob' } as any;
-const maogo = { slug: 'maogo' } as any;
-const session = { id: 'fake-session', context: {} } as any;
+const companyWithEconomicHandoff = {
+  slug: 'fashion-example',
+  name: 'Tienda de prueba',
+  assistantName: 'Asesora',
+  aiInstructions: [
+    'REGLA PRIORITARIA: SOLICITUDES ECONÓMICAS.',
+    'Las peticiones expresas de reembolso, devolución de dinero o cancelaciones de pedidos se transfieren a un asesor.',
+    'Las preguntas informativas y los cambios de talla se responden normalmente.',
+  ].join(' '),
+  settings: {},
+} as any;
+const companyWithoutEconomicHandoff = {
+  slug: 'other-company',
+  name: 'Otra empresa',
+  aiInstructions: 'Responde consultas de la empresa y usa sus políticas.',
+  settings: {},
+} as any;
+const session = { id: 'fake-session', context: { conversation_category: 'sales' } } as any;
 
-function harness(status = 'waiting') {
+function harness(status = 'human') {
   const agent = Object.create(ChatAgentService.prototype) as any;
-  const requestHumanAttention = jest.fn(async () => ({
-    attentionStatus: status,
-  }));
+  const requestHumanAttention = jest.fn(async () => ({ attentionStatus: status }));
   agent.agentSessionRuntimeService = { requestHumanAttention };
   agent.enforceSalesReply = jest.fn(async (_session: unknown, text: string) => text);
-  return { agent, requestHumanAttention };
+  agent.getModel = () => 'test-model';
+  const create = jest.fn(async () => ({ output_text: '{"explicit_request":false}' }));
+  agent.getClient = () => ({ responses: { create } });
+  agent.getContextStatus = () => ({ is_within_context_window: true });
+  agent.prepareSessionForIncomingActivity = jest.fn(async () => session);
+  return { agent, requestHumanAttention, create };
 }
 
-describe('ATOGOB strict post-sale policy', () => {
-  it('intercepts an explicit return request before AI routing', async () => {
-    const { agent, requestHumanAttention } = harness('human');
-    agent.getContextStatus = () => ({ is_within_context_window: true });
-    agent.prepareSessionForIncomingActivity = jest.fn(async () => session);
+describe('MW1 tenant-configured economic handoffs', () => {
+  it('detects the handoff policy from company instructions, not the brand slug', () => {
+    const { agent } = harness();
+    expect(agent.companyRequiresEconomicHandoff(companyWithEconomicHandoff)).toBe(true);
+    expect(agent.companyRequiresEconomicHandoff(companyWithoutEconomicHandoff)).toBe(false);
+    expect(agent.companyRequiresEconomicHandoff({
+      ...companyWithEconomicHandoff,
+      slug: 'another-tenant',
+      settings: { economic_handoff_policy: 'disabled' },
+    })).toBe(false);
+    expect(agent.companyRequiresEconomicHandoff({
+      ...companyWithoutEconomicHandoff,
+      settings: { economic_handoff_policy: 'required' },
+    })).toBe(true);
+  });
+
+  it('transfers an explicit request before any sales routing', async () => {
+    const { agent, requestHumanAttention, create } = harness();
+    create.mockResolvedValue({ output_text: '{"explicit_request":true}' });
     agent.resolveMessageRouting = jest.fn(() => {
-      throw new Error('AI routing should not run');
+      throw new Error('AI routing must not run for mandatory human request');
     });
-    const result = await agent.reply(atogob, session, 'Devolución por favor');
+
+    const result = await agent.reply(
+      companyWithEconomicHandoff, session, 'Quiero cancelar mi pedido',
+    );
     expect(result).toContain('asesores');
-    expect(result).not.toMatch(/devoluci[oó]n|reembolso|cancelaci[oó]n/i);
+    expect(result).not.toMatch(/cancelar|devoluci[oó]n|reembolso/i);
     expect(requestHumanAttention).toHaveBeenCalledTimes(1);
     expect(agent.resolveMessageRouting).not.toHaveBeenCalled();
   });
 
-  it('blocks spontaneous refund choices from ATOGOB AI', async () => {
-    const { agent, requestHumanAttention } = harness();
-    const result = await agent.enforceAtogobReply(
-      atogob,
-      session,
-      '¿Prefieres cambio de talla o devolución del dinero?',
-    );
-    expect(result).toContain('asesores');
-    expect(result).not.toMatch(/devoluci[oó]n|reembolso|cancelaci[oó]n/i);
-    expect(requestHumanAttention).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps exchange requests with expressly declined refunds in the normal flow', () => {
-    const { agent } = harness();
-    expect(agent.isAtogobRestrictedCustomerRequest(
-      'Quiero un cambio por talla, no quiero devolución',
-    )).toBe(false);
-    expect(agent.isAtogobRestrictedCustomerRequest(
-      'No quiero devolución, solo cambio por color',
-    )).toBe(false);
-    expect(agent.isAtogobRestrictedCustomerRequest(
-      'No quiero devolución, quiero cancelar el pedido',
-    )).toBe(true);
-    expect(agent.isAtogobRestrictedCustomerRequest(
-      'Quiero cambiar de talla. No quiero que me devuelvan el dinero',
-    )).toBe(false);
-  });
-
-  it('preserves valid exchanges without automatic transfer', async () => {
-    const { agent, requestHumanAttention } = harness();
-    const valid = 'Podemos revisar las condiciones de cambio de la prenda. ¿Tienes el número de pedido?';
-    expect(await agent.enforceAtogobReply(atogob, session, valid)).toBe(valid);
+  it.each([
+    '¿Hacen devoluciones?',
+    '¿Cuáles son las políticas de cancelaciones?',
+    'Quiero cambiar la blusa, no quiero devolución',
+    'Quiero devolver la prenda',
+    '¿Puedo cancelar un pedido si no me sirve la talla?',
+  ])('does not preempt informative or ambiguous conversations: %s', async (message) => {
+    const { agent, requestHumanAttention, create } = harness();
+    create.mockResolvedValue({ output_text: '{"explicit_request":false}' });
+    agent.resolveMessageRouting = jest.fn(async () => {
+      throw new Error('arrived at normal routing');
+    });
+    await expect(agent.reply(companyWithEconomicHandoff, session, message))
+      .rejects.toThrow('arrived at normal routing');
     expect(requestHumanAttention).not.toHaveBeenCalled();
+    expect(agent.resolveMessageRouting).toHaveBeenCalledTimes(1);
   });
 
-  it('blocks unsolicited monetary alternatives for every company without changing their policies', async () => {
-    const { agent, requestHumanAttention } = harness();
-    const text = '¿Prefieres cambio o devolución?';
-    expect(await agent.enforceAtogobReply(maogo, session, text))
-      .toBe('Con gusto revisamos tu solicitud según las condiciones de la tienda.');
+  it('does not enforce another tenant\'s mandatory handoff rule', async () => {
+    const { agent, requestHumanAttention, create } = harness();
+    agent.resolveMessageRouting = jest.fn(async () => {
+      throw new Error('arrived at tenant routing');
+    });
+    await expect(agent.reply(companyWithoutEconomicHandoff, session, 'Quiero cancelar mi pedido'))
+      .rejects.toThrow('arrived at tenant routing');
+    expect(create).not.toHaveBeenCalled();
     expect(requestHumanAttention).not.toHaveBeenCalled();
   });
 
   it.each([
-    '¿No quieres una devolución de dinero?',
-    '¿Quieres cambio de talla o devolución?',
-    '¿Prefieres el cambio o un reembolso?',
-    'Podemos ofrecer una devolución del valor pagado.',
-    '¿Quieres cancelar o cambiar el pedido?',
-  ])('never offers an unrequested economic option: %s', async (draft) => {
+    'Quiero un reembolso de mi pedido',
+    'Quiero cancelar mi pedido',
+    'Necesito que me devuelvan el dinero',
+    'No quiero devolución, quiero cancelar el pedido',
+  ])('has a conservative explicit-request fallback when classification fails: %s', async (message) => {
+    const { agent, create } = harness();
+    create.mockRejectedValue(new Error('model unavailable'));
+    expect(await agent.isExplicitEconomicRequest(message)).toBe(true);
+  });
+
+  it.each([
+    '¿Hacen devoluciones?',
+    'Quiero devolver la prenda',
+    'Quiero cambiar la talla, no quiero devolución',
+    '¿Se puede cancelar un pedido?',
+  ])('does not infer a mandatory transfer from an ambiguous phrase: %s', async (message) => {
+    const { agent, create } = harness();
+    create.mockResolvedValue({ output_text: '{"explicit_request":false}' });
+    expect(await agent.isExplicitEconomicRequest(message)).toBe(false);
+  });
+
+  it('never confirms a transfer that did not happen', async () => {
+    const { agent } = harness('waiting');
+    const pending = await agent.requestCompanyPolicyReview(session, 'review');
+    // waiting confirms that the request entered the human attention queue.
+    expect(pending).toContain('te voy a comunicar');
+    agent.agentSessionRuntimeService.requestHumanAttention = jest.fn(async () => {
+      throw new Error('handoff unavailable');
+    });
+    const failed = await agent.requestCompanyPolicyReview(session, 'review');
+    expect(failed).toContain('comunícate');
+  });
+
+  it('keeps normal exchange information and sales follow-up intact', async () => {
     const { agent, requestHumanAttention } = harness();
-    const result = await agent.enforceAtogobReply(maogo, session, draft);
-    expect(result).not.toMatch(/devoluci[oó]n|reembolso|cancelaci[oó]n|cancelar/i);
-    expect(result).toContain('condiciones de la tienda');
+    const text = 'Claro, hacemos cambios 😊 ¿Qué prenda te gustó?';
+    expect(await agent.enforceCompanyReply(companyWithEconomicHandoff, session, text)).toBe(text);
     expect(requestHumanAttention).not.toHaveBeenCalled();
   });
 
-  it('preserves policy responses without economic options', async () => {
+  it('allows informational answers even if a policy topic is mentioned', async () => {
     const { agent, requestHumanAttention } = harness();
-    const text = 'Los cambios se revisan según las condiciones de cada producto.';
-    expect(await agent.enforceAtogobReply(maogo, session, text)).toBe(text);
+    const text = 'Para los cambios, el plazo depende de la condición real del producto.';
+    expect(await agent.enforceCompanyReply(companyWithEconomicHandoff, session, text)).toBe(text);
     expect(requestHumanAttention).not.toHaveBeenCalled();
   });
 
-  it('loads approved company policies before a chat has a service classification', () => {
+  it('blocks unsolicited economic alternatives for all companies', async () => {
+    const { agent, requestHumanAttention } = harness();
+    const reply = await agent.enforceCompanyReply(
+      companyWithoutEconomicHandoff,
+      session,
+      '¿Prefieres cambio de talla o devolución del dinero?',
+    );
+    expect(reply).toBe('Con gusto revisamos tu solicitud según las condiciones de la tienda.');
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes transferred economic messages when the company requires that', () => {
     const { agent } = harness();
-    agent.readConversationCategory = () => 'unclassified';
+    expect(agent.sanitizeCompanyHandoffMessage(
+      companyWithEconomicHandoff, 'Revisaremos tu reembolso con un asesor',
+    )).toBe('Para revisar si tu solicitud es viable, uno de nuestros asesores te atenderá.');
+    expect(agent.sanitizeCompanyHandoffMessage(
+      companyWithoutEconomicHandoff, 'Un asesor revisará el reembolso',
+    )).toBe('Un asesor revisará el reembolso');
+  });
+
+  it('preserves the sale when the customer asks general shipping or change questions', () => {
+    const { agent } = harness();
+    expect(agent.classifyConversationCategory(
+      session, '¿Cuánto demora en llegar mi pedido?', 'other',
+    )).toBe('sales');
+    expect(agent.classifyConversationCategory(
+      session, '¿Hacen cambios?', 'other',
+    )).toBe('sales');
+    expect(agent.classifyConversationCategory(
+      session, '¿Tienen garantía?', 'other',
+    )).toBe('sales');
+    expect(agent.classifyConversationCategory(
+      session, '¿Dónde está mi pedido?', 'other',
+    )).toBe('service');
+  });
+
+  it('makes approved company policy available in both sales and service', () => {
+    const { agent } = harness();
     agent.getCommercialFlowRules = () => '';
     const profile = {
-      slug: 'other-brand',
-      name: 'Empresa piloto',
-      assistantName: 'Asistente',
-      aiInstructions: 'No prometas resultados.',
-      settings: {
-        knowledge_base: { exchanges_returns: 'CAMBIOS: consultar primero el producto real.' },
-      },
+      ...companyWithEconomicHandoff,
+      settings: { knowledge_base: { exchanges_returns: 'CAMBIOS: según el producto real.' } },
     };
     const prompt = agent.buildInstructions(profile, session, false);
-    expect(prompt).toContain('CAMBIOS: consultar primero el producto real.');
-    expect(prompt).toContain('Está prohibido introducir por tu cuenta opciones de devolución de dinero');
+    expect(prompt).toContain('CAMBIOS: según el producto real.');
+    expect(prompt).toContain('preguntas generales sobre sedes');
+  });
+});
+
+describe('MW1 company-configured silence on return inquiries', () => {
+  const returnOnlyProfile = {
+    ...companyWithEconomicHandoff,
+    settings: { return_inquiry_handoff_policy: 'required' },
+  };
+  it.each([
+    '¿Hacen devoluciones?',
+    '¿Cómo funciona la política de devoluciones?',
+    'Quiero devolver la prenda',
+    '¿Puedo devolver esta blusa?',
+    'Necesito un reembolso',
+    'Quiero que me devuelvan el dinero',
+  ])('sends %s to a human without a policy answer or model call', async (message) => {
+    const { agent, requestHumanAttention, create } = harness('waiting');
+    agent.resolveMessageRouting = jest.fn(() => {
+      throw new Error('Must not generate a policy answer');
+    });
+    const reply = await agent.reply(returnOnlyProfile, session, message);
+    expect(reply).toContain('asesores');
+    expect(reply).not.toMatch(/devoluci[oó]n|reembolso|30 d[ií]as|7 d[ií]as|pol[ií]tica/i);
+    expect(requestHumanAttention).toHaveBeenCalledTimes(1);
+    expect(agent.resolveMessageRouting).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
-  it('sanitizes a handoff message and does not pretend a failed transfer succeeded', async () => {
+  it.each([
+    '¿Hacen cambios de talla?',
+    '¿Cuánto demora el envío?',
+    'No quiero devolución, quiero cambiar la talla',
+    'No necesito reembolso, solo cambio de color',
+  ])('does not transfer normal questions or negated return intent: %s', async (message) => {
+    const { agent, requestHumanAttention } = harness();
+    const result = await agent.routeReturnInquiryToHuman(
+      returnOnlyProfile, session, message,
+    );
+    expect(result).toBeNull();
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it('never applies the return-only rule to a different company', async () => {
+    const { agent, requestHumanAttention } = harness();
+    expect(await agent.routeReturnInquiryToHuman(
+      companyWithoutEconomicHandoff, session, '¿Hacen devoluciones?',
+    )).toBeNull();
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it('blocks policy disclosure even if an AI draft mentions return conditions', async () => {
+    const { agent, requestHumanAttention } = harness('waiting');
+    const reply = await agent.enforceCompanyReply(
+      returnOnlyProfile, session,
+      'Sí. Tenemos devoluciones durante 30 días con estas condiciones...',
+    );
+    expect(reply).toContain('asesores');
+    expect(reply).not.toMatch(/devoluci[oó]n|30 d[ií]as|condiciones/i);
+    expect(requestHumanAttention).toHaveBeenCalledTimes(1);
+  });
+
+  it('instructs the model about the tenant-owned no-policy/no-refund rule', () => {
     const { agent } = harness();
-    expect(agent.sanitizeAtogobHandoffMessage(atogob, 'Revisaremos tu devolución con un asesor.'))
-      .toBe('Para revisar si tu solicitud es viable, uno de nuestros asesores te atenderá.');
-    agent.agentSessionRuntimeService.requestHumanAttention = jest.fn(async () => {
-      throw new Error('simulated handoff failure');
-    });
-    const fallback = await agent.requestAtogobPolicyReview(session, 'test');
-    expect(fallback).toContain('comunícate');
-    expect(fallback).not.toContain('te voy a comunicar');
+    const text = agent.buildInstructions(returnOnlyProfile, session, false);
+    expect(text).toContain('Nunca expliques la política');
+    const otherText = agent.buildInstructions(
+      companyWithoutEconomicHandoff, session, false,
+    );
+    expect(otherText).not.toContain('Nunca expliques la política');
   });
 });

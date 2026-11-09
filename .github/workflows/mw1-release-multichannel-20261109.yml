@@ -1,0 +1,32 @@
+name: MW1 production candidate - unified channel safety
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/chat-agent.service.ts'
+      - 'apps/api/src/whatsapp-webhook.controller.ts'
+      - 'apps/api/src/meta-social-ai.service.ts'
+      - 'apps/api/src/meta-social-message.service.ts'
+      - 'apps/api/src/customer-order.service.spec.ts'
+      - 'apps/api/src/chat-agent.atogob-postsale.spec.ts'
+      - 'apps/api/src/chat-agent.visual-sales.spec.ts'
+      - 'apps/api/src/whatsapp-order-lookup-continuity.spec.ts'
+      - 'apps/api/src/mw1-social-channel-parity.spec.ts'
+      - 'apps/api/src/mw1-multichannel-conversation-simulations.spec.ts'
+      - '.github/workflows/mw1-release-multichannel-20261109.yml'
+jobs:
+  all-channels-safety:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm test -- --runInBand mw1-multichannel-conversation-simulations.spec.ts mw1-social-channel-parity.spec.ts chat-agent.atogob-postsale.spec.ts chat-agent.business-scope.spec.ts chat-agent.visual-sales.spec.ts whatsapp-order-lookup-continuity.spec.ts customer-order.service.spec.ts
+      - run: npm run build

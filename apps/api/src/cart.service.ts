@@ -845,6 +845,7 @@ export class CartService {
       products_total_cop: String(itemsTotal),
       lines: cart.map((line) => ({
         product_id: line.productId,
+        product_url: line.productUrl,
         variant_id: line.variantId,
         product_title: line.productTitle,
         variant_title:

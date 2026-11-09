@@ -1,0 +1,31 @@
+name: MW1 integrated AI regression checks
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/chat-agent.service.ts'
+      - 'apps/api/src/whatsapp-webhook.controller.ts'
+      - 'apps/api/src/customer-order.service.spec.ts'
+      - 'apps/api/src/chat-agent.atogob-postsale.spec.ts'
+      - 'apps/api/src/chat-agent.business-scope.spec.ts'
+      - 'apps/api/src/chat-agent.visual-sales.spec.ts'
+      - 'apps/api/src/whatsapp-order-lookup-continuity.spec.ts'
+      - '.github/workflows/mw1-integrated-ai-regressions.yml'
+
+jobs:
+  full-integration-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      # Unit tests do not need external ffmpeg executable download.
+      - run: npm ci --ignore-scripts
+      - run: npm test -- --runInBand chat-agent.atogob-postsale.spec.ts chat-agent.business-scope.spec.ts customer-order.service.spec.ts whatsapp-order-lookup-continuity.spec.ts chat-agent.visual-sales.spec.ts whatsapp-ai-delivery.spec.ts
+      - run: npm run build

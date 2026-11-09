@@ -288,6 +288,53 @@ export class MetaSocialAiService {
   }
 
 
+  private classifySocialImagePurpose(input: {
+    context: Record<string, unknown>;
+    imageType: string;
+    primaryIntent: string;
+    hasProductIntent: boolean;
+    hasPaymentIntent: boolean;
+  }): { isServiceEvidence: boolean; productInquiry: boolean } {
+    const area = input.context.service_area;
+    const serviceArea = area && typeof area === 'object' && !Array.isArray(area)
+      ? area as Record<string, unknown> : null;
+    const isServiceEvidence =
+      input.context.conversation_category === 'service' ||
+      serviceArea?.areaType === 'service' ||
+      Boolean(input.context.customer_service_flow) ||
+      input.primaryIntent === 'customer_service' ||
+      input.imageType === 'warranty_or_return';
+    const productInquiry = !isServiceEvidence &&
+      !input.hasPaymentIntent &&
+      (
+        input.hasProductIntent ||
+        (input.context.conversation_category === 'sales' &&
+          input.imageType === 'product')
+      );
+    return { isServiceEvidence, productInquiry };
+  }
+
+  async replyToMessengerImage(input: {
+    companyId: string;
+    pageId: string;
+    sessionId: string;
+    recipientId: string;
+    mediaUrl: string;
+    caption?: string;
+    credentialsEncrypted: string | null;
+  }): Promise<void> {
+    return this.replyToInstagramImage({
+      companyId: input.companyId,
+      instagramId: input.pageId,
+      sessionId: input.sessionId,
+      recipientId: input.recipientId,
+      mediaUrl: input.mediaUrl,
+      caption: input.caption,
+      credentialsEncrypted: input.credentialsEncrypted,
+      channel: 'messenger',
+    });
+  }
+
   async replyToInstagramImage(input: {
     companyId: string;
     instagramId: string;
@@ -298,7 +345,9 @@ export class MetaSocialAiService {
     credentialsEncrypted: string | null;
     setupSource?: string;
     apiVersion?: string;
+    channel?: 'instagram' | 'messenger';
   }): Promise<void> {
+    const channel = input.channel === 'messenger' ? 'messenger' : 'instagram';
     const client = this.supabaseService.getClient();
 
     const { data: sessionRow, error: sessionError } =
@@ -307,6 +356,8 @@ export class MetaSocialAiService {
         .select('id, attention_status')
         .eq('id', input.sessionId)
         .eq('company_id', input.companyId)
+        .eq('channel', channel)
+        .eq('external_customer_id', input.recipientId)
         .maybeSingle();
 
     if (sessionError) {
@@ -351,6 +402,65 @@ export class MetaSocialAiService {
       throw new Error(
         'La sesión comercial visual de Instagram no pertenece a la empresa activa.',
       );
+    }
+
+    // An attached caption is a real customer message. Respect the active
+    // tenant's mandatory return-to-human rule before downloading/analyzing
+    // the photo; the answer must never reveal the returns policy.
+    const captionHandoff = await this.chatAgentService.routeReturnInquiryToHuman(
+      profile,
+      commercialSession,
+      input.caption?.trim() || '',
+    );
+    if (captionHandoff !== null) {
+      const providerMessageId = channel === 'messenger'
+        ? await this.sendMessengerText({
+            pageId: input.instagramId,
+            recipientId: input.recipientId,
+            text: captionHandoff,
+            credentialsEncrypted: input.credentialsEncrypted,
+          })
+        : await this.sendInstagramText({
+            instagramId: input.instagramId,
+            recipientId: input.recipientId,
+            text: captionHandoff,
+            credentialsEncrypted: input.credentialsEncrypted,
+            setupSource: input.setupSource,
+            apiVersion: input.apiVersion,
+          });
+
+      const sentAt = new Date().toISOString();
+      const { error: saveError } = await client.from('social_conversations')
+        .insert({
+          company_id: input.companyId,
+          session_id: input.sessionId,
+          channel,
+          external_customer_id: input.recipientId,
+          provider_message_id: providerMessageId,
+          sender: 'assistant',
+          author_type: 'assistant',
+          message_type: 'text',
+          message: captionHandoff,
+          media_url: null,
+          created_at: sentAt,
+        });
+      if (saveError) {
+        throw new Error(
+          `No se pudo guardar la transferencia de ${channel}: ${saveError.message}`,
+        );
+      }
+
+      const { error: updateError } = await client
+        .from('social_conversation_sessions')
+        .update({ last_message_at: sentAt, updated_at: sentAt })
+        .eq('id', input.sessionId)
+        .eq('company_id', input.companyId);
+      if (updateError) {
+        throw new Error(
+          `No se pudo actualizar la transferencia de ${channel}: ${updateError.message}`,
+        );
+      }
+      return;
     }
 
     const mediaResponse = await fetch(input.mediaUrl);
@@ -405,6 +515,7 @@ export class MetaSocialAiService {
         .from('social_conversations')
         .select('author_type, message, message_type, created_at')
         .eq('company_id', input.companyId)
+        .eq('channel', channel)
         .eq('session_id', input.sessionId)
         .order('created_at', { ascending: false })
         .limit(16);
@@ -458,6 +569,7 @@ export class MetaSocialAiService {
           'product significa producto, prenda, ficha de producto, captura de catálogo, carrito o publicación donde lo relevante sea uno o varios productos.',
           'mixed significa que hay simultáneamente señales claras relacionadas con pago y producto.',
           'has_product_intent=true cuando el historial o el mensaje muestran que la persona quiere identificar, consultar, comprar, agregar, revisar talla, color, disponibilidad o precio del producto.',
+          'Durante una venta activa, una imagen de producto sin texto sirve como referencia comercial aunque no autoriza agregar al carrito ni completar una compra. No exijas una pregunta genérica si ya puedes buscar la referencia.',
           'Si la IA acaba de pedir una foto o referencia para continuar la venta, una imagen de producto sí puede tener intención comercial aunque llegue sin texto.',
           'has_payment_intent=true cuando la imagen parece comprobante y el historial muestra que la persona estaba pagando o la IA había solicitado evidencia del pago.',
           'Extrae datos del producto únicamente cuando sean visibles. No inventes nombre, referencia, precio, color ni texto.',
@@ -635,8 +747,44 @@ export class MetaSocialAiService {
     const now = new Date().toISOString();
 
     let agentMessage: string;
+    let directOutfitReply: string | null = null;
+    const { isServiceEvidence, productInquiry } =
+      this.classifySocialImagePurpose({
+        context: commercialSession.context,
+        imageType,
+        primaryIntent,
+        hasProductIntent,
+        hasPaymentIntent,
+      });
 
-    if (
+    // Service evidence always wins over commercial image matching, across
+    // WhatsApp, Instagram and Messenger. The image is not a new cart item.
+    if (isServiceEvidence) {
+      commercialSession = await this.agentSessionRuntimeService.updateSession(
+        commercialSession.id, {
+          context: {
+            ...commercialSession.context,
+            conversation_category: 'service',
+            conversation_category_updated_at: now,
+            last_service_evidence: {
+              type: 'image', channel,
+              caption: input.caption?.trim() || null,
+              received_at: now,
+            },
+          },
+        },
+      );
+      agentMessage = [
+        '[EVIDENCIA_SERVICIO]',
+        input.caption?.trim()
+          ? `Texto del cliente: ${input.caption.trim()}`
+          : 'El cliente compartió una imagen para la consulta actual de servicio.',
+        `Tipo observado: ${imageType}.`,
+        `Contexto: ${advisorSummary}.`,
+        'Esta imagen es evidencia de la gestión actual. No actives catálogo, selección de producto ni carrito.',
+        'Responde según la política de la empresa sin inventar soluciones; transfiere solo si hace falta una acción humana.',
+      ].join('\n');
+    } else if (
       hasPaymentIntent &&
       (
         primaryIntent === 'validate_payment' ||
@@ -685,6 +833,44 @@ export class MetaSocialAiService {
         'Si la configuración indica que después del comprobante corresponde crear el checkout y están completos los requisitos, utiliza las herramientas reales disponibles.',
         'No transfieras automáticamente a un asesor solamente por recibir el comprobante.',
       ].join('\n');
+    } else if (
+      imageType === 'product' &&
+      !hasPaymentIntent &&
+      this.chatAgentService.outfitClarificationForImage({
+        summary,
+        category,
+        parts: productName ? [productName] : [],
+        searchTerms,
+        caption: input.caption?.trim() || '',
+      })
+    ) {
+      const clarification =
+        this.chatAgentService.outfitClarificationForImage({
+          summary, category,
+          parts: productName ? [productName] : [],
+          searchTerms,
+          caption: input.caption?.trim() || '',
+        });
+      commercialSession =
+        await this.agentSessionRuntimeService.updateSession(
+          commercialSession.id,
+          {
+            context: {
+              ...commercialSession.context,
+              pending_outfit_visual: {
+                received_at: now,
+                channel,
+                summary,
+                category,
+                product_name: productName || null,
+                search_terms: searchTerms,
+                colors,
+              },
+            },
+          },
+        );
+      directOutfitReply = clarification;
+      agentMessage = '';
     } else if (
       imageType === 'product' ||
       imageType === 'mixed'
@@ -829,8 +1015,8 @@ export class MetaSocialAiService {
               )
               .join(' | ')}`
           : '',
-        hasProductIntent
-          ? 'Existe intención comercial relacionada con este producto. Continúa desde el contexto real de la venta.'
+        productInquiry
+          ? 'La foto es una referencia para continuar la búsqueda o consulta comercial. No confirma por sí sola la compra ni autoriza añadir al carrito. Usa datos del catálogo y pregunta solo lo indispensable.'
           : 'La imagen contiene un producto, pero la intención actual no es suficientemente clara. Haz una sola pregunta breve para aclarar qué necesita.',
         'Si existe coincidencia exacta, usa las herramientas comerciales reales para consultar producto, variantes, precio y disponibilidad.',
         'No uses el precio visible de la captura como precio vigente si el catálogo real devuelve otro valor.',
@@ -878,6 +1064,7 @@ export class MetaSocialAiService {
     }
 
     const reply = (
+      directOutfitReply ??
       await this.chatAgentService.reply(
         profile,
         commercialSession,
@@ -901,16 +1088,21 @@ export class MetaSocialAiService {
       );
     }
 
-    const providerMessageId =
-      await this.sendInstagramText({
-        instagramId: input.instagramId,
-        recipientId: input.recipientId,
-        text: reply,
-        credentialsEncrypted:
-          input.credentialsEncrypted,
-        setupSource: input.setupSource,
-        apiVersion: input.apiVersion,
-      });
+    const providerMessageId = channel === 'messenger'
+      ? await this.sendMessengerText({
+          pageId: input.instagramId,
+          recipientId: input.recipientId,
+          text: reply,
+          credentialsEncrypted: input.credentialsEncrypted,
+        })
+      : await this.sendInstagramText({
+          instagramId: input.instagramId,
+          recipientId: input.recipientId,
+          text: reply,
+          credentialsEncrypted: input.credentialsEncrypted,
+          setupSource: input.setupSource,
+          apiVersion: input.apiVersion,
+        });
 
     const sentAt = new Date().toISOString();
 
@@ -920,7 +1112,7 @@ export class MetaSocialAiService {
         .insert({
           company_id: input.companyId,
           session_id: input.sessionId,
-          channel: 'instagram',
+          channel,
           external_customer_id:
             input.recipientId,
           provider_message_id:
