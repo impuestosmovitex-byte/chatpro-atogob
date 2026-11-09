@@ -851,7 +851,9 @@ export function InstagramConnectButton({
                     <p>{subscriptionResult.error || 'Meta no confirmó la suscripción.'}</p>
                   )}
                   {subscriptionResult.ok &&
-                  subscriptionResult.status === 'unrecognized_app_id' &&
+                  (subscriptionResult.status === 'unrecognized_app_id' ||
+                   (subscriptionResult.accountSubscribed === true &&
+                    subscriptionResult.messageSubscribed !== true)) &&
                   Array.isArray(subscriptionResult.reportedApps) ? (
                     <div style={{marginTop:8,padding:10,borderRadius:8,
                       background:'#fff',border:'1px solid #d7deeb'}}>
