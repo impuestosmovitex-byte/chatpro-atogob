@@ -1125,6 +1125,34 @@ export class WhatsappWebhookController {
         input.phone,
       );
 
+      // A caption can itself be a return/refund inquiry. The same company
+      // policy applies to photographs, without running product search first.
+      const captionHandoff = await this.chatAgentService.routeReturnInquiryToHuman(
+        profile,
+        session,
+        input.caption || '',
+      );
+      if (captionHandoff !== null) {
+        const sent = await this.whatsappMessagingService.sendText(
+          profile.id,
+          input.phone,
+          captionHandoff,
+        );
+        replySent = true;
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: captionHandoff,
+          sender: 'assistant',
+          authorType: 'ai',
+          providerMessageId: sent.messageId,
+          aiResponse: captionHandoff,
+        });
+        await this.conversationMemoryService.touchSession(session.id);
+        return;
+      }
+
       const sessionContext =
         session.context &&
         typeof session.context === 'object' &&
