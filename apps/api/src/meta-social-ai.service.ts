@@ -704,6 +704,8 @@ export class MetaSocialAiService {
         commercialSession.id, {
           context: {
             ...commercialSession.context,
+            conversation_category: 'service',
+            conversation_category_updated_at: now,
             last_service_evidence: {
               type: 'image', channel,
               caption: input.caption?.trim() || null,
