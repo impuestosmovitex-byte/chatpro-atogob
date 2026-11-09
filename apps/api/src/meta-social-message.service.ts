@@ -39,6 +39,16 @@ export class MetaSocialMessageService {
       }
     >();
 
+  private readonly pendingMessengerImages = new Map<string, {
+    companyId: string;
+    pageId: string;
+    sessionId: string;
+    recipientId: string;
+    mediaUrl: string;
+    credentialsEncrypted: string | null;
+    receivedAt: number;
+  }>();
+
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly companyIntegrationService: CompanyIntegrationService,
@@ -229,24 +239,27 @@ export class MetaSocialMessageService {
         let messageType = 'text';
         let mediaUrl: string | null = null;
 
-        if (!text && Array.isArray(message.attachments)) {
+        const imageCaption = text;
+        if (Array.isArray(message.attachments) && message.attachments.length) {
           const attachment = this.record(message.attachments[0]);
           const payload = this.record(attachment.payload);
-
-          messageType =
-            this.text(attachment.type) || 'attachment';
-
-          mediaUrl =
-            this.text(payload.url) || null;
-
-          text =
-            messageType === 'image'
-              ? '📷 Imagen recibida.'
-              : messageType === 'audio'
-                ? '🎵 Audio recibido.'
-                : messageType === 'video'
-                  ? '🎥 Video recibido.'
-                  : '📎 Archivo recibido.';
+          const attachmentType = this.text(attachment.type) || 'attachment';
+          const attachmentUrl = this.text(payload.url) || null;
+          if (attachmentType === 'image' && attachmentUrl) {
+            messageType = 'image';
+            mediaUrl = attachmentUrl;
+            text = imageCaption
+              ? `📷 Imagen recibida: ${imageCaption}`
+              : '📷 Imagen recibida.';
+          } else if (!text) {
+            messageType = attachmentType;
+            mediaUrl = attachmentUrl;
+            text = messageType === 'audio'
+              ? '🎵 Audio recibido.'
+              : messageType === 'video'
+                ? '🎥 Video recibido.'
+                : '📎 Archivo recibido.';
+          }
         }
 
         const postback = this.record(event.postback);
@@ -317,15 +330,28 @@ export class MetaSocialMessageService {
                     text,
                   );
 
+                const pendingImage = this.pendingMessengerImages.get(socialConversationKey);
+                if (pendingImage && Date.now() - pendingImage.receivedAt <= 15000) {
+                  this.pendingMessengerImages.delete(socialConversationKey);
+                  await this.socialAiService.replyToMessengerImage({
+                    companyId: pendingImage.companyId,
+                    pageId: pendingImage.pageId,
+                    sessionId: pendingImage.sessionId,
+                    recipientId: pendingImage.recipientId,
+                    mediaUrl: pendingImage.mediaUrl,
+                    caption: groupedCustomerMessage,
+                    credentialsEncrypted: pendingImage.credentialsEncrypted,
+                  });
+                  return;
+                }
+
                 await this.socialAiService.replyToMessenger({
-              companyId: integration.companyId,
-              pageId,
-              sessionId: savedSessionId,
-              recipientId: senderId,
-              credentialsEncrypted:
-                integration.credentialsEncrypted,
-                  customerMessage:
-                    groupedCustomerMessage,
+                  companyId: integration.companyId,
+                  pageId,
+                  sessionId: savedSessionId,
+                  recipientId: senderId,
+                  credentialsEncrypted: integration.credentialsEncrypted,
+                  customerMessage: groupedCustomerMessage,
                 });
               },
             );
@@ -335,6 +361,42 @@ export class MetaSocialMessageService {
               error,
             );
           }
+        }
+        if (savedSessionId && messageType === 'image' && mediaUrl) {
+          const socialConversationKey = `messenger:${pageId}:${senderId}`;
+          const socialInboundToken = providerMessageId ||
+            `messenger-image:${Date.now()}:${Math.random()}`;
+          this.markSocialInbound(socialConversationKey, socialInboundToken);
+          this.pendingMessengerImages.set(socialConversationKey, {
+            companyId: integration.companyId,
+            pageId,
+            sessionId: savedSessionId,
+            recipientId: senderId,
+            mediaUrl,
+            credentialsEncrypted: integration.credentialsEncrypted,
+            receivedAt: Date.now(),
+          });
+          if (imageCaption) {
+            this.appendPendingSocialText(socialConversationKey, imageCaption);
+          }
+          this.enqueueSocialConversation(socialConversationKey, async () => {
+            const canReply = await this.waitForSocialQuietWindow(
+              socialConversationKey, socialInboundToken,
+            );
+            if (!canReply) return;
+            const pending = this.pendingMessengerImages.get(socialConversationKey);
+            if (!pending) return;
+            this.pendingMessengerImages.delete(socialConversationKey);
+            await this.socialAiService.replyToMessengerImage({
+              companyId: pending.companyId,
+              pageId: pending.pageId,
+              sessionId: pending.sessionId,
+              recipientId: pending.recipientId,
+              mediaUrl: pending.mediaUrl,
+              caption: this.consumePendingSocialText(socialConversationKey, '') || undefined,
+              credentialsEncrypted: pending.credentialsEncrypted,
+            });
+          });
         }
       }
     }
@@ -449,32 +511,25 @@ export class MetaSocialMessageService {
         let messageType = 'text';
         let mediaUrl: string | null = null;
 
-        if (
-          !text &&
-          Array.isArray(message.attachments)
-        ) {
-          const attachment =
-            this.record(message.attachments[0]);
-
-          const payload =
-            this.record(attachment.payload);
-
-          messageType =
-            this.text(attachment.type) ||
-            'attachment';
-
-          mediaUrl =
-            this.text(payload.url) ||
-            null;
-
-          text =
-            messageType === 'image'
-              ? '📷 Imagen recibida.'
-              : messageType === 'audio'
-                ? '🎵 Audio recibido.'
-                : messageType === 'video'
-                  ? '🎥 Video recibido.'
-                  : '📎 Archivo recibido.';
+        const imageCaption = text;
+        if (Array.isArray(message.attachments) && message.attachments.length) {
+          const attachment = this.record(message.attachments[0]);
+          const payload = this.record(attachment.payload);
+          const type = this.text(attachment.type) || 'attachment';
+          const url = this.text(payload.url) || null;
+          if (type === 'image' && url) {
+            messageType = 'image';
+            mediaUrl = url;
+            text = imageCaption
+              ? `📷 Imagen recibida: ${imageCaption}`
+              : '📷 Imagen recibida.';
+          } else if (!text) {
+            messageType = type;
+            mediaUrl = url;
+            text = type === 'audio' ? '🎵 Audio recibido.'
+              : type === 'video' ? '🎥 Video recibido.'
+              : '📎 Archivo recibido.';
+          }
         }
 
         const postback =
@@ -643,6 +698,10 @@ export class MetaSocialMessageService {
               socialConversationKey,
               socialInboundToken,
             );
+
+            if (imageCaption) {
+              this.appendPendingSocialText(socialConversationKey, imageCaption);
+            }
 
             this.pendingInstagramImages.set(
               socialConversationKey,
