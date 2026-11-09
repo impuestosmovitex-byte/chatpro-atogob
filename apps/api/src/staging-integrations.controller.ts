@@ -128,6 +128,137 @@ export class StagingIntegrationsController {
   }
 
   /**
+   * Opt-in ONLY for the isolated Instagram pilot. Never touches the parent
+   * Meta application's global webhook configuration or any other company.
+   * Staging operators must explicitly enable BOTH flags after signed-event
+   * and persistence checks, otherwise this always fails closed.
+   */
+  @Post('instagram/subscribe-pilot')
+  async subscribeInstagramPilot(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+  ) {
+    const account = await this.list(key, userId, companyId, slug);
+    if (account.company.slug !== 'piloto-mw1-prueba' ||
+      process.env.MW1_STAGING_MODE !== 'true' ||
+      process.env.MW1_STAGING_INSTAGRAM_RECEIVE_ENABLED !== 'true' ||
+      process.env.MW1_STAGING_INSTAGRAM_SUBSCRIBE_ENABLED !== 'true' ||
+      !this.credentials) {
+      throw new ForbiddenException('Suscripción del piloto deshabilitada por seguridad.');
+    }
+    const client = this.supabase.getClient();
+    const { data: memberships, error: membershipError } = await client
+      .from('company_memberships')
+      .select('role_id')
+      .eq('company_id', companyId)
+      .eq('user_id', userId)
+      .eq('active', true)
+      .limit(2);
+    // Ensure the request is scoped to a unique active membership.
+    if (membershipError || !Array.isArray(memberships) || memberships.length !== 1) {
+      throw new ForbiddenException('Usuario del piloto no autorizado.');
+    }
+    const { data: integrations, error: integrationError } = await client
+      .from('company_integrations')
+      .select('id,external_id,status,config,credentials_encrypted')
+      .eq('company_id', companyId).eq('provider', 'meta')
+      .eq('integration_type', 'instagram').eq('status', 'pending')
+      .limit(2);
+    if (integrationError || !Array.isArray(integrations) || integrations.length !== 1) {
+      throw new ForbiddenException('Autorización de Instagram ambigua.');
+    }
+    const integration = integrations[0];
+    const externalId = String(integration.external_id ?? '');
+    if (!/^[0-9]{5,30}$/.test(externalId) ||
+      integration.config?.username !== 'chatpro_mw1' ||
+      integration.config?.webhooks_subscribed !== false ||
+      !integration.credentials_encrypted) {
+      throw new ForbiddenException('Cuenta de Instagram no apta para suscripción de prueba.');
+    }
+    let token = '';
+    try {
+      const payload = this.credentials.decrypt(integration.credentials_encrypted);
+      token = typeof payload.access_token === 'string' ? payload.access_token : '';
+    } catch {
+      throw new ForbiddenException('Credencial de Instagram no disponible.');
+    }
+    if (token.length < 20) throw new ForbiddenException('Token Instagram inválido.');
+    const version = (process.env.META_INSTAGRAM_API_VERSION || 'v26.0').trim();
+    const appId = process.env.META_INSTAGRAM_APP_ID?.trim() || '';
+    const secret = process.env.META_INSTAGRAM_APP_SECRET?.trim() || '';
+    if (!/^v[0-9]+\\.[0-9]+$/.test(version) ||
+      appId !== '1079916404666757' || !secret) {
+      throw new ForbiddenException('Aplicación Meta de pruebas no configurada.');
+    }
+
+    // Validate the token and the exact authorized Instagram asset again.
+    const debugUrl = new URL(`https://graph.facebook.com/${version}/debug_token`);
+    debugUrl.searchParams.set('input_token', token);
+    const [debugResponse, identityResponse] = await Promise.all([
+      fetch(debugUrl, {
+        headers: { Authorization: `Bearer ${appId}|${secret}` },
+        cache: 'no-store', signal: AbortSignal.timeout(12000),
+      }),
+      fetch(`https://graph.facebook.com/${version}/me/assigned_instagram_accounts?fields=id,username&limit=2`, {
+        headers: {Authorization: `Bearer ${token}`},
+        cache: 'no-store', signal: AbortSignal.timeout(12000),
+      }),
+    ]);
+    const debugBody = await debugResponse.json() as {
+      data?: {app_id?:unknown;is_valid?:unknown;scopes?:unknown;type?:unknown}
+    };
+    const assignedBody = await identityResponse.json() as {
+      data?: Array<{id?:string;username?:string}>;paging?:unknown
+    };
+    const scopes = Array.isArray(debugBody.data?.scopes) ? debugBody.data.scopes : [];
+    if (!debugResponse.ok || !identityResponse.ok ||
+      String(debugBody.data?.app_id || '') !== appId ||
+      debugBody.data?.is_valid !== true ||
+      debugBody.data?.type !== 'SYSTEM_USER' ||
+      !['instagram_basic','instagram_manage_messages'].every(v=>scopes.includes(v)) ||
+      !Array.isArray(assignedBody.data) || assignedBody.data.length !== 1 ||
+      assignedBody.data[0]?.id !== externalId ||
+      assignedBody.data[0]?.username?.toLowerCase() !== 'chatpro_mw1' ||
+      Boolean(assignedBody.paging)) {
+      throw new ForbiddenException('Meta no confirmó que el token pertenezca solo a @chatpro_mw1.');
+    }
+
+    const target = new URL(`https://graph.facebook.com/${version}/${externalId}/subscribed_apps`);
+    target.searchParams.set('subscribed_fields', 'messages');
+    const subscribed = await fetch(target, {
+      method: 'POST',
+      headers: {Authorization: `Bearer ${token}`},
+      cache: 'no-store', signal: AbortSignal.timeout(15000),
+    });
+    const response = await subscribed.json() as {success?:unknown};
+    if (!subscribed.ok || response.success !== true) {
+      throw new ForbiddenException('Meta rechazó la suscripción de mensajes; MW1 no activó la cuenta.');
+    }
+    // Confirm via a fresh read before persisting the subscription state.
+    const check = await this.instagramWebhookSubscription(key,userId,companyId,slug);
+    if (!check.ok || check.accountSubscribed !== true ||
+      check.messageSubscribed !== true) {
+      return {
+        ok: false, subscriptionRequestAccepted: true,
+        status: 'requires_recheck',
+        message: 'Meta recibió la solicitud, pero MW1 todavía no pudo confirmar la suscripción.',
+      };
+    }
+    const {error: persistError} = await client.from('company_integrations')
+      .update({config:{...integration.config,webhooks_subscribed:true}})
+      .eq('id',integration.id).eq('company_id',companyId)
+      .eq('status','pending');
+    if (persistError) {
+      return {ok:false,status:'db_confirmation_pending',
+        message:'Meta confirmó la suscripción, pero no se pudo guardar el estado local.'};
+    }
+    return {ok:true,account:'chatpro_mw1',subscribed:true,
+      message:'Meta confirmó la suscripción del piloto. Aún faltan pruebas reales de recepción.'};
+  }
+
+  /**
    * Inspect the specific pilot account's webhook subscription directly in Meta.
    * The Meta app's webhook field toggles are NOT a per-account subscription.
    * This endpoint never subscribes, sends, or updates the integration.
