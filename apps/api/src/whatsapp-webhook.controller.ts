@@ -1542,6 +1542,66 @@ export class WhatsappWebhookController {
         );
       }
 
+      const outfitQuestion =
+        this.chatAgentService.outfitClarificationForImage({
+          summary: analysis.summary,
+          category: analysis.category,
+          parts: visualItems.map((item) =>
+            item.productName || item.category || item.summary),
+          caption: input.caption || '',
+        });
+      if (outfitQuestion) {
+        const currentImageSession =
+          await this.conversationMemoryService.getSessionById(session.id);
+        await this.conversationMemoryService.updateSession(
+          currentImageSession.id,
+          {
+            context: {
+              ...currentImageSession.context,
+              pending_outfit_visual: {
+                received_at: new Date().toISOString(),
+                caption: input.caption || null,
+                summary: analysis.summary,
+                products: visualItems.map((item) => ({
+                  product_name: item.productName || null,
+                  category: item.category,
+                  summary: item.summary,
+                  search_terms: item.searchTerms,
+                  colors: item.colors,
+                })),
+              },
+            },
+          },
+        );
+        const conversationKey =
+          `${input.incomingPhoneNumberId}:${input.phone}`;
+        const canReply = await this.waitForInboundQuietWindow(
+          conversationKey, input.incomingMessageId,
+        );
+        if (!canReply || !this.isCurrentInboundMessage(
+          conversationKey, input.incomingMessageId,
+        )) {
+          return;
+        }
+        const sentAiMessage18 =
+          await this.whatsappMessagingService.sendText(
+            profile.id, input.phone, outfitQuestion,
+          );
+        replySent = true;
+        await this.conversationMemoryService.saveMessage({
+          companyId: profile.id,
+          sessionId: session.id,
+          customerPhone: input.phone,
+          message: outfitQuestion,
+          sender: 'assistant',
+          authorType: 'ai',
+          providerMessageId: sentAiMessage18.messageId,
+          aiResponse: outfitQuestion,
+        });
+        await this.conversationMemoryService.touchSession(session.id);
+        return;
+      }
+
       const matchedVisualItems = await Promise.all(
         visualItems.map(async (visualItem) => ({
           visualItem,
