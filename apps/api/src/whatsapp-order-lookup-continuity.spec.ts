@@ -231,3 +231,115 @@ describe('WhatsApp caption return requests', () => {
     }));
   });
 });
+
+describe('MW1 automatic payment template must transfer to advisor, never create a new cart', () => {
+  function fixture(action: string, templateButton = true) {
+    const webhook = Object.create(WhatsappWebhookController.prototype) as any;
+    const session: any = {
+      id: 'fictional-session', companyId: 'fictional-company',
+      stage: 'active', attentionStatus: 'ai',
+      context: { cart: [], conversation_category: 'sales' },
+    };
+    const handoff = jest.fn(async () => {
+      session.attentionStatus = 'waiting';
+      return 'Perfecto 😊 Te voy a comunicar con uno de nuestros asesores para finalizar el proceso.';
+    });
+    const ai = jest.fn(async () => { throw Error('IA de carrito no debe intervenir'); });
+    const sendText = jest.fn(async () => ({ messageId: 'wamid.sent-confirmed' }));
+    const saveMessage = jest.fn(async (message: any) => message.sender === 'customer' ? 'saved' : 'saved');
+    webhook.companyIntegrationService = {
+      findActiveIntegrationByExternalId: jest.fn(async () => ({
+        companyId: 'fictional-company',
+      })),
+    };
+    webhook.conversationMemoryService = {
+      getCompanyProfileById: jest.fn(async () => ({ id: 'fictional-company' })),
+      getOrCreateSessionByCompanyId: jest.fn(async () => session),
+      saveMessage,
+      touchSession: jest.fn(async () => undefined),
+      updateSession: jest.fn(async (_id: string, patch: any) => {
+        session.stage = patch.stage ?? session.stage;
+        if (patch.context) session.context = patch.context;
+        return session;
+      }),
+    };
+    webhook.automationRuntimeService = {
+      findByProviderMessageId: jest.fn(async () => ({
+        eventKey: 'payment_pending', automationKey: 'pending_payment',
+        payload: { order_id: 'fictional-order' },
+      })),
+    };
+    webhook.whatsappTemplateExecutionService = {
+      resolveButtonAction: jest.fn(async () => ({
+        action,
+        buttonText: 'Completar pago',
+        eventKey: 'payment_pending',
+      })),
+    };
+    webhook.whatsappMessagingService = { sendText };
+    webhook.requestCustomerServiceHuman = handoff;
+    webhook.resolveReply = ai;
+    webhook.attachRecoveryContext = jest.fn(async () => session);
+    webhook.waitForInboundQuietWindow = jest.fn(async () => true);
+    webhook.isCurrentInboundMessage = jest.fn(() => true);
+    return { webhook, session, sendText, handoff, ai, saveMessage, templateButton };
+  }
+
+  it.each(['request_human_agent', 'continue_payment'])(
+    'button "Completar pago" with action %s hands off without invoking IA',
+    async (action) => {
+      const h = fixture(action);
+      await h.webhook.processIncomingText({
+        incomingPhoneNumberId: 'fictional-phone-id',
+        phone: '573001234567',
+        text: 'Completar pago',
+        incomingMessageId: 'wamid.customer-1',
+        replyToProviderMessageId: 'wamid.template-1',
+        suppressReply: false,
+        templateButton: true,
+      });
+      expect(h.handoff).toHaveBeenCalledTimes(1);
+      expect(h.ai).not.toHaveBeenCalled();
+      expect(h.sendText).toHaveBeenCalledWith(
+        'fictional-company', '573001234567',
+        expect.stringMatching(/asesor/i),
+      );
+      expect(h.session.attentionStatus).toBe('waiting');
+      expect(h.saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+        sender: 'assistant',
+        providerMessageId: 'wamid.sent-confirmed',
+      }));
+    },
+  );
+
+  it('also resolves the configured action when Meta surfaces the response as text', async () => {
+    const h = fixture('request_human_agent', false);
+    await h.webhook.processIncomingText({
+      incomingPhoneNumberId: 'fictional-phone-id',
+      phone: '573001234567',
+      text: 'Completar pago',
+      incomingMessageId: 'wamid.customer-2',
+      replyToProviderMessageId: null,
+      suppressReply: false,
+      templateButton: false,
+    });
+    expect(h.handoff).toHaveBeenCalledTimes(1);
+    expect(h.ai).not.toHaveBeenCalled();
+  });
+
+  it('does not reactivate IA when the customer follows up with Sí after handoff', async () => {
+    const h = fixture('request_human_agent');
+    h.session.attentionStatus = 'waiting';
+    await h.webhook.processIncomingText({
+      incomingPhoneNumberId: 'fictional-phone-id',
+      phone: '573001234567',
+      text: 'si',
+      incomingMessageId: 'wamid.customer-3',
+      replyToProviderMessageId: null,
+      suppressReply: false,
+      templateButton: false,
+    });
+    expect(h.ai).not.toHaveBeenCalled();
+    expect(h.handoff).not.toHaveBeenCalled();
+  });
+});
