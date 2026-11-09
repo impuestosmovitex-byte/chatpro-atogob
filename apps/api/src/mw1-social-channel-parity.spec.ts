@@ -198,3 +198,73 @@ describe('MW1 equal commercial AI behavior across WhatsApp, Instagram and Messen
     })).toEqual({ isServiceEvidence: false, productInquiry: false });
   });
 });
+
+describe('No-return-policy image captions in each Meta channel', () => {
+  it.each(['instagram', 'messenger'] as const)(
+    'transfers a %s caption about returns before downloading or analyzing the photo',
+    async (channel) => {
+      const ai = Object.create(MetaSocialAiService.prototype) as any;
+      const insert = jest.fn(async () => ({ error: null }));
+      const from = jest.fn((_table: string) => {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          maybeSingle: async () => ({
+            data: { id: 'session-return', attention_status: 'ai' },
+            error: null,
+          }),
+          insert,
+          update: () => chain,
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ error: null }).then(resolve),
+        };
+        return chain;
+      });
+      ai.supabaseService = { getClient: () => ({ from }) };
+      const profile = {
+        id: 'tenant-A',
+        settings: { return_inquiry_handoff_policy: 'required' },
+      };
+      ai.conversationMemoryService = {
+        getCompanyProfileById: jest.fn(async () => profile),
+      };
+      ai.agentSessionRuntimeService = {
+        getSessionById: jest.fn(async () => ({
+          companyId: 'tenant-A',
+          context: { conversation_category: 'sales' },
+        })),
+      };
+      const transfer = jest.fn(async () =>
+        'Te voy a comunicar con uno de nuestros asesores.');
+      ai.chatAgentService = {
+        routeReturnInquiryToHuman: transfer,
+        reply: jest.fn(() => { throw new Error('Should not invoke AI'); }),
+      };
+      ai.sendMessengerText = jest.fn(async () => 'sent-messenger');
+      ai.sendInstagramText = jest.fn(async () => 'sent-instagram');
+
+      await ai.replyToInstagramImage({
+        companyId: 'tenant-A',
+        instagramId: 'account-A',
+        sessionId: 'session-return',
+        recipientId: 'customer-A',
+        mediaUrl: 'https://example.org/photo.jpg',
+        caption: 'Quiero devolver esta prenda',
+        credentialsEncrypted: 'test-only',
+        channel,
+      });
+
+      expect(transfer).toHaveBeenCalledTimes(1);
+      expect(ai.chatAgentService.reply).not.toHaveBeenCalled();
+      const sender = channel === 'messenger'
+        ? ai.sendMessengerText : ai.sendInstagramText;
+      expect(sender).toHaveBeenCalledWith(expect.objectContaining({
+        text: 'Te voy a comunicar con uno de nuestros asesores.',
+      }));
+      expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+        channel,
+        message: 'Te voy a comunicar con uno de nuestros asesores.',
+      }));
+    },
+  );
+});
