@@ -528,6 +528,47 @@ export class ChatAgentService {
     );
   }
 
+  /**
+   * An affirmative answer to a pending checkout stays with the open purchase.
+   * No internal "switch to Sales" command may be requested from the buyer.
+   */
+  private async resumeCheckoutSalesIfConfirmed(
+    session: ConversationSession,
+    customerMessage: string,
+  ): Promise<ConversationSession> {
+    if (
+      this.readConversationCategory(session.context) !== 'service' ||
+      !Array.isArray(session.context.cart) ||
+      !session.context.cart.length ||
+      session.context.customer_service_flow ||
+      session.context.last_service_evidence ||
+      session.context.validated_order_lookup
+    ) return session;
+
+    const answer = this.normalizePolicyText(customerMessage).trim();
+    if (!/^(?:si|sii+|comprar|claro|dale|confirmo|listo|ok|si por favor)[.!\s]*$/.test(answer)) {
+      return session;
+    }
+
+    try {
+      const history = await this.getRecentMessages(session.id);
+      const previous = [...history].reverse().find(
+        (item) => item.sender === 'assistant',
+      );
+      if (!previous) return session;
+      const question = this.normalizePolicyText(previous.message);
+      if (
+        /(?:confirmas|confirmame|quieres que|deseas|escribe comprar|responde si)/.test(question) &&
+        /(?:enlace|link|checkout|finalizar|pago|comprar|cambiar.*ventas)/.test(question)
+      ) {
+        return this.rememberConversationCategory(session, 'sales');
+      }
+    } catch (error) {
+      console.error('[ChatPro][checkout] No se pudo recuperar el área comercial:', error);
+    }
+    return session;
+  }
+
   async reply(
     profile: CompanyProfile,
     session: ConversationSession,
@@ -544,6 +585,11 @@ export class ChatAgentService {
         profile,
         session,
       );
+
+    activeSession = await this.resumeCheckoutSalesIfConfirmed(
+      activeSession,
+      customerMessage,
+    );
 
     // The active tenant may reserve ANY return/refund inquiry for a human,
     // including hypothetical questions about policy. No policy is disclosed.
