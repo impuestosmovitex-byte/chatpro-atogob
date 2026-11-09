@@ -288,6 +288,32 @@ export class MetaSocialAiService {
   }
 
 
+  private classifySocialImagePurpose(input: {
+    context: Record<string, unknown>;
+    imageType: string;
+    primaryIntent: string;
+    hasProductIntent: boolean;
+    hasPaymentIntent: boolean;
+  }): { isServiceEvidence: boolean; productInquiry: boolean } {
+    const area = input.context.service_area;
+    const serviceArea = area && typeof area === 'object' && !Array.isArray(area)
+      ? area as Record<string, unknown> : null;
+    const isServiceEvidence =
+      input.context.conversation_category === 'service' ||
+      serviceArea?.areaType === 'service' ||
+      Boolean(input.context.customer_service_flow) ||
+      input.primaryIntent === 'customer_service' ||
+      input.imageType === 'warranty_or_return';
+    const productInquiry = !isServiceEvidence &&
+      !input.hasPaymentIntent &&
+      (
+        input.hasProductIntent ||
+        (input.context.conversation_category === 'sales' &&
+          input.imageType === 'product')
+      );
+    return { isServiceEvidence, productInquiry };
+  }
+
   async replyToMessengerImage(input: {
     companyId: string;
     pageId: string;
@@ -662,20 +688,14 @@ export class MetaSocialAiService {
     const now = new Date().toISOString();
 
     let agentMessage: string;
-    const area = commercialSession.context.service_area;
-    const serviceArea = area && typeof area === 'object' && !Array.isArray(area)
-      ? area as Record<string, unknown> : null;
-    const isServiceEvidence =
-      commercialSession.context.conversation_category === 'service' ||
-      serviceArea?.areaType === 'service' ||
-      Boolean(commercialSession.context.customer_service_flow) ||
-      primaryIntent === 'customer_service' ||
-      imageType === 'warranty_or_return';
-    const activeSale = commercialSession.context.conversation_category === 'sales';
-    const productInquiry = hasProductIntent || (
-      activeSale && imageType === 'product' &&
-      !hasPaymentIntent && primaryIntent !== 'customer_service'
-    );
+    const { isServiceEvidence, productInquiry } =
+      this.classifySocialImagePurpose({
+        context: commercialSession.context,
+        imageType,
+        primaryIntent,
+        hasProductIntent,
+        hasPaymentIntent,
+      });
 
     // Service evidence always wins over commercial image matching, across
     // WhatsApp, Instagram and Messenger. The image is not a new cart item.
