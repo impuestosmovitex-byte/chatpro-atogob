@@ -17,6 +17,24 @@ describe('Instagram webhook subscription app identification', () => {
     }, knownIds)).toBe(true);
   });
 
+  it('recognizes Meta Graph app_id when id is omitted', () => {
+    expect(isKnownInstagramWebhookApp({
+      app_id: '1674184274384954',
+      subscribed_fields: ['messages'],
+    }, knownIds)).toBe(true);
+  });
+
+  it('recognizes nested app.id, but never a similarly named different app', () => {
+    expect(isKnownInstagramWebhookApp({
+      app: {id:'1674184274384954'},
+      subscribed_fields: ['messages'],
+    }, knownIds)).toBe(true);
+    expect(isKnownInstagramWebhookApp({
+      app: {id:'9999999999999999',name:'MW1 Chat Pro'},
+      subscribed_fields: ['messages'],
+    }, knownIds)).toBe(false);
+  });
+
   it('never accepts unrelated apps, even when subscribed to messages', () => {
     expect(isKnownInstagramWebhookApp({
       application: { id: '123456789', name: 'Another app' },
