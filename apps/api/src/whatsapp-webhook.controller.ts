@@ -3099,7 +3099,16 @@ export class WhatsappWebhookController {
 
       await this.conversationMemoryService.touchSession(session.id);
 
-      if (input.templateButton) {
+      // Button clicks and exact replies to automation templates are handled
+      // by the configured action, before any AI/cart/order logic is invoked.
+      // Keep ordinary customer text in the normal conversation flow.
+      const normalizedTemplateResponse = input.text.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      const explicitAutomationReply =
+        /^(?:completar pago|hablar con (?:un )?asesor|hablar con (?:una )?asesora|consultar cancelacion)$/.test(
+          normalizedTemplateResponse,
+        );
+      if (input.templateButton || explicitAutomationReply) {
         let repliedAutomation: {
           eventKey: string;
           automationKey: string;
@@ -3163,16 +3172,9 @@ export class WhatsappWebhookController {
             action: buttonAction.action,
           });
 
-          if (buttonAction.action === 'continue_payment') {
-            const refreshedSession =
-              await this.conversationMemoryService.getSessionById(
-                session.id,
-              );
-
-            if (refreshedSession) {
-              session = refreshedSession;
-            }
-          } else {
+          // Every recognized button completes its configured action here.
+          // A human-handoff button must NEVER fall through to general AI.
+          {
             if (reply) {
               const sentAiMessage14 = await this.whatsappMessagingService.sendText(
                 profile.id,
@@ -3521,35 +3523,14 @@ export class WhatsappWebhookController {
 
         return 'Claro 😊 Cuéntame qué inconveniente tienes con el pago. No envíes claves, códigos de seguridad ni datos bancarios sensibles.';
 
-      case 'continue_payment': {
-        const nextContext: Record<string, unknown> = {
-          ...input.session.context,
-          conversation_category: 'sales',
-          conversation_category_updated_at: now,
-          commercial_conversation: {
-            open: true,
-            source: 'whatsapp_template_button',
-            updated_at: now,
-          },
-          payment_continuation: {
-            requested: true,
-            source: 'whatsapp_template_button',
-            updated_at: now,
-          },
-        };
-
-        delete nextContext.customer_service_flow;
-
-        await this.conversationMemoryService.updateSession(
-          input.session.id,
-          {
-            stage: 'sales',
-            context: nextContext,
-          },
+      case 'continue_payment':
+        // Legacy button mapping: completing an already-created payment is
+        // handled by a human, not a fresh AI checkout or empty cart.
+        return this.requestCustomerServiceHuman(
+          input.session,
+          'Cliente solicitó completar pago desde plantilla automática.',
+          'El cliente respondió Completar pago. Continuar el pago ya iniciado, sin reiniciar carrito, productos ni checkout.',
         );
-
-        return null;
-      }
 
       case 'request_human_agent':
         return this.requestCustomerServiceHuman(
