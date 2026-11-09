@@ -2890,6 +2890,7 @@ export class ChatAgentService {
       '- El motivo y el resumen de una transferencia deben estar basados exclusivamente en peticiones y hechos confirmados; jamás conviertas “pedido así” o “regálame” en regalo de dinero, precio cero, envío gratis u otra excepción no solicitada.',
       '- Si una referencia anterior tiene matched_product.url y el cliente decide comprar o configurar un solo producto, usa select_product_by_url antes de consultar variantes o agregarlo al carrito.',
       '- commercial_visual_references son referencias comerciales, no productos del carrito. Nunca asumas que fueron agregadas hasta que una herramienta de carrito lo confirme.',
+      '- Si session.context.visual_cart_draft tiene status needs_clarification, contiene el lote que el cliente quería comprar, las referencias ya identificadas pero NO agregadas y las opciones faltantes. Conserva los productos resueltos y pregunta únicamente por cada dato pendiente del lote; cuando el cliente aclare la variante, vuelve a invocar add_visual_products_to_cart con el lote completo corregido. Nunca afirmes que una línea del borrador ya está en el carrito.',
       '- Una ráfaga visual no agrega productos automáticamente al carrito. Solo ejecuta acciones de compra cuando la intención del cliente sea explícita y las variantes necesarias estén realmente resueltas.',
       '- Cuando el cliente pida explícitamente comprar dos o más referencias visuales, usa add_visual_products_to_cart en una sola operación únicamente cuando todas las referencias que forman parte de ese pedido tengan match_type exact.',
       '- Si dentro del conjunto que el cliente pidió comprar existe siquiera una referencia con match_type similar o none, no agregues todavía ninguna de las referencias de ese conjunto al carrito. Conserva las exactas y pide una sola aclaración breve únicamente por las referencias no resueltas.',
@@ -5376,6 +5377,69 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     };
   }
 
+  /**
+   * Store only a pending intent, never items as cart lines. This belongs to
+   * the current company-scoped session and cannot trigger Shopify writes.
+   */
+  private async rememberUnresolvedVisualCart(
+    session: ConversationSession,
+    items: VisualCartItemRequest[],
+    resolvedNotAdded: Array<Record<string, unknown>>,
+    unresolved: Array<Record<string, unknown>>,
+  ): Promise<void> {
+    try {
+      const fresh = await this.agentSessionRuntimeService.getSessionById(
+        session.id,
+      );
+      if (fresh.companyId !== session.companyId) {
+        throw new Error('Session company changed while saving a cart draft.');
+      }
+      await this.agentSessionRuntimeService.updateSession(session.id, {
+        context: {
+          ...fresh.context,
+          visual_cart_draft: {
+            status: 'needs_clarification',
+            requested_items: items.map((item) => ({
+              product_url: item.productUrl,
+              option_values: [...item.optionValues],
+              quantity: item.quantity,
+            })),
+            resolved_not_added: resolvedNotAdded,
+            unresolved,
+            updated_at: new Date().toISOString(),
+          },
+        },
+      });
+    } catch (error) {
+      // A memory failure cannot transform an unresolved request into a cart
+      // operation, and must never lead to an invented confirmation.
+      console.error('[MW1][cart] pending visual draft not saved:',
+        error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private async clearVisualCartDraftAfterSuccess(
+    session: ConversationSession,
+  ): Promise<void> {
+    try {
+      const fresh = await this.agentSessionRuntimeService.getSessionById(
+        session.id,
+      );
+      if (fresh.companyId !== session.companyId) return;
+      if (!fresh.context.visual_cart_draft) return;
+      const nextContext = { ...fresh.context };
+      delete nextContext.visual_cart_draft;
+      await this.agentSessionRuntimeService.updateSession(session.id, {
+        context: nextContext,
+      });
+    } catch (error) {
+      // Cart writes have already succeeded. Never falsely report a failed
+      // checkout nor retry a cart addition because cleaning context failed.
+      console.error('[MW1][cart] could not clear visual draft:',
+        error instanceof Error ? error.message : String(error));
+    }
+  }
+
   private async addVisualProductsToCart(
     session: ConversationSession,
     items: VisualCartItemRequest[],
@@ -5551,16 +5615,20 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     }
 
     if (unresolved.length) {
+      const resolvedNotAdded = lines.map((line) => ({
+        product_title: line.productTitle,
+        product_url: line.productUrl,
+        options: line.options,
+        quantity: line.quantity,
+      }));
+      await this.rememberUnresolvedVisualCart(
+        session, items, resolvedNotAdded, unresolved,
+      );
       return {
         ok: false,
         cart_unchanged: true,
         next_action: 'clarify_unresolved_visual_products',
-        resolved_not_added: lines.map((line) => ({
-          product_title: line.productTitle,
-          product_url: line.productUrl,
-          options: line.options,
-          quantity: line.quantity,
-        })),
+        resolved_not_added: resolvedNotAdded,
         unresolved,
       };
     }
@@ -5578,6 +5646,11 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       session,
       lines,
     );
+
+    if (result && typeof result === 'object' &&
+        (result as { ok?: unknown }).ok === true) {
+      await this.clearVisualCartDraftAfterSuccess(session);
+    }
 
     return {
       ...result,
