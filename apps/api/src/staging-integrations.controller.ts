@@ -86,6 +86,20 @@ export class StagingIntegrationsController {
     const ready = isPilot && enabled && correctSetup && Boolean(appSecret) &&
       encryptionReady && oauthEnabled && exchangeEnabled;
     const pilotLoginEnabled = process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED === 'true';
+    let pilotSubscribed = false;
+    if (isPilot) {
+      const {data: rows, error} = await this.supabase.getClient()
+        .from('company_integrations')
+        .select('status,config')
+        .eq('company_id', result.company.id)
+        .eq('provider','meta')
+        .eq('integration_type','instagram')
+        .limit(2);
+      pilotSubscribed = !error && Array.isArray(rows) && rows.length === 1 &&
+        rows[0].status === 'pending' &&
+        rows[0].config?.username === 'chatpro_mw1' &&
+        rows[0].config?.webhooks_subscribed === true;
+    }
     return {
       ok: true,
       company: result.company,
@@ -107,7 +121,7 @@ export class StagingIntegrationsController {
         receiptEnabled: process.env.MW1_STAGING_INSTAGRAM_RECEIVE_ENABLED === 'true',
         subscriptionApiEnabled: process.env.MW1_STAGING_INSTAGRAM_RECEIVE_ENABLED === 'true' &&
           process.env.MW1_STAGING_INSTAGRAM_SUBSCRIBE_ENABLED === 'true',
-        appSubscriptionConfirmed: false,
+        appSubscriptionConfirmed: pilotSubscribed,
         inboxRepliesEnabled: false,
         warning: 'No cambies el webhook de la aplicación Meta compartida hasta verificar que no afecte otras integraciones.',
       } : undefined,
@@ -123,7 +137,9 @@ export class StagingIntegrationsController {
         ? 'La conexión de Instagram aún no está habilitada para esta empresa.'
         : ready
           ? (pilotLoginEnabled
-            ? 'Autorización piloto Unified Login habilitada. La recepción de mensajes sigue deshabilitada.'
+            ? (pilotSubscribed
+              ? 'Cuenta piloto suscrita. Falta demostrar la recepción de un mensaje real y habilitar respuestas.'
+              : 'Autorización piloto Unified Login habilitada. Suscripción individual pendiente.')
             : 'Requisitos técnicos preparados; falta habilitar explícitamente el piloto de autorización.')
           : 'La configuración de Unified Login en staging está incompleta.',
     };
