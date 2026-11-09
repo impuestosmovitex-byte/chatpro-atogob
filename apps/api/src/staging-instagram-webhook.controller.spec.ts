@@ -119,7 +119,7 @@ describe('Instagram pilot webhook processing safety with mocked database', () =>
     const controller = new StagingInstagramWebhookController({
       getClient: () => ({from}),
     } as unknown as SupabaseService);
-    return {controller,request:{rawBody:body,body} as RawBodyRequest<Request>,
+    return {controller,request:{rawBody:body,body:payload} as RawBodyRequest<Request>,
       signature,from,upsert,stored};
   }
 
