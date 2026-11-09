@@ -1,6 +1,6 @@
 import {
   Controller, ForbiddenException, Get, Headers, HttpCode, Post,
-  Query, Req, ServiceUnavailableException,
+  Query, Req, ServiceUnavailableException, Logger,
 } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import type { RawBodyRequest } from '@nestjs/common';
@@ -49,6 +49,7 @@ export function instagramWebhookBusinessIds(value: unknown): string[] {
  */
 @Controller('webhook/instagram-staging')
 export class StagingInstagramWebhookController {
+  private readonly logger = new Logger(StagingInstagramWebhookController.name);
   constructor(private readonly supabase: SupabaseService) {}
 
   @Get()
@@ -77,14 +78,19 @@ export class StagingInstagramWebhookController {
     @Req() request: RawBodyRequest<Request>,
     @Headers('x-hub-signature-256') signature?: string,
   ): Promise<{ok:true;stored:number;duplicates:number}> {
+    // Staging-only delivery diagnostics: never record messages, usernames,
+    // IDs, IP addresses, access tokens or request bodies in application logs.
+    this.logger.log('IG_PILOT_WEBHOOK_POST_RECEIVED');
     if (process.env.MW1_STAGING_MODE !== 'true' ||
       !request.rawBody ||
       !validMetaSignature(request.rawBody, signature,
         process.env.META_INSTAGRAM_APP_SECRET)) {
+      this.logger.warn('IG_PILOT_WEBHOOK_SIGNATURE_REJECTED');
       throw new ForbiddenException('Firma de Meta inválida.');
     }
     const ids = instagramWebhookBusinessIds(request.body);
     if (ids.length !== 1) {
+      this.logger.warn('IG_PILOT_WEBHOOK_PAYLOAD_SHAPE_REJECTED');
       throw new ForbiddenException('Cuenta de Instagram ambigua.');
     }
     const db = this.supabase.getClient();
@@ -95,6 +101,7 @@ export class StagingInstagramWebhookController {
       .eq('external_id', ids[0])
       .limit(2);
     if (error || !Array.isArray(rows) || rows.length !== 1) {
+      this.logger.warn('IG_PILOT_WEBHOOK_ACCOUNT_MAPPING_REJECTED');
       throw new ForbiddenException('Cuenta Instagram sin titular único.');
     }
     const integration = rows[0];
@@ -102,17 +109,20 @@ export class StagingInstagramWebhookController {
     if (integration.status !== 'pending' ||
       cfg?.username !== 'chatpro_mw1' ||
       cfg?.webhooks_subscribed !== true) {
+      this.logger.warn('IG_PILOT_WEBHOOK_SUBSCRIPTION_GATE_REJECTED');
       throw new ForbiddenException('Cuenta Instagram fuera del piloto autorizado.');
     }
     const { data: company, error: companyError } = await db.from('companies')
       .select('slug,status').eq('id',integration.company_id).maybeSingle();
     if (companyError || company?.slug !== 'piloto-mw1-prueba' ||
       company.status !== 'active') {
+      this.logger.warn('IG_PILOT_WEBHOOK_TENANT_GATE_REJECTED');
       throw new ForbiddenException('Empresa piloto no autorizada.');
     }
     // Do not subscribe the Meta application webhook until the pilot is
     // specifically enabled. This switch remains OFF in Railway by default.
     if (process.env.MW1_STAGING_INSTAGRAM_RECEIVE_ENABLED !== 'true') {
+      this.logger.warn('IG_PILOT_WEBHOOK_RECEIPT_GATE_REJECTED');
       throw new ServiceUnavailableException('Recepción de Instagram aún no activada en staging.');
     }
     const payload = asObject(request.body);
@@ -177,8 +187,10 @@ export class StagingInstagramWebhookController {
       })
       .select('id');
     if (writeError || !Array.isArray(inserted)) {
+      this.logger.error('IG_PILOT_WEBHOOK_PERSISTENCE_FAILED');
       throw new ServiceUnavailableException('No se pudo guardar el mensaje. Meta puede reintentar.');
     }
+    this.logger.log('IG_PILOT_WEBHOOK_STORED count=' + inserted.length);
     return {
       ok: true,
       stored: inserted.length,
