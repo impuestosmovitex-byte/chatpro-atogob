@@ -2682,7 +2682,7 @@ export class ChatAgentService {
           summary: 'El cliente solicita una gestión que la empresa reserva a un asesor; no se aprobó ninguna acción.',
         },
       );
-      return updated.attentionStatus === 'human'
+      return updated.attentionStatus === 'human' || updated.attentionStatus === 'waiting'
         ? 'Para revisar si tu solicitud es viable, te voy a comunicar con uno de nuestros asesores.'
         : 'Tu solicitud requiere revisión humana, pero todavía no se ha confirmado la transferencia.';
     } catch (error) {
