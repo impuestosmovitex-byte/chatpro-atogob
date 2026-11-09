@@ -214,6 +214,32 @@ describe('multi-photo cart atomicity and company isolation', () => {
     expect(legacy).not.toHaveBeenCalled();
   });
 
+  it('blocks a saved visual reference if the company catalog resolves that handle to a different store URL', async () => {
+    const { agent, session, addCartLines, getProductByHandle } = harness(2);
+    const original = getProductByHandle.getMockImplementation()!;
+    getProductByHandle.mockImplementation(async (company, handle) => {
+      const product = await original(company, handle);
+      return handle === 'item-2'
+        ? { ...product, onlineStoreUrl: 'https://other-merchant.example/products/item-2' }
+        : product;
+    });
+    const result = await agent.addVisualProductsToCart(
+      session, [item(1), item(2)], 'Quiero las dos',
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      cart_unchanged: true,
+      next_action: 'clarify_unresolved_visual_products',
+    });
+    expect(result.unresolved).toEqual([
+      expect.objectContaining({
+        product_url: url(2),
+        reason: 'product_belongs_to_different_catalog',
+      }),
+    ]);
+    expect(addCartLines).not.toHaveBeenCalled();
+  });
+
   it('refuses catalog URLs not present as exact matches in the session', async () => {
     const { agent, session, addCartLines } = harness(2);
     const result = await agent.addVisualProductsToCart(
