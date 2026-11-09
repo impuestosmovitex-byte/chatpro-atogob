@@ -277,6 +277,26 @@ export class ChatAgentService {
       return 'sales';
     }
 
+    // A client continuing an unfinished cart is still buying, even when a
+    // previous FAQ had placed the conversation in Service. Switch internally,
+    // never request "Comprar" or another menu confirmation from the client.
+    const hasCurrentCart =
+      Array.isArray(session.context.cart) &&
+      session.context.cart.length > 0;
+    const wantsCheckoutForCurrentCart =
+      /\b(?:finalizar(?: la)? compra|gener(?:a|ar|ame) (?:el )?(?:enlace|link)|enlace (?:de |para )?pago|link (?:de |para )?pago|quiero pagar|voy a pagar|quiero comprar|comprar|checkout)\b/.test(normalized);
+    const hasServiceEvidence =
+      Boolean(session.context.last_service_evidence) ||
+      Boolean(customerServiceFlowType) ||
+      hasValidatedOrder;
+    if (
+      hasCurrentCart &&
+      wantsCheckoutForCurrentCart &&
+      !hasServiceEvidence
+    ) {
+      return 'sales';
+    }
+
     if (
       explicitServicePatterns.some((pattern) => pattern.test(normalized))
     ) {
@@ -699,6 +719,15 @@ export class ChatAgentService {
               `total_duration_ms=${Date.now() - agentStartedAt}`,
             );
             await this.clearTechnicalFailureState(activeSession.id);
+            const stalledCheckout = await this.stopCheckoutConfirmationLoop(
+              activeSession,
+              customerMessage,
+              clean,
+              history,
+            );
+            if (stalledCheckout !== null) {
+              return stalledCheckout;
+            }
             return this.enforceCompanyReply(
               profile,
               activeSession,
@@ -2767,6 +2796,70 @@ export class ChatAgentService {
     );
   }
 
+  /**
+   * Last-resort protection for an agent that keeps asking to confirm checkout.
+   * Do not send an incomplete cart link just to escape the loop. A confirmed
+   * human handoff preserves the sale and stops the same question recurring.
+   * Works for social sessions and WhatsApp through the common agent.
+   */
+  private async stopCheckoutConfirmationLoop(
+    session: ConversationSession,
+    customerMessage: string,
+    proposedReply: string,
+    history: Array<{ sender: string; message: string }>,
+  ): Promise<string | null> {
+    const normalize = (value: string) =>
+      value.toLowerCase().normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '').trim();
+
+    const outgoing = normalize(proposedReply);
+    const asksToConfirmAgain =
+      /(?:confirmas|confirmame|me confirmas|quieres que|deseas|responde si|escribe comprar)/.test(outgoing) &&
+      /(?:enlace|link|checkout|finalizar|pago|iniciar (?:la )?compra|cambiar.*ventas|agregar.*carrito|generar)/.test(outgoing);
+    if (!asksToConfirmAgain) return null;
+
+    const affirmative = /^(?:si|sii+|claro|dale|ok|okay|listo|comprar|confirmo|adelante|por favor|con todo junto|si por favor)[.!\s]*$/.test(
+      normalize(customerMessage),
+    );
+    const directCheckoutRequest =
+      /(?:enviame|mandame|pasame|genera|generame|quiero|dame).{0,60}(?:enlace|link|checkout|pagar|finalizar)/.test(
+        normalize(customerMessage),
+      );
+    if (!affirmative && !directCheckoutRequest) return null;
+
+    const lastAssistantRequests = history.filter((item) =>
+      item.sender === 'assistant' &&
+      /(?:confirmas|confirmame|me confirmas|quieres que|deseas|responde si|escribe comprar)/.test(
+        normalize(item.message),
+      ) &&
+      /(?:enlace|link|checkout|finalizar|pago|iniciar (?:la )?compra|cambiar.*ventas|agregar.*carrito|generar)/.test(
+        normalize(item.message),
+      ),
+    );
+
+    if (!lastAssistantRequests.length && !directCheckoutRequest) {
+      return null;
+    }
+
+    try {
+      const changed = await this.agentSessionRuntimeService.requestHumanAttention(
+        session.id,
+        {
+          reason: 'Confirmación de checkout repetida por la IA',
+          summary:
+            'Cliente ya confirmó finalizar. Revisar productos y variantes reales del carrito, evitar enlace incompleto y ayudar a completar la compra.',
+        },
+      );
+      if (changed.attentionStatus === 'waiting' ||
+          changed.attentionStatus === 'human') {
+        return 'Perdona la demora. Voy a comunicarte con un asesor para finalizar tu compra sin pedirte los mismos datos otra vez.';
+      }
+    } catch (error) {
+      console.error('[ChatPro][checkout-loop] Falló la transferencia:', error);
+    }
+    return 'No pude completar el enlace correctamente. Un asesor debe ayudarte a revisar el carrito; no quiero enviarte uno incompleto.';
+  }
+
   private async enforceCompanyReply(
     profile: CompanyProfile,
     session: ConversationSession,
@@ -3147,6 +3240,14 @@ export class ChatAgentService {
       '- Cuando una situación requiera una acción operativa que tú no puedes ejecutar directamente y las instrucciones de la empresa indiquen intervención humana, no simules haber realizado la acción ni prometas una revisión futura: usa request_human_attention.',
       '- Nunca prometas que tú mismo avisarás, confirmarás, revisarás, consultarás, escribirás o ejecutarás algo más tarde si no existe una herramienta real que complete esa acción en este mismo turno. Responde con lo que puedes resolver ahora o, si corresponde según la configuración, usa request_human_attention.',
       '- CONFIRMACIÓN OPERATIVA: si el cliente pide confirmar un hecho que no está respaldado explícitamente por configuración o herramienta real —por ejemplo precio en una sede física, inventario de una sede, reserva, disponibilidad para recogida o una condición operativa específica— no preguntes “¿quieres que lo confirme?” ni prometas revisarlo después. Comunica primero lo que sí está confirmado y, si ese dato faltante requiere intervención humana, ejecuta request_human_attention una sola vez en ese mismo turno.',
+      '- FOTOGRAFÍAS DE OUTFITS: si se ven dos o más prendas distintas, separa primero las opciones de interés (por ejemplo: blusa, pantalón o conjunto completo) si el cliente aún no indicó cuál quiere. No busques ni agregues automáticamente todas las prendas solo por aparecer en la foto. Cuando elija una prenda, busca únicamente esa referencia real; cuando elija el outfit completo, valida las piezas y el producto tipo combo o conjunto real de la empresa, sin duplicar componentes ni inventar descuentos.', 
+      '- CARRITO CONTINUO: un "sí", "los dos", "también este", "todo junto" o "confirmo" mantiene la selección de esta misma compra. Conserva por producto su referencia, talla, color, precio y cantidad REALMENTE validados. Una talla elegida para falda no debe asignarse por omisión al blazer, vestido ni pantalón. Si la persona añade un producto, conserva las líneas existentes. Cuando corrige talla/color, reemplaza solamente esa línea. Nunca borres otras prendas o reinicies una compra ya iniciada.',
+      '- ANTES DE COMPARTIR UN LINK: usa get_cart para leer el carrito persistido. Confronta CADA prenda y cantidad que el cliente confirmó con las líneas reales. Si falta una, usa las referencias comerciales previamente validadas para completar el carrito con sus variantes; si una referencia/variante sigue sin verificar, no presentes un carrito parcial como si fuera el pedido completo. Explica brevemente cuál dato falta o haz una transferencia real cuando la automatización no pueda resolverlo. Nunca crees checkout hasta que los artículos pedidos coincidan con los artículos realmente guardados.',
+      '- CIERRE SIN BUCLES: si el cliente ya confirmó el carrito y solicita el enlace o dice "sí" a la pregunta de finalizar, ejecuta la herramienta de checkout en cuanto haya carrito y condiciones verificadas. No vuelvas a preguntar si desea "iniciar compra", "cambiar a Ventas", "escribir Comprar" ni "confirmar" lo que ya aceptó. El área es una decisión interna de MW1, nunca un trámite del cliente.',
+      '- ENVÍOS EN VENTA: para decir el precio, calcula SOLO la tarifa que corresponda a la ciudad, carrito, modo de entrega y medio de pago dados, conforme a las instrucciones de ESA empresa; no enumeres tarifas de otras ciudades ni medios indisponibles. Si el carrito cambia, recalcula subtotal y el umbral de envío gratis sobre las variantes reales; si no hay tarifa verificable, no inventes valores y explica solamente qué falta.',
+      '- CUPONES: jamás afirmes que activaste, verificaste o descontaste un cupón si el checkout no confirmó su aplicación. Si la empresa indica que se ingresa en Shopify, envía el enlace verificado y explica brevemente que el cliente escribe el cupón en el campo "Código de descuento o tarjeta regalo"; el checkout indicará si cumple las condiciones. No pidas cinco confirmaciones sobre aplicar un código ni prometas descuentos con solo ver una captura.',
+      '- GUÍA DE TALLAS: recomienda únicamente usando las medidas reales verificadas para la variante/producto y las medidas que entregó la persona. No afirmes que una talla quedará más corta o que una prenda quedará igual que la fotografía sin tener el largo real. Cuando falten medidas exactas, dilo y plantea UNA pregunta útil o deriva la duda, sin asegurar un ajuste.',
+      '- RESPUESTA COMERCIAL BREVE: ante "¿hacen cambios?" contesta esa pregunta sin enumerar costos, direcciones, trámites futuros o políticas completas que no solicitaron. Si la empresa requiere un asesor para un tema, transfiere sin detalles. Tras una respuesta breve sobre cambios, vuelve a la compra pendiente sin repetir las preguntas ya resueltas.',
       '- NO REPITAS CONFIRMACIONES: si tu mensaje anterior planteó una única confirmación y el cliente responde “sí”, “exacto”, “por favor”, “confírmame” o equivalente, no vuelvas a formular la misma pregunta. Ejecuta inmediatamente la acción real disponible; si no existe herramienta/configuración para resolverla y corresponde intervención humana, realiza el handoff real. Nunca encadenes varias preguntas de “¿quieres que confirme?” sobre el mismo dato.',
       '- Al usar request_human_attention, customer_message debe ser el mensaje exacto que verá la persona: natural, breve, útil y alineado al tono/configuración de la empresa. No uses una frase fija si la empresa configuró otra forma de atención.',
       '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
