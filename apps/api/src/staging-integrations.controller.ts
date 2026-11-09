@@ -105,6 +105,8 @@ export class StagingIntegrationsController {
           process.env.MW1_STAGING_INSTAGRAM_WEBHOOK_VERIFY_TOKEN?.trim(),
         ),
         receiptEnabled: process.env.MW1_STAGING_INSTAGRAM_RECEIVE_ENABLED === 'true',
+        subscriptionApiEnabled: process.env.MW1_STAGING_INSTAGRAM_RECEIVE_ENABLED === 'true' &&
+          process.env.MW1_STAGING_INSTAGRAM_SUBSCRIBE_ENABLED === 'true',
         appSubscriptionConfirmed: false,
         inboxRepliesEnabled: false,
         warning: 'No cambies el webhook de la aplicación Meta compartida hasta verificar que no afecte otras integraciones.',
