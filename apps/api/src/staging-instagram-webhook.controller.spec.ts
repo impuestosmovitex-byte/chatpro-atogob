@@ -1,4 +1,6 @@
 import { instagramWebhookBusinessIds } from './staging-instagram-webhook.controller';
+import { createHmac } from 'node:crypto';
+import { validMetaSignature } from './staging-meta-signature';
 
 describe('Instagram staging webhook tenant candidate selection', () => {
   const event = {
@@ -34,5 +36,30 @@ describe('Instagram staging webhook tenant candidate selection', () => {
     expect(instagramWebhookBusinessIds({object:'instagram',entry:'bad'})).toEqual([]);
     expect(instagramWebhookBusinessIds({object:'instagram',entry:[{id:'x',messaging:[]}]})).toEqual([]);
     expect(instagramWebhookBusinessIds({object:'instagram',entry:[{id:'17841400000000123'}]})).toEqual([]);
+  });
+});
+
+describe('Instagram pilot signed webhook', () => {
+  const secret = 'test-signature-secret-with-sufficient-entropy';
+  const bytes = Buffer.from(JSON.stringify({
+    object:'instagram',entry:[{id:'17841400000000123',
+      messaging:[{sender:{id:'9876543210123456'},
+        recipient:{id:'17841400000000123'},
+        message:{mid:'mid.test-1',text:'Hola'}}]}],
+  }));
+  const signature = 'sha256=' + createHmac('sha256',secret).update(bytes).digest('hex');
+
+  it('accepts a correctly signed body from Meta', () => {
+    expect(validMetaSignature(bytes,signature,secret)).toBe(true);
+  });
+
+  it('rejects a modified body without an updated signature', () => {
+    expect(validMetaSignature(Buffer.concat([bytes,Buffer.from(' ')]),signature,secret))
+      .toBe(false);
+  });
+
+  it('rejects absent and malformed signatures', () => {
+    expect(validMetaSignature(bytes,undefined,secret)).toBe(false);
+    expect(validMetaSignature(bytes,'sha1=abc',secret)).toBe(false);
   });
 });
