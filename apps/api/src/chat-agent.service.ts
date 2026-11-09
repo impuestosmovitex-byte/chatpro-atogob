@@ -83,6 +83,59 @@ export class ChatAgentService {
     private readonly whatsappMessagingService: WhatsappMessagingService,
   ) {}
 
+  /**
+   * Ask which part of an outfit the customer wants BEFORE a catalog lookup.
+   * Not tenant-specific and never asks again after an explicit choice.
+   */
+  outfitClarificationForImage(input: {
+    summary: string;
+    category: string;
+    parts: string[];
+    caption: string;
+  }): string | null {
+    const normalize = (value: string) => value.toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ').trim();
+    const description = normalize([
+      input.summary, input.category, ...input.parts,
+    ].join(' '));
+    const caption = normalize(input.caption || '');
+
+    const garmentLabels = [
+      ['blusa', 'la blusa'],
+      ['pantalon', 'el pantalón'],
+      ['falda', 'la falda'],
+      ['vestido', 'el vestido'],
+      ['blazer', 'el blazer'],
+      ['chaqueta', 'la chaqueta'],
+      ['camisa', 'la camisa'],
+      ['top', 'el top'],
+      ['short', 'el short'],
+      ['body', 'el body'],
+    ] as const;
+    const distinct = garmentLabels
+      .filter(([word]) => new RegExp(`\\b${word}\\b`).test(description))
+      .map(([, label]) => label);
+    const hasOutfitSignal =
+      /\b(?:conjunto|outfit|look completo|varias prendas|dos prendas)\b/.test(description) ||
+      input.parts.length > 1 ||
+      distinct.length > 1;
+    if (!hasOutfitSignal) return null;
+
+    // Explicit customer preference supersedes general image ambiguity.
+    const alreadyChose =
+      /\b(?:solo|solamente|unicamente|nada mas|exclusivamente)\b.{0,35}\b(?:blusa|pantalon|falda|vestido|blazer|chaqueta|camisa|top|short|body)\b/.test(caption) ||
+      /\b(?:conjunto completo|todo el conjunto|todo el outfit|outfit completo|ambas prendas|los dos|las dos|ambos)\b/.test(caption) ||
+      /\b(?:quiero|me interesa|necesito)\s+(?:el|la)\s+(?:blusa|pantalon|falda|vestido|blazer|chaqueta|camisa|top|short|body)\b/.test(caption);
+    if (alreadyChose) return null;
+
+    if (distinct.length === 2) {
+      return `¿Quieres información de ${distinct[0]}, de ${distinct[1]} o del conjunto completo?`;
+    }
+    return '¿Quieres información del conjunto completo o de alguna prenda en particular?';
+  }
+
   private readConversationCategory(
     context: JsonObject,
   ): 'sales' | 'service' | 'unclassified' {
@@ -3362,7 +3415,8 @@ export class ChatAgentService {
       '- Cuando una situación requiera una acción operativa que tú no puedes ejecutar directamente y las instrucciones de la empresa indiquen intervención humana, no simules haber realizado la acción ni prometas una revisión futura: usa request_human_attention.',
       '- Nunca prometas que tú mismo avisarás, confirmarás, revisarás, consultarás, escribirás o ejecutarás algo más tarde si no existe una herramienta real que complete esa acción en este mismo turno. Responde con lo que puedes resolver ahora o, si corresponde según la configuración, usa request_human_attention.',
       '- CONFIRMACIÓN OPERATIVA: si el cliente pide confirmar un hecho que no está respaldado explícitamente por configuración o herramienta real —por ejemplo precio en una sede física, inventario de una sede, reserva, disponibilidad para recogida o una condición operativa específica— no preguntes “¿quieres que lo confirme?” ni prometas revisarlo después. Comunica primero lo que sí está confirmado y, si ese dato faltante requiere intervención humana, ejecuta request_human_attention una sola vez en ese mismo turno.',
-      '- FOTOGRAFÍAS DE OUTFITS: si se ven dos o más prendas distintas, separa primero las opciones de interés (por ejemplo: blusa, pantalón o conjunto completo) si el cliente aún no indicó cuál quiere. No busques ni agregues automáticamente todas las prendas solo por aparecer en la foto. Cuando elija una prenda, busca únicamente esa referencia real; cuando elija el outfit completo, valida las piezas y el producto tipo combo o conjunto real de la empresa, sin duplicar componentes ni inventar descuentos.', 
+      '- FOTOGRAFÍAS DE OUTFITS: si se ven dos o más prendas distintas, separa primero las opciones de interés (por ejemplo: blusa, pantalón o conjunto completo) si el cliente aún no indicó cuál quiere. No busques ni agregues automáticamente todas las prendas solo por aparecer en la foto. Cuando elija una prenda, busca únicamente esa referencia real; cuando elija el outfit completo, valida las piezas y el producto tipo combo o conjunto real de la empresa, sin duplicar componentes ni inventar descuentos.',
+      '- FOTO AMBIGUA YA CLARIFICADA: si session.context.pending_outfit_visual existe, Sofía YA preguntó qué prenda quiere el cliente. Interpreta su respuesta ("solo la blusa", "pantalón", "todo el conjunto") usando las descripciones y términos visuales conservados; busca únicamente esa selección real y no repitas la pregunta original. Si es un conjunto vendido como un solo producto, valida el combo en el catálogo antes de añadir piezas sueltas.', 
       '- CARRITO CONTINUO: un "sí", "los dos", "también este", "todo junto" o "confirmo" mantiene la selección de esta misma compra. Conserva por producto su referencia, talla, color, precio y cantidad REALMENTE validados. Una talla elegida para falda no debe asignarse por omisión al blazer, vestido ni pantalón. Si la persona añade un producto, conserva las líneas existentes. Cuando corrige talla/color, reemplaza solamente esa línea. Nunca borres otras prendas o reinicies una compra ya iniciada.',
       '- ANTES DE COMPARTIR UN LINK: usa get_cart para leer el carrito persistido. Confronta CADA prenda y cantidad que el cliente confirmó con las líneas reales. Si falta una, usa las referencias comerciales previamente validadas para completar el carrito con sus variantes; si una referencia/variante sigue sin verificar, no presentes un carrito parcial como si fuera el pedido completo. Explica brevemente cuál dato falta o haz una transferencia real cuando la automatización no pueda resolverlo. Nunca crees checkout hasta que los artículos pedidos coincidan con los artículos realmente guardados.',
       '- PLAN DE COMPRA MULTIPRODUCTO: cuando el cliente confirme dos o más referencias concretas, ejecuta record_purchase_plan con las URLs REALES de todos los productos elegidos y luego agrega al carrito sus variantes validadas. No equivale a agregar productos; el plan solo permite comprobar que no falta ninguno. Si más adelante dice "todo junto", conserva el plan completo y añade el producto nuevo cuando también lo confirme. Si elimina un producto o cambia de opinión, actualiza el plan con la selección final. Antes de pagar no ignores un resultado complete_confirmed_cart: repara las líneas faltantes, nunca envíes un carrito parcial.',
