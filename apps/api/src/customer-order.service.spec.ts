@@ -90,11 +90,16 @@ describe('CustomerOrderService', () => {
     expect(shopifyService.lookupCustomerOrders).not.toHaveBeenCalled();
   });
 
-  it('valida un pedido cuando correo y celular coinciden con el mismo pedido aunque Shopify oculte esos datos', async () => {
-    const lookupCustomerOrders = jest
-      .fn()
-      .mockImplementation(async () => [buildOrder()]);
-
+  it('valida por correo y celular cuando el teléfono coincide realmente con el pedido', async () => {
+    const lookupCustomerOrders = jest.fn().mockResolvedValue([
+      buildOrder({
+        customer: {
+          name: 'Cliente prueba',
+          email: 'cliente@ejemplo.com',
+          phone: '+57 300 123 4567',
+        },
+      }),
+    ]);
     const { service } = buildService(lookupCustomerOrders);
 
     const result = await service.lookup(companyId, {
@@ -102,29 +107,55 @@ describe('CustomerOrderService', () => {
       phone: '+57 300 123 4567',
     });
 
-    expect(lookupCustomerOrders).toHaveBeenNthCalledWith(
-      1,
-      companyId,
-      {
-        email: 'cliente@ejemplo.com',
-        limit: 5,
-      },
-    );
-
-    expect(lookupCustomerOrders).toHaveBeenNthCalledWith(
-      2,
-      companyId,
-      {
-        phone: '573001234567',
-        limit: 5,
-      },
-    );
-
+    expect(lookupCustomerOrders).toHaveBeenCalledTimes(1);
+    expect(lookupCustomerOrders).toHaveBeenCalledWith(companyId, {
+      email: 'cliente@ejemplo.com',
+      limit: 5,
+    });
     expect(result.found).toBe(true);
-    expect(result.requires_verification).toBe(false);
     expect(result.next_action).toBe('answer_order');
     expect(result.orders).toHaveLength(1);
     expect(result.orders[0].name).toBe('#1001');
+  });
+
+  it('permite pedido + teléfono de WhatsApp solo cuando ambos coinciden', async () => {
+    const lookupCustomerOrders = jest.fn().mockResolvedValue([
+      buildOrder({
+        customer: {
+          name: 'Cliente prueba',
+          email: 'cliente@ejemplo.com',
+          phone: '3001234567',
+        },
+      }),
+    ]);
+    const { service } = buildService(lookupCustomerOrders);
+
+    const result = await service.lookup(companyId, {
+      orderReference: '1001',
+      phone: '573001234567',
+    });
+
+    expect(result.found).toBe(true);
+    expect(result.next_action).toBe('answer_order');
+    expect(lookupCustomerOrders).toHaveBeenCalledWith(companyId, {
+      orderReference: '1001',
+      limit: 5,
+    });
+  });
+
+  it('no revela pedidos cuando Shopify oculta el teléfono: dos datos declarados no bastan sin coincidencia real', async () => {
+    const lookupCustomerOrders = jest.fn().mockResolvedValue([buildOrder()]);
+    const { service } = buildService(lookupCustomerOrders);
+
+    const result = await service.lookup(companyId, {
+      email: 'cliente@ejemplo.com',
+      phone: '+57 300 123 4567',
+    });
+
+    expect(result.found).toBe(false);
+    expect(result.requires_verification).toBe(true);
+    expect(result.next_action).toBe('ask_alternate_identifier');
+    expect(result.orders).toHaveLength(0);
   });
 
   it('no mezcla pedidos diferentes cuando los dos identificadores no apuntan al mismo pedido', async () => {
