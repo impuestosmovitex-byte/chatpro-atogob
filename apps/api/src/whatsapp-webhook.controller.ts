@@ -4152,6 +4152,26 @@ export class WhatsappWebhookController {
       );
 
     if (doesNotKnowOrderNumber) {
+      const provided = flow.identifiers &&
+        typeof flow.identifiers === 'object' &&
+        !Array.isArray(flow.identifiers)
+          ? flow.identifiers as Record<string, unknown>
+          : {};
+      const alreadyHasEmailAndPhone =
+        Boolean(this.cleanFlowString(provided.email)) &&
+        Boolean(this.cleanFlowString(provided.phone));
+
+      if (alreadyHasEmailAndPhone) {
+        // The two customer-provided identifiers have already been checked.
+        // Do not ask for the same details in a loop if an order reference
+        // is unavailable: a human must resolve the remaining ambiguity.
+        return this.requestCustomerServiceHuman(
+          session,
+          'No se pudo verificar el pedido con correo y celular y el cliente no conoce la referencia.',
+          'Conservar los identificadores ya recibidos; el cliente no puede aportar el número de pedido y no se reveló información privada.',
+        );
+      }
+
       await this.conversationMemoryService.updateSession(
         session.id,
         {
@@ -4570,15 +4590,13 @@ export class WhatsappWebhookController {
       return 'Envíame el número de pedido 😊. Si no lo tienes, puedes enviarme el celular o correo registrado en la compra.';
     }
 
-    // Primer intento rápido:
-    // si ya tenemos número de pedido pero el cliente todavía no entregó
-    // otro dato, probamos automáticamente el WhatsApp desde el que escribe.
-    // Si no coincide, NO rechazamos el pedido y NO guardamos este número
-    // como teléfono declarado por el cliente.
+    // Reuse the inbound WhatsApp number as a potential second identifier
+    // when the client has given a reference OR email. Shopify must confirm
+    // that this number matches the actual order before anything is revealed.
+    // A failed match is not treated as a declared customer identifier.
     const automaticWhatsAppPhone =
-      lookupIdentifiers.orderReference &&
-      !lookupIdentifiers.email &&
-      !lookupIdentifiers.phone
+      !lookupIdentifiers.phone &&
+      (lookupIdentifiers.orderReference || lookupIdentifiers.email)
         ? this.cleanFlowString(session.customerPhone)
         : '';
 
@@ -4641,7 +4659,13 @@ export class WhatsappWebhookController {
         validated_order_lookup: {
           order_id: order.id,
           order_name: order.name,
-          identifiers: lookupIdentifiers,
+          // Keep the *verified* WhatsApp number when it was used as the
+          // second matching identifier. Otherwise a follow-up question
+          // would lose verification and ask the same details again.
+          identifiers: {
+            ...lookupIdentifiers,
+            phone: lookupIdentifiers.phone || automaticWhatsAppPhone,
+          },
           verified_at: new Date().toISOString(),
         },
       };
@@ -4673,10 +4697,13 @@ export class WhatsappWebhookController {
     }
 
     if (result.next_action === 'ask_order_reference') {
+      if (!lookupIdentifiers.orderReference && !orderReferenceUnavailable) {
+        return 'Para identificar exactamente tu compra, ¿me compartes el número de pedido? 😊';
+      }
       return this.requestCustomerServiceHuman(
         session,
         'No fue posible determinar de forma automática el pedido exacto.',
-        `El cliente ya entregó datos de validación pero el sistema todavía requiere seleccionar un pedido exacto. Pedido=${lookupIdentifiers.orderReference || '-'}, email=${lookupIdentifiers.email || '-'}, phone=${lookupIdentifiers.phone || '-'}.`,
+        'Los datos proporcionados no permitieron identificar de forma segura un pedido único y no se dispone de otra referencia útil.',
       );
     }
 
@@ -4691,10 +4718,17 @@ export class WhatsappWebhookController {
         }
 
         if (lookupIdentifiers.email && lookupIdentifiers.phone) {
+          if (!orderReferenceUnavailable) {
+            // The provider could not prove that both identifiers belong to
+            // the same order. The order number is a useful final identifier.
+            // Ask for it only if it has not been declared unavailable.
+            return 'Ya tengo tu correo y celular 😊. Para encontrar la compra exacta, ¿me compartes el número de pedido?';
+          }
+
           return this.requestCustomerServiceHuman(
             session,
             'No fue posible validar automáticamente el pedido con correo y celular.',
-            'El cliente ya entregó correo y celular para validar la compra, pero el sistema no pudo identificar un pedido único. No volver a pedir el número de pedido.',
+            'El cliente ya entregó correo y celular y no dispone del número de pedido. Revisión humana necesaria sin revelar datos privados.',
           );
         }
       }
