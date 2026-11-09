@@ -559,3 +559,144 @@ describe('MW1 resume Sales after a confirmed checkout in service area', () => {
     expect(agent.getRecentMessages).not.toHaveBeenCalled();
   });
 });
+
+describe('MW1 shorter exchange answers, validated free shipping, and Addi checkout', () => {
+  const agent = Object.create(ChatAgentService.prototype) as any;
+
+  it.each([
+    'si no me quedan puedo hacer cambio de tallas?',
+    '¿Hacen cambios de talla?',
+    '¿Puedo cambiar el color?',
+  ])('answers a preventive change question in one brief sentence (%s)', (message) => {
+    const result = agent.configuredBriefExchangeReply(
+      {
+        name: 'Comercio ficticio',
+        settings: { sales_short_change_answer: 'Sí 😊, puedes solicitar un cambio.' },
+      },
+      {
+        id: 'session',
+        context: { conversation_category: 'sales' },
+      },
+      message,
+    );
+    expect(result).toBe('Sí 😊, puedes solicitar un cambio.');
+  });
+
+  it('does not apply the rule to a different company without an approved short answer', () => {
+    expect(agent.configuredBriefExchangeReply(
+      { name: 'Academia Demo', settings: {} },
+      { context: { conversation_category: 'sales' } },
+      '¿Hacen cambios?',
+    )).toBeNull();
+  });
+
+  it.each(['¿Cómo hago un cambio?', '¿Cuánto cuesta el cambio?', 'Ya compré y quiero un cambio'])(
+    'does not hide a real post-sale procedure request: %s', (message) => {
+      const result = agent.configuredBriefExchangeReply(
+        { settings: { sales_short_change_answer: 'Sí, puedes solicitar un cambio.' } },
+        { context: { conversation_category: 'sales' } },
+        message,
+      );
+      expect(result).toBeNull();
+    },
+  );
+
+  function shippingFixture(amount: string | number, quoteTotal: string) {
+    const session = {
+      id: 'shopper-demo',
+      context: {
+        conversation_category: 'sales',
+        sale_context: {
+          shipping_quote_validated: true,
+          shipping_cost_cop: amount,
+          shipping_quote_products_total_cop: quoteTotal,
+          shipping_quote_city: 'Manizales',
+          shipping_quote_payment_method: 'Addi',
+          shipping_quote_delivery_method: 'shipping',
+          delivery_method: 'shipping',
+        },
+      },
+    } as any;
+    const getSessionById = jest.fn(async () => session);
+    const updateSession = jest.fn(async (_id: string, patch: any) => {
+      session.context = patch.context;
+      return session;
+    });
+    const getCart = jest.fn(async () => ({
+      ok: true, cart: { products_total_cop: '239800' },
+    }));
+    const agent = Object.create(ChatAgentService.prototype) as any;
+    agent.agentSessionRuntimeService = { getSessionById, updateSession };
+    agent.cartService = { getCart };
+    return { agent, session, getSessionById, updateSession, getCart };
+  }
+
+  it('announces zero-cost shipping once when the ACTUAL cart validates it', async () => {
+    const h = shippingFixture('0', '239800');
+    const first = await h.agent.appendVerifiedFreeShippingNotice(
+      h.session, 'Ya tengo los tres productos listos.',
+    );
+    expect(first).toContain('🎉 ¡Felicitaciones! Tu envío ahora es gratis.');
+    const second = await h.agent.appendVerifiedFreeShippingNotice(
+      h.session, '¿Con qué medio de pago quieres finalizar?',
+    );
+    expect(second).toBe('¿Con qué medio de pago quieres finalizar?');
+    expect(h.updateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not announce when shipping costs money', async () => {
+    const h = shippingFixture('14900', '239800');
+    expect(await h.agent.appendVerifiedFreeShippingNotice(
+      h.session, 'Confirmado.',
+    )).toBe('Confirmado.');
+    expect(h.updateSession).not.toHaveBeenCalled();
+  });
+
+  it('does not announce when quote references an outdated subtotal', async () => {
+    const h = shippingFixture('0', '99999');
+    expect(await h.agent.appendVerifiedFreeShippingNotice(
+      h.session, 'El carrito cambió.',
+    )).toBe('El carrito cambió.');
+    expect(h.updateSession).not.toHaveBeenCalled();
+  });
+
+  it('does not duplicate a true shipping-free statement in model text', async () => {
+    const h = shippingFixture('0', '239800');
+    const text = '¡Felicitaciones, tu envío es gratis!';
+    expect(await h.agent.appendVerifiedFreeShippingNotice(h.session, text))
+      .toBe(text);
+    expect(h.updateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not insist on confirming a chosen payment if the customer said Sí pago con Addi', async () => {
+    const agent = Object.create(ChatAgentService.prototype) as any;
+    const session = {
+      id: 'shopper-demo',
+      context: {
+        conversation_category: 'sales',
+        sale_context: {
+          expected_purchase_handles: ['conjunto', 'pantalon', 'vestido'],
+        },
+      },
+    } as any;
+    const requestHumanAttention = jest.fn();
+    agent.agentSessionRuntimeService = {
+      getSessionById: jest.fn(async () => session),
+      requestHumanAttention,
+    };
+    agent.executeTool = jest.fn(async () => ({
+      ok: true,
+      checkout_url: 'https://tienda-ejemplo.com/cart/three-products-verified',
+    }));
+    const result = await agent.stopCheckoutConfirmationLoop(
+      session,
+      'Sí pago con Addi',
+      'Perfecto, ¿confirmas que querés pagar con Addi y generar el enlace de pago?',
+      [
+        { sender: 'assistant', message: '¿Quieres que te envíe el enlace de pago para finalizar?' },
+      ],
+    );
+    expect(result).toContain('https://tienda-ejemplo.com/cart/three-products-verified');
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+});
