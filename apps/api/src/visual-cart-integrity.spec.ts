@@ -60,8 +60,20 @@ function harness(
   agent.companyCommerceService = { isEnabled, getProductByHandle };
   agent.shopifyService = { getProductFromUrl: legacy };
   agent.cartService = { addCartLines };
+  const updateSession = jest.fn(async (
+    _sessionId: string,
+    payload: { context: Record<string, unknown> },
+  ) => {
+    session.context = payload.context;
+    return session;
+  });
+  agent.agentSessionRuntimeService = {
+    getSessionById: jest.fn(async () => session),
+    updateSession,
+  };
   return {
-    agent, session, isEnabled, getProductByHandle, addCartLines, legacy,
+    agent, session, isEnabled, getProductByHandle, addCartLines,
+    legacy, updateSession,
   };
 }
 
@@ -87,7 +99,7 @@ describe('multi-photo cart atomicity and company isolation', () => {
   });
 
   it('does not add the two correct variants when a third requested size is unavailable', async () => {
-    const { agent, session, addCartLines, legacy } = harness();
+    const { agent, session, addCartLines, legacy, updateSession } = harness();
     const result = await agent.addVisualProductsToCart(
       session,
       [item(1, ['Negro']), item(2, ['Azul']), item(3, ['L'])],
@@ -108,6 +120,19 @@ describe('multi-photo cart atomicity and company isolation', () => {
     ]);
     expect(addCartLines).not.toHaveBeenCalled();
     expect(legacy).not.toHaveBeenCalled();
+    expect(updateSession).toHaveBeenCalledTimes(1);
+    expect(session.context.visual_cart_draft).toEqual(
+      expect.objectContaining({
+        status: 'needs_clarification',
+        requested_items: expect.arrayContaining([
+          expect.objectContaining({ product_url: url(3), option_values: ['L'] }),
+        ]),
+        resolved_not_added: expect.any(Array),
+        unresolved: expect.arrayContaining([
+          expect.objectContaining({ reason: 'variant_options_not_found' }),
+        ]),
+      }),
+    );
   });
 
   it('never silently drops a product from a visual burst', async () => {
@@ -205,6 +230,22 @@ describe('multi-photo cart atomicity and company isolation', () => {
       expect.objectContaining({ reason: 'visual_reference_not_exact' }),
     ]);
     expect(addCartLines).not.toHaveBeenCalled();
+  });
+
+  it('clears a pending draft only after all three options are resolved and added', async () => {
+    const { agent, session, addCartLines, updateSession } = harness();
+    session.context.visual_cart_draft = {
+      status: 'needs_clarification',
+      requested_items: [item(1), item(2), item(3)],
+    };
+    const result = await agent.addVisualProductsToCart(
+      session, [item(1, ['Negro']), item(2, ['Azul']), item(3, ['Blanco'])],
+      'La última talla es Blanco',
+    );
+    expect(result).toMatchObject({ ok: true, visual_batch_count: 3 });
+    expect(addCartLines).toHaveBeenCalledTimes(1);
+    expect(updateSession).toHaveBeenCalledTimes(1);
+    expect(session.context.visual_cart_draft).toBeUndefined();
   });
 
   it('supports ten different exact products when every option is resolved', async () => {
