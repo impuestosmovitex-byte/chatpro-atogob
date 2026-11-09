@@ -1,0 +1,63 @@
+name: MW1 guarded real OpenAI quality evaluation
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/mw1-live-openai-quality-evaluation.spec.ts'
+      - '.github/workflows/mw1-opt-in-real-openai-quality.yml'
+
+jobs:
+  fictional-prompt-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Offline prompt assembly and tenant isolation
+        run: npm test -- --runInBand mw1-live-openai-quality-evaluation.spec.ts
+      - name: TypeScript compile
+        run: npm run build
+
+  live-openai-quality:
+    # Only same-repository PRs; never expose credentials to forks.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      MW1_STAGING_OPENAI_API_KEY: ${{ secrets.MW1_STAGING_OPENAI_API_KEY }}
+      MW1_STAGING_AI_MODEL: gpt-4o-mini
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Check for dedicated evaluation access
+        id: credentials
+        shell: bash
+        run: |
+          if [ -n "$MW1_STAGING_OPENAI_API_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Dedicated QA credential present. Real OpenAI evaluation enabled."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::REAL OPENAI NOT RUN: MW1_STAGING_OPENAI_API_KEY is not configured. This job did not call any model."
+          fi
+      - name: Install without optional video binary
+        if: steps.credentials.outputs.available == 'true'
+        run: npm ci --ignore-scripts
+      - name: Actual OpenAI response evaluation (fictional data only)
+        if: steps.credentials.outputs.available == 'true'
+        env:
+          MW1_EVAL_RUN_LIVE: 'true'
+        run: npm test -- --runInBand mw1-live-openai-quality-evaluation.spec.ts
