@@ -1,0 +1,28 @@
+name: MW1 order lookup continuity and privacy
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/whatsapp-webhook.controller.ts'
+      - 'apps/api/src/customer-order.service.ts'
+      - 'apps/api/src/customer-order.service.spec.ts'
+      - 'apps/api/src/whatsapp-order-lookup-continuity.spec.ts'
+      - '.github/workflows/order-lookup-continuity.yml'
+
+jobs:
+  order-tests-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      # The tests and TypeScript compilation don't need ffmpeg binary installation.
+      - run: npm ci --ignore-scripts
+      - run: npm test -- --runInBand customer-order.service.spec.ts whatsapp-order-lookup-continuity.spec.ts
+      - run: npm run build

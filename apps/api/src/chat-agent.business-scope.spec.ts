@@ -137,7 +137,7 @@ describe('MW1 company-scoped replies', () => {
     const { agent, updateSession } = harness();
     agent.enforceSalesReply = jest.fn(async (_session: any, msg: string) => msg);
     const text = '¡Qué buena idea para Navidad! 🎄 ¿Quieres que te mejore ese texto para publicar en Instagram o prefieres que te muestre 3 looks reales de la tienda para que los compartas?';
-    const actual = await agent.enforceAtogobReply(
+    const actual = await agent.enforceCompanyReply(
       atogob, { id: 'session-4', context: {} }, text,
     );
     expect(actual).toBe('Cuéntame, ¿en qué te puedo ayudar?');
@@ -148,7 +148,7 @@ describe('MW1 company-scoped replies', () => {
     const { agent, requestHumanAttention } = harness();
     agent.enforceSalesReply = jest.fn(async (_session: any, msg: string) => msg);
     const reply = '¡Claro! Tenemos blusas negras. ¿Qué talla necesitas?';
-    expect(await agent.enforceAtogobReply(
+    expect(await agent.enforceCompanyReply(
       atogob, { id: 'session-5', context: {} }, reply,
     )).toBe(reply);
     expect(requestHumanAttention).not.toHaveBeenCalled();
