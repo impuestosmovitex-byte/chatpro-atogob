@@ -5,6 +5,13 @@ import { isInstagramStagingRequest, isInstagramStagingApi } from '../../../../li
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  // State-changing Meta calls require a same-origin browser action.
+  // A signed user cookie alone must not authorize cross-site submission.
+  if (request.headers.get('origin') !==
+    'https://mw1-web-staging-staging.up.railway.app') {
+    return NextResponse.json({ok:false,error:'Origen no autorizado.'},
+      {status:403,headers:{'Cache-Control':'no-store'}});
+  }
   const session = await getInboxSession(
     request.cookies.get(INBOX_SESSION_COOKIE)?.value,
   );
