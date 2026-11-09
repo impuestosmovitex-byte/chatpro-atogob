@@ -228,7 +228,12 @@ export class StagingIntegrationsController {
       !Array.isArray(assignedBody.data) || assignedBody.data.length !== 1 ||
       assignedBody.data[0]?.id !== externalId ||
       assignedBody.data[0]?.username?.toLowerCase() !== 'chatpro_mw1' ||
-      Boolean(assignedBody.paging)) {
+      Boolean(assignedBody.paging &&
+        typeof assignedBody.paging === 'object' &&
+        assignedBody.paging !== null &&
+        'next' in assignedBody.paging &&
+        typeof assignedBody.paging.next === 'string' &&
+        assignedBody.paging.next.length > 0)) {
       throw new ForbiddenException('Meta no confirmó que el token pertenezca solo a @chatpro_mw1.');
     }
 
