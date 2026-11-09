@@ -747,6 +747,7 @@ export class MetaSocialAiService {
     const now = new Date().toISOString();
 
     let agentMessage: string;
+    let directOutfitReply: string | null = null;
     const { isServiceEvidence, productInquiry } =
       this.classifySocialImagePurpose({
         context: commercialSession.context,
@@ -832,6 +833,42 @@ export class MetaSocialAiService {
         'Si la configuración indica que después del comprobante corresponde crear el checkout y están completos los requisitos, utiliza las herramientas reales disponibles.',
         'No transfieras automáticamente a un asesor solamente por recibir el comprobante.',
       ].join('\n');
+    } else if (
+      imageType === 'product' &&
+      !hasPaymentIntent &&
+      this.chatAgentService.outfitClarificationForImage({
+        summary,
+        category,
+        parts: [productName, ...searchTerms].filter(Boolean),
+        caption: input.caption?.trim() || '',
+      })
+    ) {
+      const clarification =
+        this.chatAgentService.outfitClarificationForImage({
+          summary, category,
+          parts: [productName, ...searchTerms].filter(Boolean),
+          caption: input.caption?.trim() || '',
+        });
+      commercialSession =
+        await this.agentSessionRuntimeService.updateSession(
+          commercialSession.id,
+          {
+            context: {
+              ...commercialSession.context,
+              pending_outfit_visual: {
+                received_at: now,
+                channel,
+                summary,
+                category,
+                product_name: productName || null,
+                search_terms: searchTerms,
+                colors,
+              },
+            },
+          },
+        );
+      directOutfitReply = clarification;
+      agentMessage = '';
     } else if (
       imageType === 'product' ||
       imageType === 'mixed'
@@ -1025,6 +1062,7 @@ export class MetaSocialAiService {
     }
 
     const reply = (
+      directOutfitReply ??
       await this.chatAgentService.reply(
         profile,
         commercialSession,
