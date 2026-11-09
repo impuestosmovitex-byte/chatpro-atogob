@@ -98,7 +98,7 @@ describe('Instagram pilot webhook processing safety with mocked database', () =>
     const signature = 'sha256=' + createHmac('sha256',secret).update(body).digest('hex');
     const integration = {
       id: integrationId, company_id: companyId, status:'pending',
-      config:{username:'chatpro_mw1',webhooks_subscribed:false},
+      config:{username:'chatpro_mw1',webhooks_subscribed:true},
     };
     const selectIntegration = jest.fn().mockReturnValue({
       eq: jest.fn().mockReturnThis(),
