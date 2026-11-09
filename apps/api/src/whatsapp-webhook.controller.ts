@@ -1583,8 +1583,7 @@ export class WhatsappWebhookController {
         )) {
           return;
         }
-        const sentAiMessage18 =
-          await this.whatsappMessagingService.sendText(
+        const sentAiMessage18 = await this.whatsappMessagingService.sendText(
             profile.id, input.phone, outfitQuestion,
           );
         replySent = true;
