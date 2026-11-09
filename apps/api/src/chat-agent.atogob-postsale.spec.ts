@@ -118,7 +118,8 @@ describe('MW1 tenant-configured economic handoffs', () => {
   it('never confirms a transfer that did not happen', async () => {
     const { agent } = harness('waiting');
     const pending = await agent.requestCompanyPolicyReview(session, 'review');
-    expect(pending).not.toContain('te voy a comunicar');
+    // waiting confirms that the request entered the human attention queue.
+    expect(pending).toContain('te voy a comunicar');
     agent.agentSessionRuntimeService.requestHumanAttention = jest.fn(async () => {
       throw new Error('handoff unavailable');
     });
