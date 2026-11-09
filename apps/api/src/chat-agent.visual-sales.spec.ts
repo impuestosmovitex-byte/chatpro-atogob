@@ -394,3 +394,72 @@ describe('MW1 multi-product purchase plan prevents incomplete checkout', () => {
     expect(guard?.next_action).not.toBe('complete_confirmed_cart');
   });
 });
+
+describe('MW1 last-resort checkout continuation (never a confirmation loop)', () => {
+  const ask = [{
+    sender: 'assistant',
+    message: '¿Quieres que genere el enlace de pago para finalizar?',
+  }];
+
+  it('finishes the already-confirmed cart using the real checkout action', async () => {
+    const agent = Object.create(ChatAgentService.prototype) as any;
+    const requestHumanAttention = jest.fn();
+    const current = {
+      id: 'verified-cart',
+      context: {
+        conversation_category: 'sales',
+        sale_context: {
+          expected_purchase_handles: ['conjunto', 'vestido', 'pantalon'],
+        },
+      },
+    } as any;
+    agent.agentSessionRuntimeService = {
+      getSessionById: jest.fn(async () => current),
+      requestHumanAttention,
+    };
+    agent.executeTool = jest.fn(async () => ({
+      ok: true,
+      checkout_url: 'https://tienda-ejemplo.com/cart/three-verified-products',
+    }));
+    const output = await agent.stopCheckoutConfirmationLoop(
+      current,
+      'Sí por favor',
+      '¿Confirmas que quieres que genere el enlace de pago?',
+      ask,
+    );
+    expect(output).toContain('https://tienda-ejemplo.com/cart/three-verified-products');
+    expect(agent.executeTool).toHaveBeenCalledWith(
+      'create_checkout_link', '{}', current,
+    );
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it('asks only for genuinely missing delivery city when checkout says so', async () => {
+    const agent = Object.create(ChatAgentService.prototype) as any;
+    const requestHumanAttention = jest.fn();
+    const current = {
+      id: 'verified-cart',
+      context: {
+        conversation_category: 'sales',
+        sale_context: {
+          expected_purchase_handles: ['conjunto', 'vestido'],
+        },
+      },
+    } as any;
+    agent.agentSessionRuntimeService = {
+      getSessionById: jest.fn(async () => current),
+      requestHumanAttention,
+    };
+    agent.executeTool = jest.fn(async () => ({
+      ok: false, next_action: 'ask_city',
+    }));
+    const output = await agent.stopCheckoutConfirmationLoop(
+      current,
+      'Sí por favor',
+      '¿Confirmas que deseas finalizar la compra?',
+      ask,
+    );
+    expect(output).toBe('¿Para qué ciudad sería el envío?');
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+});
