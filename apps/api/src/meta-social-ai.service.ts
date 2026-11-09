@@ -668,7 +668,9 @@ export class MetaSocialAiService {
     const isServiceEvidence =
       commercialSession.context.conversation_category === 'service' ||
       serviceArea?.areaType === 'service' ||
-      Boolean(commercialSession.context.customer_service_flow);
+      Boolean(commercialSession.context.customer_service_flow) ||
+      primaryIntent === 'customer_service' ||
+      imageType === 'warranty_or_return';
     const activeSale = commercialSession.context.conversation_category === 'sales';
     const productInquiry = hasProductIntent || (
       activeSale && imageType === 'product' &&
