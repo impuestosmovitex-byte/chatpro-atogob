@@ -1133,7 +1133,7 @@ export class WhatsappWebhookController {
         input.caption || '',
       );
       if (captionHandoff !== null) {
-        const sent = await this.whatsappMessagingService.sendText(
+        const sentAiMessage17 = await this.whatsappMessagingService.sendText(
           profile.id,
           input.phone,
           captionHandoff,
@@ -1146,7 +1146,7 @@ export class WhatsappWebhookController {
           message: captionHandoff,
           sender: 'assistant',
           authorType: 'ai',
-          providerMessageId: sent.messageId,
+          providerMessageId: sentAiMessage17.messageId,
           aiResponse: captionHandoff,
         });
         await this.conversationMemoryService.touchSession(session.id);
