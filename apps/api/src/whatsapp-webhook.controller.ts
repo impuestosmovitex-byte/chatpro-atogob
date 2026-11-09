@@ -1687,8 +1687,13 @@ export class WhatsappWebhookController {
       if (
         (multimodalIntent.imageType === 'product' ||
           multimodalIntent.imageType === 'mixed') &&
-        !multimodalIntent.hasProductIntent &&
-        !multimodalIntent.hasPaymentIntent
+        !this.shouldContinueVisualSalesInquiry({
+          imageType: multimodalIntent.imageType,
+          primaryIntent: multimodalIntent.primaryIntent,
+          hasProductIntent: multimodalIntent.hasProductIntent,
+          hasPaymentIntent: multimodalIntent.hasPaymentIntent,
+          conversationCategory: storedCategory,
+        })
       ) {
         const clarification =
           `Claro 😊 Cuéntame qué necesitas con lo que me enviaste y te ayudo ` +
@@ -1789,6 +1794,9 @@ export class WhatsappWebhookController {
 
       const visualCustomerMessage = [
         '[REFERENCIA_VISUAL]',
+        !input.caption && storedCategory === 'sales'
+          ? 'El cliente envió una foto de producto mientras estaba comprando. Interprétala como referencia comercial para buscar o consultar, no como orden de agregar al carrito ni confirmación de compra. No le preguntes genéricamente qué necesita con la imagen si ya puedes orientarlo usando el catálogo.'
+          : '',
         input.caption
           ? `Mensaje real actual del cliente escrito junto a la imagen: ${input.caption}`
           : 'El cliente envió solamente una imagen y quiere atención sobre lo que aparece.',
@@ -1937,6 +1945,35 @@ export class WhatsappWebhookController {
     }
   }
 
+  private shouldContinueVisualSalesInquiry(input: {
+    imageType: string;
+    primaryIntent: string;
+    hasProductIntent: boolean;
+    hasPaymentIntent: boolean;
+    conversationCategory: string;
+  }): boolean {
+    // A receipt or a complaint must never be reinterpreted as a sale.
+    if (
+      input.hasPaymentIntent ||
+      input.primaryIntent === 'validate_payment' ||
+      input.primaryIntent === 'customer_service'
+    ) {
+      return false;
+    }
+
+    if (input.hasProductIntent) {
+      return true;
+    }
+
+    // In an active sale a bare product photo usually refers to the product
+    // the shopper wants to discuss. Do not demand another generic question;
+    // matching and variant/cart validation remain separate, required steps.
+    return (
+      input.conversationCategory === 'sales' &&
+      input.imageType === 'product'
+    );
+  }
+
   private async classifyIncomingImageIntent(input: {
     buffer: Buffer;
     mimeType: string;
@@ -2015,7 +2052,8 @@ export class WhatsappWebhookController {
         'mixed: el bloque reciente contiene simultáneamente pago y solicitud/interés de producto, aunque la imagen actual muestre solo uno de ellos.',
         'IMPORTANTE: image_type describe QUÉ CONTIENE la imagen; has_product_intent describe QUÉ QUIERE HACER la persona. No confundas ambas cosas.',
         'has_product_intent=true únicamente cuando el texto actual, el historial inmediato o el contexto activo indiquen claramente que la persona quiere identificar, buscar, seleccionar, agregar, comprar, comparar, consultar o revisar ese producto, o cuando la IA le haya pedido expresamente enviar una imagen/referencia para continuar una compra.',
-        'Una imagen que simplemente muestra un producto, ficha técnica, publicación, catálogo o captura comercial NO demuestra por sí sola intención de compra ni una solicitud de análisis.',
+        'Una imagen de producto enviada sin contexto comercial no demuestra por sí sola una solicitud de compra. Sin intención clara y fuera de una venta activa, solicita aclaración breve.',
+        'Si la persona YA está en una venta activa y envía una foto de producto, trátala como referencia para buscar, identificar o consultar en esa compra aunque no añada texto, siempre que no esté aportando evidencia de postventa o un comprobante. Esto NO autoriza agregar al carrito ni concluir una compra.',
         'Si la imagen contiene productos pero no existe una solicitud o continuidad clara relacionada con ellos, usa primary_intent=clarify y has_product_intent=false. No inventes lo que la persona quiere hacer.',
         'No intentes decidir si la imagen pertenece o no a la marca únicamente por su fondo, modelo, diseño, logo ausente o apariencia visual.',
         'Si la IA solicitó un comprobante y la imagen parece evidencia de pago, hasPaymentIntent debe ser true.',
