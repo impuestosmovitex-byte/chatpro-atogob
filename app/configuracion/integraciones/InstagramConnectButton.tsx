@@ -591,9 +591,11 @@ export function InstagramConnectButton({
       setSubscribePilotResult({ok:false,message:'La activación segura de esta cuenta no está habilitada.'});
       return;
     }
-    if (!window.confirm(
-      '¿Suscribir únicamente @chatpro_mw1 para recibir mensajes en la empresa Piloto MW1 Prueba? ' +
-      'Esta acción no activa respuestas ni automatizaciones, y no afecta otras empresas.',
+    const alreadyConfirmed = subscriptionResult?.accountSubscribed === true &&
+      subscriptionResult.messageSubscribed === true;
+    if (!window.confirm(alreadyConfirmed
+      ? 'Meta ya confirmó la suscripción de @chatpro_mw1. ¿Registrar esa confirmación en MW1 sin repetir la suscripción?'
+      : '¿Comprobar y, únicamente si Meta no tiene una suscripción, solicitarla para @chatpro_mw1 del Piloto MW1 Prueba? No activa respuestas ni automatizaciones.'
     )) return;
     setSubscribingPilot(true);
     setSubscribePilotResult(null);
@@ -837,12 +839,15 @@ export function InstagramConnectButton({
               ) : null}
               {config?.webhookPreflight?.subscriptionPilotReady &&
               integration?.details?.username?.trim().toLowerCase() === 'chatpro_mw1' &&
-              config.webhookPreflight.appSubscriptionConfirmed !== true &&
-              subscriptionResult?.accountSubscribed !== true ? (
+              config.webhookPreflight.appSubscriptionConfirmed !== true ? (
                 <button type="button" className={styles.connectButton}
                   onClick={() => void subscribeInstagramPilot()}
                   disabled={subscribingPilot || checkingSubscription || testing || connecting}>
-                  {subscribingPilot ? 'Suscribiendo cuenta piloto…' : 'Activar recepción de mensajes en piloto'}
+                  {subscribingPilot ? 'Comprobando cuenta piloto…' :
+                    subscriptionResult?.accountSubscribed === true &&
+                    subscriptionResult.messageSubscribed === true
+                      ? 'Confirmar suscripción existente en MW1'
+                      : 'Comprobar y activar mensajes del piloto'}
                 </button>
               ) : null}
               {subscribePilotResult ? (
