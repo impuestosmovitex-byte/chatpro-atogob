@@ -30,7 +30,8 @@ export function customerExplicitlyAskedForAdvisor(value: string): boolean {
   }
   return (
     /\b(?:quiero|deseo|necesito|prefiero|puedo|puedes|podria|podrias)\b.{0,70}\b(?:asesor(?:a)?|agente humano|persona real)\b/.test(text) ||
-    /\b(?:hablar|comunicarme|pasame|pasenme|transfiereme|atenderme)\b.{0,60}\b(?:asesor(?:a)?|agente humano|persona real)\b/.test(text)
+    /\b(?:hablar|comunicarme|pasame|pasenme|transfiereme|atenderme)\b.{0,60}\b(?:asesor(?:a)?|agente humano|persona real)\b/.test(text) ||
+    /\b(?:speak|talk|connect|transfer|want|need)\b.{0,65}\b(?:agent|human|representative|person)\b/.test(text)
   );
 }
 
@@ -42,9 +43,8 @@ export function customerExplicitlyAskedForAdvisor(value: string): boolean {
 export function customerExplicitlyAskedForFreeBenefit(value: string): boolean {
   const text = normalizeCustomerExpression(value);
   return (
-    /\b(?:gratis|gratuit[oa]s?|sin costo|sin cobro|sin cobrar|sin pagar|de obsequio|a costo cero)\b/.test(text) ||
-    /\b(?:me|nos)\s+(?:regalas|regalan|obsequias|obsequian)\s+(?:el|la|los|las)\s+(?:envio|domicilio|entrega|producto|productos|pedido)\b/.test(text) &&
-      /\b(?:gratis|sin costo|sin cobrar|sin pagar|de obsequio)\b/.test(text)
+    /\b(?:gratis|gratuit[oa]s?|sin costo|sin cobro|sin cobrar|sin pagar|de obsequio|a costo cero|free shipping|free delivery|for free|at no cost)\b/.test(text) ||
+    /\b(?:me|nos)\s+(?:regalas|regalan|obsequias|obsequian)\s+(?:el|la|los|las)\s+(?:envio|domicilio|entrega)\b/.test(text)
   );
 }
 
@@ -62,7 +62,7 @@ export function handoffAssertsUnrequestedFreeBenefit(
     [reason, summary].filter(Boolean).join(' '),
   );
   const assertsFreeConcession =
-    /\b(?:sin costo|sin cobro|sin cobrar|sin pagar|gratis|gratuit[oa]s?|costo cero)\b/.test(modelClaim) ||
+    /\b(?:sin costo|sin cobro|sin cobrar|sin pagar|gratis|gratuit[oa]s?|costo cero|free shipping|free delivery|for free|at no cost)\b/.test(modelClaim) ||
     /\b(?:solicitud|peticion|pedido)\s+(?:de|para)\s+(?:un\s+)?(?:regalo|obsequio)\s+(?:del|de|en)\s+(?:pedido|producto|compra)\b/.test(modelClaim) ||
     /\b(?:regalar|obsequiar)\s+(?:el|la|los|las)\s+(?:pedido|producto|productos|compra)\b/.test(modelClaim);
   if (!assertsFreeConcession) return false;
