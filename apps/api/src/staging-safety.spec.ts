@@ -45,6 +45,24 @@ describe('assertStagingIsolation', () => {
       META_INSTAGRAM_UNIFIED_CONFIG_ID: 'unexpected-configuration',
     })).toThrow(/unexpected Instagram pilot identifier/);
   });
+  it('allows only the specifically pinned public Instagram platform app ID', () => {
+    expect(() => assertStagingIsolation({
+      ...valid,
+      META_INSTAGRAM_APP_ID:'1079916404666757',
+      META_INSTAGRAM_UNIFIED_CONFIG_ID:'2371579683591784',
+      META_INSTAGRAM_PLATFORM_APP_ID:'1674184274384954',
+    })).not.toThrow();
+    expect(() => assertStagingIsolation({
+      ...valid,
+      META_INSTAGRAM_PLATFORM_APP_ID:'wrong-app-identifier',
+    })).toThrow(/unexpected Instagram pilot identifier/);
+    expect(() => assertStagingIsolation({
+      ...valid,
+      META_INSTAGRAM_PLATFORM_APP_ID:'1674184274384954',
+      META_INSTAGRAM_ACCESS_TOKEN:'never-allowed',
+    })).toThrow(/external messaging/);
+  });
+
   it('rejects an Instagram secret without explicit pilot safety prerequisites', () => {
     const instagram = {
       ...valid,
