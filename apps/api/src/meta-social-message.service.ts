@@ -511,32 +511,25 @@ export class MetaSocialMessageService {
         let messageType = 'text';
         let mediaUrl: string | null = null;
 
-        if (
-          !text &&
-          Array.isArray(message.attachments)
-        ) {
-          const attachment =
-            this.record(message.attachments[0]);
-
-          const payload =
-            this.record(attachment.payload);
-
-          messageType =
-            this.text(attachment.type) ||
-            'attachment';
-
-          mediaUrl =
-            this.text(payload.url) ||
-            null;
-
-          text =
-            messageType === 'image'
-              ? '📷 Imagen recibida.'
-              : messageType === 'audio'
-                ? '🎵 Audio recibido.'
-                : messageType === 'video'
-                  ? '🎥 Video recibido.'
-                  : '📎 Archivo recibido.';
+        const imageCaption = text;
+        if (Array.isArray(message.attachments) && message.attachments.length) {
+          const attachment = this.record(message.attachments[0]);
+          const payload = this.record(attachment.payload);
+          const type = this.text(attachment.type) || 'attachment';
+          const url = this.text(payload.url) || null;
+          if (type === 'image' && url) {
+            messageType = 'image';
+            mediaUrl = url;
+            text = imageCaption
+              ? `📷 Imagen recibida: ${imageCaption}`
+              : '📷 Imagen recibida.';
+          } else if (!text) {
+            messageType = type;
+            mediaUrl = url;
+            text = type === 'audio' ? '🎵 Audio recibido.'
+              : type === 'video' ? '🎥 Video recibido.'
+              : '📎 Archivo recibido.';
+          }
         }
 
         const postback =
@@ -705,6 +698,10 @@ export class MetaSocialMessageService {
               socialConversationKey,
               socialInboundToken,
             );
+
+            if (imageCaption) {
+              this.appendPendingSocialText(socialConversationKey, imageCaption);
+            }
 
             this.pendingInstagramImages.set(
               socialConversationKey,
