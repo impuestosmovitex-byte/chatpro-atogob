@@ -1,0 +1,27 @@
+name: MW1 visual sales and catalog regression
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/chat-agent.service.ts'
+      - 'apps/api/src/whatsapp-webhook.controller.ts'
+      - 'apps/api/src/chat-agent.visual-sales.spec.ts'
+      - '.github/workflows/visual-sales-regressions.yml'
+
+jobs:
+  visual-sales-tests-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      # The image and sales tests don't require ffmpeg's downloaded binary.
+      - run: npm ci --ignore-scripts
+      - run: npm test -- --runInBand chat-agent.visual-sales.spec.ts
+      - run: npm run build
