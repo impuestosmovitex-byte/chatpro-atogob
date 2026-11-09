@@ -837,6 +837,7 @@ export function InstagramConnectButton({
               ) : null}
               {config?.webhookPreflight?.subscriptionPilotReady &&
               integration?.details?.username?.trim().toLowerCase() === 'chatpro_mw1' &&
+              config.webhookPreflight.appSubscriptionConfirmed !== true &&
               subscriptionResult?.accountSubscribed !== true ? (
                 <button type="button" className={styles.connectButton}
                   onClick={() => void subscribeInstagramPilot()}
@@ -1154,7 +1155,9 @@ export function InstagramConnectButton({
           <small>Receptor de mensajes: {config.webhookPreflight.endpointDeployed ? 'Preparado' : 'No confirmado'}</small>
           <small>Verificación de Meta: {config.webhookPreflight.verificationTokenConfigured ? 'Token preparado' : 'Sin configurar'}</small>
           <small>Suscripción en Meta: {config.webhookPreflight.appSubscriptionConfirmed ? 'Confirmada' : 'Pendiente de comprobar'}</small>
-          <small>Recepción de mensajes: {config.webhookPreflight.receiptEnabled ? 'Habilitada para el piloto' : 'Deshabilitada'}</small>
+          <small>Receptor de mensajes: {config.webhookPreflight.receiptEnabled
+            ? 'Preparado para el piloto; requiere suscripción individual'
+            : 'Deshabilitado'}</small>
           <small>Responder desde MW1: {config.webhookPreflight.inboxRepliesEnabled ? 'Habilitado' : 'Pendiente'}</small>
           <small>{config.webhookPreflight.warning}</small>
         </div>
