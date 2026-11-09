@@ -1388,9 +1388,37 @@ export class WhatsappWebhookController {
         return;
       }
 
+      // A complaint or warranty photograph starts (or continues) Service,
+      // even if the client had previously been shopping. No catalog lookup
+      // or product selection is permitted for this evidence.
+      const startsServiceFromImage =
+        multimodalIntent.primaryIntent === 'customer_service' ||
+        multimodalIntent.imageType === 'warranty_or_return';
+
+      if (startsServiceFromImage) {
+        const receivedAt = new Date().toISOString();
+        session = await this.conversationMemoryService.updateSession(
+          session.id,
+          {
+            context: {
+              ...session.context,
+              conversation_category: 'service',
+              conversation_category_updated_at: receivedAt,
+              last_service_evidence: {
+                type: 'image',
+                caption: input.caption || null,
+                media_id: input.mediaId,
+                received_at: receivedAt,
+              },
+            },
+          },
+        );
+      }
+
       if (
-        multimodalIntent.imageType !== 'product' &&
-        multimodalIntent.imageType !== 'mixed'
+        startsServiceFromImage ||
+        (multimodalIntent.imageType !== 'product' &&
+          multimodalIntent.imageType !== 'mixed')
       ) {
         const contextualImageMessage = [
           '[IMAGEN_NO_PRODUCTO]',
