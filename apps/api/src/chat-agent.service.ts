@@ -5007,7 +5007,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
                 ? 'En este momento todos nuestros asesores están ocupados. Dejé tu solicitud pendiente para que te atiendan apenas estén disponibles.'
                 : 'Dejé tu solicitud pendiente para que un asesor la revise y te responda lo antes posible.';
 
-        const customerMessage =
+        const handoffCustomerMessage =
           customCustomerMessage || fallbackCustomerMessage;
 
         return {
@@ -5015,7 +5015,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           attention_status: updatedSession.attentionStatus,
           assigned_to_name: updatedSession.assignedToName,
           assigned: updatedSession.attentionStatus === 'human',
-          customer_message: customerMessage,
+          customer_message: handoffCustomerMessage,
         };
       }
 
