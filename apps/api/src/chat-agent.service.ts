@@ -602,6 +602,14 @@ export class ChatAgentService {
       return returnHandoff;
     }
 
+    // A tenant may configure a concise sales FAQ answer for PREVENTIVE
+    // size/color exchange questions. Do not turn it into post-sale service.
+    const briefExchangeReply =
+      this.configuredBriefExchangeReply(profile, activeSession, customerMessage);
+    if (briefExchangeReply !== null) {
+      return briefExchangeReply;
+    }
+
     // Other economic/cancellation requests keep their explicit-intent policy.
     // Ordinary exchange questions still reach the company-aware assistant.
     if (
@@ -2993,6 +3001,88 @@ export class ChatAgentService {
    * human handoff preserves the sale and stops the same question recurring.
    * Works for social sessions and WhatsApp through the common agent.
    */
+  private configuredBriefExchangeReply(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    customerMessage: string,
+  ): string | null {
+    const configured =
+      typeof profile.settings?.sales_short_change_answer === 'string'
+        ? profile.settings.sales_short_change_answer.trim()
+        : '';
+    if (!configured || configured.length > 250) return null;
+    const context = session.context;
+    const isSale = this.readConversationCategory(context) === 'sales' ||
+      (Array.isArray(context.cart) && context.cart.length > 0);
+    if (!isSale || context.customer_service_flow ||
+        context.last_service_evidence) return null;
+
+    const message = this.normalizePolicyText(customerMessage);
+    const asksGeneralChange =
+      /\b(?:hacen|aceptan|realizan|tienen|puedo|podria|se puede|se permiten)\b.{0,95}\b(?:cambiar|cambios?|cambio de (?:talla|color))\b/.test(message) ||
+      /\b(?:cambios?|cambiar)\b.{0,50}\b(?:talla|tallas|color|colores)\b/.test(message);
+    const asksForProcedure =
+      /\b(?:como hago|como solicito|como se hace|cual es el procedimiento|donde|cuanto cuesta|que vale|ya compre|ya me llego|ya recibi|reclamar|garantia|politica|reembolso|devolucion)\b/.test(message);
+    return asksGeneralChange && !asksForProcedure ? configured : null;
+  }
+
+  /**
+   * Announce free shipping once per validated quote for an active cart.
+   * Only real cart totals and a company-supported resolved zero quote qualify.
+   */
+  private async appendVerifiedFreeShippingNotice(
+    session: ConversationSession,
+    message: string,
+  ): Promise<string> {
+    try {
+      const latest = await this.agentSessionRuntimeService.getSessionById(session.id);
+      if (this.readConversationCategory(latest.context) !== 'sales') return message;
+      const sale = this.readSaleContext(latest.context);
+      if (
+        sale.shipping_quote_validated !== true ||
+        Number(sale.shipping_cost_cop) !== 0 ||
+        sale.delivery_method !== 'shipping'
+      ) return message;
+
+      const quoteTotal = String(sale.shipping_quote_products_total_cop ?? '');
+      if (!quoteTotal || Number(quoteTotal) <= 0) return message;
+      const cartResult = await this.cartService.getCart(latest) as JsonObject;
+      const cart = cartResult?.cart && typeof cartResult.cart === 'object'
+        ? cartResult.cart as JsonObject : {};
+      const actualTotal = String(cart.products_total_cop ?? '');
+      if (actualTotal !== quoteTotal) return message;
+
+      const signature = [
+        quoteTotal,
+        String(sale.shipping_quote_city ?? ''),
+        String(sale.shipping_quote_payment_method ?? ''),
+        String(sale.shipping_quote_delivery_method ?? ''),
+      ].join('|');
+      if (sale.free_shipping_announced_signature === signature) return message;
+      // Keep the announcement idempotent and do not repeat an existing
+      // verified free-shipping statement.
+      const alreadySaysFree =
+        /(?:envio|entrega).{0,35}(?:gratis|gratuito|sin costo|\$0)|(?:gratis|sin costo).{0,35}(?:envio|entrega)/i.test(
+          this.normalizePolicyText(message),
+        );
+      await this.agentSessionRuntimeService.updateSession(latest.id, {
+        context: {
+          ...latest.context,
+          sale_context: {
+            ...sale,
+            free_shipping_announced_signature: signature,
+          },
+        },
+      });
+      return alreadySaysFree
+        ? message
+        : `${message.trim()}\n\n🎉 ¡Felicitaciones! Tu envío ahora es gratis.`;
+    } catch (error) {
+      console.warn('[ChatPro][shipping] No se pudo completar el aviso de envío gratis:', error);
+      return message;
+    }
+  }
+
   private async stopCheckoutConfirmationLoop(
     session: ConversationSession,
     customerMessage: string,
@@ -3016,7 +3106,12 @@ export class ChatAgentService {
       /(?:enviame|mandame|pasame|genera|generame|quiero|dame).{0,60}(?:enlace|link|checkout|pagar|finalizar)/.test(
         normalize(customerMessage),
       );
-    if (!affirmative && !directCheckoutRequest) return null;
+    const paymentChoiceConfirmation =
+      /^(?:(?:si|sii+|claro|listo)\s+)?(?:quiero\s+)?(?:pagar|pago|pagare|paga|pagaria)\s+(?:con|por)\s+(?:addi|sistecredito|sumas|nequi|daviplata|tarjeta|transferencia|bold|bre-b)\b/.test(
+        normalize(customerMessage),
+      );
+    if (!affirmative && !directCheckoutRequest &&
+        !paymentChoiceConfirmation) return null;
 
     const lastAssistantRequests = history.filter((item) =>
       item.sender === 'assistant' &&
@@ -3118,7 +3213,7 @@ export class ChatAgentService {
       console.warn('[ChatPro][scope] respuesta de asistente genérico bloqueada');
       return this.handleOutsideBusinessMessage(profile, session);
     }
-    return clean;
+    return this.appendVerifiedFreeShippingNotice(session, clean);
   }
 
   private async enforceSalesReply(
@@ -3477,6 +3572,8 @@ export class ChatAgentService {
       '- CUPONES: jamás afirmes que activaste, verificaste o descontaste un cupón si el checkout no confirmó su aplicación. Si la empresa indica que se ingresa en Shopify, envía el enlace verificado y explica brevemente que el cliente escribe el cupón en el campo "Código de descuento o tarjeta regalo"; el checkout indicará si cumple las condiciones. No pidas cinco confirmaciones sobre aplicar un código ni prometas descuentos con solo ver una captura.',
       '- GUÍA DE TALLAS: recomienda únicamente usando las medidas reales verificadas para la variante/producto y las medidas que entregó la persona. No afirmes que una talla quedará más corta o que una prenda quedará igual que la fotografía sin tener el largo real. Cuando falten medidas exactas, dilo y plantea UNA pregunta útil o deriva la duda, sin asegurar un ajuste.',
       '- RESPUESTA COMERCIAL BREVE: ante "¿hacen cambios?" contesta esa pregunta sin enumerar costos, direcciones, trámites futuros o políticas completas que no solicitaron. Si la empresa requiere un asesor para un tema, transfiere sin detalles. Tras una respuesta breve sobre cambios, vuelve a la compra pendiente sin repetir las preguntas ya resueltas.',
+      '- ENVÍO GRATIS CONSEGUIDO: cuando el backend confirme un costo de envío cero para el carrito ACTUAL y ya se cumplan sus condiciones, felicita brevemente al comprador al alcanzar ese beneficio. Nunca lo anuncies por una regla hipotética ni sobre un subtotal anterior. No lo repitas cada turno.',
+      '- SI EL CLIENTE YA ELIGIÓ ADDI U OTRO MEDIO: preguntas como “¿me envías el enlace?” o la respuesta “sí, pagaré con Addi” a una oferta previa de checkout significan que quiere avanzar. No preguntes nuevamente si desea generar el enlace, ejecuta el siguiente paso real configurado. Si el checkout aún no puede generarse, pregunta únicamente el dato concreto que falta.',
       '- NO REPITAS CONFIRMACIONES: si tu mensaje anterior planteó una única confirmación y el cliente responde “sí”, “exacto”, “por favor”, “confírmame” o equivalente, no vuelvas a formular la misma pregunta. Ejecuta inmediatamente la acción real disponible; si no existe herramienta/configuración para resolverla y corresponde intervención humana, realiza el handoff real. Nunca encadenes varias preguntas de “¿quieres que confirme?” sobre el mismo dato.',
       '- Al usar request_human_attention, customer_message debe ser el mensaje exacto que verá la persona: natural, breve, útil y alineado al tono/configuración de la empresa. No uses una frase fija si la empresa configuró otra forma de atención.',
       '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
