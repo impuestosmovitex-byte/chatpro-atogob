@@ -404,6 +404,65 @@ export class MetaSocialAiService {
       );
     }
 
+    // An attached caption is a real customer message. Respect the active
+    // tenant's mandatory return-to-human rule before downloading/analyzing
+    // the photo; the answer must never reveal the returns policy.
+    const captionHandoff = await this.chatAgentService.routeReturnInquiryToHuman(
+      profile,
+      commercialSession,
+      input.caption?.trim() || '',
+    );
+    if (captionHandoff !== null) {
+      const providerMessageId = channel === 'messenger'
+        ? await this.sendMessengerText({
+            pageId: input.instagramId,
+            recipientId: input.recipientId,
+            text: captionHandoff,
+            credentialsEncrypted: input.credentialsEncrypted,
+          })
+        : await this.sendInstagramText({
+            instagramId: input.instagramId,
+            recipientId: input.recipientId,
+            text: captionHandoff,
+            credentialsEncrypted: input.credentialsEncrypted,
+            setupSource: input.setupSource,
+            apiVersion: input.apiVersion,
+          });
+
+      const sentAt = new Date().toISOString();
+      const { error: saveError } = await client.from('social_conversations')
+        .insert({
+          company_id: input.companyId,
+          session_id: input.sessionId,
+          channel,
+          external_customer_id: input.recipientId,
+          provider_message_id: providerMessageId,
+          sender: 'assistant',
+          author_type: 'assistant',
+          message_type: 'text',
+          message: captionHandoff,
+          media_url: null,
+          created_at: sentAt,
+        });
+      if (saveError) {
+        throw new Error(
+          `No se pudo guardar la transferencia de ${channel}: ${saveError.message}`,
+        );
+      }
+
+      const { error: updateError } = await client
+        .from('social_conversation_sessions')
+        .update({ last_message_at: sentAt, updated_at: sentAt })
+        .eq('id', input.sessionId)
+        .eq('company_id', input.companyId);
+      if (updateError) {
+        throw new Error(
+          `No se pudo actualizar la transferencia de ${channel}: ${updateError.message}`,
+        );
+      }
+      return;
+    }
+
     const mediaResponse = await fetch(input.mediaUrl);
 
     if (!mediaResponse.ok) {
