@@ -3,6 +3,10 @@ import { CustomerOrderService } from './customer-order.service';
 import { CompanyCommerceService } from './company-commerce.service';
 import { type CompanyCommerceProduct } from './company-shopify.service';
 import { Injectable } from '@nestjs/common';
+import {
+  customerExplicitlyAskedForAdvisor,
+  handoffAssertsUnrequestedFreeBenefit,
+} from './sales-intent-grounding.util';
 import OpenAI from 'openai';
 import {
   ConversationMemoryService,
@@ -624,6 +628,9 @@ export class ChatAgentService {
           item.name,
           item.arguments,
           activeSession,
+          customerMessage,
+          history.filter((item) => item.sender === 'customer')
+            .map((item) => item.message),
         );
 
         console.log(
@@ -2877,6 +2884,10 @@ export class ChatAgentService {
       '- session.context.commercial_visual_references contiene las referencias visuales comerciales conservadas durante toda la conversación de venta activa, incluso si fueron enviadas en ráfagas diferentes o después de respuestas anteriores de la IA.',
       '- Usa commercial_visual_references para resolver frases como “los dos que te mandé”, “las cinco fotos”, “el primero”, “el anterior”, “también este” o referencias a productos mostrados anteriormente durante la misma compra.',
       '- Una nueva foto, una nueva búsqueda, una nueva ráfaga o una respuesta de la IA no eliminan commercial_visual_references.',
+      '- INTERPRETACIÓN DE COMPRA: expresiones coloquiales como “regálame el pedido así”, “me regalas dos” o “me das esas tres” normalmente son solicitudes de preparar/comprar esos productos, NO peticiones de obsequios ni de envío gratuito. Nunca atribuyas gratuidad, descuento o regalo sin una solicitud inequívoca del cliente y respaldo en las reglas de la empresa.',
+      '- Si el cliente indica que comprará los productos de la última imagen o ráfaga, conserva sus referencias individuales y procede con la herramienta real de carrito. No transfieras por una frase coloquial de compra; si falta una variante o no está disponible, pide solo el dato que falta.',
+      '- Una variante rechazada o no disponible de UN producto no autoriza cambiar las variantes de los otros productos, recrear conjuntos, descartar referencias ni prometer que todos quedaron en el carrito. Consulta la resolución real de variantes y conserva los productos confirmados.',
+      '- El motivo y el resumen de una transferencia deben estar basados exclusivamente en peticiones y hechos confirmados; jamás conviertas “pedido así” o “regálame” en regalo de dinero, precio cero, envío gratis u otra excepción no solicitada.',
       '- Si una referencia anterior tiene matched_product.url y el cliente decide comprar o configurar un solo producto, usa select_product_by_url antes de consultar variantes o agregarlo al carrito.',
       '- commercial_visual_references son referencias comerciales, no productos del carrito. Nunca asumas que fueron agregadas hasta que una herramienta de carrito lo confirme.',
       '- Una ráfaga visual no agrega productos automáticamente al carrito. Solo ejecuta acciones de compra cuando la intención del cliente sea explícita y las variantes necesarias estén realmente resueltas.',
@@ -4471,6 +4482,8 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     name: string,
     rawArguments: string,
     session: ConversationSession,
+    customerMessage = '',
+    previousCustomerMessages: string[] = [],
   ): Promise<unknown> {
     const args = this.parseArguments(rawArguments);
 
@@ -4857,19 +4870,39 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             ? handoffSaleContext.shipping_resolution_status
             : '';
 
-        const reasonText = [
-          this.readString(args, 'reason'),
-          this.readString(args, 'summary'),
-        ]
+        const reason = this.readString(args, 'reason');
+        const summary = this.readString(args, 'summary');
+        const reasonText = [reason, summary]
           .join(' ')
           .toLowerCase()
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '');
 
-        const explicitHumanRequest =
-          /\b(asesor|humano|persona real|agente humano)\b/.test(
-            reasonText,
-          );
+        // A transfer reason is AI-authored; it cannot prove that the
+        // customer requested an advisor or a free commercial concession.
+        const customerEvidence = [
+          ...previousCustomerMessages.slice(-6),
+          customerMessage,
+        ];
+        const explicitHumanRequest = customerEvidence
+          .slice(-3)
+          .some((message) => customerExplicitlyAskedForAdvisor(message));
+
+        if (
+          handoffAssertsUnrequestedFreeBenefit(
+            reason,
+            summary,
+            customerEvidence,
+          )
+        ) {
+          return {
+            ok: false,
+            blocked: true,
+            next_action: 'correct_customer_intent',
+            error:
+              'La propuesta de transferencia atribuye al cliente un regalo o beneficio sin costo que no solicitó expresamente. No inventes condiciones comerciales; conserva los productos solicitados y continúa la compra o pide únicamente el dato realmente pendiente conforme a la configuración de la empresa.',
+          };
+        }
 
         const looksLikeResolvableCommercialHandoff =
           /\b(envio|tarifa|costo|medio de pago|pago|transferencia|nequi|daviplata|contraentrega|checkout|total)\b/.test(
