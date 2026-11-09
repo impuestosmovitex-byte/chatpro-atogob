@@ -23,6 +23,7 @@ type InstagramConfig = {
     endpointDeployed?: boolean;
     verificationTokenConfigured?: boolean;
     receiptEnabled?: boolean;
+    subscriptionPilotReady?: boolean;
     appSubscriptionConfirmed?: boolean;
     inboxRepliesEnabled?: boolean;
     warning?: string;
@@ -101,6 +102,10 @@ export function InstagramConnectButton({
     receptionEnabled?: boolean;
     messages?: Array<{provider_message_id:string;sender_id:string;message_text:string|null;received_at:string}>;
     error?: string;
+  } | null>(null);
+  const [subscribingPilot, setSubscribingPilot] = useState(false);
+  const [subscribePilotResult, setSubscribePilotResult] = useState<{
+    ok:boolean; message:string; needsVerification?:boolean;
   } | null>(null);
   const [checkingSubscription, setCheckingSubscription] = useState(false);
   const [subscriptionResult, setSubscriptionResult] = useState<{
@@ -579,6 +584,56 @@ export function InstagramConnectButton({
     }
   }
 
+  async function subscribeInstagramPilot() {
+    if (!isStaging || !config?.webhookPreflight?.subscriptionPilotReady ||
+        integration?.status !== 'pending' ||
+        integration?.details?.username?.trim().toLowerCase() !== 'chatpro_mw1') {
+      setSubscribePilotResult({ok:false,message:'La activación segura de esta cuenta no está habilitada.'});
+      return;
+    }
+    if (!window.confirm(
+      '¿Suscribir únicamente @chatpro_mw1 para recibir mensajes en la empresa Piloto MW1 Prueba? ' +
+      'Esta acción no activa respuestas ni automatizaciones, y no afecta otras empresas.',
+    )) return;
+    setSubscribingPilot(true);
+    setSubscribePilotResult(null);
+    try {
+      const response = await fetch('/api/integrations/instagram/subscribe-pilot',{
+        method:'POST',
+        cache:'no-store',
+      });
+      const data = await response.json() as {
+        ok?:boolean; message?:string; error?:string;
+        subscriptionRequestAccepted?:boolean; status?:string;
+      };
+      if (!response.ok || !data.ok) {
+        setSubscribePilotResult({
+          ok:false,
+          message:data.message || data.error ||
+            'No se pudo confirmar la suscripción del piloto.',
+          needsVerification:data.subscriptionRequestAccepted === true,
+        });
+      } else {
+        setSubscribePilotResult({
+          ok:true,
+          message:data.message ||
+            'Meta confirmó la suscripción del piloto. Falta probar un mensaje real.',
+        });
+      }
+      if (data.ok || data.subscriptionRequestAccepted === true) {
+        await checkSubscription();
+      }
+    } catch {
+      setSubscribePilotResult({
+        ok:false,
+        message:'No fue posible completar la solicitud a Meta; consulta de nuevo el estado antes de reintentar.',
+        needsVerification:true,
+      });
+    } finally {
+      setSubscribingPilot(false);
+    }
+  }
+
   async function disconnectInstagram() {
     const confirmed =
       window.confirm(
@@ -778,6 +833,28 @@ export function InstagramConnectButton({
                     <p>{subscriptionResult.error || 'Meta no confirmó la suscripción.'}</p>
                   )}
                   <small>Esta consulta no activa eventos ni cambia las suscripciones.</small>
+                </div>
+              ) : null}
+              {config?.webhookPreflight?.subscriptionPilotReady &&
+              integration?.details?.username?.trim().toLowerCase() === 'chatpro_mw1' &&
+              subscriptionResult?.accountSubscribed !== true ? (
+                <button type="button" className={styles.connectButton}
+                  onClick={() => void subscribeInstagramPilot()}
+                  disabled={subscribingPilot || checkingSubscription || testing || connecting}>
+                  {subscribingPilot ? 'Suscribiendo cuenta piloto…' : 'Activar recepción de mensajes en piloto'}
+                </button>
+              ) : null}
+              {subscribePilotResult ? (
+                <div role={subscribePilotResult.ok ? 'status' : 'alert'}
+                  style={{marginTop:8,padding:12,borderRadius:8,
+                    border:subscribePilotResult.ok ? '1px solid #b7dfbf' : '1px solid #efc0c0',
+                    background:subscribePilotResult.ok ? '#eff8f0' : '#fff2f2'}}>
+                  <strong>{subscribePilotResult.ok ? 'Suscripción confirmada' :
+                    'La suscripción requiere atención'}</strong>
+                  <p>{subscribePilotResult.message}</p>
+                  {subscribePilotResult.needsVerification ? (
+                    <small>No vuelvas a pulsar el botón hasta comprobar el estado en Meta.</small>
+                  ) : null}
                 </div>
               ) : null}
               <button type="button" className={styles.testButton}
