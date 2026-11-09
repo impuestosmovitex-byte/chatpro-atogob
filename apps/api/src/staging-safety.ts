@@ -36,6 +36,7 @@ export function assertStagingIsolation(env: NodeJS.ProcessEnv = process.env): vo
   // Other Meta credentials (including access tokens) remain forbidden.
   const instagramPilotPublicIds: Record<string, string> = {
     META_INSTAGRAM_APP_ID: '1079916404666757',
+    META_INSTAGRAM_PLATFORM_APP_ID: '1674184274384954',
     META_INSTAGRAM_UNIFIED_CONFIG_ID: '2371579683591784',
   };
   for (const [name, expected] of Object.entries(instagramPilotPublicIds)) {
@@ -57,6 +58,7 @@ export function assertStagingIsolation(env: NodeJS.ProcessEnv = process.env): vo
     'META_WHATSAPP_EMBEDDED_CONFIG_ID',
     'META_WHATSAPP_APP_SECRET',
     'META_INSTAGRAM_APP_ID',
+    'META_INSTAGRAM_PLATFORM_APP_ID',
     'META_INSTAGRAM_UNIFIED_CONFIG_ID',
     ...(instagramSecretAllowed ? ['META_INSTAGRAM_APP_SECRET'] : []),
   ];
