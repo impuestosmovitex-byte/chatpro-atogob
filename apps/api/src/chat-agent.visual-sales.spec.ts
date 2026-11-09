@@ -700,3 +700,37 @@ describe('MW1 shorter exchange answers, validated free shipping, and Addi checko
     expect(requestHumanAttention).not.toHaveBeenCalled();
   });
 });
+
+describe('MW1 colloquial yes to existing payment choice', () => {
+  it('interprets Sí pagar por ahí as approval, not a request for another confirmation', async () => {
+    const agent = Object.create(ChatAgentService.prototype) as any;
+    const session = {
+      id: 'checkout-payment-demo',
+      context: {
+        conversation_category: 'sales',
+        sale_context: {
+          payment_method: 'Addi',
+          city: 'Manizales',
+          expected_purchase_handles: ['enterizo', 'conjunto', 'pantalon'],
+        },
+      },
+    } as any;
+    const requestHumanAttention = jest.fn();
+    agent.agentSessionRuntimeService = {
+      getSessionById: jest.fn(async () => session),
+      requestHumanAttention,
+    };
+    agent.executeTool = jest.fn(async () => ({
+      ok: true,
+      checkout_url: 'https://tienda-ejemplo.com/cart/verified-three',
+    }));
+    const reply = await agent.stopCheckoutConfirmationLoop(
+      session,
+      'Sí pagar por ahí',
+      '¿Confirmas que quieres pagar con Addi y generar el enlace de pago ahora?',
+      [{ sender: 'assistant', message: '¿Quieres que te mande el enlace para finalizar tu compra?' }],
+    );
+    expect(reply).toContain('https://tienda-ejemplo.com/cart/verified-three');
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+});
