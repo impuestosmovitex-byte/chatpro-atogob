@@ -9,7 +9,7 @@ const makeSession = (context: Record<string, unknown> = {}) => ({
 
 function harness(lookupResult: Record<string, unknown>) {
   const controller = Object.create(WhatsappWebhookController.prototype) as any;
-  const updateSession = jest.fn(async () => undefined);
+  const updateSession = jest.fn(async (_id: string, _patch: Record<string, unknown>) => undefined);
   const lookup = jest.fn(async () => lookupResult);
   const requestHuman = jest.fn(async () => 'Se necesita un asesor');
 
