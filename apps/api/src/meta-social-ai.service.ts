@@ -839,14 +839,16 @@ export class MetaSocialAiService {
       this.chatAgentService.outfitClarificationForImage({
         summary,
         category,
-        parts: [productName, ...searchTerms].filter(Boolean),
+        parts: productName ? [productName] : [],
+        searchTerms,
         caption: input.caption?.trim() || '',
       })
     ) {
       const clarification =
         this.chatAgentService.outfitClarificationForImage({
           summary, category,
-          parts: [productName, ...searchTerms].filter(Boolean),
+          parts: productName ? [productName] : [],
+          searchTerms,
           caption: input.caption?.trim() || '',
         });
       commercialSession =
