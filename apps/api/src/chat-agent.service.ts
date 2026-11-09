@@ -466,9 +466,19 @@ export class ChatAgentService {
         session,
       );
 
-    // Respect the active company's configured policy, but only for an
-    // EXPLICIT economic/cancellation request. Informational questions and
-    // normal exchanges must still reach the company-aware assistant.
+    // The active tenant may reserve ANY return/refund inquiry for a human,
+    // including hypothetical questions about policy. No policy is disclosed.
+    const returnHandoff = await this.routeReturnInquiryToHuman(
+      profile,
+      activeSession,
+      customerMessage,
+    );
+    if (returnHandoff !== null) {
+      return returnHandoff;
+    }
+
+    // Other economic/cancellation requests keep their explicit-intent policy.
+    // Ordinary exchange questions still reach the company-aware assistant.
     if (
       this.companyRequiresEconomicHandoff(profile) &&
       this.containsEconomicRequestLanguage(customerMessage) &&
@@ -2608,6 +2618,47 @@ export class ChatAgentService {
       && /\b(?:reembols\w*|devolucion(?:es)?|dinero|cancel\w*|anulacion(?:es)?)\b/.test(instructions);
   }
 
+  private companyRequiresReturnInquiryHandoff(profile: CompanyProfile): boolean {
+    // Tenant-owned switch: never force another company's policy globally.
+    return profile.settings?.return_inquiry_handoff_policy === 'required';
+  }
+
+  private containsReturnInquiry(message: string): boolean {
+    const normalized = this.normalizePolicyText(message).replace(
+      /\b(?:no\s+(?:quiero|deseo|necesito|busco|estoy\s+pidiendo)|sin)\s+(?:una?\s+)?(?:devolucion(?:es)?|reembolso(?:s)?|devolver\w*|reintegr\w*)\b/g,
+      '',
+    );
+
+    return /\b(?:devolucion(?:es)?|devolv\w*|devuelv\w*|reembols\w*|reintegr\w*|regres\w*\s+(?:el|mi)\s+(?:dinero|plata))\b/.test(normalized);
+  }
+
+  /**
+   * Shared across WhatsApp, Instagram and Messenger. WhatsApp also calls
+   * this before its specialized customer-service/order routing, since those
+   * flows may otherwise answer without invoking the general chat agent.
+   *
+   * Internal image summaries are not customer messages; never interpret a
+   * policy mentioned in an internal vision prompt as a new customer request.
+   */
+  async routeReturnInquiryToHuman(
+    profile: CompanyProfile,
+    session: ConversationSession,
+    customerMessage: string,
+  ): Promise<string | null> {
+    if (
+      !this.companyRequiresReturnInquiryHandoff(profile) ||
+      /^\s*\[(?:EVIDENCIA_SERVICIO|REFERENCIA_VISUAL|COMPROBANTE_PAGO|IMAGEN_)/i.test(customerMessage) ||
+      !this.containsReturnInquiry(customerMessage)
+    ) {
+      return null;
+    }
+
+    return this.requestCompanyPolicyReview(
+      session,
+      'Consulta sobre devoluciones reservada a un asesor por la empresa',
+    );
+  }
+
   private containsEconomicRequestLanguage(message: string): boolean {
     const normalized = this.normalizePolicyText(message);
     return /\b(?:devolucion(?:es)?|devolv\w*|devuelv\w*|reembols\w*|reintegr\w*|cancel\w*|anul\w*|compensacion(?:es)?|dinero|plata)\b/.test(normalized);
@@ -2714,6 +2765,19 @@ export class ChatAgentService {
     reply: string,
   ): Promise<string> {
     const clean = await this.enforceSalesReply(session, reply);
+
+    // Final output firewall: even if the model spontaneously explains a
+    // return policy, do not send it. Queue a human for tenants requiring it.
+    if (
+      this.companyRequiresReturnInquiryHandoff(profile) &&
+      this.containsReturnInquiry(clean)
+    ) {
+      return this.requestCompanyPolicyReview(
+        session,
+        'Respuesta sobre devoluciones reservada a un asesor por la empresa',
+      );
+    }
+
     if (this.offersUnsolicitedEconomicOption(clean)) {
       // Universal safety net: no company should have a monetary alternative
       // inserted into a conversation as an unsolicited question or offer.
@@ -2872,6 +2936,11 @@ export class ChatAgentService {
 
     return [
       `Representas a ${profile.name} en esta conversación. Tu nombre configurado es ${assistantName}. No asumas género, cargo o rol adicional salvo que las instrucciones específicas de la empresa lo definan.`,
+      ...(this.companyRequiresReturnInquiryHandoff(profile)
+        ? [
+            'REGLA PRIORITARIA DE ESTA EMPRESA: todas las preguntas, dudas y solicitudes sobre devoluciones, reembolsos o devolución de prendas se transfieren inmediatamente a un asesor. Nunca expliques la política, plazos, requisitos, condiciones, excepciones o alternativas de devolución; tampoco menciones devoluciones por iniciativa propia. No transfieras solo porque el cliente niegue una devolución y pida un cambio normal de talla.',
+          ]
+        : []),
       '- CONTINUIDAD DE IDENTIDAD: cuando session.context.assistant_identity_presented sea true, el asistente ya atendió anteriormente a este contacto. No vuelvas a presentarte por iniciativa propia, no repitas tu nombre como introducción y no reinicies la conversación con una presentación aunque session.starts_new_conversation sea true, haya vencido la ventana de contexto o la persona haya usado Inicio, Menú o Volver.',
       '- Si la persona pregunta expresamente quién la atiende, cómo te llamas o cuál es tu identidad, responde normalmente usando la identidad configurada de la empresa.',
       '- Si session.context.assistant_identity_presented no existe o no es true, no significa que debas presentarte obligatoriamente: sigue las instrucciones específicas de la empresa para el saludo inicial.',
