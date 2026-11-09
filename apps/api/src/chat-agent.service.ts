@@ -5164,27 +5164,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       };
     }
 
-    const products = await this.shopifyService.searchCatalog(query, 8);
-
     return {
-      ok: true,
-      query,
-      products: products.map((product) => ({
-        id: product.id,
-        title: product.title,
-        url: product.onlineStoreUrl,
-        image_url: product.featuredImage?.url ?? null,
-        image_urls: product.images.edges
-          .map(({ node }) => node.url)
-          .filter((url) => /^https?:\/\//i.test(url)),
-        price_from_cop: this.getStartingPrice(product),
-        variants: product.variants.edges.slice(0, 10).map(({ node }) => ({
-          id: node.id,
-          title: node.title,
-          price_cop: node.price,
-          options: node.selectedOptions,
-        })),
-      })),
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
     };
   }
 
@@ -5528,30 +5511,6 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           price: variant.price,
           options: variant.options.map((option) => ({ ...option })),
         }));
-      } else {
-        // An unscoped global commerce fallback must remain unreachable.
-        const product =
-          await this.shopifyService.getProductFromUrl(item.productUrl);
-
-        if (!product) {
-          unresolved.push({
-            product_url: item.productUrl,
-            reason: 'product_not_available',
-            requested_options: item.optionValues,
-          });
-          continue;
-        }
-
-        productId = product.id;
-        productTitle = product.title;
-        productUrl = product.onlineStoreUrl || item.productUrl;
-        variants = product.variants.edges.map(({ node }) => ({
-          id: node.id,
-          legacyResourceId: node.legacyResourceId,
-          title: node.title,
-          price: node.price,
-          options: node.selectedOptions.map((option) => ({ ...option })),
-        }));
       }
 
       const resolution = this.resolveVisualVariant(
@@ -5656,16 +5615,11 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       return this.saveSelectedCompanyProduct(session, product);
     }
 
-    const product = await this.shopifyService.getProductFromUrl(url);
-
-    if (!product) {
-      return {
-        ok: false,
-        error: 'No encontré un producto válido en ese enlace.',
-      };
-    }
-
-    return this.saveSelectedProduct(session, product);
+    return {
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
+    };
   }
 
   private async selectProductByName(
@@ -5700,27 +5654,11 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       return this.saveSelectedCompanyProduct(session, exactProduct);
     }
 
-    const products = await this.shopifyService.searchCatalog(name, 5);
-
-    const exactProduct =
-      products.find(
-        (product) =>
-          this.normalizeText(product.title) === this.normalizeText(name),
-      ) ?? null;
-
-    if (!exactProduct) {
-      return {
-        ok: false,
-        error:
-          'No encontré una coincidencia exacta. Pide a la persona el enlace del producto o más detalles.',
-        candidates: products.map((product) => ({
-          title: product.title,
-          url: product.onlineStoreUrl,
-        })),
-      };
-    }
-
-    return this.saveSelectedProduct(session, exactProduct);
+    return {
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
+    };
   }
 
   private async saveSelectedProduct(
@@ -5781,20 +5719,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       };
     }
 
-    const product = await this.shopifyService.getProductByHandle(
-      selectedProduct.handle,
-    );
-
-    if (!product) {
-      return {
-        ok: false,
-        error: 'El producto seleccionado ya no está disponible.',
-      };
-    }
-
     return {
-      ok: true,
-      selected_product: this.productSnapshot(product),
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
     };
   }
 
@@ -6075,135 +6003,10 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       return this.selectCompanyVariant(session, selections);
     }
 
-    const selectedProduct = this.readSelectedProduct(session.context);
-
-    if (!selectedProduct) {
-      return {
-        ok: false,
-        error: 'No hay producto seleccionado.',
-      };
-    }
-
-    if (!selections.length) {
-      return {
-        ok: false,
-        error: 'No se recibieron variantes para validar.',
-      };
-    }
-
-    const product = await this.shopifyService.getProductByHandle(
-      selectedProduct.handle,
-    );
-
-    if (!product) {
-      return {
-        ok: false,
-        error: 'El producto seleccionado ya no está disponible.',
-      };
-    }
-
-    const resolved = new Map<string, SelectedVariantSelection>();
-
-    for (const selection of selections) {
-      const values = selection.optionValues
-        .map((value) => this.normalizeText(value))
-        .filter(Boolean);
-
-      if (!values.length) {
-        return {
-          ok: false,
-          error: 'Falta color, talla o medida para validar una variante.',
-          product: this.productSnapshot(product),
-        };
-      }
-
-      const matches = product.variants.edges
-        .map(({ node }) => node)
-        .filter((variant) =>
-          values.every((value) =>
-            variant.selectedOptions.some(
-              (option) =>
-                this.normalizeText(option.value) === value,
-            ),
-          ),
-        );
-
-      if (!matches.length) {
-        return {
-          ok: false,
-          error: 'No existe una variante con esas opciones.',
-          product: this.productSnapshot(product),
-        };
-      }
-
-      if (matches.length > 1) {
-        return {
-          ok: false,
-          error: 'Todavía faltan opciones para elegir una variante única.',
-          matching_variants: matches.slice(0, 10).map((variant) => ({
-            id: variant.id,
-            title: variant.title,
-            price_cop: variant.price,
-            options: variant.selectedOptions,
-          })),
-        };
-      }
-
-      const variant = matches[0];
-      const existing = resolved.get(variant.id);
-
-      if (existing) {
-        existing.quantity += selection.quantity;
-        continue;
-      }
-
-      resolved.set(variant.id, {
-        id: variant.id,
-        legacyResourceId: variant.legacyResourceId,
-        title: variant.title,
-        price: variant.price,
-        options: variant.selectedOptions,
-        quantity: selection.quantity,
-      });
-    }
-
-    const selectedVariants = Array.from(resolved.values());
-
-    if (!selectedVariants.length) {
-      return {
-        ok: false,
-        error: 'No se encontró una variante válida.',
-      };
-    }
-
-    const first = selectedVariants[0];
-
-    await this.agentSessionRuntimeService.updateSession(session.id, {
-      stage: 'variant',
-      context: {
-        ...session.context,
-        selectedVariant: {
-          id: first.id,
-          legacyResourceId: first.legacyResourceId,
-          title: first.title,
-          price: first.price,
-          options: first.options,
-        },
-        selectedVariants,
-        selectedVariantAt: new Date().toISOString(),
-      },
-    });
-
     return {
-      ok: true,
-      selected_variants: selectedVariants.map((variant) => ({
-        id: variant.id,
-        legacy_resource_id: variant.legacyResourceId,
-        title: variant.title,
-        price_cop: variant.price,
-        options: variant.options,
-        quantity: variant.quantity,
-      })),
+      ok: false,
+      next_action: 'connect_company_catalog',
+      error: 'Esta empresa no tiene un catálogo comercial propio conectado. No se consultará una tienda global.',
     };
   }
 
@@ -6221,7 +6024,9 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       );
     }
 
-    return this.shopifyService.getCollections();
+    // Non-commerce tenants must still answer service inquiries without
+    // inheriting a legacy globally configured Shopify store.
+    return [];
   }
 
   private async saveSelectedCompanyProduct(
