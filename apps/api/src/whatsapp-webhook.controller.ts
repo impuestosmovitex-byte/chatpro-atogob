@@ -3659,6 +3659,17 @@ export class WhatsappWebhookController {
     session: ConversationSession,
     text: string,
   ): Promise<string> {
+    // Return/refund questions must respect the current company's own policy
+    // before WhatsApp's order lookup and service shortcuts can answer them.
+    const returnHandoff = await this.chatAgentService.routeReturnInquiryToHuman(
+      profile,
+      session,
+      text,
+    );
+    if (returnHandoff !== null) {
+      return returnHandoff;
+    }
+
     const cleanText = text.toLowerCase().trim();
     const activeAreas =
       await this.conversationMemoryService.listActiveServiceAreas(profile.id);
