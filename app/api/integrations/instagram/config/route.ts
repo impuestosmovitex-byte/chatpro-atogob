@@ -100,8 +100,20 @@ export async function GET(request: NextRequest) {
     const stateSecret = process.env.MW1_INSTAGRAM_OAUTH_STATE_SECRET?.trim() || '';
     const webSecretReady = stateSecret.length >= 32;
     const uiEnabled = process.env.MW1_STAGING_INSTAGRAM_LOGIN_UI_ENABLED === 'true';
+    const preflight = body.webhookPreflight && typeof body.webhookPreflight === 'object' &&
+      !Array.isArray(body.webhookPreflight)
+      ? body.webhookPreflight as Record<string, unknown>
+      : {};
+    const subscribeUiEnabled =
+      process.env.MW1_STAGING_INSTAGRAM_SUBSCRIBE_UI_ENABLED === 'true';
+    const subscriptionPilotReady = preflight.receiptEnabled === true &&
+      preflight.subscriptionApiEnabled === true && subscribeUiEnabled;
     return NextResponse.json({
       ...body,
+      webhookPreflight: {
+        ...preflight,
+        subscriptionPilotReady,
+      },
       ready: body.ready === true && webSecretReady,
       authorizationEnabled: body.ready === true && webSecretReady &&
         body.authorizationEnabled === true && uiEnabled,
