@@ -91,6 +91,7 @@ export class ChatAgentService {
     summary: string;
     category: string;
     parts: string[];
+    searchTerms?: string[];
     caption: string;
   }): string | null {
     const normalize = (value: string) => value.toLowerCase()
@@ -99,6 +100,7 @@ export class ChatAgentService {
       .replace(/\s+/g, ' ').trim();
     const description = normalize([
       input.summary, input.category, ...input.parts,
+      ...(input.searchTerms || []),
     ].join(' '));
     const caption = normalize(input.caption || '');
 
@@ -131,7 +133,11 @@ export class ChatAgentService {
     if (alreadyChose) return null;
 
     if (distinct.length === 2) {
-      return `¿Quieres información de ${distinct[0]}, de ${distinct[1]} o del conjunto completo?`;
+      const withPreposition = (label: string) =>
+        label.startsWith('el ')
+          ? `del ${label.slice(3)}`
+          : `de ${label}`;
+      return `¿Quieres información ${withPreposition(distinct[0])}, ${withPreposition(distinct[1])} o del conjunto completo?`;
     }
     return '¿Quieres información del conjunto completo o de alguna prenda en particular?';
   }
