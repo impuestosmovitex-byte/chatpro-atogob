@@ -161,3 +161,73 @@ describe('WhatsApp return inquiry bypass protection', () => {
     expect(listActiveServiceAreas).not.toHaveBeenCalled();
   });
 });
+
+describe('WhatsApp caption return requests', () => {
+  it('transfers a photograph caption without running vision, catalog or policy explanations', async () => {
+    const controller = Object.create(WhatsappWebhookController.prototype) as any;
+    const session = {
+      ...makeSession({ conversation_category: 'sales' }),
+      attentionStatus: 'ai',
+    };
+    const profile = {
+      id: 'company-test',
+      settings: { return_inquiry_handoff_policy: 'required' },
+    };
+    const routeHandoff = jest.fn(async () =>
+      'Te voy a comunicar con uno de nuestros asesores.');
+    const saveMessage = jest.fn(async () => 'saved');
+    const classifyIncomingImageIntent = jest.fn(() => {
+      throw new Error('Vision must not run for return captions');
+    });
+    const sendText = jest.fn(async () => ({ messageId: 'out-1' }));
+    controller.companyIntegrationService = {
+      findActiveIntegrationByExternalId: jest.fn(async () => ({
+        companyId: 'company-test',
+      })),
+    };
+    controller.chatAgentService = {
+      prepareSessionForIncomingActivity: jest.fn(async () => session),
+      routeReturnInquiryToHuman: routeHandoff,
+    };
+    controller.conversationMemoryService = {
+      getCompanyProfileById: jest.fn(async () => profile),
+      getOrCreateSessionByCompanyId: jest.fn(async () => session),
+      saveMessage,
+      touchSession: jest.fn(async () => undefined),
+      persistIncomingMedia: jest.fn(async () => undefined),
+    };
+    controller.whatsappMessagingService = {
+      downloadRawMedia: jest.fn(async () => ({
+        buffer: Buffer.from('fake-image'),
+        mimeType: 'image/jpeg',
+      })),
+      sendText,
+    };
+    controller.attachRecoveryContext = jest.fn(async () => session);
+    controller.classifyIncomingImageIntent = classifyIncomingImageIntent;
+
+    await controller.processIncomingImage({
+      incomingPhoneNumberId: 'phone-number-id',
+      phone: '573001234567',
+      incomingMessageId: 'message-id',
+      replyToProviderMessageId: null,
+      mediaId: 'media-id',
+      mimeType: 'image/jpeg',
+      caption: 'Quiero una devolución',
+      burstId: 'burst-test',
+    });
+
+    expect(routeHandoff).toHaveBeenCalledWith(
+      profile, session, 'Quiero una devolución',
+    );
+    expect(classifyIncomingImageIntent).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(
+      'company-test', '573001234567',
+      'Te voy a comunicar con uno de nuestros asesores.',
+    );
+    expect(saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+      sender: 'assistant',
+      message: 'Te voy a comunicar con uno de nuestros asesores.',
+    }));
+  });
+});
