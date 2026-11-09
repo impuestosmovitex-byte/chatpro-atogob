@@ -3199,6 +3199,36 @@ export class WhatsappWebhookController {
             return;
           }
         }
+
+        // Meta/provider sometimes sends a payment button with an unexpected
+        // payload, preventing the exact template binding from resolving.
+        // For an EXPLICIT adviser/payment request, fail closed to human,
+        // never restart an empty AI cart. Other unmatched buttons retain
+        // their existing normal conversation routing.
+        if (explicitAutomationReply) {
+          const reply = await this.requestCustomerServiceHuman(
+            session,
+            'Cliente respondió a plantilla solicitando pago o asesor.',
+            'La acción de plantilla no se pudo identificar; un asesor debe finalizar el pago o atención solicitada.',
+          );
+          if (reply) {
+            const sentAiMessage19 = await this.whatsappMessagingService.sendText(
+              profile.id, input.phone, reply,
+            );
+            await this.conversationMemoryService.saveMessage({
+              companyId: profile.id,
+              sessionId: session.id,
+              customerPhone: input.phone,
+              message: reply,
+              sender: 'assistant',
+              authorType: 'ai',
+              providerMessageId: sentAiMessage19.messageId,
+              aiResponse: reply,
+            });
+            await this.conversationMemoryService.touchSession(session.id);
+          }
+          return;
+        }
       }
 
       if (input.suppressReply) {
