@@ -138,3 +138,26 @@ describe('WhatsApp order lookup continuity and privacy', () => {
     expect(h.requestHuman).not.toHaveBeenCalled();
   });
 });
+
+describe('WhatsApp return inquiry bypass protection', () => {
+  it('transfers before order lookup or area routing can explain a policy', async () => {
+    const controller = Object.create(WhatsappWebhookController.prototype) as any;
+    const handoff = jest.fn(async () => 'Te voy a comunicar con uno de nuestros asesores.');
+    const listActiveServiceAreas = jest.fn(async () => {
+      throw new Error('Service area routing must not run before handoff');
+    });
+    controller.chatAgentService = { routeReturnInquiryToHuman: handoff };
+    controller.conversationMemoryService = { listActiveServiceAreas };
+    const profile = {
+      id: 'company-test',
+      settings: { return_inquiry_handoff_policy: 'required' },
+    } as any;
+    const reply = await controller.resolveReply(
+      profile, makeSession({ customer_service_flow: { type: 'order_lookup' } }),
+      '¿Hacen devoluciones?',
+    );
+    expect(reply).toContain('asesores');
+    expect(handoff).toHaveBeenCalledTimes(1);
+    expect(listActiveServiceAreas).not.toHaveBeenCalled();
+  });
+});
