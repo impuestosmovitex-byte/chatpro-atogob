@@ -29,7 +29,7 @@ export function customerExplicitlyAskedForAdvisor(value: string): boolean {
     return true;
   }
   return (
-    /\b(?:quiero|deseo|necesito|prefiero|puedo|podria|podrias)\b.{0,70}\b(?:asesor(?:a)?|agente humano|persona real)\b/.test(text) ||
+    /\b(?:quiero|deseo|necesito|prefiero|puedo|puedes|podria|podrias)\b.{0,70}\b(?:asesor(?:a)?|agente humano|persona real)\b/.test(text) ||
     /\b(?:hablar|comunicarme|pasame|pasenme|transfiereme|atenderme)\b.{0,60}\b(?:asesor(?:a)?|agente humano|persona real)\b/.test(text)
   );
 }
