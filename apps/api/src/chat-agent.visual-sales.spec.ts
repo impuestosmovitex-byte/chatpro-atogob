@@ -517,3 +517,45 @@ describe('MW1 ask which piece of an outfit BEFORE searching', () => {
     );
   });
 });
+
+describe('MW1 resume Sales after a confirmed checkout in service area', () => {
+  it('switches internally after Sí to a previously requested checkout', async () => {
+    const agent = Object.create(ChatAgentService.prototype) as any;
+    const session = {
+      id: 'pending-checkout',
+      context: {
+        conversation_category: 'service',
+        cart: [{ productTitle: 'Conjunto ficticio' }],
+      },
+    } as any;
+    agent.getRecentMessages = jest.fn(async () => [
+      { sender: 'customer', message: 'Quiero pagar' },
+      { sender: 'assistant', message: '¿Confirmas que deseas finalizar y recibir el enlace?' },
+    ]);
+    agent.rememberConversationCategory = jest.fn(async (s: any) => ({
+      ...s,
+      context: { ...s.context, conversation_category: 'sales' },
+    }));
+    const updated = await agent.resumeCheckoutSalesIfConfirmed(session, 'Sí');
+    expect(updated.context.conversation_category).toBe('sales');
+    expect(agent.rememberConversationCategory).toHaveBeenCalledWith(
+      session, 'sales',
+    );
+  });
+
+  it('does not revive Sales when the client has a genuine pending service case', async () => {
+    const agent = Object.create(ChatAgentService.prototype) as any;
+    const session = {
+      id: 'existing-service',
+      context: {
+        conversation_category: 'service',
+        cart: [{ productTitle: 'Vestido anterior' }],
+        last_service_evidence: { type: 'image' },
+      },
+    } as any;
+    agent.getRecentMessages = jest.fn();
+    const updated = await agent.resumeCheckoutSalesIfConfirmed(session, 'Sí');
+    expect(updated).toBe(session);
+    expect(agent.getRecentMessages).not.toHaveBeenCalled();
+  });
+});
