@@ -128,6 +128,7 @@ export class StagingInstagramWebhookController {
     const payload = asObject(request.body);
     const entries = payload?.entry;
     if (!Array.isArray(entries) || entries.length > 20) {
+      this.logger.warn('IG_PILOT_WEBHOOK_INVALID_ENTRY_BATCH');
       throw new ForbiddenException('Paquete de mensajes inválido.');
     }
     const messages: Array<{
@@ -142,6 +143,7 @@ export class StagingInstagramWebhookController {
     for (const rawEntry of entries) {
       const entry = asObject(rawEntry);
       if (!entry || !Array.isArray(entry.messaging) || entry.messaging.length > 20) {
+        this.logger.warn('IG_PILOT_WEBHOOK_INVALID_MESSAGE_BATCH');
         throw new ForbiddenException('Lote de mensajes de Instagram inválido.');
       }
       for (const rawEvent of entry.messaging) {
@@ -159,6 +161,7 @@ export class StagingInstagramWebhookController {
           typeof message.text !== 'string' || message.text.length > 5000 ||
           typeof integration.id !== 'string' ||
           typeof integration.company_id !== 'string') {
+          this.logger.warn('IG_PILOT_WEBHOOK_UNSUPPORTED_MESSAGE_TYPE');
           throw new ServiceUnavailableException('Evento de Instagram aún no soportado por el piloto.');
         }
         const timestamp = event?.timestamp;
