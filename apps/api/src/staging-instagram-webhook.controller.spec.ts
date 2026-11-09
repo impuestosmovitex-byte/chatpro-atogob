@@ -119,7 +119,7 @@ describe('Instagram pilot webhook processing safety with mocked database', () =>
     const controller = new StagingInstagramWebhookController({
       getClient: () => ({from}),
     } as unknown as SupabaseService);
-    return {controller,request:{rawBody:body,body:payload} as RawBodyRequest<Request>,
+    return {controller,request:{rawBody:body,body:payload} as unknown as RawBodyRequest<Request>,
       signature,from,upsert,stored};
   }
 
@@ -153,7 +153,7 @@ describe('Instagram pilot webhook processing safety with mocked database', () =>
   it('rejects tampered signed payloads before any database access', async () => {
     const h=setup(payload);
     const altered={...h.request,rawBody:Buffer.concat([h.request.rawBody!,Buffer.from(' ')])};
-    await expect(h.controller.receive(altered as RawBodyRequest<Request>,h.signature))
+    await expect(h.controller.receive(altered as unknown as RawBodyRequest<Request>,h.signature))
       .rejects.toMatchObject({status:403});
     expect(h.from).not.toHaveBeenCalled();
   });
