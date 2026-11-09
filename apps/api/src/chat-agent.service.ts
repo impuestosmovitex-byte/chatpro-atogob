@@ -2714,6 +2714,14 @@ export class ChatAgentService {
     profile: CompanyProfile,
     message: string,
   ): string {
+    // The real handoff has already occurred: suppress any generated
+    // discussion of return conditions without trying to transfer twice.
+    if (
+      this.companyRequiresReturnInquiryHandoff(profile) &&
+      this.containsReturnInquiry(message)
+    ) {
+      return 'Para revisar si tu solicitud es viable, uno de nuestros asesores te atenderá.';
+    }
     if (!this.companyRequiresEconomicHandoff(profile)
       || !this.containsEconomicRequestLanguage(message)) {
       return message;
