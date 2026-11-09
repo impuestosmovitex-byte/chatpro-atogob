@@ -156,9 +156,16 @@ export class StagingIntegrationsController {
       .eq('user_id', userId)
       .eq('active', true)
       .limit(2);
-    // Ensure the request is scoped to a unique active membership.
-    if (membershipError || !Array.isArray(memberships) || memberships.length !== 1) {
+    // A tenant member alone must never be allowed to change subscription
+    // state. Require the owner/admin role from the persisted membership.
+    if (membershipError || !Array.isArray(memberships) || memberships.length !== 1 ||
+      !memberships[0]?.role_id) {
       throw new ForbiddenException('Usuario del piloto no autorizado.');
+    }
+    const { data: role, error: roleError } = await client.from('app_roles')
+      .select('key').eq('id', memberships[0].role_id).maybeSingle();
+    if (roleError || !role || !['owner','admin'].includes(role.key)) {
+      throw new ForbiddenException('Solo un administrador del piloto puede suscribir la cuenta.');
     }
     const { data: integrations, error: integrationError } = await client
       .from('company_integrations')
@@ -188,7 +195,7 @@ export class StagingIntegrationsController {
     const version = (process.env.META_INSTAGRAM_API_VERSION || 'v26.0').trim();
     const appId = process.env.META_INSTAGRAM_APP_ID?.trim() || '';
     const secret = process.env.META_INSTAGRAM_APP_SECRET?.trim() || '';
-    if (!/^v[0-9]+\\.[0-9]+$/.test(version) ||
+    if (!/^v[0-9]+\.[0-9]+$/.test(version) ||
       appId !== '1079916404666757' || !secret) {
       throw new ForbiddenException('Aplicación Meta de pruebas no configurada.');
     }
