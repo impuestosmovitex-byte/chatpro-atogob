@@ -5195,6 +5195,20 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     }
   }
 
+  /**
+   * The same product handle can exist in two merchants' shops.
+   * Match the full normalized catalog URL before reusing a visual product
+   * or a previous selection from any chat session.
+   */
+  private matchesCompanyProductUrl(
+    requested: string,
+    companyCatalogUrl: string | null | undefined,
+  ): boolean {
+    const source = this.visualProductKey(requested);
+    const current = this.visualProductKey(companyCatalogUrl || '');
+    return Boolean(source && current && source === current);
+  }
+
   private readExactVisualProductKeys(context: JsonObject): Set<string> {
     const references: Array<Record<string, unknown>> = [];
 
@@ -5565,6 +5579,17 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           continue;
         }
 
+        if (!this.matchesCompanyProductUrl(
+          item.productUrl, product.onlineStoreUrl,
+        )) {
+          unresolved.push({
+            product_url: item.productUrl,
+            reason: 'product_belongs_to_different_catalog',
+            requested_options: item.optionValues,
+          });
+          continue;
+        }
+
         productId = product.id;
         productTitle = product.title;
         productUrl = product.onlineStoreUrl || item.productUrl;
@@ -5685,6 +5710,14 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         };
       }
 
+      if (!this.matchesCompanyProductUrl(url, product.onlineStoreUrl)) {
+        return {
+          ok: false,
+          next_action: 'verify_company_product_url',
+          error: 'El enlace no coincide con una publicación de la tienda conectada a esta empresa.',
+        };
+      }
+
       return this.saveSelectedCompanyProduct(session, product);
     }
 
@@ -5783,6 +5816,19 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         return {
           ok: false,
           error: 'El producto seleccionado ya no está disponible.',
+        };
+      }
+
+      if (
+        selectedProduct.url &&
+        !this.matchesCompanyProductUrl(
+          selectedProduct.url, product.onlineStoreUrl,
+        )
+      ) {
+        return {
+          ok: false,
+          next_action: 'verify_company_product_url',
+          error: 'La referencia guardada pertenece a una URL distinta de la tienda conectada. Selecciona nuevamente un producto propio.',
         };
       }
 
@@ -6158,6 +6204,19 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       return {
         ok: false,
         error: 'El producto seleccionado ya no está disponible.',
+      };
+    }
+
+    if (
+      selectedProduct.url &&
+      !this.matchesCompanyProductUrl(
+        selectedProduct.url, product.onlineStoreUrl,
+      )
+    ) {
+      return {
+        ok: false,
+        next_action: 'verify_company_product_url',
+        error: 'La referencia seleccionada no coincide con el catálogo de esta empresa.',
       };
     }
 
