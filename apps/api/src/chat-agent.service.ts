@@ -1134,6 +1134,7 @@ export class ChatAgentService {
     let visualMatchType: 'exact' | 'similar' | 'none' = 'none';
     let visualConfidence = 0;
     let visualReason = '';
+    let completedVisualComparisons = 0;
 
     const visualRank = (
       value: 'exact' | 'similar' | 'none',
@@ -1230,6 +1231,17 @@ export class ChatAgentService {
             confidence?: unknown;
             reason?: unknown;
           };
+
+          if (
+            parsed.match_type === 'exact' ||
+            parsed.match_type === 'similar' ||
+            parsed.match_type === 'none'
+          ) {
+            // A deliberate visual rejection is different from an unavailable
+            // vision comparison. Don't fall back to text-only suggestions
+            // after real image evidence contradicted the catalog candidates.
+            completedVisualComparisons += 1;
+          }
 
           const index = Number(parsed.candidate_index);
           const confidence = Number(parsed.confidence);
@@ -1334,6 +1346,41 @@ export class ChatAgentService {
           visualReason ||
           'La comparación visual encontró una posible coincidencia, pero no existe certeza suficiente para confirmar la referencia exacta.',
       };
+    }
+
+    // When image-to-image comparison cannot run (for example because the
+    // connected catalog has no usable product photos), offer a *small* set
+    // of real catalog options supported by the text extracted from the photo.
+    // Never confirm the reference, price or availability on a text-only match.
+    const descriptiveSignals = [
+      ...input.searchTerms,
+      input.summary,
+    ].filter((value) => usefulTokens(value).length >= 2);
+
+    if (
+      completedVisualComparisons === 0 &&
+      (hasSpecificText || descriptiveSignals.length >= 2)
+    ) {
+      const possibleProducts = intentRanked
+        .filter((candidate) => candidate.textScore >= 0.58)
+        .slice(0, 3);
+
+      if (possibleProducts.length > 0) {
+        return {
+          matchType: 'similar' as const,
+          confidence: Math.min(0.7, possibleProducts[0].textScore),
+          matchedProduct: null,
+          candidates: possibleProducts.map((candidate) => ({
+            title: candidate.title,
+            url: candidate.url,
+            imageUrl: candidate.imageUrl,
+            priceFromCop: candidate.priceFromCop,
+          })),
+          queries,
+          reason:
+            'Se encontraron opciones reales relacionadas por nombre o descripción, pero no se pudo confirmar la coincidencia visual exacta.',
+        };
+      }
     }
 
     console.log('[ChatPro][visual-match] match=none');
