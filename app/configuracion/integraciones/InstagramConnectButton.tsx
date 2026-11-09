@@ -95,6 +95,13 @@ export function InstagramConnectButton({
   // Avoid reading browser-only location during the server render.
   const [isStaging, setIsStaging] = useState(false);
   const [showOnboardingDiagnostics, setShowOnboardingDiagnostics] = useState(false);
+  const [pilotInboxLoading, setPilotInboxLoading] = useState(false);
+  const [pilotInbox, setPilotInbox] = useState<{
+    ok?: boolean;
+    receptionEnabled?: boolean;
+    messages?: Array<{provider_message_id:string;sender_id:string;message_text:string|null;received_at:string}>;
+    error?: string;
+  } | null>(null);
   const [checkingSubscription, setCheckingSubscription] = useState(false);
   const [subscriptionResult, setSubscriptionResult] = useState<{
     ok?: boolean;
@@ -532,6 +539,23 @@ export function InstagramConnectButton({
     }
   }
 
+  async function loadPilotInbox() {
+    setPilotInboxLoading(true);
+    try {
+      const response = await fetch('/api/inbox/instagram-pilot', {cache:'no-store'});
+      const data = await response.json() as {
+        ok?:boolean; receptionEnabled?:boolean;
+        messages?:Array<{provider_message_id:string;sender_id:string;message_text:string|null;received_at:string}>;
+        error?:string;
+      };
+      setPilotInbox(response.ok ? data : {ok:false,error:data.error || 'No se pudo cargar la bandeja piloto.'});
+    } catch {
+      setPilotInbox({ok:false,error:'No se pudo consultar la bandeja de Instagram de pruebas.'});
+    } finally {
+      setPilotInboxLoading(false);
+    }
+  }
+
   async function checkSubscription() {
     setCheckingSubscription(true);
     setSubscriptionResult(null);
@@ -694,6 +718,38 @@ export function InstagramConnectButton({
           <small>
             La activación debe realizarse después de las verificaciones de seguridad.
           </small>
+          {isStaging ? (
+            <div style={{marginTop:12,marginBottom:12,padding:12,borderRadius:10,
+              background:'#f6f8fc',border:'1px solid #d7deeb',display:'grid',gap:8}}>
+              <strong>Bandeja Instagram — cuenta piloto (solo lectura)</strong>
+              <small>Este panel muestra únicamente mensajes recibidos para Piloto MW1 Prueba.
+                No permite responder ni activar automatizaciones.</small>
+              <button type="button" className={styles.testButton}
+                disabled={pilotInboxLoading} onClick={() => void loadPilotInbox()}>
+                {pilotInboxLoading ? 'Consultando mensajes…' : 'Consultar mensajes recibidos'}
+              </button>
+              {pilotInbox ? pilotInbox.ok ? (
+                <>
+                  <small>Mensajes registrados: {pilotInbox.messages?.length ?? 0}.
+                    Recepción: {pilotInbox.receptionEnabled ? 'Habilitada en piloto' : 'Deshabilitada'}.</small>
+                  {pilotInbox.messages?.length ? (
+                    <div style={{display:'grid',gap:8}}>
+                      {pilotInbox.messages.slice(0,20).map(item => (
+                        <div key={item.provider_message_id} style={{padding:8,borderRadius:7,
+                          background:'white',border:'1px solid #e0e6ef'}}>
+                          <small>Remitente ID: …{item.sender_id.slice(-4)} ·
+                            {new Date(item.received_at).toLocaleString('es-CO')}</small>
+                          <div style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>
+                            {item.message_text ?? '[Mensaje sin texto]'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <small>Todavía no se han recibido mensajes de Instagram.</small>}
+                </>
+              ) : <small role="alert">{pilotInbox.error || 'No fue posible consultar mensajes.'}</small> : null}
+            </div>
+          ) : null}
           {isStaging ? (
             <>
               <button type="button" className={styles.testButton}
