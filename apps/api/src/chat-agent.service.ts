@@ -257,6 +257,26 @@ export class ChatAgentService {
       return 'sales';
     }
 
+    // A customer who is still shopping may ask a GENERAL delivery-time
+    // question using "mi pedido" without having placed an order. Keep the
+    // sale active in that case; an actual existing-order inquiry still belongs
+    // to service and will be verified before any private data is shared.
+    const asksGeneralShippingTime =
+      /\b(?:cuanto|en cuanto)\s+(?:tiempo\s+)?(?:tarda|demora|tiempo)\b/.test(normalized)
+      && /\b(?:lleg|entreg|envi|despach|pedido)\w*\b/.test(normalized);
+    const refersToExistingOrder =
+      /\b(?:ya hice|ya realice|ya pague|compre ayer|compre hace|pedido\s*#?\s*\d+|numero de pedido|donde esta mi pedido|estado de mi pedido|mi guia|mi seguimiento)\b/.test(normalized);
+
+    if (
+      current === 'sales' &&
+      !hasValidatedOrder &&
+      !customerServiceFlowType &&
+      asksGeneralShippingTime &&
+      !refersToExistingOrder
+    ) {
+      return 'sales';
+    }
+
     if (
       explicitServicePatterns.some((pattern) => pattern.test(normalized))
     ) {
@@ -669,7 +689,7 @@ export class ChatAgentService {
               `total_duration_ms=${Date.now() - agentStartedAt}`,
             );
             await this.clearTechnicalFailureState(activeSession.id);
-            return this.enforceAtogobReply(
+            return this.enforceCompanyReply(
               profile,
               activeSession,
               clean,
@@ -2641,7 +2661,7 @@ export class ChatAgentService {
     );
   }
 
-  private async enforceAtogobReply(
+  private async enforceCompanyReply(
     profile: CompanyProfile,
     session: ConversationSession,
     reply: string,
@@ -6772,7 +6792,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 
       if (clean) {
         await this.clearTechnicalFailureState(session.id);
-        return this.enforceAtogobReply(profile, session, clean);
+        return this.enforceCompanyReply(profile, session, clean);
       }
 
       return this.handleTechnicalFailure(
