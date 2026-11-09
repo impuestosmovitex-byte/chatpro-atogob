@@ -2,6 +2,23 @@ import { BadRequestException, Controller, ForbiddenException, Get, Headers, Post
 import { SupabaseService } from './supabase.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 
+/**
+ * Meta may describe the subscribed app as {id} or
+ * {application:{id}}. Never treat unrelated apps as MW1.
+ */
+export function isKnownInstagramWebhookApp(
+  record: Record<string, unknown>,
+  knownIds: string[],
+): boolean {
+  const nested = record.application && typeof record.application === 'object' &&
+    !Array.isArray(record.application)
+    ? record.application as Record<string, unknown> : null;
+  const rawId = nested?.id ?? record.id;
+  const normalizedId = typeof rawId === 'string' || typeof rawId === 'number'
+    ? String(rawId) : '';
+  return normalizedId.length > 0 && knownIds.includes(normalizedId);
+}
+
 /** Read-only integration status for isolated MW1 staging. No tokens or secrets exposed. */
 @Controller('integrations')
 export class StagingIntegrationsController {
@@ -395,16 +412,8 @@ export class StagingIntegrationsController {
       const knownIds = [parentAppId, instagramAppId].filter(Boolean);
       const records = subscriptions.filter(item =>
         item !== null && typeof item === 'object' && !Array.isArray(item)) as Array<Record<string,unknown>>;
-      const matched = records.filter(record => {
-        // Depending on the Meta Graph edge/version, the application ID can
-        // appear as record.id or as record.application.id. Only match IDs
-        // explicitly configured for the MW1 parent / Instagram platform apps.
-        const nested = record.application && typeof record.application === 'object' &&
-          !Array.isArray(record.application)
-          ? record.application as Record<string, unknown> : null;
-        const recordAppId = nested?.id ?? record.id;
-        return knownIds.includes(String(recordAppId ?? ''));
-      });
+      const matched = records.filter(record =>
+        isKnownInstagramWebhookApp(record, knownIds));
       const hasAnyRecords = records.length > 0;
       const verified = matched.length > 0;
       const fields = matched.flatMap(record =>
