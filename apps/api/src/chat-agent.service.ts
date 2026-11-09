@@ -2465,6 +2465,92 @@ export class ChatAgentService {
     };
   }
 
+  /**
+   * Store the set of products explicitly confirmed for THIS purchase.
+   * Only catalog-verified references and real cart/selection URLs qualify.
+   * This is shared by all messaging channels through the agent session.
+   */
+  private async recordPurchasePlan(
+    session: ConversationSession,
+    args: JsonObject,
+  ) {
+    const requested = Array.isArray(args.product_urls)
+      ? args.product_urls.filter((value): value is string =>
+          typeof value === 'string' && Boolean(value.trim()))
+      : [];
+    if (!requested.length || requested.length > 10) {
+      return { ok: false, error: 'Indica entre 1 y 10 productos reales confirmados.' };
+    }
+
+    const currentSession =
+      await this.agentSessionRuntimeService.getSessionById(session.id);
+    const context = currentSession.context;
+    const confirmedHandles = new Map<string, string>();
+    const addValidated = (url: unknown) => {
+      if (typeof url !== 'string') return;
+      const handle = this.getHandleFromProductUrl(url);
+      if (handle) confirmedHandles.set(handle, url.trim());
+    };
+    const selected = context.selectedProduct &&
+      typeof context.selectedProduct === 'object' &&
+      !Array.isArray(context.selectedProduct)
+        ? context.selectedProduct as Record<string, unknown>
+        : {};
+    addValidated(selected.url);
+    if (Array.isArray(context.cart)) {
+      for (const item of context.cart) {
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+          addValidated((item as Record<string, unknown>).productUrl);
+        }
+      }
+    }
+    if (Array.isArray(context.commercial_visual_references)) {
+      for (const item of context.commercial_visual_references) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+        const reference = item as Record<string, unknown>;
+        if (reference.match_type !== 'exact') continue;
+        const matched = reference.matched_product;
+        if (matched && typeof matched === 'object' && !Array.isArray(matched)) {
+          addValidated((matched as Record<string, unknown>).url);
+        }
+      }
+    }
+
+    const uniqueHandles = Array.from(new Set(requested
+      .map((url) => this.getHandleFromProductUrl(url))));
+    if (uniqueHandles.some((handle) =>
+      !handle || !confirmedHandles.has(handle))) {
+      return {
+        ok: false,
+        next_action: 'verify_product_references',
+        error:
+          'El plan de compra contiene productos no confirmados en el catálogo de esta empresa. Verifica primero las referencias.',
+      };
+    }
+
+    const saleContext = this.readSaleContext(context);
+    const updated = await this.agentSessionRuntimeService.updateSession(
+      currentSession.id,
+      {
+        context: {
+          ...context,
+          sale_context: {
+            ...saleContext,
+            expected_purchase_handles: uniqueHandles,
+            expected_purchase_urls: uniqueHandles.map((h) => confirmedHandles.get(h)),
+            expected_purchase_updated_at: new Date().toISOString(),
+          },
+        },
+      },
+    );
+    return {
+      ok: true,
+      expected_items_count: uniqueHandles.length,
+      expected_product_urls: this.readSaleContext(updated.context).expected_purchase_urls,
+      next_action: 'ensure_all_variants_in_real_cart',
+    };
+  }
+
   private async getSaleContext(session: ConversationSession) {
     const currentSession =
       await this.agentSessionRuntimeService.getSessionById(session.id);
@@ -3243,6 +3329,7 @@ export class ChatAgentService {
       '- FOTOGRAFÍAS DE OUTFITS: si se ven dos o más prendas distintas, separa primero las opciones de interés (por ejemplo: blusa, pantalón o conjunto completo) si el cliente aún no indicó cuál quiere. No busques ni agregues automáticamente todas las prendas solo por aparecer en la foto. Cuando elija una prenda, busca únicamente esa referencia real; cuando elija el outfit completo, valida las piezas y el producto tipo combo o conjunto real de la empresa, sin duplicar componentes ni inventar descuentos.', 
       '- CARRITO CONTINUO: un "sí", "los dos", "también este", "todo junto" o "confirmo" mantiene la selección de esta misma compra. Conserva por producto su referencia, talla, color, precio y cantidad REALMENTE validados. Una talla elegida para falda no debe asignarse por omisión al blazer, vestido ni pantalón. Si la persona añade un producto, conserva las líneas existentes. Cuando corrige talla/color, reemplaza solamente esa línea. Nunca borres otras prendas o reinicies una compra ya iniciada.',
       '- ANTES DE COMPARTIR UN LINK: usa get_cart para leer el carrito persistido. Confronta CADA prenda y cantidad que el cliente confirmó con las líneas reales. Si falta una, usa las referencias comerciales previamente validadas para completar el carrito con sus variantes; si una referencia/variante sigue sin verificar, no presentes un carrito parcial como si fuera el pedido completo. Explica brevemente cuál dato falta o haz una transferencia real cuando la automatización no pueda resolverlo. Nunca crees checkout hasta que los artículos pedidos coincidan con los artículos realmente guardados.',
+      '- PLAN DE COMPRA MULTIPRODUCTO: cuando el cliente confirme dos o más referencias concretas, ejecuta record_purchase_plan con las URLs REALES de todos los productos elegidos y luego agrega al carrito sus variantes validadas. No equivale a agregar productos; el plan solo permite comprobar que no falta ninguno. Si más adelante dice "todo junto", conserva el plan completo y añade el producto nuevo cuando también lo confirme. Si elimina un producto o cambia de opinión, actualiza el plan con la selección final. Antes de pagar no ignores un resultado complete_confirmed_cart: repara las líneas faltantes, nunca envíes un carrito parcial.',
       '- CIERRE SIN BUCLES: si el cliente ya confirmó el carrito y solicita el enlace o dice "sí" a la pregunta de finalizar, ejecuta la herramienta de checkout en cuanto haya carrito y condiciones verificadas. No vuelvas a preguntar si desea "iniciar compra", "cambiar a Ventas", "escribir Comprar" ni "confirmar" lo que ya aceptó. El área es una decisión interna de MW1, nunca un trámite del cliente.',
       '- ENVÍOS EN VENTA: para decir el precio, calcula SOLO la tarifa que corresponda a la ciudad, carrito, modo de entrega y medio de pago dados, conforme a las instrucciones de ESA empresa; no enumeres tarifas de otras ciudades ni medios indisponibles. Si el carrito cambia, recalcula subtotal y el umbral de envío gratis sobre las variantes reales; si no hay tarifa verificable, no inventes valores y explica solamente qué falta.',
       '- CUPONES: jamás afirmes que activaste, verificaste o descontaste un cupón si el checkout no confirmó su aplicación. Si la empresa indica que se ingresa en Shopify, envía el enlace verificado y explica brevemente que el cliente escribe el cupón en el campo "Código de descuento o tarjeta regalo"; el checkout indicará si cumple las condiciones. No pidas cinco confirmaciones sobre aplicar un código ni prometas descuentos con solo ver una captura.',
@@ -4609,6 +4696,26 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
 },
 {
   type: 'function',
+  name: 'record_purchase_plan',
+  description:
+    'Cuando el cliente confirma que quiere comprar varios artículos de la misma conversación, conserva las URLs reales de TODOS esos productos antes de agregarlos o crear checkout. Usa solo URLs previamente validadas de los productos de la empresa activa (selección real, referencias visuales exactas o carrito). Si cambia de opinión, reemplaza la lista por las prendas que sí quiere. No crea ni modifica el carrito. El checkout se bloqueará si todavía falta alguna prenda del plan.',
+  strict: true,
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      product_urls: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 10,
+        items: { type: 'string' },
+      },
+    },
+    required: ['product_urls'],
+  },
+},
+{
+  type: 'function',
   name: 'get_cart',
   description:
     'Consulta productos, IDs, cantidades y subtotal real de productos del carrito. El total final solo existe cuando el envío esté validado.',
@@ -4788,6 +4895,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         'remove_cart_line',
         'keep_only_cart_line',
         'get_cart',
+        'record_purchase_plan',
         'remember_sale_context',
         'get_sale_context',
         'create_checkout_link',
@@ -4965,6 +5073,13 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         }
 
         return this.enrichCartToolResult(session, result);
+      }
+
+      if (name === 'record_purchase_plan') {
+        return this.recordPurchasePlan(
+          session,
+          args,
+        );
       }
 
       if (name === 'get_cart') {
@@ -5287,6 +5402,55 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       if (name === 'create_checkout_link') {
         let currentSession =
           await this.agentSessionRuntimeService.getSessionById(session.id);
+
+        // Fail closed if an explicitly confirmed multi-item purchase plan is
+        // not represented in the actual persisted cart. A partial Shopify
+        // link must never be presented as the entire customer order.
+        const saleContextForPlan =
+          this.readSaleContext(currentSession.context);
+        const planned =
+          Array.isArray(saleContextForPlan.expected_purchase_handles)
+            ? saleContextForPlan.expected_purchase_handles.filter(
+                (value): value is string =>
+                  typeof value === 'string' && Boolean(value))
+            : [];
+        if (planned.length) {
+          const realCart = await this.cartService.getCart(currentSession);
+          const cartObject = realCart &&
+            typeof realCart === 'object' &&
+            !Array.isArray(realCart)
+              ? realCart as JsonObject : {};
+          const summary = cartObject.cart &&
+            typeof cartObject.cart === 'object' &&
+            !Array.isArray(cartObject.cart)
+              ? cartObject.cart as JsonObject : {};
+          const realLines = Array.isArray(summary.lines)
+            ? summary.lines : [];
+          const actualHandles = new Set(realLines
+            .filter((line): line is Record<string, unknown> =>
+              Boolean(line) && typeof line === 'object' && !Array.isArray(line))
+            .map((line) =>
+              this.getHandleFromProductUrl(
+                typeof line.product_url === 'string' ? line.product_url : '',
+              ))
+            .filter(Boolean));
+          const missing = planned.filter((handle) => !actualHandles.has(handle));
+          if (missing.length) {
+            return {
+              ok: false,
+              next_action: 'complete_confirmed_cart',
+              error:
+                'El carrito contiene menos productos de los que el cliente confirmó. No se puede enviar un enlace parcial.',
+              missing_product_urls: Array.isArray(saleContextForPlan.expected_purchase_urls)
+                ? saleContextForPlan.expected_purchase_urls.filter((url) =>
+                    typeof url === 'string' &&
+                    missing.includes(this.getHandleFromProductUrl(url)))
+                : [],
+              expected_product_count: planned.length,
+              actual_cart_product_count: actualHandles.size,
+            };
+          }
+        }
 
         const recoveryContext = currentSession.context.cart_recovery;
         const isRecoveryCart =
