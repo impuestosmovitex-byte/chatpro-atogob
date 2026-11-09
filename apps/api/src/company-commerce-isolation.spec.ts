@@ -90,6 +90,46 @@ describe('Commerce isolation for companies without configured stores', () => {
     expect(globalShopify.getCollections).not.toHaveBeenCalled();
   });
 
+  it('refuses external product URLs even when both stores use the same handle', async () => {
+    const { agent, globalShopify } = agentHarness(true);
+    agent.companyCommerceService.getProductByHandle = jest.fn(async (
+      companyId: string,
+      handle: string,
+    ) => {
+      expect(companyId).toBe(session.companyId);
+      return {
+        id: 'company-B-product',
+        title: 'Product',
+        handle,
+        onlineStoreUrl: 'https://tenant-b.example/products/product-one',
+        variants: [],
+      };
+    });
+    const result = await agent.selectProductByUrl(
+      session, 'https://other-shop.example/products/product-one',
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      next_action: 'verify_company_product_url',
+    });
+    expect(globalShopify.getProductFromUrl).not.toHaveBeenCalled();
+
+    const existingSelection = await agent.getSelectedProduct({
+      ...session,
+      context: {
+        ...session.context,
+        selectedProduct: {
+          ...session.context.selectedProduct,
+          url: 'https://other-shop.example/products/product-one',
+        },
+      },
+    });
+    expect(existingSelection).toMatchObject({
+      ok: false,
+      next_action: 'verify_company_product_url',
+    });
+  });
+
   it('refuses checkout from the globally configured legacy store', async () => {
     const cart: any = Object.create(CartService.prototype);
     cart.companyCommerceService = {
