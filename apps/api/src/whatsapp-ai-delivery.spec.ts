@@ -18,7 +18,7 @@ describe('WhatsApp AI Meta delivery receipts', () => {
     }
     const numberOfSendCalls =
       (source.match(/await this\.whatsappMessagingService\.sendText\(/g) ?? []).length;
-    expect(numberOfSendCalls).toBe(18);
+    expect(numberOfSendCalls).toBe(19);
     expect(count).toBe(numberOfSendCalls);
   });
 
