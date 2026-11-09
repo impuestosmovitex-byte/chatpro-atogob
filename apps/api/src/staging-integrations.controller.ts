@@ -13,10 +13,16 @@ export function isKnownInstagramWebhookApp(
   const nested = record.application && typeof record.application === 'object' &&
     !Array.isArray(record.application)
     ? record.application as Record<string, unknown> : null;
-  const rawId = nested?.id ?? record.id;
-  const normalizedId = typeof rawId === 'string' || typeof rawId === 'number'
-    ? String(rawId) : '';
-  return normalizedId.length > 0 && knownIds.includes(normalizedId);
+  const nestedApp = record.app && typeof record.app === 'object' &&
+    !Array.isArray(record.app)
+    ? record.app as Record<string, unknown> : null;
+  const candidates = [
+    record.id, record.app_id, record.appId,
+    nested?.id, nested?.app_id, nestedApp?.id, nestedApp?.app_id,
+  ];
+  return candidates.some(value =>
+    (typeof value === 'string' || typeof value === 'number') &&
+    knownIds.includes(String(value)));
 }
 
 /** Read-only integration status for isolated MW1 staging. No tokens or secrets exposed. */
@@ -415,6 +421,33 @@ export class StagingIntegrationsController {
       const matched = records.filter(record =>
         isKnownInstagramWebhookApp(record, knownIds));
       const hasAnyRecords = records.length > 0;
+      // Only public application identifiers and webhook field names leave this
+      // API. Never return raw Graph records, tokens, profile or message data.
+      const reportedApps = records.slice(0,3).map(record => {
+        const application = record.application && typeof record.application === 'object' &&
+          !Array.isArray(record.application)
+          ? record.application as Record<string,unknown> : null;
+        const app = record.app && typeof record.app === 'object' &&
+          !Array.isArray(record.app) ? record.app as Record<string,unknown> : null;
+        const idValue = (value: unknown) =>
+          (typeof value === 'string' || typeof value === 'number') &&
+          /^[0-9]{5,30}$/.test(String(value)) ? String(value) : null;
+        const fields = Array.isArray(record.subscribed_fields)
+          ? record.subscribed_fields.filter((value): value is string =>
+              typeof value === 'string' && /^[a-z_]{1,48}$/.test(value)).slice(0,25)
+          : null;
+        return {
+          id: idValue(record.id),
+          app_id: idValue(record.app_id),
+          appId: idValue(record.appId),
+          applicationId: idValue(application?.id),
+          applicationAppId: idValue(application?.app_id),
+          appObjectId: idValue(app?.id),
+          subscribedFields: fields,
+          schemaKeys: Object.keys(record).filter(key =>
+            /^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(key)).slice(0,20),
+        };
+      });
       const verified = matched.length > 0;
       const fields = matched.flatMap(record =>
         Array.isArray(record.subscribed_fields)
@@ -433,6 +466,7 @@ export class StagingIntegrationsController {
           ? (fieldsReturned ? fields.includes('messages') : null)
           : hasAnyRecords ? null : false,
         subscriptionRecordsFound: records.length,
+        reportedApps,
         matchingAppFound: verified,
         fieldsReturnedForMatch: verified && fieldsReturned,
         receivedMessagesEnabled: false,
