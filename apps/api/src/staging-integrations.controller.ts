@@ -395,14 +395,23 @@ export class StagingIntegrationsController {
       const knownIds = [parentAppId, instagramAppId].filter(Boolean);
       const records = subscriptions.filter(item =>
         item !== null && typeof item === 'object' && !Array.isArray(item)) as Array<Record<string,unknown>>;
-      const matched = records.filter(record =>
-        knownIds.includes(String(record.id ?? '')));
+      const matched = records.filter(record => {
+        // Depending on the Meta Graph edge/version, the application ID can
+        // appear as record.id or as record.application.id. Only match IDs
+        // explicitly configured for the MW1 parent / Instagram platform apps.
+        const nested = record.application && typeof record.application === 'object' &&
+          !Array.isArray(record.application)
+          ? record.application as Record<string, unknown> : null;
+        const recordAppId = nested?.id ?? record.id;
+        return knownIds.includes(String(recordAppId ?? ''));
+      });
       const hasAnyRecords = records.length > 0;
       const verified = matched.length > 0;
       const fields = matched.flatMap(record =>
         Array.isArray(record.subscribed_fields)
           ? record.subscribed_fields.filter(v => typeof v === 'string')
           : []);
+      const fieldsReturned = matched.some(record => Array.isArray(record.subscribed_fields));
       const status = verified
         ? 'subscribed'
         : hasAnyRecords ? 'unrecognized_app_id' : 'not_subscribed';
@@ -412,11 +421,11 @@ export class StagingIntegrationsController {
         status,
         accountSubscribed: verified ? true : hasAnyRecords ? null : false,
         messageSubscribed: verified
-          ? fields.includes('messages')
+          ? (fieldsReturned ? fields.includes('messages') : null)
           : hasAnyRecords ? null : false,
         subscriptionRecordsFound: records.length,
         matchingAppFound: verified,
-        fieldsReturnedForMatch: verified && fields.length > 0,
+        fieldsReturnedForMatch: verified && fieldsReturned,
         receivedMessagesEnabled: false,
         // No raw Graph response, identifiers, access tokens or customer data.
       };
