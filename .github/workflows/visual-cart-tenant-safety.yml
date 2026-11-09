@@ -1,0 +1,27 @@
+name: Cross-tenant commerce and multi-image cart safety
+on:
+  push:
+    branches: [fix/mw1-visual-batch-integrity-20261109]
+  pull_request:
+    paths:
+      - 'apps/api/src/chat-agent.service.ts'
+      - 'apps/api/src/cart.service.ts'
+      - 'apps/api/src/visual-cart-integrity.spec.ts'
+      - 'apps/api/src/company-commerce-isolation.spec.ts'
+      - '.github/workflows/visual-cart-tenant-safety.yml'
+jobs:
+  api-safe-regressions:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npm test -- --runInBand --testPathIgnorePatterns=customer-order.service.spec.ts
+      - run: npm run build
