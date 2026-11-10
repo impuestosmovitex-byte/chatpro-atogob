@@ -39,6 +39,22 @@ export function instagramWebhookBusinessIds(value: unknown): string[] {
   return [...ids];
 }
 
+/** Staging diagnostics only: return a fixed reason, never secrets or payload data. */
+export function instagramSignatureFailureReason(
+  stagingMode: string | undefined,
+  rawBody: Buffer | undefined,
+  signature: string | undefined,
+  secret: string | undefined,
+): string | null {
+  if (stagingMode !== 'true') return 'STAGING_MODE_DISABLED';
+  if (!Buffer.isBuffer(rawBody)) return 'RAW_BODY_MISSING';
+  if (!secret || secret.length < 16) return 'APP_SECRET_UNAVAILABLE';
+  if (!signature) return 'SIGNATURE_HEADER_MISSING';
+  if (!/^sha256=[a-f0-9]{64}$/i.test(signature)) return 'SIGNATURE_HEADER_MALFORMED';
+  if (!validMetaSignature(rawBody, signature, secret)) return 'SIGNATURE_MISMATCH';
+  return null;
+}
+
 /**
  * Dedicated staging endpoint. Register with Meta ONLY after creating a
  * staging-specific verify token. Do not point the production application
@@ -81,11 +97,12 @@ export class StagingInstagramWebhookController {
     // Staging-only delivery diagnostics: never record messages, usernames,
     // IDs, IP addresses, access tokens or request bodies in application logs.
     this.logger.log('IG_PILOT_WEBHOOK_POST_RECEIVED');
-    if (process.env.MW1_STAGING_MODE !== 'true' ||
-      !request.rawBody ||
-      !validMetaSignature(request.rawBody, signature,
-        process.env.META_INSTAGRAM_APP_SECRET)) {
-      this.logger.warn('IG_PILOT_WEBHOOK_SIGNATURE_REJECTED');
+    const failure = instagramSignatureFailureReason(
+      process.env.MW1_STAGING_MODE, request.rawBody, signature,
+      process.env.META_INSTAGRAM_APP_SECRET,
+    );
+    if (failure) {
+      this.logger.warn('IG_PILOT_WEBHOOK_SIGNATURE_REJECTED reason=' + failure);
       throw new ForbiddenException('Firma de Meta inválida.');
     }
     const ids = instagramWebhookBusinessIds(request.body);
