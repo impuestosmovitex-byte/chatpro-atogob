@@ -1,0 +1,28 @@
+name: MW1 staging channel parity and commercial AI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/chat-agent.service.ts'
+      - 'apps/api/src/whatsapp-webhook.controller.ts'
+      - 'apps/api/src/meta-social-ai.service.ts'
+      - 'apps/api/src/meta-social-message.service.ts'
+      - 'apps/api/src/mw1-social-channel-parity.spec.ts'
+      - '.github/workflows/mw1-staging-all-channels-ai.yml'
+
+jobs:
+  all-channels-ai-tests-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm test -- --runInBand mw1-social-channel-parity.spec.ts chat-agent.atogob-postsale.spec.ts chat-agent.visual-sales.spec.ts whatsapp-order-lookup-continuity.spec.ts customer-order.service.spec.ts
+      - run: npm run build
