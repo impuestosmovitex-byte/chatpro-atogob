@@ -45,13 +45,22 @@ export function instagramSignatureFailureReason(
   rawBody: Buffer | undefined,
   signature: string | undefined,
   secret: string | undefined,
+  instagramPlatformSecret?: string,
 ): string | null {
   if (stagingMode !== 'true') return 'STAGING_MODE_DISABLED';
   if (!Buffer.isBuffer(rawBody)) return 'RAW_BODY_MISSING';
-  if (!secret || secret.length < 16) return 'APP_SECRET_UNAVAILABLE';
+  if (![secret, instagramPlatformSecret].some(value => value && value.length >= 16)) {
+    return 'APP_SECRET_UNAVAILABLE';
+  }
   if (!signature) return 'SIGNATURE_HEADER_MISSING';
   if (!/^sha256=[a-f0-9]{64}$/i.test(signature)) return 'SIGNATURE_HEADER_MALFORMED';
-  if (!validMetaSignature(rawBody, signature, secret)) return 'SIGNATURE_MISMATCH';
+  // The parent Meta app and the Instagram product expose distinct app secrets.
+  // Validate the exact raw bytes against both configured secrets, never skip
+  // verification or accept a request if both checks fail.
+  if (!validMetaSignature(rawBody, signature, instagramPlatformSecret) &&
+      !validMetaSignature(rawBody, signature, secret)) {
+    return 'SIGNATURE_MISMATCH';
+  }
   return null;
 }
 
@@ -100,6 +109,7 @@ export class StagingInstagramWebhookController {
     const failure = instagramSignatureFailureReason(
       process.env.MW1_STAGING_MODE, request.rawBody, signature,
       process.env.META_INSTAGRAM_APP_SECRET,
+      process.env.META_INSTAGRAM_PLATFORM_APP_SECRET,
     );
     if (failure) {
       this.logger.warn('IG_PILOT_WEBHOOK_SIGNATURE_REJECTED reason=' + failure);

@@ -4,6 +4,7 @@ on:
     branches:
       - feature/mw1-saas-staging-20261020
       - fix/mw1-ig-signature-diagnostics-20261109
+      - fix/mw1-ig-platform-signature-20261111
     paths:
       - 'apps/api/src/**'
       - 'apps/api/package.json'
