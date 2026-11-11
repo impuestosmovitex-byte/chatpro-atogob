@@ -52,6 +52,12 @@ export function assertStagingIsolation(env: NodeJS.ProcessEnv = process.env): vo
 
   // A secret alone never enables login: authorization still requires
   // all separate pilot feature flags and membership/nonce checks.
+  // Product-specific webhook signing secret is only permitted for the pinned
+  // MW1 Instagram pilot app. Never permit Instagram access tokens or other
+  // channel credentials, even when the secret gate is enabled.
+  const instagramPlatformSecretAllowed = instagramSecretAllowed &&
+    env.META_INSTAGRAM_PLATFORM_APP_ID ===
+      instagramPilotPublicIds.META_INSTAGRAM_PLATFORM_APP_ID;
   const permittedExternal = [
     'MERCADOPAGO_ACCESS_TOKEN',
     'META_WHATSAPP_APP_ID',
@@ -61,6 +67,7 @@ export function assertStagingIsolation(env: NodeJS.ProcessEnv = process.env): vo
     'META_INSTAGRAM_PLATFORM_APP_ID',
     'META_INSTAGRAM_UNIFIED_CONFIG_ID',
     ...(instagramSecretAllowed ? ['META_INSTAGRAM_APP_SECRET'] : []),
+    ...(instagramPlatformSecretAllowed ? ['META_INSTAGRAM_PLATFORM_APP_SECRET'] : []),
   ];
   const forbidden = Object.keys(env).filter((name) =>
     /^(SHOPIFY_|META_|WHATSAPP_|OPENAI_|TIKTOK_|TELEGRAM_|WOMPI_|MERCADOPAGO_|MERCADO_PAGO_)/i.test(name) &&
