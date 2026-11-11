@@ -77,6 +77,13 @@ function isAllowedForAdvisor(pathname: string): boolean {
   return allowed.some((path) => matchesPath(pathname, path));
 }
 
+function isStatisticsPath(pathname: string): boolean {
+  return (
+    matchesPath(pathname, '/estadisticas') ||
+    matchesPath(pathname, '/api/statistics')
+  );
+}
+
 function isAutomationPath(pathname: string): boolean {
   return (
     matchesPath(pathname, '/automatizaciones') ||
@@ -170,6 +177,32 @@ export async function proxy(request: NextRequest) {
     return secureResponse(
       NextResponse.redirect(new URL('/inicio', request.url)),
     );
+  }
+
+  // SEG-002: Authorization for Statistics must be capability-based, not
+  // hardcoded to the role cached in a 12-hour session. An advisor with the
+  // live statistics.view permission may open the page and call its API.
+  // Anyone else fails closed; the API revalidates tenant membership again.
+  if (isStatisticsPath(pathname)) {
+    let allowed = false;
+    try {
+      allowed = (await getAccessCapabilities(session)).statistics;
+    } catch {
+      allowed = false;
+    }
+
+    if (!allowed) {
+      if (pathname.startsWith('/api/')) {
+        return secureResponse(
+          NextResponse.json(
+            { ok: false, error: 'No tienes permiso para consultar estadísticas.' },
+            { status: 403 },
+          ),
+        );
+      }
+      return secureResponse(NextResponse.redirect(new URL('/', request.url)));
+    }
+    return secureResponse(NextResponse.next());
   }
 
   if (isAutomationPath(pathname)) {

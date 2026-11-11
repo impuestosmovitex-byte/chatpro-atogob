@@ -2,6 +2,7 @@ import {StagingMercadoPagoWebhookController} from './staging-mercadopago-webhook
 import { Controller, Get, Module } from '@nestjs/common';
 import { AccessAuthService } from './access-auth.service';
 import { AccessCapabilitiesController } from './access-capabilities.controller';
+import { StatisticsController } from './statistics.controller';
 import { AccessController } from './access.controller';
 import { NativeCommerceController } from './native-commerce.controller';
 import { PlatformAdminController } from './platform-admin.controller';
@@ -51,6 +52,7 @@ class StagingHealthController {
     StagingSubscriptionAdminController,
     AccessController,
     AccessCapabilitiesController,
+    StatisticsController,
     PlatformAdminController,
     StagingDemoRequestsController,
     NativeCommerceController,

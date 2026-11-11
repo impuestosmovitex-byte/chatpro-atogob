@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAccessCapabilities } from '../../lib/access-capabilities';
+import { createStatisticsContext } from '../../lib/statistics-context';
 import {
   getInboxSession,
   INBOX_SESSION_COOKIE,
@@ -44,6 +45,15 @@ export async function GET(request: NextRequest) {
     return unauthorized();
   }
 
+  // A bootstrap session has no verified individual identity.
+  // Statistics require an active user membership, even for owners.
+  if (session.type !== 'user' || !session.userId) {
+    return NextResponse.json(
+      { ok: false, error: 'Inicia sesión con tu usuario para consultar estadísticas.' },
+      { status: 403 },
+    );
+  }
+
   try {
     const capabilities = await getAccessCapabilities(session);
 
@@ -67,6 +77,20 @@ export async function GET(request: NextRequest) {
     const bucket =
       text(request.nextUrl.searchParams.get('bucket')) || 'hour';
 
+    // The assertion is minted only on this server, never in the browser.
+    // The API verifies this HMAC and recomputes current membership + role.
+    const signedContext = createStatisticsContext(
+      {
+        companyId: session.companyId,
+        userId: session.userId,
+        from,
+        to,
+        timezone,
+        bucket,
+      },
+      process.env.MW1_STATS_CONTEXT_SECRET ?? '',
+    );
+
     const target = new URL(`${apiBase}/statistics`);
 
     target.searchParams.set('from', from);
@@ -78,10 +102,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'x-chatpro-inbox-key': inboxKey,
         'x-chatpro-company-id': session.companyId,
-        'x-chatpro-role-key': session.roleKey,
-        ...(session.userId
-          ? { 'x-chatpro-user-id': session.userId }
-          : {}),
+        'x-mw1-stats-context': signedContext,
       },
       cache: 'no-store',
     });
