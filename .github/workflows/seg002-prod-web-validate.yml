@@ -1,0 +1,34 @@
+name: SEG-002 production web candidate (build only)
+
+on:
+  push:
+    branches:
+      - fix/seg002-prod-web-minimal-20261111
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/api/statistics/route.ts'
+      - 'app/lib/statistics-context.ts'
+      - 'proxy.ts'
+      - '.github/workflows/seg002-prod-web-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  web-build:
+    name: Compile proposed production web patch (NO DEPLOY)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install from frozen lockfile
+        run: npm ci
+      - name: Build Next.js
+        run: npm run build
