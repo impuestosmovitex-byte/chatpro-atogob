@@ -7,6 +7,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { verifyStatisticsContext } from './statistics-context';
+import { requireStatisticsMembership } from './statistics-membership';
 
 @Controller('statistics')
 export class StatisticsController {
@@ -16,6 +18,7 @@ export class StatisticsController {
   async getStatistics(
     @Headers('x-chatpro-inbox-key') providedKey = '',
     @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-mw1-stats-context') signedContext = '',
     @Query('from') from = '',
     @Query('to') to = '',
     @Query('timezone') timezone = 'America/Bogota',
@@ -23,12 +26,29 @@ export class StatisticsController {
   ) {
     this.authorize(providedKey);
 
-    const cleanCompanyId = companyId.trim();
-    const cleanFrom = from.trim();
-    const cleanTo = to.trim();
-    const cleanTimezone = timezone.trim() || 'America/Bogota';
+    const verified = verifyStatisticsContext(
+      signedContext,
+      process.env.MW1_STATS_CONTEXT_SECRET,
+    );
+    // Bind the signed identity to the actual requested company and query.
+    // A changed company ID, date, timezone or bucket invalidates the request.
+    if (
+      !verified ||
+      companyId.trim() !== verified.companyId ||
+      from.trim() !== verified.from ||
+      to.trim() !== verified.to ||
+      timezone.trim() !== verified.timezone ||
+      bucket.trim() !== verified.bucket
+    ) {
+      throw new UnauthorizedException('Contexto de estadísticas no autorizado.');
+    }
+
+    const cleanCompanyId = verified.companyId;
+    const cleanFrom = verified.from;
+    const cleanTo = verified.to;
+    const cleanTimezone = verified.timezone || 'America/Bogota';
     const cleanBucket =
-      bucket.trim().toLowerCase() === 'day' ? 'day' : 'hour';
+      verified.bucket.trim().toLowerCase() === 'day' ? 'day' : 'hour';
 
     if (!cleanCompanyId) {
       throw new BadRequestException('Falta la empresa.');
@@ -56,8 +76,11 @@ export class StatisticsController {
       );
     }
 
-    const { data, error } = await this.supabaseService
-      .getClient()
+    const client = this.supabaseService.getClient();
+    // Recompute permissions from the database, not from cached role claims.
+    await requireStatisticsMembership(client, cleanCompanyId, verified.userId);
+
+    const { data, error } = await client
       .rpc('chatpro_statistics_summary', {
         p_company_id: cleanCompanyId,
         p_from: fromDate.toISOString(),
