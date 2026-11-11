@@ -81,6 +81,34 @@ describe('assertStagingIsolation', () => {
       ...instagram, MW1_STAGING_INSTAGRAM_SECRET_ALLOWED: 'true',
     })).not.toThrow();
   });
+  it('allows a dedicated Instagram platform signing secret only for the pinned pilot app', () => {
+    const pilot = {
+      ...valid,
+      META_INSTAGRAM_APP_ID: '1079916404666757',
+      META_INSTAGRAM_PLATFORM_APP_ID: '1674184274384954',
+      META_INSTAGRAM_UNIFIED_CONFIG_ID: '2371579683591784',
+      META_INSTAGRAM_APP_SECRET: 'STAGING_FIXTURE_PARENT_META_SECRET',
+      META_INSTAGRAM_PLATFORM_APP_SECRET: 'STAGING_FIXTURE_PLATFORM_META_SECRET',
+      CHATPRO_INTEGRATIONS_ENCRYPTION_KEY: 'STAGING_FIXTURE_ENCRYPTION_KEY',
+      MW1_STAGING_INSTAGRAM_SECRET_ALLOWED: 'true',
+    };
+    expect(() => assertStagingIsolation(pilot)).not.toThrow();
+    expect(() => assertStagingIsolation({
+      ...pilot, MW1_STAGING_INSTAGRAM_SECRET_ALLOWED: 'false',
+    })).toThrow(/external messaging/);
+    expect(() => assertStagingIsolation({
+      ...pilot, META_INSTAGRAM_PLATFORM_APP_ID: '',
+    })).toThrow(/external messaging/);
+    expect(() => assertStagingIsolation({
+      ...pilot, META_INSTAGRAM_PLATFORM_APP_ID: 'wrong-id',
+    })).toThrow(/unexpected Instagram pilot identifier/);
+    expect(() => assertStagingIsolation({
+      ...pilot, CHATPRO_INTEGRATIONS_ENCRYPTION_KEY: '',
+    })).toThrow(/external messaging/);
+    expect(() => assertStagingIsolation({
+      ...pilot, META_INSTAGRAM_ACCESS_TOKEN: 'forbidden-in-staging',
+    })).toThrow(/external messaging/);
+  });
   it('still rejects Instagram and other provider tokens with the pilot secret allowed', () => {
     const permitted = {
       ...valid,
