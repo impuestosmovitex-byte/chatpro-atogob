@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/mw1-saas-staging-20261020
+      - fix/mw1-ig-signature-diagnostics-20261109
     paths:
       - 'apps/api/src/**'
       - 'apps/api/package.json'
