@@ -57,6 +57,32 @@ describe('Instagram staging signature diagnostics fail closed', () => {
     expect(instagramSignatureFailureReason('true',body,undefined,secret)).toBe('SIGNATURE_HEADER_MISSING');
     expect(instagramSignatureFailureReason('true',body,'sha1=bad',secret)).toBe('SIGNATURE_HEADER_MALFORMED');
   });
+  it('accepts the distinct Instagram product secret when the parent app secret differs', () => {
+    const platformSecret = 'instagram-platform-secret-distinct-from-parent';
+    const productSig = 'sha256=' + createHmac('sha256',platformSecret)
+      .update(body).digest('hex');
+    expect(instagramSignatureFailureReason('true',body,productSig,secret,platformSecret))
+      .toBeNull();
+  });
+  it('preserves verified parent-app signatures if a platform secret is also configured', () => {
+    expect(instagramSignatureFailureReason(
+      'true',body,signature,secret,'different-instagram-product-secret',
+    )).toBeNull();
+  });
+  it('rejects signatures not signed by either configured app secret', () => {
+    const wrongSig = 'sha256=' + createHmac('sha256','untrusted-third-party-secret')
+      .update(body).digest('hex');
+    expect(instagramSignatureFailureReason(
+      'true',body,wrongSig,secret,'different-instagram-product-secret',
+    )).toBe('SIGNATURE_MISMATCH');
+  });
+  it('accepts a valid product signature when the parent secret is missing', () => {
+    const platformSecret = 'instagram-platform-secret-distinct-from-parent';
+    const productSig = 'sha256=' + createHmac('sha256',platformSecret)
+      .update(body).digest('hex');
+    expect(instagramSignatureFailureReason('true',body,productSig,undefined,platformSecret))
+      .toBeNull();
+  });
   it('classifies signature mismatch and never accepts an altered body', () => {
     expect(instagramSignatureFailureReason('true',Buffer.concat([body,Buffer.from(' ')]),signature,secret))
       .toBe('SIGNATURE_MISMATCH');
