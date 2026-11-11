@@ -1,0 +1,37 @@
+name: SEG-002 production API candidate (test and build only)
+
+on:
+  push:
+    branches:
+      - fix/seg002-prod-api-minimal-20261111
+  pull_request:
+    branches:
+      - integration/mw1-ai-sales-orders-visual-20261109
+    paths:
+      - 'apps/api/src/statistics*'
+      - '.github/workflows/seg002-prod-api-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  api-check:
+    name: Compile and test proposed production API patch (NO DEPLOY)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install from frozen lockfile
+        run: npm ci
+      - name: Run SEG-002 cross-tenant HTTP and membership tests
+        run: npm test -- --runInBand --runTestsByPath src/statistics-seg002.spec.ts src/statistics-seg002-http.spec.ts
+      - name: Compile Nest API
+        run: npm run build
