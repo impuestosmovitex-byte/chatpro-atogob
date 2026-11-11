@@ -1,4 +1,4 @@
-import { instagramWebhookBusinessIds, StagingInstagramWebhookController } from './staging-instagram-webhook.controller';
+import { instagramSignatureFailureReason, instagramWebhookBusinessIds, StagingInstagramWebhookController } from './staging-instagram-webhook.controller';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { SupabaseService } from './supabase.service';
@@ -39,6 +39,27 @@ describe('Instagram staging webhook tenant candidate selection', () => {
     expect(instagramWebhookBusinessIds({object:'instagram',entry:'bad'})).toEqual([]);
     expect(instagramWebhookBusinessIds({object:'instagram',entry:[{id:'x',messaging:[]}]})).toEqual([]);
     expect(instagramWebhookBusinessIds({object:'instagram',entry:[{id:'17841400000000123'}]})).toEqual([]);
+  });
+});
+
+describe('Instagram staging signature diagnostics fail closed', () => {
+  const secret = 'staging-test-secret-at-least-sixteen-characters';
+  const body = Buffer.from('{\"object\":\"instagram\"}');
+  const signature = 'sha256=' + createHmac('sha256',secret).update(body).digest('hex');
+
+  it('allows a correctly signed request', () => {
+    expect(instagramSignatureFailureReason('true',body,signature,secret)).toBeNull();
+  });
+  it('classifies missing inputs without revealing credentials', () => {
+    expect(instagramSignatureFailureReason('false',body,signature,secret)).toBe('STAGING_MODE_DISABLED');
+    expect(instagramSignatureFailureReason('true',undefined,signature,secret)).toBe('RAW_BODY_MISSING');
+    expect(instagramSignatureFailureReason('true',body,signature,undefined)).toBe('APP_SECRET_UNAVAILABLE');
+    expect(instagramSignatureFailureReason('true',body,undefined,secret)).toBe('SIGNATURE_HEADER_MISSING');
+    expect(instagramSignatureFailureReason('true',body,'sha1=bad',secret)).toBe('SIGNATURE_HEADER_MALFORMED');
+  });
+  it('classifies signature mismatch and never accepts an altered body', () => {
+    expect(instagramSignatureFailureReason('true',Buffer.concat([body,Buffer.from(' ')]),signature,secret))
+      .toBe('SIGNATURE_MISMATCH');
   });
 });
 
