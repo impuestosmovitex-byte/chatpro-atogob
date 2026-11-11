@@ -12,6 +12,7 @@ on:
       - 'apps/api/package-lock.json'
       - 'app/api/statistics/route.ts'
       - 'app/lib/statistics-context.ts'
+      - 'proxy.ts'
       - 'docs/security/seg002-*'
       - '.github/workflows/mw1-staging-api-tests.yml'
   workflow_dispatch:
