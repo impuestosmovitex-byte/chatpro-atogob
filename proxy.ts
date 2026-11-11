@@ -66,6 +66,13 @@ function isAllowedForAdvisor(pathname: string): boolean {
   return allowed.some((path) => matchesPath(pathname, path));
 }
 
+function isStatisticsPath(pathname: string): boolean {
+  return (
+    matchesPath(pathname, '/estadisticas') ||
+    matchesPath(pathname, '/api/statistics')
+  );
+}
+
 function isAutomationPath(pathname: string): boolean {
   return (
     matchesPath(pathname, '/automatizaciones') ||
@@ -139,6 +146,37 @@ export async function proxy(request: NextRequest) {
     return secureResponse(
       NextResponse.redirect(new URL('/revision-atogob', request.url)),
     );
+  }
+
+  // SEG-002: only a verified individual can enter Statistics.
+  // The role stored in a long-lived session is never sufficient here.
+  if (isStatisticsPath(pathname)) {
+    if (session.type !== 'user' || !session.userId) {
+      if (pathname.startsWith('/api/')) {
+        return secureResponse(NextResponse.json(
+          { ok: false, error: 'Inicia sesión con un usuario autorizado.' },
+          { status: 403 },
+        ));
+      }
+      return secureResponse(NextResponse.redirect(new URL('/', request.url)));
+    }
+
+    let allowed = false;
+    try {
+      allowed = (await getAccessCapabilities(session)).statistics;
+    } catch {
+      allowed = false;
+    }
+    if (!allowed) {
+      if (pathname.startsWith('/api/')) {
+        return secureResponse(NextResponse.json(
+          { ok: false, error: 'No tienes permiso para consultar estadísticas.' },
+          { status: 403 },
+        ));
+      }
+      return secureResponse(NextResponse.redirect(new URL('/', request.url)));
+    }
+    return secureResponse(NextResponse.next());
   }
 
   if (isAutomationPath(pathname)) {
