@@ -1,0 +1,41 @@
+name: SEG-003 inbox tenant isolation (test only)
+
+on:
+  push:
+    branches:
+      - fix/seg003-inbox-tenant-authorization-20261112
+  pull_request:
+    branches:
+      - fix/seg002-prod-api-minimal-20261111
+    paths:
+      - 'apps/api/src/inbox.controller.ts'
+      - 'apps/api/src/conversation-memory.service.ts'
+      - 'apps/api/src/seg003-inbox-tenant-isolation.spec.ts'
+      - '.github/workflows/seg003-inbox-isolation-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    name: Synthetic tenant tests and NestJS compile — NO DEPLOY
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install from frozen lockfile
+        run: npm ci
+      - name: Run SEG-003 isolated authorization tests
+        run: npm test -- --runInBand --runTestsByPath src/seg003-inbox-tenant-isolation.spec.ts
+      - name: Run SEG-002 previously approved regression tests
+        run: npm test -- --runInBand --runTestsByPath src/statistics-seg002.spec.ts src/statistics-seg002-http.spec.ts
+      - name: Compile NestJS API without deploying
+        run: npm run build
