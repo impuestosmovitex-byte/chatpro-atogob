@@ -376,6 +376,7 @@ export class InboxController {
       const { error: messagesError } = await client
         .from('conversations')
         .delete()
+        .eq('company_id', profile.id)
         .eq('session_id', created.id);
 
       if (messagesError) {
@@ -2387,6 +2388,24 @@ export class InboxController {
       throw new UnauthorizedException(
         'Tu acceso a esta empresa no está activo.',
       );
+    // SEG-003: use live membership role and active profile; never trust the
+    // x-chatpro-role-key header for an individual user's privileges.
+    const { data: profile, error: profileError } = await c
+      .from('app_profiles')
+      .select('active')
+      .eq('user_id', id)
+      .maybeSingle();
+    if (profileError || !profile?.active)
+      throw new UnauthorizedException('Tu usuario no está activo.');
+
+    const { data: effectiveRole, error: effectiveRoleError } = await c
+      .from('app_roles')
+      .select('key')
+      .eq('id', membership.role_id)
+      .maybeSingle();
+    if (effectiveRoleError || !effectiveRole?.key)
+      throw new UnauthorizedException('Tu rol de empresa no está disponible.');
+
     const { data: links, error: le } = await c
       .from('app_role_permissions')
       .select('permission_id')
@@ -2416,7 +2435,7 @@ export class InboxController {
       userId: id,
       fullName: name,
       permissions,
-      isFullAccess: role === 'owner' || role === 'admin',
+      isFullAccess: effectiveRole.key === 'owner' || effectiveRole.key === 'admin',
     };
   }
   private async resolveBootstrapOwner(
