@@ -333,6 +333,7 @@ export class InboxController {
       const { error: messagesError } = await client
         .from('conversations')
         .delete()
+        .eq('company_id', profile.id)
         .eq('session_id', created.id);
 
       if (messagesError) {
@@ -2363,6 +2364,15 @@ export class InboxController {
       );
     // Resolve current role from the active membership. The signed web cookie
     // may contain an older owner/admin role after a permission change.
+    // SEG-003: verify the user's live profile status, not just membership.
+    // Keep the existing DB-derived, company-scoped role validation below.
+    const { data: liveProfile, error: liveProfileError } = await c
+      .from('app_profiles')
+      .select('active')
+      .eq('user_id', id)
+      .maybeSingle();
+    if (liveProfileError || !liveProfile?.active)
+      throw new UnauthorizedException('Tu usuario no está activo.');
     const { data: currentRole, error: roleError } = await c
       .from('app_roles')
       .select('key,company_id')
