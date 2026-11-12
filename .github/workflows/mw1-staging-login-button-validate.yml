@@ -1,0 +1,37 @@
+name: MW1 staging login button validation (no deployment)
+
+on:
+  push:
+    branches:
+      - fix/staging-enable-login-button-20261112
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Compile Next.js web for staging
+        run: npm run build
+      - name: Verify the intended staging login guard was removed and server auth was preserved
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const login = fs.readFileSync('app/login/page.tsx', 'utf8');
+          const server = fs.readFileSync('app/api/auth/login/route.ts', 'utf8');
+          if (!login.includes('disabled={loading}')) throw new Error('Login button still blocked');
+          if (login.includes('staging&&!platformLogin&&!companySlug')) throw new Error('Old company selection guard remains');
+          if (!server.includes('/access/staging-user-login')) throw new Error('Staging tenant-bound login missing');
+          if (!server.includes('responseWithSession')) throw new Error('Authentication sessions not created on server');
+          console.log('PASS: button enabled, staging still authenticates and resolves company server-side.');
+          NODE
