@@ -119,7 +119,7 @@ export default function LoginPage() {
         {staging&&<p className={styles.copy} style={{margin:'14px 0 0',fontSize:12,textAlign:'center'}}>
           {platformLogin?<a href="/login">Acceso empresarial</a>:companySlug
             ?<span>Entorno piloto de MW1 · Acceso para la empresa seleccionada</span>
-            :<span>Acceso de pruebas seguro · <a href="https://chatpro-web-production.up.railway.app/login">Ir al MW1 actual</a></span>
+            :<span>Acceso de pruebas seguro · <a href="https://chatpro-web-production.up.railway.app/login">Ir al MW1 actual</a></span>}
         </p>}
       </section>
     </main>
