@@ -25,6 +25,14 @@ describe('Staging cross-company inbox authorization',()=>{
      })
     })})};
    }
+   if(table==='app_profiles'){
+    return {select:()=>({eq:(_field:string,user:string)=>({
+      maybeSingle:async()=>({
+        data: ['user-a','user-b'].includes(user) ? {active:true} : null,
+        error:null,
+      }),
+    })})};
+   }
    if(table==='app_roles'){
     return {select:()=>({eq:()=>({maybeSingle:async()=>({
      data:{key:currentRoleKey,company_id:null},error:null,
