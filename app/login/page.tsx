@@ -30,10 +30,6 @@ export default function LoginPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
-    if(staging&&!platformLogin&&!companySlug){
-      setError('Selecciona una empresa de pruebas con su enlace de acceso. Para ATOGOB operativo utiliza el acceso a MW1 producción que aparece arriba.');
-      return;
-    }
     setLoading(true);
 
     try {
@@ -79,7 +75,11 @@ export default function LoginPage() {
         <p className={styles.eyebrow}>{platformLogin?'ACCESO PRIVADO · PLATAFORMA':'MW1 · ACCESO EMPRESARIAL'}</p>
         <h1>{platformLogin?'Administración de MW1':'Accede a tu empresa'}</h1>
         <p className={styles.copy}>
-          {companySlug?'Ingresa con las credenciales de tu empresa.':'Ingresa tu identificación y contraseña para acceder a MW1.'}
+          {companySlug
+            ? 'Ingresa con las credenciales de tu empresa.'
+            : staging && !platformLogin
+              ? 'Ingresa tu código y contraseña de pruebas. MW1 identificará tu empresa al validar tu usuario.'
+              : 'Ingresa tu identificación y contraseña para acceder a MW1.'}
         </p>
 
         <form className={styles.form} onSubmit={submit}>
@@ -89,6 +89,7 @@ export default function LoginPage() {
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
             autoComplete="username"
+            required={staging || platformLogin}
             autoFocus
             placeholder={platformLogin?'Identificación de administrador':'Tu código de acceso'}
           />
@@ -111,14 +112,14 @@ export default function LoginPage() {
               :'')}>¿Olvidaste tu contraseña?</a>
           </p>}
           {error ? <p className={styles.error}>{error}</p> : null}
-          <button type="submit" disabled={loading || !password || (staging&&!platformLogin&&!companySlug)}>
+          <button type="submit" disabled={loading}>
             {loading ? 'Ingresando…' : 'Ingresar'}
           </button>
         </form>
         {staging&&<p className={styles.copy} style={{margin:'14px 0 0',fontSize:12,textAlign:'center'}}>
           {platformLogin?<a href="/login">Acceso empresarial</a>:companySlug
             ?<span>Entorno piloto de MW1 · Acceso para la empresa seleccionada</span>
-            :<span>¿Ya eres cliente? <a href="https://chatpro-web-production.up.railway.app/login">Entrar al MW1 actual</a></span>}
+            :<span>Acceso de pruebas seguro · <a href="https://chatpro-web-production.up.railway.app/login">Ir al MW1 actual</a></span>}
         </p>}
       </section>
     </main>
