@@ -2106,6 +2106,7 @@ export class ConversationMemoryService {
       .select(
         'id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at',
       )
+      .eq('company_id', profile.id)
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false });
 
@@ -2238,6 +2239,7 @@ export class ConversationMemoryService {
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
       .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
+      .eq('company_id', profile.id)
       .in('session_id', sessionIds)
       .order('created_at', { ascending: true });
 
@@ -2306,6 +2308,7 @@ export class ConversationMemoryService {
     const { data: messageRows, error: messageError } = await client
       .from('conversations')
       .select('id, session_id, message, sender, author_type, message_type, message_metadata, media_mime_type, media_storage_path, media_voice, provider_message_id, status, provider_error, reply_to_provider_message_id, reply_to_message, message_source, source_name, created_at')
+      .eq('company_id', profile.id)
       .eq('session_id', session.id)
       .order('created_at', { ascending: true });
 
@@ -2716,6 +2719,7 @@ export class ConversationMemoryService {
     let messagesQuery = client
       .from('conversations')
       .select(messageFields)
+      .eq('company_id', profile.id)
       .in('session_id', relatedSessionIds);
 
     if (validAfter) {
@@ -3435,6 +3439,7 @@ export class ConversationMemoryService {
           .from('contacts')
           .update(payload)
           .eq('id', existing.id)
+          .eq('company_id', companyId)
           .select(
             'id, company_id, phone, display_name, primary_channel, tags, notes, first_seen_at, last_activity_at',
           )
