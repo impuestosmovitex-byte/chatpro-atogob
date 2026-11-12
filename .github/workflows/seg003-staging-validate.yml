@@ -1,0 +1,42 @@
+name: SEG-003 staging compatibility and tenant isolation
+
+on:
+  push:
+    branches:
+      - fix/seg003-staging-port-20261112
+  pull_request:
+    branches:
+      - fix/mw1-seg002-statistics-authorization-20261111
+    paths:
+      - 'apps/api/src/inbox.controller.ts'
+      - 'apps/api/src/conversation-memory.service.ts'
+      - 'apps/api/src/seg003-inbox-tenant-isolation.spec.ts'
+      - 'apps/api/src/inbox-tenant-isolation.spec.ts'
+      - '.github/workflows/seg003-staging-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Staging regression and safety tests (NO DEPLOY)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Execute SEG-003 and staging tenant regression tests
+        run: npm test -- --runInBand --runTestsByPath src/seg003-inbox-tenant-isolation.spec.ts src/inbox-tenant-isolation.spec.ts src/staging-safety.spec.ts src/statistics-seg002.spec.ts src/statistics-staging-route.spec.ts
+      - name: Verify Instagram and WhatsApp pilot regressions
+        run: npm test -- --runInBand --runTestsByPath src/staging-instagram-webhook.controller.spec.ts src/staging-instagram-oauth-pilot.spec.ts src/staging-whatsapp-routing.spec.ts src/staging-whatsapp-webhook.spec.ts
+      - name: Compile staging NestJS API (no deployment)
+        run: npm run build
