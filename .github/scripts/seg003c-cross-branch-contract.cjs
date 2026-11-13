@@ -96,6 +96,30 @@ for(const [route,method,file,body] of further){
  assert(apiController.includes("path: '"+route+"'"),'Missing API attestation '+route);
  actions.push({...platform,method,path:route,body});
 }
+const otherControllers=[
+  {api:'src/staging-subscription-admin.controller.ts',web:'app/api/admin/subscription-requests/route.ts',
+   method:'GET',route:'/staging-subscription-admin',kind:'platform',body:undefined},
+  {api:'src/staging-subscription-admin.controller.ts',web:'app/api/admin/subscription-requests/route.ts',
+   method:'POST',route:'/staging-subscription-admin/review',kind:'platform',body:{requestId:'fake-id',decision:'approved',note:'synthetic'}},
+  {api:'src/access.controller.ts',web:'app/api/auth/switch-company/route.ts',
+   method:'POST',route:'/access/switch-company',kind:'user',body:{userId:'alfa-owner',companySlug:'beta'}},
+];
+for(const {api,web,method,route,kind,body} of otherControllers){
+ const apiCode=fs.readFileSync(api,'utf8');
+ const webCode=fs.readFileSync(path.resolve('../../web-compatible',web),'utf8');
+ assert(apiCode.includes("path:'"+route+"'")||apiCode.includes("path: '"+route+"'"),
+  'Missing API assertion '+route);
+ assert(apiCode.includes('verifyInternalAttestation(identityAssertion'),
+  'Missing API signature verification '+route);
+ assert(webCode.includes("path:'"+route+"'")||webCode.includes("path: '"+route+"'"),
+  'Missing web assertion '+route);
+ assert(webCode.includes('signInternalAttestation('),
+  'Missing web signer '+route);
+ const action={kind,userId:kind==='platform'?'platform-operator':'alfa-owner',
+   companyId:kind==='user'?'alfa':'',companySlug:kind==='user'?'alfa':'',
+   method,path:route,body};
+ actions.push(action);
+}
 for(const action of actions){
   const attestation=signInternalAttestation(action,now);
   assert.doesNotThrow(()=>verifyInternalAttestation(attestation,action,now));
