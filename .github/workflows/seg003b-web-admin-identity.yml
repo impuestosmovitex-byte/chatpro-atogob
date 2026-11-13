@@ -1,0 +1,27 @@
+name: SEG-003B web admin identity (NO DEPLOY)
+on:
+  push:
+    branches:
+      - fix/seg003b-web-admin-identity-20261113
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Test real signed-session integrity and staging bootstrap restrictions
+        run: node .github/scripts/seg003b-predeploy-session-tests.cjs
+      - name: Check Next.js TypeScript routes
+        run: npx tsc --noEmit
+      - name: Build web (no deployment)
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'

@@ -17,9 +17,23 @@ function config() {
   return { apiBase, inboxKey };
 }
 
+function trustedAdminHeaders(session: NonNullable<Awaited<ReturnType<typeof getInboxSession>>>, inboxKey: string): Record<string, string> {
+  return {
+    'x-chatpro-inbox-key': inboxKey,
+    'x-chatpro-session-type': session.type,
+    'x-chatpro-user-id': session.type === 'user' ? session.userId || '' : '',
+    'x-chatpro-company-id': session.companyId,
+  };
+}
+
 function canManage(session: Awaited<ReturnType<typeof getInboxSession>>) {
   if (!session) return false;
 
+  // SEG-003B: staging administration requires a current authenticated
+  // user membership; bootstrap sessions cannot pass the API guard.
+  if (process.env.MW1_STAGING_MODE === 'true' && session.type !== 'user') {
+    return false;
+  }
   if (session.type === 'bootstrap') {
     return session.roleKey === 'owner';
   }
@@ -84,7 +98,7 @@ export async function GET(request: NextRequest) {
 
     return proxyResponse(
       await fetch(usersTarget(apiBase, session.companySlug), {
-        headers: { 'x-chatpro-inbox-key': inboxKey },
+        headers: trustedAdminHeaders(session, inboxKey),
         cache: 'no-store',
       }),
     );
@@ -127,7 +141,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-chatpro-inbox-key': inboxKey,
+          ...trustedAdminHeaders(session, inboxKey),
         },
         body: JSON.stringify(payload),
         cache: 'no-store',
@@ -160,7 +174,7 @@ export async function PATCH(request: NextRequest) {
         method: 'PATCH',
         headers: {
           'content-type': 'application/json',
-          'x-chatpro-inbox-key': inboxKey,
+          ...trustedAdminHeaders(session, inboxKey),
         },
         body: JSON.stringify(await request.json()),
         cache: 'no-store',
