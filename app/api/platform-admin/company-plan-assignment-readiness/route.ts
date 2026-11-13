@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 export async function GET(request:NextRequest){
@@ -12,7 +13,7 @@ export async function GET(request:NextRequest){
   const url=new URL(base+'/platform-admin/company-plan-assignment-readiness');
   url.searchParams.set('user',session.userId);
   url.searchParams.set('companyId',request.nextUrl.searchParams.get('companyId')||'');
-  const response=await fetch(url,{cache:'no-store',headers:{'x-chatpro-inbox-key':key}});
+  const response=await fetch(url,{cache:'no-store',headers:{'x-chatpro-inbox-key':key,'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method:'GET',path:'/platform-admin/company-plan-assignment-readiness',body:{companyId:url.searchParams.get('companyId')||''}})}});
   return new NextResponse(await response.text(),{status:response.status,
    headers:{'content-type':'application/json'}});
  }catch{return NextResponse.json({ok:false,error:'No se pudo consultar preparación.'},{status:500});}
