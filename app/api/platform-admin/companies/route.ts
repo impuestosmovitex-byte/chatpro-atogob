@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { signInternalAttestation } from '../../../lib/internal-attestation';
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
@@ -87,6 +88,10 @@ export async function POST(request: NextRequest) {
       headers: {
         'content-type': 'application/json',
         'x-chatpro-inbox-key': inboxKey,
+        'x-mw1-internal-assertion': signInternalAttestation({
+          kind: 'platform', userId, companyId: '', companySlug: '',
+          method: 'POST', path: '/platform-admin/companies', body: payload,
+        }),
       },
       body: JSON.stringify(payload),
       cache: 'no-store',
