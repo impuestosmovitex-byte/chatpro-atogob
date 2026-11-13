@@ -181,9 +181,16 @@ export class PlatformAdminController {
   @Get('me')
   async me(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/me',
+      });
+    }
     const normalizedUserId = this.requiredText(userId, 'Falta el usuario.');
 
     return {
