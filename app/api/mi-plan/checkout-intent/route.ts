@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 export async function GET(request:NextRequest){
@@ -10,7 +11,7 @@ export async function GET(request:NextRequest){
  if(!base||!key)return NextResponse.json({ok:false,error:'Servicio no configurado.'},{status:503});
  try{
   const url=new URL('/staging-my-plan/checkout-intent',base);url.searchParams.set('company',session.companySlug);
-  const response=await fetch(url,{cache:'no-store',headers:{'x-chatpro-inbox-key':key,'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId},signal:AbortSignal.timeout(12000)});
+  const response=await fetch(url,{cache:'no-store',headers:{'x-chatpro-inbox-key':key,'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId,'x-mw1-internal-assertion':signInternalAttestation({kind:'user',userId:session.userId,companyId:session.companyId,companySlug:session.companySlug,method:'GET',path:'/staging-my-plan/checkout-intent'})},signal:AbortSignal.timeout(12000)});
   return new NextResponse(await response.text(),{status:response.status,headers:{'Content-Type':'application/json','Cache-Control':'private, no-store'}});
  }catch{return NextResponse.json({ok:false,error:'No se pudo consultar la contratación.'},{status:503});}
 }
@@ -23,7 +24,7 @@ export async function POST(request:NextRequest){
  if(!base||!key)return NextResponse.json({ok:false,error:'Servicio no configurado.'},{status:503});
  try{
   const url=new URL('/staging-my-plan/checkout-intent',base);url.searchParams.set('company',session.companySlug);
-  const response=await fetch(url,{method:'POST',cache:'no-store',headers:{'x-chatpro-inbox-key':key,'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId},signal:AbortSignal.timeout(12000)});
+  const response=await fetch(url,{method:'POST',cache:'no-store',headers:{'x-chatpro-inbox-key':key,'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId,'x-mw1-internal-assertion':signInternalAttestation({kind:'user',userId:session.userId,companyId:session.companyId,companySlug:session.companySlug,method:'POST',path:'/staging-my-plan/checkout-intent'})},signal:AbortSignal.timeout(12000)});
   return new NextResponse(await response.text(),{status:response.status,headers:{'Content-Type':'application/json','Cache-Control':'private, no-store'}});
  }catch{return NextResponse.json({ok:false,error:'No se pudo preparar la contratación.'},{status:503});}
 }
