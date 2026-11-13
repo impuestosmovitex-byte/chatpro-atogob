@@ -121,6 +121,31 @@ for(const {api,web,method,route,kind,body} of otherControllers){
    method,path:route,body};
  actions.push(action);
 }
+const planEndpoints=[
+  ['GET','/staging-my-plan','app/api/mi-plan/route.ts'],
+  ['POST','/staging-my-plan/request','app/api/mi-plan/route.ts'],
+  ['GET','/staging-my-plan/checkout-readiness','app/api/mi-plan/checkout-readiness/route.ts'],
+  ['POST','/staging-my-plan/checkout-intent','app/api/mi-plan/checkout-intent/route.ts'],
+  ['GET','/staging-my-plan/checkout-intent','app/api/mi-plan/checkout-intent/route.ts'],
+  ['POST','/staging-my-plan/checkout-authorize','app/api/mi-plan/checkout-authorize/route.ts'],
+];
+const planApi=fs.readFileSync('src/staging-my-plan.controller.ts','utf8');
+for(const [method,route,file] of planEndpoints){
+ const web=fs.readFileSync(path.resolve('../../web-compatible',file),'utf8');
+ assert(web.includes('signInternalAttestation(')&&web.includes('x-mw1-internal-assertion'),
+  'Missing web signature '+file);
+ assert(web.includes("method:'"+method+"'")&&web.includes("path:'"+route+"'"),
+  'Mismatched signed web operation '+route);
+ assert(planApi.includes("method:'"+method+"'")&&planApi.includes("path:'"+route+"'"),
+  'Mismatched signed API operation '+route);
+ const body=method==='POST'&&route.endsWith('checkout-authorize')
+   ?{payerEmail:'test-only@example.com'}:method==='POST'&&route.endsWith('request')
+   ?{type:'change_plan',planKey:'eco'}:undefined;
+ actions.push({kind:'user',userId:'alfa-owner',companyId:'alfa',
+  companySlug:'alfa',method,path:route,body});
+}
+assert(planApi.includes("select('active')")&&planApi.includes("select('role_id,active')"));
+assert(planApi.includes("verifyInternalAttestation(identityAssertion"));
 for(const action of actions){
   const attestation=signInternalAttestation(action,now);
   assert.doesNotThrow(()=>verifyInternalAttestation(attestation,action,now));
