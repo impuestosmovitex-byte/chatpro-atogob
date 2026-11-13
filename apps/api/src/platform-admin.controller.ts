@@ -127,19 +127,19 @@ export class PlatformAdminController {
     const configuredCode=process.env.MW1_STAGING_ADMIN_SETUP_TOKEN?.trim()||'';
     const codeMatch=/^[0-9a-f]{64}$/.test(configuredCode)&&
       timingSafeEqual(Buffer.from(body.token,'hex'),Buffer.from(configuredCode,'hex'));
+    // Read-only preflight avoids consuming a valid one-time invitation on
+    // predictable input errors. A separate atomic claim still gates creation.
+    const digest=codeMatch?'':createHash('sha256').update(body.token).digest('hex');
     let invite:{login_identifier:string;company_slug:string}|null=null;
     if(codeMatch){
       invite={login_identifier:'1018453680',company_slug:'mw1-demo-mercado'};
     }else{
-      // Single-use DB invitation when issued by a trusted staging operator.
-      const digest=createHash('sha256').update(body.token).digest('hex');
-      const {data:claimed,error:inviteError}=await client.from('platform_staging_admin_invites')
-        .update({used_at:new Date().toISOString()})
+      const {data:available,error:inviteError}=await client.from('platform_staging_admin_invites')
+        .select('login_identifier,company_slug')
         .eq('token_sha256',digest).is('used_at',null)
-        .gt('expires_at',new Date().toISOString())
-        .select('id,login_identifier,company_slug').maybeSingle();
-      if(inviteError||!claimed)throw new UnauthorizedException('Código de activación inválido.');
-      invite=claimed;
+        .gt('expires_at',new Date().toISOString()).maybeSingle();
+      if(inviteError||!available)throw new UnauthorizedException('Código de activación inválido.');
+      invite=available;
     }
     const identifier=invite.login_identifier;
     const password=body.password;
@@ -149,6 +149,20 @@ export class PlatformAdminController {
       .select('user_id').eq('login_identifier',identifier).maybeSingle();
     if(existingError||existing)
       throw new BadRequestException('Este identificador ya está registrado.');
+
+    if(!codeMatch){
+      // Atomic, irreversible one-time claim. Never unclaim following any
+      // failure: a retry must use a NEW invitation issued by the operator.
+      // Preflight does not grant access; only the claimed row permits creation.
+      const {data:claimed,error:claimError}=await client.from('platform_staging_admin_invites')
+        .update({used_at:new Date().toISOString()})
+        .eq('token_sha256',digest).is('used_at',null)
+        .gt('expires_at',new Date().toISOString())
+        .select('id,login_identifier,company_slug').maybeSingle();
+      if(claimError||!claimed||claimed.login_identifier!==identifier||
+        claimed.company_slug!==invite.company_slug)
+        throw new UnauthorizedException('Código de activación vencido o utilizado.');
+    }
     let userId='';
     try {
       const {data:created,error:createError}=await client.auth.admin.createUser({
@@ -174,7 +188,12 @@ export class PlatformAdminController {
         await client.from('app_profiles').delete().eq('user_id',userId);
         await client.auth.admin.deleteUser(userId);
       }
-      throw new BadRequestException(err instanceof Error?err.message:'No se pudo activar la cuenta.');
+      // Never reset used_at: the operator may inspect state and issue a fresh
+      // short-lived invitation after checking no active platform admin exists.
+      throw new BadRequestException(
+        'No se completó la activación. Verifica el estado con el operador de staging; '+
+        'si la invitación ya fue utilizada, se requiere una nueva.'
+      );
     }
   }
 
