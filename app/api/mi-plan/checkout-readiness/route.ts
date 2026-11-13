@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 export async function GET(request:NextRequest){
@@ -11,7 +12,7 @@ export async function GET(request:NextRequest){
  try{
   const url=new URL('/staging-my-plan/checkout-readiness',base);
   url.searchParams.set('company',session.companySlug);
-  const result=await fetch(url,{cache:'no-store',headers:{'x-chatpro-inbox-key':key,'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId},signal:AbortSignal.timeout(12000)});
+  const result=await fetch(url,{cache:'no-store',headers:{'x-chatpro-inbox-key':key,'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId,'x-mw1-internal-assertion':signInternalAttestation({kind:'user',userId:session.userId,companyId:session.companyId,companySlug:session.companySlug,method:'GET',path:'/staging-my-plan/checkout-readiness'})},signal:AbortSignal.timeout(12000)});
   return new NextResponse(await result.text(),{status:result.status,headers:{'Content-Type':'application/json','Cache-Control':'private, no-store'}});
  }catch{return NextResponse.json({ok:false,error:'No se pudo comprobar la contratación.'},{status:503});}
 }
