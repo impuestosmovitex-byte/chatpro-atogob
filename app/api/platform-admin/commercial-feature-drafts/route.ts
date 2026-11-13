@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 async function proxy(request:NextRequest,method:'GET'|'POST'){
@@ -11,9 +12,11 @@ async function proxy(request:NextRequest,method:'GET'|'POST'){
   if(!base||!key)throw new Error('Configuración incompleta.');
   const target=new URL(base+'/platform-admin/commercial-feature-drafts');
   target.searchParams.set('user',session.userId);
+  const body=method==='POST'?await request.json():undefined;
   const response=await fetch(target,{method,
-   headers:{'x-chatpro-inbox-key':key,...(method==='POST'?{'content-type':'application/json'}:{})},
-   body:method==='POST'?JSON.stringify(await request.json()):undefined,
+   headers:{'x-chatpro-inbox-key':key,...(method==='POST'?{'content-type':'application/json'}:{}),
+    'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method,path:'/platform-admin/commercial-feature-drafts',body})},
+   body:method==='POST'?JSON.stringify(body):undefined,
    cache:'no-store'});
   return new NextResponse(await response.text(),{status:response.status,
    headers:{'content-type':'application/json'}});
