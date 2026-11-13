@@ -1,5 +1,6 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {createHmac} from 'node:crypto';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 
 export const dynamic='force-dynamic';
@@ -52,7 +53,8 @@ export async function GET(request:NextRequest){
   const {api,key}=config();
   const url=new URL('/platform-admin/recovery-requests',api);
   url.searchParams.set('user',session.userId);
-  const res=await fetch(url,{headers:{'x-chatpro-inbox-key':key},cache:'no-store',signal:AbortSignal.timeout(12000)});
+  const res=await fetch(url,{headers:{'x-chatpro-inbox-key':key,
+   'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method:'GET',path:'/platform-admin/recovery-requests'})},cache:'no-store',signal:AbortSignal.timeout(12000)});
   return new NextResponse(await res.text(),{status:res.status,headers:{
    'content-type':'application/json','Cache-Control':'private, no-store',
   }});
