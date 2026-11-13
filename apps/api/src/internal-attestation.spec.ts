@@ -31,14 +31,18 @@ describe('SEG-003C asymmetric assertion guard (synthetic only)',()=>{
     return encoded+'.'+sign(null,Buffer.from(encoded),key).toString('base64url');
   }
   const originalReplay = process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK;
+  const originalReplicaCount=process.env.MW1_INTERNAL_REPLICA_COUNT;
   beforeEach(()=>{
     process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK='true';
+    process.env.MW1_INTERNAL_REPLICA_COUNT='1';
     process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY=
     first.publicKey.export({type:'spki',format:'pem'}).toString();});
   afterAll(()=>{if(original===undefined)delete process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY;
     else process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY=original;
     if(originalReplay===undefined)delete process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK;
     else process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK=originalReplay;
+    if(originalReplicaCount===undefined)delete process.env.MW1_INTERNAL_REPLICA_COUNT;
+    else process.env.MW1_INTERNAL_REPLICA_COUNT=originalReplicaCount;
   });
   it('accepts correctly signed tenant action',()=>{
     expect(()=>verifyInternalAttestation(token(),base,now)).not.toThrow();
@@ -89,6 +93,14 @@ describe('SEG-003C asymmetric assertion guard (synthetic only)',()=>{
     delete process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK;
     expect(()=>verifyInternalAttestation(signed,base,now)).toThrow(UnauthorizedException);
     process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK='true';
+  });
+  it('rejects assertions in multi-replica or unconfigured deployments',()=>{
+    for(const count of [undefined,'0','2','3']){
+      if(count===undefined)delete process.env.MW1_INTERNAL_REPLICA_COUNT;
+      else process.env.MW1_INTERNAL_REPLICA_COUNT=count;
+      expect(()=>verifyInternalAttestation(token(),base,now)).toThrow(UnauthorizedException);
+    }
+    process.env.MW1_INTERNAL_REPLICA_COUNT='1';
   });
   it('does not reserve an assertion if the request body was rejected',()=>{
     const signed=token();
