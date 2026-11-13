@@ -1,5 +1,6 @@
 import { Controller, ForbiddenException, Get, Headers, Query, UnauthorizedException } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { verifyInternalAttestation } from './internal-attestation';
 
 @Controller('inbox')
 export class StagingInboxController {
@@ -15,7 +16,9 @@ export class StagingInboxController {
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
     @Query('company') slug = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
   ) {
+    await this.authorizeRead(key,userId,companyId,slug,identityAssertion,'/inbox/instagram-pilot');
     const expected = process.env.CHATPRO_INBOX_KEY?.trim();
     if (!expected || key !== expected || !userId || !companyId ||
       slug !== 'piloto-mw1-prueba') {
@@ -51,7 +54,9 @@ export class StagingInboxController {
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
     @Query('company') slug = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
   ) {
+    await this.authorizeRead(key,userId,companyId,slug,identityAssertion,'/inbox');
     const expected = process.env.CHATPRO_INBOX_KEY?.trim();
     if (!expected || key !== expected || !userId || !companyId || !slug)
       throw new UnauthorizedException('Sesión requerida.');
@@ -80,4 +85,47 @@ export class StagingInboxController {
       lastMessage:null,contact:null,
     })),pendingTotal:0,hasMore:false,stagingReadOnly:true };
   }
+  /** Keep current shared inbox.view visibility. Only authenticated tenant
+   * members may read; assignment governs management, not shared reading. */
+  private async authorizeRead(
+    key:string,userId:string,companyId:string,slug:string,
+    identityAssertion:string,path:'/inbox'|'/inbox/instagram-pilot',
+  ):Promise<void>{
+    const expected=process.env.CHATPRO_INBOX_KEY?.trim();
+    if(process.env.MW1_STAGING_MODE!=='true'||!expected||key!==expected||
+      !userId||!companyId||!slug)
+      throw new UnauthorizedException('Sesión de bandeja no autorizada.');
+    verifyInternalAttestation(identityAssertion,{
+      kind:'user',userId,companyId,companySlug:slug,
+      method:'GET',path,
+    });
+    const client=this.db.getClient();
+    const {data:company,error:companyError}=await client.from('companies')
+      .select('id,status,slug').eq('id',companyId).eq('slug',slug).maybeSingle();
+    if(companyError||company?.status!=='active')
+      throw new ForbiddenException('Empresa no autorizada.');
+    const {data:profile,error:profileError}=await client.from('app_profiles')
+      .select('active').eq('user_id',userId).maybeSingle();
+    if(profileError||profile?.active!==true)
+      throw new ForbiddenException('Usuario inactivo.');
+    const {data:membership,error:membershipError}=await client.from('company_memberships')
+      .select('role_id,active').eq('company_id',company.id).eq('user_id',userId).maybeSingle();
+    if(membershipError||membership?.active!==true||!membership.role_id)
+      throw new ForbiddenException('Membresía no autorizada.');
+    const {data:role,error:roleError}=await client.from('app_roles')
+      .select('id,key,company_id').eq('id',membership.role_id).maybeSingle();
+    if(roleError||!role||role.company_id&&role.company_id!==company.id)
+      throw new ForbiddenException('Rol no autorizado.');
+    const {data:links,error:linksError}=await client.from('app_role_permissions')
+      .select('permission_id').eq('role_id',membership.role_id);
+    if(linksError)throw new ForbiddenException('Permisos no disponibles.');
+    const permissionIds=(links??[]).map(x=>x.permission_id)
+      .filter((id:unknown):id is string=>typeof id==='string');
+    const {data:permissions,error:permissionsError}=permissionIds.length
+      ?await client.from('app_permissions').select('key').in('id',permissionIds)
+      :{data:[],error:null};
+    if(permissionsError||!(permissions??[]).some(x=>x.key==='inbox.view'))
+      throw new ForbiddenException('Sin permiso para consultar la bandeja.');
+  }
+
 }
