@@ -28,7 +28,28 @@ const user={kind:'user',userId:'alfa-owner',companyId:'alfa',companySlug:'alfa',
 const platform={kind:'platform',userId:'platform-operator',companyId:'',
   companySlug:'',method:'POST',path:'/platform-admin/companies',
   body:{name:'Fictional Alfa',slug:'fictional-alfa',maxUsers:2,ownerIdentifier:'fake'}};
-for(const action of [user,platform]){
+const privileged=[
+  ['/platform-admin/companies/owner-access',
+   'app/api/platform-admin/companies/owners/route.ts'],
+  ['/platform-admin/plans/publish',
+   'app/api/platform-admin/plan-publish/route.ts'],
+  ['/platform-admin/company-plan-activation-review',
+   'app/api/platform-admin/company-plan-activation-review/route.ts'],
+  ['/platform-admin/commercial-feature-approvals',
+   'app/api/platform-admin/commercial-feature-approvals/route.ts'],
+];
+const apiController=fs.readFileSync('src/platform-admin.controller.ts','utf8');
+const actions=[user,platform];
+for(const [route,file] of privileged){
+  const web=fs.readFileSync(path.resolve('../../web-compatible',file),'utf8');
+  assert(web.includes("path:'"+route+"'")||web.includes("path: '"+route+"'"),
+    'Web must sign '+route);
+  assert(web.includes('signInternalAttestation('),'Missing web signature: '+route);
+  assert(apiController.includes("path: '"+route+"'"),
+    'API must validate signed action: '+route);
+  actions.push({...platform,path:route,body:{action:'synthetic-only',companyId:'fake'}});
+}
+for(const action of actions){
   const attestation=signInternalAttestation(action,now);
   assert.doesNotThrow(()=>verifyInternalAttestation(attestation,action,now));
   assert.throws(()=>verifyInternalAttestation(attestation,
@@ -42,4 +63,4 @@ for(const action of [user,platform]){
   assert.throws(()=>verifyInternalAttestation(attestation,
     {...action,companyId:'beta'},now));
 }
-console.log('SEG-003C cross-branch signature contract: 12 passed, synthetic keys only.');
+console.log('SEG-003C cross-branch contract: '+(actions.length*6)+' assertions passed, synthetic keys only.');
