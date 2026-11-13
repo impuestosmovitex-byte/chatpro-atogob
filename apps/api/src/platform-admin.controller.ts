@@ -1600,9 +1600,16 @@ export class PlatformAdminController {
   @Get('recovery-requests')
   async listAccountRecoveryRequests(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') actorId = '',
   ){
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: actorId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/recovery-requests',
+      });
+    }
     await this.assertPlatformAdmin(actorId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Disponible únicamente en staging.');
