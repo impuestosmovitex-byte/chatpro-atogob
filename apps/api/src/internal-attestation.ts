@@ -34,6 +34,24 @@ function canonical(value: unknown): string {
 const hash = (body: unknown) =>
   createHash('sha256').update(canonical(body ?? null)).digest('hex');
 
+// SEG-003C: staging uses ONE replica today. This per-process replay ledger
+// MUST NEVER be enabled for multiple instances: that requires atomic shared
+// SET-NX with TTL (e.g. Redis), not independent process-local maps.
+const usedNonces = new Map<string, number>();
+const MAX_NONCES = 20000;
+function reserveNonce(nonce: string, expirySeconds: number, nowSeconds: number): void {
+  if (process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK !== 'true')
+    throw new UnauthorizedException('Protección contra reutilización no configurada.');
+  for (const [key, expiresAt] of usedNonces)
+    if (expiresAt <= nowSeconds) usedNonces.delete(key);
+  if (usedNonces.has(nonce))
+    throw new UnauthorizedException('Esta solicitud ya fue utilizada.');
+  if (usedNonces.size >= MAX_NONCES)
+    throw new UnauthorizedException('Almacén de identificadores temporalmente lleno.');
+  // Synchronous check and insert: atomic within a single Node.js event loop.
+  usedNonces.set(nonce, expirySeconds);
+}
+
 export function verifyInternalAttestation(
   assertion: string | undefined,
   expected: InternalAction,
@@ -73,4 +91,5 @@ export function verifyInternalAttestation(
   for (const [key, val] of Object.entries(required))
     if (signed[key as keyof Assertion] !== val)
       throw new UnauthorizedException('La afirmación no corresponde a esta solicitud.');
+  reserveNonce(signed.nonce, signed.exp, timestamp);
 }
