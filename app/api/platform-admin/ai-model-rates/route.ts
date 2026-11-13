@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 async function forward(request:NextRequest,method:'GET'|'POST'){
@@ -14,7 +15,8 @@ async function forward(request:NextRequest,method:'GET'|'POST'){
  }
  try{
   const url=new URL('/platform-admin/ai-model-rates',base);url.searchParams.set('user',session.userId);
-  const response=await fetch(url,{method,headers:{'x-chatpro-inbox-key':key,...(method==='POST'?{'content-type':'application/json'}:{})},...(method==='POST'?{body:JSON.stringify(body)}:{}),cache:'no-store',signal:AbortSignal.timeout(12000)});
+  const response=await fetch(url,{method,headers:{'x-chatpro-inbox-key':key,...(method==='POST'?{'content-type':'application/json'}:{}),
+    'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method,path:'/platform-admin/ai-model-rates',body})},...(method==='POST'?{body:JSON.stringify(body)}:{}),cache:'no-store',signal:AbortSignal.timeout(12000)});
   return new NextResponse(await response.text(),{status:response.status,headers:{'content-type':'application/json','Cache-Control':'no-store'}});
  }catch{return NextResponse.json({ok:false,error:'Tarifas no disponibles.'},{status:503});}
 }
