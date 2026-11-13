@@ -29,10 +29,16 @@ describe('SEG-003C asymmetric assertion guard (synthetic only)',()=>{
     const encoded=Buffer.from(JSON.stringify(payload)).toString('base64url');
     return encoded+'.'+sign(null,Buffer.from(encoded),key).toString('base64url');
   }
-  beforeEach(()=>{process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY=
+  const originalReplay = process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK;
+  beforeEach(()=>{
+    process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK='true';
+    process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY=
     first.publicKey.export({type:'spki',format:'pem'}).toString();});
   afterAll(()=>{if(original===undefined)delete process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY;
-    else process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY=original;});
+    else process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY=original;
+    if(originalReplay===undefined)delete process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK;
+    else process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK=originalReplay;
+  });
   it('accepts correctly signed tenant action',()=>{
     expect(()=>verifyInternalAttestation(token(),base,now)).not.toThrow();
   });
@@ -71,6 +77,23 @@ describe('SEG-003C asymmetric assertion guard (synthetic only)',()=>{
     for(const input of ['bogus','a.b.c','!#.$','x'.repeat(8200)])
       expect(()=>verifyInternalAttestation(input,base,now))
         .toThrow(UnauthorizedException);
+  });
+  it('rejects replay of a previously accepted assertion',()=>{
+    const signed = token();
+    expect(()=>verifyInternalAttestation(signed,base,now)).not.toThrow();
+    expect(()=>verifyInternalAttestation(signed,base,now)).toThrow(UnauthorizedException);
+  });
+  it('fails closed without single-replica confirmation',()=>{
+    const signed=token();
+    delete process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK;
+    expect(()=>verifyInternalAttestation(signed,base,now)).toThrow(UnauthorizedException);
+    process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK='true';
+  });
+  it('does not reserve an assertion if the request body was rejected',()=>{
+    const signed=token();
+    expect(()=>verifyInternalAttestation(signed,{...base,body:{active:true}},now))
+      .toThrow(UnauthorizedException);
+    expect(()=>verifyInternalAttestation(signed,base,now)).not.toThrow();
   });
   it('allows platform owner-creation action and binds operation',()=>{
     const action:InternalAction={kind:'platform',userId:'platform-admin',companyId:'',
