@@ -146,6 +146,19 @@ for(const [method,route,file] of planEndpoints){
 }
 assert(planApi.includes("select('active')")&&planApi.includes("select('role_id,active')"));
 assert(planApi.includes("verifyInternalAttestation(identityAssertion"));
+const clientApi=fs.readFileSync('src/staging-clients-readonly.controller.ts','utf8');
+const clientWeb=fs.readFileSync(path.resolve('../../web-compatible','app/api/clients/route.ts'),'utf8');
+for(const [route,body] of [
+  ['/clients',{search:'test',limit:'30'}],
+  ['/clients/profile',{phone:'3001111111'}],
+]){
+ assert(clientApi.includes("path:'"+route+"'"),'API client route not signed: '+route);
+ assert(clientWeb.includes("'"+route+"'"),'Web client route not signed: '+route);
+ assert(clientApi.includes('verifyInternalAttestation(identityAssertion,'));
+ assert(clientWeb.includes('signInternalAttestation('));
+ actions.push({kind:'user',userId:'alfa-advisor',companyId:'alfa',
+  companySlug:'alfa',method:'GET',path:route,body});
+}
 for(const action of actions){
   const attestation=signInternalAttestation(action,now);
   assert.doesNotThrow(()=>verifyInternalAttestation(attestation,action,now));
