@@ -35,11 +35,16 @@ describe('SEG-003C staging admin invitation recovery — no live data',()=>{
    let mode:'select'|'update'|'delete'='select';
    let change:Record<string,unknown>={};
    const q:any={
-    select(_columns:string,_options?:unknown){
-      if(table==='platform_admins'&&_options&&typeof _options==='object'&&'count' in _options){
-        return {count:admins.length,error:null};
+    select(_columns:string,_options?:unknown){return q;},
+    then(resolve:(value:any)=>unknown,reject?:(reason:any)=>unknown){
+      if(mode==='delete'){
+        const id=String(eqs.find(([k])=>k==='user_id')?.[1]??'');
+        if(table==='platform_admins')admins=admins.filter(x=>x!==id);
+        if(table==='app_profiles')profiles=profiles.filter(x=>x.user_id!==id);
+        writes.push({table,kind:'delete'});
       }
-      return q;
+      return Promise.resolve(table==='platform_admins'
+        ?{count:admins.length,error:null}:{error:null}).then(resolve,reject);
     },
     update(value:Record<string,unknown>){mode='update';change=value;return q;},
     delete(){mode='delete';return q;},
