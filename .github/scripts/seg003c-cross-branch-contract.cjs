@@ -72,6 +72,28 @@ for(const [route,method,file,body] of additional){
   if(body&&method==='GET')assert(web.includes('body:'),'Query not bound: '+file);
   actions.push({...platform,method,path:route,body});
 }
+const further=[
+ ['/platform-admin/mercadopago/verify-staging','GET','app/api/platform-admin/mercadopago-verify/route.ts',undefined],
+ ['/platform-admin/company-plan-activation-request','POST','app/api/platform-admin/company-plan-activation-request/route.ts',{companyId:'fake'}],
+ ['/platform-admin/company-plan-assignment-drafts','GET','app/api/platform-admin/company-plan-assignment-drafts/route.ts',undefined],
+ ['/platform-admin/company-plan-assignment-drafts','POST','app/api/platform-admin/company-plan-assignment-drafts/route.ts',{companyId:'fake'}],
+ ['/platform-admin/commercial-feature-drafts','GET','app/api/platform-admin/commercial-feature-drafts/route.ts',undefined],
+ ['/platform-admin/commercial-feature-drafts','POST','app/api/platform-admin/commercial-feature-drafts/route.ts',{tier:'fake'}],
+ ['/platform-admin/demo-requests','GET','app/api/platform-admin/demo-requests/route.ts',undefined],
+ ['/platform-admin/demo-requests/follow-up','POST','app/api/platform-admin/demo-requests/route.ts',{id:'fake'}],
+ ['/platform-admin/plans/drafts','GET','app/api/platform-admin/plan-drafts/route.ts',undefined],
+ ['/platform-admin/plans/drafts','POST','app/api/platform-admin/plan-drafts/route.ts',{planKey:'fake'}],
+ ['/platform-admin/ai-model-rates','GET','app/api/platform-admin/ai-model-rates/route.ts',undefined],
+ ['/platform-admin/ai-model-rates','POST','app/api/platform-admin/ai-model-rates/route.ts',{model:'fake'}],
+ ['/platform-admin/ai-usage','GET','app/api/platform-admin/ai-usage/route.ts',{companyId:'fake'}],
+];
+for(const [route,method,file,body] of further){
+ const web=fs.readFileSync(path.resolve('../../web-compatible',file),'utf8');
+ assert(web.includes('signInternalAttestation('),'Unsigned web route '+file);
+ assert(web.includes('x-mw1-internal-assertion'),'Missing signed header '+file);
+ assert(apiController.includes("path: '"+route+"'"),'Missing API attestation '+route);
+ actions.push({...platform,method,path:route,body});
+}
 for(const action of actions){
   const attestation=signInternalAttestation(action,now);
   assert.doesNotThrow(()=>verifyInternalAttestation(attestation,action,now));
