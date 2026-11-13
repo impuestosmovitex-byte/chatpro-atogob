@@ -1,5 +1,6 @@
 import {BadRequestException, Body, Controller, ForbiddenException, Get, Headers, Post, UnauthorizedException} from '@nestjs/common';
 import {SupabaseService} from './supabase.service';
+import {verifyInternalAttestation} from './internal-attestation';
 
 @Controller('staging-subscription-admin')
 export class StagingSubscriptionAdminController {
@@ -8,10 +9,15 @@ export class StagingSubscriptionAdminController {
  async review(
   @Headers('x-chatpro-inbox-key') key='',
   @Headers('x-chatpro-user-id') userId='',
+  @Headers('x-mw1-internal-assertion') identityAssertion='',
   @Body() body:{requestId?:string;decision?:string;note?:string},
  ){
   if(process.env.MW1_STAGING_MODE!=='true')throw new ForbiddenException();
   if(!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY||!userId)throw new UnauthorizedException();
+  verifyInternalAttestation(identityAssertion,{
+    kind:'platform',userId,companyId:'',companySlug:'',
+    method:'POST',path:'/staging-subscription-admin/review',body,
+  });
   const db=this.supabase.getClient();
   const {data:admin}=await db.from('platform_admins').select('user_id').eq('user_id',userId).eq('active',true).maybeSingle();
   if(!admin)throw new ForbiddenException();
@@ -33,9 +39,15 @@ export class StagingSubscriptionAdminController {
   return {ok:true,request:updated,message:'Decisión registrada. El plan y la facturación no fueron modificados.'};
  }
  @Get()
- async list(@Headers('x-chatpro-inbox-key') key='',@Headers('x-chatpro-user-id') userId=''){
+ async list(@Headers('x-chatpro-inbox-key') key='',
+  @Headers('x-chatpro-user-id') userId='',
+  @Headers('x-mw1-internal-assertion') identityAssertion=''){
   if(process.env.MW1_STAGING_MODE!=='true')throw new ForbiddenException();
   if(!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY||!userId)throw new UnauthorizedException();
+  verifyInternalAttestation(identityAssertion,{
+    kind:'platform',userId,companyId:'',companySlug:'',
+    method:'GET',path:'/staging-subscription-admin',
+  });
   const db=this.supabase.getClient();
   const {data:admin,error:adminError}=await db.from('platform_admins')
    .select('user_id').eq('user_id',userId).eq('active',true).maybeSingle();

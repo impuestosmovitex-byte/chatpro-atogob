@@ -14,6 +14,7 @@ import { createHash } from 'crypto';
 import { AccessAuthService } from './access-auth.service';
 import { SupabaseService } from './supabase.service';
 import { TenantAdminAuthorization } from './tenant-admin-authorization';
+import { verifyInternalAttestation } from './internal-attestation';
 
 type RoleRow = {
   id: string;
@@ -80,6 +81,7 @@ export class UsersController {
     @Headers('x-chatpro-user-id') actorUserId = '',
     @Headers('x-chatpro-session-type') actorSessionType = '',
     @Headers('x-chatpro-company-id') actorCompanyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') companySlug = '',
   ) {
     this.assertInternalKey(providedKey);
@@ -87,6 +89,10 @@ export class UsersController {
     if (process.env.MW1_STAGING_MODE === 'true') {
       await new TenantAdminAuthorization(this.supabaseService)
         .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'user', userId: actorUserId, companyId: actorCompanyId,
+        companySlug, method: 'GET', path: '/users'
+      });
     }
     const company = await this.getCompany(companySlug);
 
@@ -103,6 +109,7 @@ export class UsersController {
     @Headers('x-chatpro-user-id') actorUserId = '',
     @Headers('x-chatpro-session-type') actorSessionType = '',
     @Headers('x-chatpro-company-id') actorCompanyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') companySlug = '',
     @Body() body: CreateUserBody,
   ) {
@@ -111,6 +118,10 @@ export class UsersController {
     if (process.env.MW1_STAGING_MODE === 'true') {
       await new TenantAdminAuthorization(this.supabaseService)
         .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'user', userId: actorUserId, companyId: actorCompanyId,
+        companySlug, method: 'POST', path: '/users', body
+      });
     }
 
     const company = await this.getCompany(companySlug);
@@ -246,6 +257,7 @@ export class UsersController {
     @Headers('x-chatpro-user-id') actorUserId = '',
     @Headers('x-chatpro-session-type') actorSessionType = '',
     @Headers('x-chatpro-company-id') actorCompanyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') companySlug = '',
     @Body() body: UpdateUserBody,
   ) {
@@ -254,6 +266,10 @@ export class UsersController {
     if (process.env.MW1_STAGING_MODE === 'true') {
       await new TenantAdminAuthorization(this.supabaseService)
         .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'user', userId: actorUserId, companyId: actorCompanyId,
+        companySlug, method: 'PATCH', path: '/users', body
+      });
     }
 
     const company = await this.getCompany(companySlug);
@@ -335,6 +351,7 @@ export class UsersController {
     @Headers('x-chatpro-user-id') actorUserId = '',
     @Headers('x-chatpro-session-type') actorSessionType = '',
     @Headers('x-chatpro-company-id') actorCompanyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') companySlug = '',
     @Body() body: ResetPasswordBody,
   ) {
@@ -343,6 +360,10 @@ export class UsersController {
     if (process.env.MW1_STAGING_MODE === 'true') {
       await new TenantAdminAuthorization(this.supabaseService)
         .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'user', userId: actorUserId, companyId: actorCompanyId,
+        companySlug, method: 'POST', path: '/users/reset-password', body
+      });
     }
 
     const company = await this.getCompany(companySlug);

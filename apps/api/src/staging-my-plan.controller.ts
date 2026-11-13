@@ -1,6 +1,7 @@
 import {buildMW1PreapprovalPayload,parseMW1PreapprovalResponse} from './mw1-mercadopago-preapproval';
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, Post, Query, UnauthorizedException } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { verifyInternalAttestation } from './internal-attestation';
 
 @Controller('staging-my-plan')
 export class StagingMyPlanController {
@@ -11,11 +12,17 @@ export class StagingMyPlanController {
     @Headers('x-chatpro-inbox-key') key = '',
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') slug = '',
   ) {
     if (process.env.MW1_STAGING_MODE !== 'true' ||
       !process.env.CHATPRO_INBOX_KEY || key !== process.env.CHATPRO_INBOX_KEY || !userId)
       throw new UnauthorizedException();
+    await this.assertSignedPlanActor({
+      key,userId,companyId,slug,identityAssertion,
+      method:'GET',path:'/staging-my-plan/checkout-readiness',
+      allowedRoles:['owner'],
+    });
     const db=this.supabase.getClient();
     const {data:company}=await db.from('companies').select('id,status').eq('id',companyId).eq('slug',slug).maybeSingle();
     if (!company || company.status!=='active') throw new ForbiddenException();
@@ -51,10 +58,16 @@ export class StagingMyPlanController {
     @Headers('x-chatpro-inbox-key') key = '',
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') slug = '',
   ) {
     if(process.env.MW1_STAGING_MODE!=='true'||!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY||!userId)
       throw new UnauthorizedException();
+    await this.assertSignedPlanActor({
+      key,userId,companyId,slug,identityAssertion,
+      method:'POST',path:'/staging-my-plan/checkout-intent',
+      allowedRoles:['owner'],
+    });
     const db=this.supabase.getClient();
     const {data:company}=await db.from('companies').select('id,status').eq('id',companyId).eq('slug',slug).maybeSingle();
     if(!company||company.status!=='active')throw new ForbiddenException();
@@ -84,9 +97,15 @@ export class StagingMyPlanController {
     @Headers('x-chatpro-inbox-key') key='',
     @Headers('x-chatpro-user-id') userId='',
     @Headers('x-chatpro-company-id') companyId='',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') slug='',
   ){
     if(process.env.MW1_STAGING_MODE!=='true'||!process.env.CHATPRO_INBOX_KEY||key!==process.env.CHATPRO_INBOX_KEY||!userId)throw new UnauthorizedException();
+    await this.assertSignedPlanActor({
+      key,userId,companyId,slug,identityAssertion,
+      method:'GET',path:'/staging-my-plan/checkout-intent',
+      allowedRoles:['owner','admin'],
+    });
     const db=this.supabase.getClient();
     const {data:company}=await db.from('companies').select('id,status').eq('id',companyId).eq('slug',slug).maybeSingle();
     if(!company||company.status!=='active')throw new ForbiddenException();
@@ -106,6 +125,7 @@ export class StagingMyPlanController {
     @Headers('x-chatpro-inbox-key') key='',
     @Headers('x-chatpro-user-id') userId='',
     @Headers('x-chatpro-company-id') companyId='',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') slug='',
     @Body() body:{payerEmail?:string},
   ){
@@ -118,6 +138,11 @@ export class StagingMyPlanController {
       throw new ForbiddenException('Solo se permite el comprador de prueba autorizado.');
     const token=process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
     if(!token)throw new ForbiddenException('Mercado Pago no está configurado.');
+    await this.assertSignedPlanActor({
+      key,userId,companyId,slug,identityAssertion,
+      method:'POST',path:'/staging-my-plan/checkout-authorize',body,
+      allowedRoles:['owner'],
+    });
     const db=this.supabase.getClient();
     const {data:company}=await db.from('companies').select('id,status').eq('id',companyId).eq('slug',slug).maybeSingle();
     if(!company||company.status!=='active')throw new ForbiddenException();
@@ -157,11 +182,17 @@ export class StagingMyPlanController {
     @Headers('x-chatpro-inbox-key') key = '',
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') slug = '',
     @Body() body: { type?: string; planKey?: string; additionalUsers?: number; note?: string },
   ) {
     if (!process.env.CHATPRO_INBOX_KEY || key !== process.env.CHATPRO_INBOX_KEY || !userId)
       throw new UnauthorizedException();
+    await this.assertSignedPlanActor({
+      key,userId,companyId,slug,identityAssertion,
+      method:'POST',path:'/staging-my-plan/request',body,
+      allowedRoles:['owner'],
+    });
     const db=this.supabase.getClient();
     const {data:company}=await db.from('companies').select('id,status')
       .eq('id',companyId).eq('slug',slug).maybeSingle();
@@ -206,10 +237,16 @@ export class StagingMyPlanController {
     @Headers('x-chatpro-inbox-key') key = '',
     @Headers('x-chatpro-user-id') userId = '',
     @Headers('x-chatpro-company-id') companyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') slug = '',
   ) {
     if (!process.env.CHATPRO_INBOX_KEY || key !== process.env.CHATPRO_INBOX_KEY || !userId)
       throw new UnauthorizedException();
+    await this.assertSignedPlanActor({
+      key,userId,companyId,slug,identityAssertion,
+      method:'GET',path:'/staging-my-plan',
+      allowedRoles:['owner','admin'],
+    });
     const db = this.supabase.getClient();
     const {data:company} = await db.from('companies')
       .select('id,name,slug,status').eq('id',companyId).eq('slug',slug).maybeSingle();
@@ -242,4 +279,33 @@ export class StagingMyPlanController {
     return {ok:true,company:{name:company.name},plan,activeUsers:count??0,
       requests:requests??[],availablePlans:publishedPlans??[],subscription:billingSubscription??null,transactions:billingTransactions??[],billing:{status:'not_integrated',historyAvailable:Boolean(billingTransactions?.length),onlineCancellationAvailable:false,provider:'mercadopago',checkoutAvailable:false,conditions:['published_plan','test_credentials','verified_webhook','successful_end_to_end_test']}};
   }
+  /** Validate signature and current tenant permissions before every plan action. */
+  private async assertSignedPlanActor(input:{
+    key:string;userId:string;companyId:string;slug:string;
+    identityAssertion:string;method:'GET'|'POST';path:string;
+    body?:unknown;allowedRoles:readonly string[];
+  }):Promise<void>{
+    const {key,userId,companyId,slug,identityAssertion,method,path,body,allowedRoles}=input;
+    if(process.env.MW1_STAGING_MODE!=='true' ||
+       !process.env.CHATPRO_INBOX_KEY || key!==process.env.CHATPRO_INBOX_KEY ||
+       !userId || !companyId || !slug)throw new UnauthorizedException();
+    verifyInternalAttestation(identityAssertion,{
+      kind:'user',userId,companyId,companySlug:slug,method,path,body,
+    });
+    const db=this.supabase.getClient();
+    const {data:company,error:companyError}=await db.from('companies')
+      .select('id,status,slug').eq('id',companyId).eq('slug',slug).maybeSingle();
+    if(companyError || !company || company.status!=='active')throw new ForbiddenException();
+    const {data:profile,error:profileError}=await db.from('app_profiles')
+      .select('active').eq('user_id',userId).maybeSingle();
+    if(profileError || profile?.active!==true)throw new ForbiddenException();
+    const {data:member,error:memberError}=await db.from('company_memberships')
+      .select('role_id,active').eq('company_id',company.id).eq('user_id',userId).maybeSingle();
+    if(memberError || member?.active!==true)throw new ForbiddenException();
+    const {data:role,error:roleError}=await db.from('app_roles')
+      .select('key,company_id').eq('id',member.role_id).maybeSingle();
+    if(roleError || !role || !allowedRoles.includes(role.key) ||
+      (role.company_id && role.company_id!==company.id))throw new ForbiddenException();
+  }
+
 }

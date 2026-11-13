@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'crypto';
 import { AccessAuthService } from './access-auth.service';
+import { verifyInternalAttestation } from './internal-attestation';
 import { SupabaseService } from './supabase.service';
 import {companyReadiness} from './platform-company-readiness';
 import {emptyPlanDraft,PLAN_KEYS,validatePlanDraft} from './platform-plan-drafts';
@@ -57,9 +58,16 @@ export class PlatformAdminController {
   @Get('mercadopago/verify-staging')
   async verifyMercadoPagoStaging(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/mercadopago/verify-staging',
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if (process.env.MW1_STAGING_MODE !== 'true') throw new UnauthorizedException('Solo staging.');
     const sandboxSetup={
@@ -119,19 +127,19 @@ export class PlatformAdminController {
     const configuredCode=process.env.MW1_STAGING_ADMIN_SETUP_TOKEN?.trim()||'';
     const codeMatch=/^[0-9a-f]{64}$/.test(configuredCode)&&
       timingSafeEqual(Buffer.from(body.token,'hex'),Buffer.from(configuredCode,'hex'));
+    // Read-only preflight avoids consuming a valid one-time invitation on
+    // predictable input errors. A separate atomic claim still gates creation.
+    const digest=codeMatch?'':createHash('sha256').update(body.token).digest('hex');
     let invite:{login_identifier:string;company_slug:string}|null=null;
     if(codeMatch){
       invite={login_identifier:'1018453680',company_slug:'mw1-demo-mercado'};
     }else{
-      // Single-use DB invitation when issued by a trusted staging operator.
-      const digest=createHash('sha256').update(body.token).digest('hex');
-      const {data:claimed,error:inviteError}=await client.from('platform_staging_admin_invites')
-        .update({used_at:new Date().toISOString()})
+      const {data:available,error:inviteError}=await client.from('platform_staging_admin_invites')
+        .select('login_identifier,company_slug')
         .eq('token_sha256',digest).is('used_at',null)
-        .gt('expires_at',new Date().toISOString())
-        .select('id,login_identifier,company_slug').maybeSingle();
-      if(inviteError||!claimed)throw new UnauthorizedException('Código de activación inválido.');
-      invite=claimed;
+        .gt('expires_at',new Date().toISOString()).maybeSingle();
+      if(inviteError||!available)throw new UnauthorizedException('Código de activación inválido.');
+      invite=available;
     }
     const identifier=invite.login_identifier;
     const password=body.password;
@@ -141,6 +149,20 @@ export class PlatformAdminController {
       .select('user_id').eq('login_identifier',identifier).maybeSingle();
     if(existingError||existing)
       throw new BadRequestException('Este identificador ya está registrado.');
+
+    if(!codeMatch){
+      // Atomic, irreversible one-time claim. Never unclaim following any
+      // failure: a retry must use a NEW invitation issued by the operator.
+      // Preflight does not grant access; only the claimed row permits creation.
+      const {data:claimed,error:claimError}=await client.from('platform_staging_admin_invites')
+        .update({used_at:new Date().toISOString()})
+        .eq('token_sha256',digest).is('used_at',null)
+        .gt('expires_at',new Date().toISOString())
+        .select('id,login_identifier,company_slug').maybeSingle();
+      if(claimError||!claimed||claimed.login_identifier!==identifier||
+        claimed.company_slug!==invite.company_slug)
+        throw new UnauthorizedException('Código de activación vencido o utilizado.');
+    }
     let userId='';
     try {
       const {data:created,error:createError}=await client.auth.admin.createUser({
@@ -166,16 +188,28 @@ export class PlatformAdminController {
         await client.from('app_profiles').delete().eq('user_id',userId);
         await client.auth.admin.deleteUser(userId);
       }
-      throw new BadRequestException(err instanceof Error?err.message:'No se pudo activar la cuenta.');
+      // Never reset used_at: the operator may inspect state and issue a fresh
+      // short-lived invitation after checking no active platform admin exists.
+      throw new BadRequestException(
+        'No se completó la activación. Verifica el estado con el operador de staging; '+
+        'si la invitación ya fue utilizada, se requiere una nueva.'
+      );
     }
   }
 
   @Get('me')
   async me(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/me',
+      });
+    }
     const normalizedUserId = this.requiredText(userId, 'Falta el usuario.');
 
     return {
@@ -187,10 +221,17 @@ export class PlatformAdminController {
   @Post('company-plan-activation-review')
   async reviewCompanyPlanRequest(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
     @Body() body: unknown,
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/company-plan-activation-review', body,
+      });
+    }
     await this.assertPlatformAdmin(user);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -226,10 +267,17 @@ export class PlatformAdminController {
   @Get('company-plan-activation-history')
   async companyPlanActivationHistory(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
     @Query('companyId') companyId = '',
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/company-plan-activation-history', body: {companyId},
+      });
+    }
     await this.assertPlatformAdmin(user);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -247,10 +295,17 @@ export class PlatformAdminController {
   @Post('company-plan-activation-request')
   async requestCompanyPlanActivation(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
     @Body() body: unknown,
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/company-plan-activation-request', body,
+      });
+    }
     await this.assertPlatformAdmin(user);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -291,10 +346,17 @@ export class PlatformAdminController {
   @Get('company-plan-assignment-readiness')
   async assignmentReadiness(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
     @Query('companyId') companyId = '',
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/company-plan-assignment-readiness', body: {companyId},
+      });
+    }
     await this.assertPlatformAdmin(user);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -326,9 +388,16 @@ export class PlatformAdminController {
   @Get('company-plan-assignment-drafts')
   async companyPlanAssignmentDrafts(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/company-plan-assignment-drafts',
+      });
+    }
     await this.assertPlatformAdmin(user);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -342,10 +411,17 @@ export class PlatformAdminController {
   @Post('company-plan-assignment-drafts')
   async saveCompanyPlanAssignmentDraft(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
     @Body() body: unknown,
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/company-plan-assignment-drafts', body,
+      });
+    }
     await this.assertPlatformAdmin(user);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -373,9 +449,16 @@ export class PlatformAdminController {
   @Get('commercial-feature-approvals')
   async commercialFeatureApprovals(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/commercial-feature-approvals',
+      });
+    }
     await this.assertPlatformAdmin(user);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -389,10 +472,17 @@ export class PlatformAdminController {
   @Post('commercial-feature-approvals')
   async approveCommercialFeatureDraft(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
     @Body() body: unknown,
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/commercial-feature-approvals', body,
+      });
+    }
     await this.assertPlatformAdmin(user);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -427,9 +517,16 @@ export class PlatformAdminController {
   @Get('commercial-feature-drafts')
   async commercialFeatureDrafts(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/commercial-feature-drafts',
+      });
+    }
     await this.assertPlatformAdmin(user);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -442,10 +539,17 @@ export class PlatformAdminController {
   @Post('commercial-feature-drafts')
   async saveCommercialFeatureDraft(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
     @Body() body: unknown,
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/commercial-feature-drafts', body,
+      });
+    }
     await this.assertPlatformAdmin(user);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -475,10 +579,17 @@ export class PlatformAdminController {
   @Get('feature-preferences')
   async featurePreferences(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
     @Query('companyId') companyId = '',
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/feature-preferences', body: {companyId},
+      });
+    }
     await this.assertPlatformAdmin(user);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -504,10 +615,17 @@ export class PlatformAdminController {
   @Post('feature-preferences')
   async updateFeaturePreference(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
     @Body() body: unknown,
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/feature-preferences', body: body,
+      });
+    }
     await this.assertPlatformAdmin(user);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -559,9 +677,16 @@ export class PlatformAdminController {
   @Get('companies')
   async listCompanies(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/companies',
+      });
+    }
     await this.assertPlatformAdmin(userId);
 
     const client = this.supabaseService.getClient();
@@ -729,9 +854,16 @@ export class PlatformAdminController {
   @Get('demo-requests')
   async listDemoRequests(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/demo-requests',
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true'){
       throw new UnauthorizedException('Solicitudes disponibles únicamente en el entorno de pruebas.');
@@ -765,10 +897,17 @@ export class PlatformAdminController {
   @Post('demo-requests/follow-up')
   async updateDemoRequestFollowUp(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Body() body:unknown,
   ){
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/demo-requests/follow-up', body,
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('El seguimiento comercial solo está disponible en staging.');
@@ -810,9 +949,16 @@ export class PlatformAdminController {
   @Get('plans/drafts')
   async getPlanDrafts(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/plans/drafts',
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Edición de planes disponible solo en pruebas.');
@@ -843,10 +989,17 @@ export class PlatformAdminController {
   @Post('plans/drafts')
   async savePlanDraft(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Body() body:unknown,
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/plans/drafts', body,
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Edición de planes disponible solo en pruebas.');
@@ -885,10 +1038,17 @@ export class PlatformAdminController {
   @Get('finance')
   async getFinance(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Query('month') month = '',
   ){
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/finance', body: {month},
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Finanzas de pruebas solamente.');
@@ -911,10 +1071,17 @@ export class PlatformAdminController {
   @Post('finance/scenario')
   async saveFinanceScenario(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Body() body:unknown,
   ){
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/finance/scenario', body: body,
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Finanzas de pruebas solamente.');
@@ -932,10 +1099,17 @@ export class PlatformAdminController {
   @Post('finance/actual')
   async saveFinanceActual(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Body() body:unknown,
   ){
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/finance/actual', body: body,
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Finanzas de pruebas solamente.');
@@ -958,10 +1132,17 @@ export class PlatformAdminController {
   @Get('finance/companies')
   async getCompanyFinance(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Query('month') month = '',
   ){
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/finance/companies', body: {month},
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Rentabilidad por empresa solo en staging.');
@@ -1004,10 +1185,17 @@ export class PlatformAdminController {
   @Post('finance/company')
   async saveCompanyFinance(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Body() body:unknown,
   ){
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/finance/company', body: body,
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Rentabilidad por empresa solo en staging.');
@@ -1040,9 +1228,16 @@ export class PlatformAdminController {
   @Get('ai-model-rates')
   async listAiModelRates(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/ai-model-rates',
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Tarifas disponibles solo en pruebas.');
@@ -1057,10 +1252,17 @@ export class PlatformAdminController {
   @Post('ai-model-rates')
   async saveAiModelRate(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Body() body:unknown,
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/ai-model-rates', body,
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Tarifas disponibles solo en pruebas.');
@@ -1088,10 +1290,17 @@ export class PlatformAdminController {
   @Get('ai-usage')
   async getAiUsage(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Query('companyId') companyId = '',
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/ai-usage', body: {companyId},
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Reporte disponible solo en pruebas.');
@@ -1158,10 +1367,17 @@ export class PlatformAdminController {
   @Post('plans/publish')
   async publishPlanPrice(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Body() body:unknown,
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/plans/publish', body,
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Publicación disponible solo en pruebas.');
@@ -1196,9 +1412,16 @@ export class PlatformAdminController {
   @Get('companies/owners')
   async listCompanyOwners(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: userId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/companies/owners',
+      });
+    }
     await this.assertPlatformAdmin(userId);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Disponible únicamente en MW1 staging.');
@@ -1248,10 +1471,17 @@ export class PlatformAdminController {
   @Post('companies/owner-access')
   async manageCompanyOwnerAccess(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') actorId = '',
     @Body() body: unknown,
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: actorId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/companies/owner-access', body,
+      });
+    }
     await this.assertPlatformAdmin(actorId);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Disponible únicamente en MW1 staging.');
@@ -1396,9 +1626,16 @@ export class PlatformAdminController {
   @Get('recovery-requests')
   async listAccountRecoveryRequests(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') actorId = '',
   ){
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: actorId, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/recovery-requests',
+      });
+    }
     await this.assertPlatformAdmin(actorId);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Disponible únicamente en staging.');
@@ -1417,10 +1654,17 @@ export class PlatformAdminController {
   @Post('companies')
   async createCompany(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Body() body: CreateCompanyBody,
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/companies', body,
+      });
+    }
     await this.assertPlatformAdmin(userId);
 
     const name = this.requiredText(body.name, 'Escribe el nombre de la empresa.');

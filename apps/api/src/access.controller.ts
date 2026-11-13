@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { AccessAuthService } from './access-auth.service';
 import { SupabaseService } from './supabase.service';
+import { verifyInternalAttestation } from './internal-attestation';
 
 type CompanyRow = {
   id: string;
@@ -182,9 +183,21 @@ export class AccessController {
   @Post('switch-company')
   async switchCompany(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
+    @Headers('x-chatpro-current-company-id') currentCompanyId = '',
+    @Headers('x-chatpro-current-company-slug') currentCompanySlug = '',
     @Body() body: { userId?: unknown; companySlug?: unknown },
   ) {
     this.assertInternalKey(providedKey);
+    // Switching tenants issues a NEW signed session. The subject must be
+    // proven by the web's current session, not merely supplied in body.userId.
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind:'user', userId:typeof body?.userId==='string'?body.userId:'',
+        companyId:currentCompanyId, companySlug:currentCompanySlug, method:'POST',
+        path:'/access/switch-company', body,
+      });
+    }
 
     const userId = this.requiredText(body.userId, 'Falta el usuario.');
     const companySlug = this.requiredText(
