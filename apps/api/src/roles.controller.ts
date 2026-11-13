@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 import { TenantAdminAuthorization } from './tenant-admin-authorization';
+import { verifyInternalAttestation } from './internal-attestation';
 
 type CompanyRow = {
   id: string;
@@ -51,6 +52,7 @@ export class RolesController {
     @Headers('x-chatpro-user-id') actorUserId = '',
     @Headers('x-chatpro-session-type') actorSessionType = '',
     @Headers('x-chatpro-company-id') actorCompanyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') companySlug = '',
   ) {
     this.assertInternalKey(providedKey);
@@ -58,6 +60,10 @@ export class RolesController {
     if (process.env.MW1_STAGING_MODE === 'true') {
       await new TenantAdminAuthorization(this.supabaseService)
         .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'user', userId: actorUserId, companyId: actorCompanyId,
+        companySlug, method: 'GET', path: '/roles'
+      });
     }
     const company = await this.getCompany(companySlug);
 
@@ -74,6 +80,7 @@ export class RolesController {
     @Headers('x-chatpro-user-id') actorUserId = '',
     @Headers('x-chatpro-session-type') actorSessionType = '',
     @Headers('x-chatpro-company-id') actorCompanyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') companySlug = '',
     @Body() body: RoleBody,
   ) {
@@ -82,6 +89,10 @@ export class RolesController {
     if (process.env.MW1_STAGING_MODE === 'true') {
       await new TenantAdminAuthorization(this.supabaseService)
         .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'user', userId: actorUserId, companyId: actorCompanyId,
+        companySlug, method: 'POST', path: '/roles', body
+      });
     }
     const company = await this.getCompany(companySlug);
     const name = this.roleName(body.name);
@@ -139,6 +150,7 @@ export class RolesController {
     @Headers('x-chatpro-user-id') actorUserId = '',
     @Headers('x-chatpro-session-type') actorSessionType = '',
     @Headers('x-chatpro-company-id') actorCompanyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('company') companySlug = '',
     @Body() body: RoleBody,
   ) {
@@ -147,6 +159,10 @@ export class RolesController {
     if (process.env.MW1_STAGING_MODE === 'true') {
       await new TenantAdminAuthorization(this.supabaseService)
         .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'user', userId: actorUserId, companyId: actorCompanyId,
+        companySlug, method: 'PATCH', path: '/roles', body
+      });
     }
     const company = await this.getCompany(companySlug);
     const roleKey = this.requiredText(body.roleKey, 'Falta el rol.');
