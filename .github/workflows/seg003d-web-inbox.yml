@@ -1,0 +1,27 @@
+name: SEG-003D Inbox web signed identity (NO DEPLOY)
+on:
+  push:
+    branches:
+      - fix/seg003d-web-inbox-20261113
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Test synthetic signed service assertions
+        run: node .github/scripts/seg003c-web-attestation-test.cjs
+      - name: Check Next.js TypeScript
+        run: npx tsc --noEmit
+      - name: Compile Next.js (no deployment)
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
