@@ -30,7 +30,9 @@ async function forward(request:NextRequest,method:'GET'|'POST'){
   if(method==='POST'&&(!body||typeof body!=='object'||Array.isArray(body)))
    return NextResponse.json({ok:false,error:'Solicitud inválida.'},{status:400});
   const upstream=await fetch(endpoint,{
-   method,headers:{'x-chatpro-inbox-key':key,...(method==='POST'?{
+   method,headers:{'x-chatpro-inbox-key':key,...(method==='GET'?{
+    'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:user,companyId:'',companySlug:'',method:'GET',path:'/platform-admin/companies/owners'}),
+   }:{}),...(method==='POST'?{
      'content-type':'application/json',
      'x-mw1-internal-assertion':signInternalAttestation({
        kind:'platform',userId:user,companyId:'',companySlug:'',
