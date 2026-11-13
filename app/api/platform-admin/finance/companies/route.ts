@@ -1,5 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
-import {signInternalAttestation} from '../../../lib/internal-attestation';
+import {signInternalAttestation} from '../../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 const response=(value:unknown,status:number)=>NextResponse.json(value,{status,headers:{'Cache-Control':'private, no-store'}});
