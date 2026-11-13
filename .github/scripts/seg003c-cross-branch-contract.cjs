@@ -1,8 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const ts = require('typescript');
-const { generateKeyPairSync, createPublicKey } = require('node:crypto');
 const { createRequire } = require('node:module');
+const ts = createRequire(path.resolve('package.json'))('typescript');
+const { generateKeyPairSync, createPublicKey } = require('node:crypto');
 const assert = require('node:assert/strict');
 function load(file) {
   const absolute=path.resolve(file);
