@@ -159,6 +159,21 @@ for(const [route,body] of [
  actions.push({kind:'user',userId:'alfa-advisor',companyId:'alfa',
   companySlug:'alfa',method:'GET',path:route,body});
 }
+const stagingInboxApi=fs.readFileSync('src/staging-inbox.controller.ts','utf8');
+const inboxUrls=[
+ ['GET','/inbox','app/api/inbox/route.ts','alfa','alfa'],
+ ['GET','/inbox/instagram-pilot','app/api/inbox/instagram-pilot/route.ts','pilot-company','piloto-mw1-prueba'],
+];
+for(const [method,route,file,companyId,companySlug] of inboxUrls){
+ const web=fs.readFileSync(path.resolve('../../web-compatible',file),'utf8');
+ assert(web.includes("path:'"+route+"'"),'Web lacks signed inbox path '+route);
+ assert(web.includes('signInternalAttestation('),'Web lacks signed inbox header '+route);
+ assert(stagingInboxApi.includes("path:'"+route+"'"),'API lacks signed inbox path '+route);
+ assert(stagingInboxApi.includes('verifyInternalAttestation(identityAssertion'),
+  'API lacks signature enforcement '+route);
+ actions.push({kind:'user',userId:'synthetic-advisor',companyId,companySlug,method,path:route});
+}
+assert(stagingInboxApi.includes("x.key==='inbox.view'"));
 for(const action of actions){
   const attestation=signInternalAttestation(action,now);
   assert.doesNotThrow(()=>verifyInternalAttestation(attestation,action,now));
