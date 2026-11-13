@@ -9,6 +9,7 @@ import { PlatformAdminController } from './platform-admin.controller';
 import { StagingDemoRequestsController } from './staging-demo-requests.controller';
 import { SupabaseService } from './supabase.service';
 import { StagingInboxController } from './staging-inbox.controller';
+import { StagingClientsReadonlyController } from './staging-clients-readonly.controller';
 import { StagingIntegrationsController } from './staging-integrations.controller';
 import { StagingWhatsappCoexistencePilotController } from './staging-whatsapp-coexistence-pilot.controller';
 import { StagingWhatsappCoexistenceOAuthHandshakeService } from './staging-whatsapp-coexistence-oauth-handshake.service';
@@ -43,6 +44,7 @@ class StagingHealthController {
     StagingHealthController,
     StagingMercadoPagoWebhookController,
     StagingInboxController,
+    StagingClientsReadonlyController,
     StagingIntegrationsController,
     StagingWhatsappCoexistencePilotController,
     StagingWhatsappWebhookController,
