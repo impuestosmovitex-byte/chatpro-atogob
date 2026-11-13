@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     target.searchParams.set('user', userId);
 
     const response = await fetch(target, {
-      headers: { 'x-chatpro-inbox-key': inboxKey },
+      headers: { 'x-chatpro-inbox-key': inboxKey, 'x-mw1-internal-assertion': signInternalAttestation({kind:'platform',userId,companyId:'',companySlug:'',method:'GET',path:'/platform-admin/companies'}) },
       cache: 'no-store',
     });
 
