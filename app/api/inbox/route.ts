@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {signInternalAttestation} from '../../lib/internal-attestation';
 import {
   INBOX_SESSION_COOKIE,
   getInboxSession,
@@ -71,7 +72,9 @@ async function proxyResponse(response: Response) {
 
 export async function GET(request: NextRequest) {
   const session = await currentSession(request);
-  if (!session) return unauthorized();
+  if (!session || (process.env.MW1_STAGING_MODE === 'true' &&
+    (session.type !== 'user' || !session.userId || !session.companyId || !session.companySlug)))
+    return unauthorized();
   if (process.env.MW1_STAGING_MODE === 'true' && (request.nextUrl.searchParams.has('sessionId') || request.nextUrl.searchParams.has('mode'))) {
     return NextResponse.json({
       ok: false, code: 'STAGING_INBOX_DISABLED',
@@ -130,7 +133,15 @@ export async function GET(request: NextRequest) {
     }
 
     const response = await fetch(target, {
-      headers: trustedHeaders(inboxKey, session),
+      headers: {
+        ...trustedHeaders(inboxKey, session),
+        ...(process.env.MW1_STAGING_MODE === 'true' ? {
+          'x-mw1-internal-assertion': signInternalAttestation({
+            kind:'user',userId:session.userId,companyId:session.companyId,
+            companySlug:session.companySlug,method:'GET',path:'/inbox',
+          }),
+        } : {}),
+      },
       cache: 'no-store',
     });
 
