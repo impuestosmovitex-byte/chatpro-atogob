@@ -21,6 +21,7 @@ process.env.MW1_INTERNAL_ATTESTATION_PRIVATE_KEY=
   privateKey.export({format:'pem',type:'pkcs8'}).toString();
 process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY=
   publicKey.export({format:'pem',type:'spki'}).toString();
+process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK = 'true';
 const now=Date.now();
 const user={kind:'user',userId:'alfa-owner',companyId:'alfa',companySlug:'alfa',
   method:'PATCH',path:'/users',body:{active:false,userId:'alfa-advisor'}};
