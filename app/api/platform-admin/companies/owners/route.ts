@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../../lib/inbox-auth';
 
 export const dynamic='force-dynamic';
@@ -29,7 +30,13 @@ async function forward(request:NextRequest,method:'GET'|'POST'){
   if(method==='POST'&&(!body||typeof body!=='object'||Array.isArray(body)))
    return NextResponse.json({ok:false,error:'Solicitud inválida.'},{status:400});
   const upstream=await fetch(endpoint,{
-   method,headers:{'x-chatpro-inbox-key':key,...(method==='POST'?{'content-type':'application/json'}:{})},
+   method,headers:{'x-chatpro-inbox-key':key,...(method==='POST'?{
+     'content-type':'application/json',
+     'x-mw1-internal-assertion':signInternalAttestation({
+       kind:'platform',userId:user,companyId:'',companySlug:'',
+       method:'POST',path:'/platform-admin/companies/owner-access',body,
+     }),
+   }: {})},
    ...(method==='POST'?{body:JSON.stringify(body)}:{}),
    cache:'no-store',signal:AbortSignal.timeout(15000),
   });
