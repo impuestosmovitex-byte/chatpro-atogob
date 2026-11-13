@@ -1,0 +1,26 @@
+name: SEG-003B API admin authorization (NO DEPLOY)
+on:
+  push:
+    branches:
+      - fix/seg003b-api-tenant-admin-20261113
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - name: Tenant authorization and SEG-003 regression tests
+        run: npm test -- --runInBand --runTestsByPath src/tenant-admin-authorization.spec.ts src/staging-clients-readonly.spec.ts src/seg003-inbox-tenant-isolation.spec.ts src/inbox-tenant-isolation.spec.ts
+      - name: NestJS API compile only
+        run: npm run build
