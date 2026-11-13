@@ -449,9 +449,16 @@ export class PlatformAdminController {
   @Get('commercial-feature-approvals')
   async commercialFeatureApprovals(
     @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') user = '',
   ) {
     this.assertInternalKey(key);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId: user, companyId: '', companySlug: '',
+        method: 'GET', path: '/platform-admin/commercial-feature-approvals',
+      });
+    }
     await this.assertPlatformAdmin(user);
     if (process.env.MW1_STAGING_MODE !== 'true')
       throw new UnauthorizedException('Solo disponible en staging.');
