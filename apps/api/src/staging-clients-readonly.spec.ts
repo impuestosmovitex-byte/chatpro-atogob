@@ -46,10 +46,13 @@ function mockDb(overrides: Record<string, Row[]> = {}) {
       const state = { table, filters: [] as Array<[string,any]> };
       queries.push(state);
       const result = () => tables[table]?.filter(row =>
-        state.filters.every(([key, val]) => row[key] === val)) ?? [];
+        state.filters.every(([key, val]) => val&&typeof val==='object'&&'in' in val ? val.in.includes(row[key]):row[key] === val)) ?? [];
       const query: any = {
         select: () => query,
         eq: (key: string, value: any) => { state.filters.push([key,value]); return query; },
+        in: (key: string, values: any[]) => {
+          state.filters.push([key, {in:values}]);return query;
+        },
         order: () => query,
         limit: () => query,
         maybeSingle: async () => ({ data: result()[0] ?? null, error: null }),
