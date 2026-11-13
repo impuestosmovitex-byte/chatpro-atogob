@@ -184,6 +184,8 @@ export class AccessController {
   async switchCompany(
     @Headers('x-chatpro-inbox-key') providedKey = '',
     @Headers('x-mw1-internal-assertion') identityAssertion = '',
+    @Headers('x-chatpro-current-company-id') currentCompanyId = '',
+    @Headers('x-chatpro-current-company-slug') currentCompanySlug = '',
     @Body() body: { userId?: unknown; companySlug?: unknown },
   ) {
     this.assertInternalKey(providedKey);
@@ -192,7 +194,7 @@ export class AccessController {
     if (process.env.MW1_STAGING_MODE === 'true') {
       verifyInternalAttestation(identityAssertion, {
         kind:'user', userId:typeof body?.userId==='string'?body.userId:'',
-        companyId:'', companySlug:'', method:'POST',
+        companyId:currentCompanyId, companySlug:currentCompanySlug, method:'POST',
         path:'/access/switch-company', body,
       });
     }
