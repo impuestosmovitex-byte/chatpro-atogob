@@ -40,8 +40,11 @@ const hash = (body: unknown) =>
 const usedNonces = new Map<string, number>();
 const MAX_NONCES = 20000;
 function reserveNonce(nonce: string, expirySeconds: number, nowSeconds: number): void {
-  if (process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK !== 'true')
-    throw new UnauthorizedException('Protección contra reutilización no configurada.');
+  // No safe multi-instance fallback exists without an atomic shared store.
+  // Refuse explicit multi-replica or unknown replica-count deployments.
+  if (process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK !== 'true' ||
+      process.env.MW1_INTERNAL_REPLICA_COUNT !== '1')
+    throw new UnauthorizedException('Protección contra reutilización no configurada para estas réplicas.');
   for (const [key, expiresAt] of usedNonces)
     if (expiresAt <= nowSeconds) usedNonces.delete(key);
   if (usedNonces.has(nonce))
