@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { signInternalAttestation } from '../../lib/internal-attestation';
 import {
   getInboxSession,
   INBOX_SESSION_COOKIE,
@@ -17,12 +18,17 @@ function config() {
   return { apiBase, inboxKey };
 }
 
-function trustedAdminHeaders(session: NonNullable<Awaited<ReturnType<typeof getInboxSession>>>, inboxKey: string): Record<string, string> {
+function trustedAdminHeaders(session: NonNullable<Awaited<ReturnType<typeof getInboxSession>>>, inboxKey: string, method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown): Record<string, string> {
   return {
     'x-chatpro-inbox-key': inboxKey,
     'x-chatpro-session-type': session.type,
     'x-chatpro-user-id': session.type === 'user' ? session.userId || '' : '',
     'x-chatpro-company-id': session.companyId,
+    'x-mw1-internal-assertion': signInternalAttestation({
+      kind: 'user', userId: session.userId || '',
+      companyId: session.companyId, companySlug: session.companySlug,
+      method, path, body,
+    }),
   };
 }
 
@@ -98,7 +104,7 @@ export async function GET(request: NextRequest) {
 
     return proxyResponse(
       await fetch(usersTarget(apiBase, session.companySlug), {
-        headers: trustedAdminHeaders(session, inboxKey),
+        headers: trustedAdminHeaders(session, inboxKey, 'GET', '/users'),
         cache: 'no-store',
       }),
     );
@@ -135,13 +141,14 @@ export async function POST(request: NextRequest) {
     }
 
     const { action: _action, ...payload } = body;
+    const signedPath = action === 'reset-password' ? '/users/reset-password' : '/users';
 
     return proxyResponse(
       await fetch(usersTarget(apiBase, session.companySlug, suffix), {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...trustedAdminHeaders(session, inboxKey),
+          ...trustedAdminHeaders(session, inboxKey, 'POST', signedPath, payload),
         },
         body: JSON.stringify(payload),
         cache: 'no-store',
@@ -168,15 +175,16 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const { apiBase, inboxKey } = config();
+    const payload = await request.json();
 
     return proxyResponse(
       await fetch(usersTarget(apiBase, session.companySlug), {
         method: 'PATCH',
         headers: {
           'content-type': 'application/json',
-          ...trustedAdminHeaders(session, inboxKey),
+          ...trustedAdminHeaders(session, inboxKey, 'PATCH', '/users', payload),
         },
-        body: JSON.stringify(await request.json()),
+        body: JSON.stringify(payload),
         cache: 'no-store',
       }),
     );
