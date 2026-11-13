@@ -17,6 +17,15 @@ function config() {
   return { apiBase, inboxKey };
 }
 
+function trustedAdminHeaders(session: NonNullable<Awaited<ReturnType<typeof getInboxSession>>>, inboxKey: string): Record<string, string> {
+  return {
+    'x-chatpro-inbox-key': inboxKey,
+    'x-chatpro-session-type': session.type,
+    'x-chatpro-user-id': session.type === 'user' ? session.userId || '' : '',
+    'x-chatpro-company-id': session.companyId,
+  };
+}
+
 function canManage(session: Awaited<ReturnType<typeof getInboxSession>>) {
   if (!session) return false;
 
@@ -84,7 +93,7 @@ export async function GET(request: NextRequest) {
 
     return proxyResponse(
       await fetch(targetFor(apiBase, session.companySlug), {
-        headers: { 'x-chatpro-inbox-key': inboxKey },
+        headers: trustedAdminHeaders(session, inboxKey),
         cache: 'no-store',
       }),
     );
@@ -115,7 +124,7 @@ async function mutate(request: NextRequest, method: 'POST' | 'PATCH') {
         method,
         headers: {
           'content-type': 'application/json',
-          'x-chatpro-inbox-key': inboxKey,
+          ...trustedAdminHeaders(session, inboxKey),
         },
         body: JSON.stringify(await request.json()),
         cache: 'no-store',
