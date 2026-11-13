@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'crypto';
 import { AccessAuthService } from './access-auth.service';
+import { verifyInternalAttestation } from './internal-attestation';
 import { SupabaseService } from './supabase.service';
 import {companyReadiness} from './platform-company-readiness';
 import {emptyPlanDraft,PLAN_KEYS,validatePlanDraft} from './platform-plan-drafts';
@@ -1417,10 +1418,17 @@ export class PlatformAdminController {
   @Post('companies')
   async createCompany(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
     @Query('user') userId = '',
     @Body() body: CreateCompanyBody,
   ) {
     this.assertInternalKey(providedKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'platform', userId, companyId: '', companySlug: '',
+        method: 'POST', path: '/platform-admin/companies', body,
+      });
+    }
     await this.assertPlatformAdmin(userId);
 
     const name = this.requiredText(body.name, 'Escribe el nombre de la empresa.');
