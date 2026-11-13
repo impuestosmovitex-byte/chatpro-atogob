@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
         ...trustedHeaders(inboxKey, session),
         ...(process.env.MW1_STAGING_MODE === 'true' ? {
           'x-mw1-internal-assertion': signInternalAttestation({
-            kind:'user',userId:session.userId,companyId:session.companyId,
+            kind:'user',userId:session.userId??'',companyId:session.companyId,
             companySlug:session.companySlug,method:'GET',path:'/inbox',
           }),
         } : {}),
