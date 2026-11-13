@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 const response=(value:unknown,status:number)=>NextResponse.json(value,{status,headers:{'Cache-Control':'private, no-store'}});
@@ -29,7 +30,8 @@ async function handler(request:NextRequest,method:'GET'|'POST'){
  }
  try{
   const r=await fetch(url,{method,headers:{
-    'x-chatpro-inbox-key':key,...(method==='POST'?{'content-type':'application/json'}:{})
+    'x-chatpro-inbox-key':key,...(method==='POST'?{'content-type':'application/json'}:{}),
+    'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method,path:method==='GET'?'/platform-admin/finance/companies':'/platform-admin/finance/company',body:method==='GET'?{month:url.searchParams.get('month')||''}:body})
    },...(method==='POST'?{body:JSON.stringify(body)}:{}),cache:'no-store',
     signal:AbortSignal.timeout(14000)});
   return response(await r.json().catch(()=>({ok:false,error:'Respuesta no válida.'})),r.status);
