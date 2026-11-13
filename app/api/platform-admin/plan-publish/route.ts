@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 export async function POST(request:NextRequest){
@@ -13,7 +14,15 @@ export async function POST(request:NextRequest){
  try{
   const url=new URL('/platform-admin/plans/publish',base);
   url.searchParams.set('user',session.userId);
-  const response=await fetch(url,{method:'POST',headers:{'x-chatpro-inbox-key':key,'content-type':'application/json'},body:JSON.stringify({planKey:payload.planKey}),cache:'no-store',signal:AbortSignal.timeout(12000)});
+  const body={planKey:payload.planKey};
+  const assertion=signInternalAttestation({
+    kind:'platform',userId:session.userId,companyId:'',companySlug:'',
+    method:'POST',path:'/platform-admin/plans/publish',body,
+  });
+  const response=await fetch(url,{method:'POST',headers:{
+    'x-chatpro-inbox-key':key,'content-type':'application/json',
+    'x-mw1-internal-assertion':assertion,
+  },body:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(12000)});
   return new NextResponse(await response.text(),{status:response.status,headers:{'content-type':'application/json','Cache-Control':'no-store'}});
  }catch{return NextResponse.json({ok:false,error:'No fue posible publicar.'},{status:503});}
 }
