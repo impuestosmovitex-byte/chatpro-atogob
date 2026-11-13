@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../lib/inbox-auth';
 export const dynamic = 'force-dynamic';
 
@@ -14,10 +15,12 @@ async function proxy(request: NextRequest, method: 'GET'|'POST') {
     target.searchParams.set('user',session.userId);
     if (method==='GET')
       target.searchParams.set('companyId',request.nextUrl.searchParams.get('companyId')??'');
+    const body=method==='POST'?await request.json():undefined;
     const res=await fetch(target,{
       method,
-      headers:{'x-chatpro-inbox-key':key,...(method==='POST'?{'content-type':'application/json'}:{})},
-      body:method==='POST'?JSON.stringify(await request.json()):undefined,
+      headers:{'x-chatpro-inbox-key':key,...(method==='POST'?{'content-type':'application/json'}:{}),
+        'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method,path:'/platform-admin/feature-preferences',body:method==='GET'?{companyId:target.searchParams.get('companyId')||''}:body})}, 
+      body:method==='POST'?JSON.stringify(body):undefined,
       cache:'no-store',
     });
     return new NextResponse(await res.text(),{status:res.status,

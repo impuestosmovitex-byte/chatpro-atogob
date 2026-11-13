@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 export async function POST(req:NextRequest){
@@ -10,8 +11,14 @@ export async function POST(req:NextRequest){
  if(!base||!secret)return NextResponse.json({ok:false,error:'Configuración incompleta'},{status:503});
  const url=new URL(base.replace(/\/$/,'')+'/platform-admin/company-plan-activation-review');
  url.searchParams.set('user',session.userId);
+ const body=await req.json();
+ const assertion=signInternalAttestation({
+   kind:'platform',userId:session.userId,companyId:'',companySlug:'',
+   method:'POST',path:'/platform-admin/company-plan-activation-review',body,
+ });
  const result=await fetch(url,{method:'POST',cache:'no-store',
-  headers:{'x-chatpro-inbox-key':secret,'content-type':'application/json'},
-  body:JSON.stringify(await req.json())});
+  headers:{'x-chatpro-inbox-key':secret,'content-type':'application/json',
+   'x-mw1-internal-assertion':assertion},
+  body:JSON.stringify(body)});
  return new NextResponse(await result.text(),{status:result.status,headers:{'content-type':'application/json'}});
 }

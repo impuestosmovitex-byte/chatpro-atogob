@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { signInternalAttestation } from '../../../lib/internal-attestation';
 import {
   createInboxSessionToken,
   getInboxSession,
@@ -53,16 +54,21 @@ export async function POST(request: NextRequest) {
     }
 
     const { apiBase, inboxKey } = config();
+    const payload={userId:current.userId,companySlug};
     const response = await fetch(`${apiBase}/access/switch-company`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         'x-chatpro-inbox-key': inboxKey,
+        'x-chatpro-current-company-id': current.companyId,
+        'x-chatpro-current-company-slug': current.companySlug,
+        'x-mw1-internal-assertion':signInternalAttestation({
+          kind:'user',userId:current.userId,
+          companyId:current.companyId,companySlug:current.companySlug,
+          method:'POST',path:'/access/switch-company',body:payload,
+        }),
       },
-      body: JSON.stringify({
-        userId: current.userId,
-        companySlug,
-      }),
+      body: JSON.stringify(payload),
       cache: 'no-store',
     });
 

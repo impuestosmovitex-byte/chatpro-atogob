@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 export async function GET(request:NextRequest){
@@ -15,7 +16,7 @@ export async function GET(request:NextRequest){
     const url=new URL('/platform-admin/demo-requests',base);
     url.searchParams.set('user',session.userId);
     const upstream=await fetch(url,{
-      headers:{'x-chatpro-inbox-key':key},
+      headers:{'x-chatpro-inbox-key':key,'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method:'GET',path:'/platform-admin/demo-requests'})},
       cache:'no-store',signal:AbortSignal.timeout(12000),
     });
     return new NextResponse(await upstream.text(),{
@@ -49,7 +50,8 @@ export async function POST(request:NextRequest){
     const url=new URL('/platform-admin/demo-requests/follow-up',base);
     url.searchParams.set('user',session.userId);
     const upstream=await fetch(url,{method:'POST',
-      headers:{'x-chatpro-inbox-key':key,'content-type':'application/json'},
+      headers:{'x-chatpro-inbox-key':key,'content-type':'application/json',
+      'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method:'POST',path:'/platform-admin/demo-requests/follow-up',body:payload})},
       body:JSON.stringify(payload),cache:'no-store',signal:AbortSignal.timeout(12000),
     });
     return new NextResponse(await upstream.text(),{

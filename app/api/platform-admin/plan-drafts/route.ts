@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 
 export const dynamic='force-dynamic';
@@ -25,6 +26,7 @@ async function forward(request:NextRequest,method:'GET'|'POST'){
     endpoint.searchParams.set('user',session.userId);
     const response=await fetch(endpoint,{
       method,headers:{'x-chatpro-inbox-key':key,
+        'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method,path:'/platform-admin/plans/drafts',body}),
         ...(method==='POST'?{'content-type':'application/json'}:{})},
       ...(method==='POST'?{body:JSON.stringify(body)}:{}),
       cache:'no-store',signal:AbortSignal.timeout(12000),

@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 export async function GET(request:NextRequest){
@@ -13,7 +14,7 @@ export async function GET(request:NextRequest){
  try{
   const url=new URL('/platform-admin/ai-usage',base);
   url.searchParams.set('user',session.userId);url.searchParams.set('companyId',companyId);
-  const response=await fetch(url,{headers:{'x-chatpro-inbox-key':key},cache:'no-store',signal:AbortSignal.timeout(12000)});
+  const response=await fetch(url,{headers:{'x-chatpro-inbox-key':key,'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method:'GET',path:'/platform-admin/ai-usage',body:{companyId}})},cache:'no-store',signal:AbortSignal.timeout(12000)});
   return new NextResponse(await response.text(),{status:response.status,headers:{'content-type':'application/json','Cache-Control':'no-store'}});
  }catch{return NextResponse.json({ok:false,error:'Reporte no disponible.'},{status:503});}
 }

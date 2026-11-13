@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {signInternalAttestation} from '../../lib/internal-attestation';
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,8 @@ export async function GET(request: NextRequest) {
   try {
     const response=await fetch(target,{cache:'no-store',headers:{
       'x-chatpro-inbox-key':inboxKey,'x-chatpro-user-id':session.userId,
-      'x-chatpro-company-id':session.companyId
+      'x-chatpro-company-id':session.companyId,
+      'x-mw1-internal-assertion':signInternalAttestation({kind:'user',userId:session.userId,companyId:session.companyId,companySlug:session.companySlug,method:'GET',path:'/staging-my-plan'})
     }});
     return new NextResponse(await response.text(),{status:response.status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
   } catch {
@@ -40,7 +42,8 @@ export async function POST(request:NextRequest){
    const payload=await request.json();
    const result=await fetch(target,{method:'POST',cache:'no-store',headers:{
      'content-type':'application/json','x-chatpro-inbox-key':inboxKey,
-     'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId
+     'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId,
+     'x-mw1-internal-assertion':signInternalAttestation({kind:'user',userId:session.userId,companyId:session.companyId,companySlug:session.companySlug,method:'POST',path:'/staging-my-plan/request',body:payload})
    },body:JSON.stringify(payload)});
    return new NextResponse(await result.text(),{status:result.status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
  }catch{return NextResponse.json({ok:false,error:'No se pudo registrar la solicitud.'},{status:502})}
