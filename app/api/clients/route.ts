@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { signInternalAttestation } from '../../lib/internal-attestation';
 import {
   getInboxSession,
   INBOX_SESSION_COOKIE,
@@ -63,7 +64,8 @@ async function proxyResponse(response: Response) {
 export async function GET(request: NextRequest) {
   const session = await currentSession(request);
 
-  if (!session) {
+  if (!session || session.type !== 'user' || !session.userId ||
+      !session.companyId || !session.companySlug) {
     return unauthorized();
   }
 
@@ -87,7 +89,15 @@ export async function GET(request: NextRequest) {
     }
 
     const response = await fetch(target, {
-      headers: trustedHeaders(inboxKey, session),
+      headers: {
+        ...trustedHeaders(inboxKey, session),
+        'x-mw1-internal-assertion': signInternalAttestation({
+          kind:'user',userId:session.userId,companyId:session.companyId,
+          companySlug:session.companySlug,method:'GET',
+          path:phone?'/clients/profile':'/clients',
+          body:phone?{phone}:{search,limit},
+        }),
+      },
       cache: 'no-store',
     });
 
