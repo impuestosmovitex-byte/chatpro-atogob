@@ -73,6 +73,7 @@ for(const [route,method,file,body] of additional){
   actions.push({...platform,method,path:route,body});
 }
 const further=[
+ ['/platform-admin/recovery-requests','GET','app/api/auth/recovery/route.ts',undefined],
  ['/platform-admin/me','GET','app/api/platform-admin/me/route.ts',undefined],
  ['/platform-admin/mercadopago/verify-staging','GET','app/api/platform-admin/mercadopago-verify/route.ts',undefined],
  ['/platform-admin/company-plan-activation-request','POST','app/api/platform-admin/company-plan-activation-request/route.ts',{companyId:'fake'}],
