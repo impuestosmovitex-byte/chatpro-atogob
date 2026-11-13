@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 export async function POST(request:NextRequest){
@@ -13,7 +14,8 @@ export async function POST(request:NextRequest){
  if(!email)return NextResponse.json({ok:false,error:'Indica el correo del comprador de prueba.'},{status:400});
  try{
   const url=new URL('/staging-my-plan/checkout-authorize',base);url.searchParams.set('company',session.companySlug);
-  const result=await fetch(url,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','x-chatpro-inbox-key':key,'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId},body:JSON.stringify({payerEmail:email}),signal:AbortSignal.timeout(18000)});
+  const payload={payerEmail:email};
+  const result=await fetch(url,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','x-chatpro-inbox-key':key,'x-chatpro-user-id':session.userId,'x-chatpro-company-id':session.companyId,'x-mw1-internal-assertion':signInternalAttestation({kind:'user',userId:session.userId,companyId:session.companyId,companySlug:session.companySlug,method:'POST',path:'/staging-my-plan/checkout-authorize',body:payload})},body:JSON.stringify(payload),signal:AbortSignal.timeout(18000)});
   return new NextResponse(await result.text(),{status:result.status,headers:{'Content-Type':'application/json','Cache-Control':'private, no-store'}});
  }catch{return NextResponse.json({ok:false,error:'No se pudo consultar Mercado Pago.'},{status:503});}
 }
