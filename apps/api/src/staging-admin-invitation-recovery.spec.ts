@@ -125,7 +125,7 @@ describe('SEG-003C staging admin invitation recovery — no live data',()=>{
  });
  it('burns a claimed invitation after a failed Auth call; retry is blocked',async()=>{
   failCreate=true;
-  await expect(activate(tokenA)).rejects.toThrow('invitación nueva');
+  await expect(activate(tokenA)).rejects.toThrow('se requiere una nueva');
   expect(invites[0].used_at).toBeTruthy();
   expect(writes.filter(x=>x.kind==='claim')).toHaveLength(1);
   failCreate=false;
@@ -134,7 +134,7 @@ describe('SEG-003C staging admin invitation recovery — no live data',()=>{
  });
  it('permits a newly issued distinct invitation following an incomplete attempt',async()=>{
   failCreate=true;
-  await expect(activate(tokenA)).rejects.toThrow('invitación nueva');
+  await expect(activate(tokenA)).rejects.toThrow('se requiere una nueva');
   failCreate=false;
   const result=await activate(tokenB);
   expect(result.ok).toBe(true);
@@ -143,7 +143,7 @@ describe('SEG-003C staging admin invitation recovery — no live data',()=>{
  });
  it('deletes synthetic Auth identity and profile on grant failure; invite stays used',async()=>{
   failGrant=true;
-  await expect(activate(tokenA)).rejects.toThrow('invitación nueva');
+  await expect(activate(tokenA)).rejects.toThrow('se requiere una nueva');
   expect(invites[0].used_at).toBeTruthy();
   expect(authUsers.size).toBe(0);
   expect(profiles).toHaveLength(0);
