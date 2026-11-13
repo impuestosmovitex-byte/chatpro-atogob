@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import {getInboxSession,INBOX_SESSION_COOKIE} from '../../../lib/inbox-auth';
 export const dynamic='force-dynamic';
 const json=(data:unknown,status:number)=>NextResponse.json(data,{status,headers:{'Cache-Control':'private, no-store'}});
@@ -33,7 +34,8 @@ async function send(request:NextRequest,method:'GET'|'POST'){
   const url=new URL(route,apiBase);
   url.searchParams.set('user',session.userId);
   const response=await fetch(url,{method,
-   headers:{'x-chatpro-inbox-key':internalKey,...(method==='POST'?{'content-type':'application/json'}:{})},
+   headers:{'x-chatpro-inbox-key':internalKey,...(method==='POST'?{'content-type':'application/json'}:{}),
+    'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method,path:'/platform-admin/finance'+(method==='GET'?'':'/'+new URL(request.url).searchParams.get('kind')),body:method==='GET'?{month:new URL(request.url).searchParams.get('month')||''}:payload})},
    ...(method==='POST'?{body:JSON.stringify(payload)}:{}),
    cache:'no-store',signal:AbortSignal.timeout(14000),
   });
