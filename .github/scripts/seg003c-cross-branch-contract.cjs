@@ -49,6 +49,29 @@ for(const [route,file] of privileged){
     'API must validate signed action: '+route);
   actions.push({...platform,path:route,body:{action:'synthetic-only',companyId:'fake'}});
 }
+const additional=[
+  ['/platform-admin/companies','GET','app/api/platform-admin/companies/route.ts',undefined],
+  ['/platform-admin/companies/owners','GET','app/api/platform-admin/companies/owners/route.ts',undefined],
+  ['/platform-admin/finance','GET','app/api/platform-admin/finance/route.ts',{month:'2026-11-01'}],
+  ['/platform-admin/finance/companies','GET','app/api/platform-admin/finance/companies/route.ts',{month:'2026-11-01'}],
+  ['/platform-admin/feature-preferences','GET','app/api/platform-admin/feature-preferences/route.ts',{companyId:'fake-company'}],
+  ['/platform-admin/company-plan-assignment-readiness','GET','app/api/platform-admin/company-plan-assignment-readiness/route.ts',{companyId:'fake-company'}],
+  ['/platform-admin/company-plan-activation-history','GET','app/api/platform-admin/company-plan-activation-history/route.ts',{companyId:'fake-company'}],
+  ['/platform-admin/finance/scenario','POST','app/api/platform-admin/finance/route.ts',{kind:'scenario',input:1}],
+  ['/platform-admin/finance/actual','POST','app/api/platform-admin/finance/route.ts',{kind:'actual',input:1}],
+  ['/platform-admin/finance/company','POST','app/api/platform-admin/finance/companies/route.ts',{companyId:'fake-company',input:1}],
+  ['/platform-admin/feature-preferences','POST','app/api/platform-admin/feature-preferences/route.ts',{companyId:'fake-company',key:'fake'}],
+];
+for(const [route,method,file,body] of additional){
+  const web=fs.readFileSync(path.resolve('../../web-compatible',file),'utf8');
+  assert(web.includes('signInternalAttestation('),'Unsigned '+file);
+  assert(web.includes('x-mw1-internal-assertion'),'Missing signed header '+file);
+  const pathFragment=route.startsWith('/platform-admin/finance/')?
+     route.replace(/\/(scenario|actual)$/,''):route;
+  assert(apiController.includes("path: '"+route+"'"), 'API route guard absent '+route);
+  if(body&&method==='GET')assert(web.includes('body:'),'Query not bound: '+file);
+  actions.push({...platform,method,path:route,body});
+}
 for(const action of actions){
   const attestation=signInternalAttestation(action,now);
   assert.doesNotThrow(()=>verifyInternalAttestation(attestation,action,now));
