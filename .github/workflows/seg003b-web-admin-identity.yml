@@ -17,6 +17,8 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - name: Test real signed-session integrity and staging bootstrap restrictions
+        run: node .github/scripts/seg003b-predeploy-session-tests.cjs
       - name: Check Next.js TypeScript routes
         run: npx tsc --noEmit
       - name: Build web (no deployment)
