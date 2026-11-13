@@ -11,6 +11,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { TenantAdminAuthorization } from './tenant-admin-authorization';
 
 type CompanyRow = {
   id: string;
@@ -47,9 +48,17 @@ export class RolesController {
   @Get()
   async listRoles(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-chatpro-user-id') actorUserId = '',
+    @Headers('x-chatpro-session-type') actorSessionType = '',
+    @Headers('x-chatpro-company-id') actorCompanyId = '',
     @Query('company') companySlug = '',
   ) {
     this.assertInternalKey(providedKey);
+    // SEG-003B: staging fails closed on absent or stale identity.
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      await new TenantAdminAuthorization(this.supabaseService)
+        .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+    }
     const company = await this.getCompany(companySlug);
 
     return {
@@ -62,10 +71,18 @@ export class RolesController {
   @Post()
   async createRole(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-chatpro-user-id') actorUserId = '',
+    @Headers('x-chatpro-session-type') actorSessionType = '',
+    @Headers('x-chatpro-company-id') actorCompanyId = '',
     @Query('company') companySlug = '',
     @Body() body: RoleBody,
   ) {
     this.assertInternalKey(providedKey);
+    // SEG-003B: staging fails closed on absent or stale identity.
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      await new TenantAdminAuthorization(this.supabaseService)
+        .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+    }
     const company = await this.getCompany(companySlug);
     const name = this.roleName(body.name);
     const description = this.optionalText(body.description);
@@ -119,10 +136,18 @@ export class RolesController {
   @Patch()
   async updateRole(
     @Headers('x-chatpro-inbox-key') providedKey = '',
+    @Headers('x-chatpro-user-id') actorUserId = '',
+    @Headers('x-chatpro-session-type') actorSessionType = '',
+    @Headers('x-chatpro-company-id') actorCompanyId = '',
     @Query('company') companySlug = '',
     @Body() body: RoleBody,
   ) {
     this.assertInternalKey(providedKey);
+    // SEG-003B: staging fails closed on absent or stale identity.
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      await new TenantAdminAuthorization(this.supabaseService)
+        .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, companySlug);
+    }
     const company = await this.getCompany(companySlug);
     const roleKey = this.requiredText(body.roleKey, 'Falta el rol.');
     const role = await this.getCustomRole(roleKey, company.id);
