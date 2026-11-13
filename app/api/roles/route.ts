@@ -29,6 +29,11 @@ function trustedAdminHeaders(session: NonNullable<Awaited<ReturnType<typeof getI
 function canManage(session: Awaited<ReturnType<typeof getInboxSession>>) {
   if (!session) return false;
 
+  // SEG-003B: staging administration requires a current authenticated
+  // user membership; bootstrap sessions cannot pass the API guard.
+  if (process.env.MW1_STAGING_MODE === 'true' && session.type !== 'user') {
+    return false;
+  }
   if (session.type === 'bootstrap') {
     return session.roleKey === 'owner';
   }
