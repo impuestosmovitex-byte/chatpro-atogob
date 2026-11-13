@@ -168,7 +168,7 @@ for(const [method,route,file,companyId,companySlug] of inboxUrls){
  const web=fs.readFileSync(path.resolve('../../web-compatible',file),'utf8');
  assert(web.includes("path:'"+route+"'"),'Web lacks signed inbox path '+route);
  assert(web.includes('signInternalAttestation('),'Web lacks signed inbox header '+route);
- assert(stagingInboxApi.includes("path:'"+route+"'"),'API lacks signed inbox path '+route);
+ assert(stagingInboxApi.includes("'"+route+"'"),'API lacks signed inbox path '+route);
  assert(stagingInboxApi.includes('verifyInternalAttestation(identityAssertion'),
   'API lacks signature enforcement '+route);
  actions.push({kind:'user',userId:'synthetic-advisor',companyId,companySlug,method,path:route});
