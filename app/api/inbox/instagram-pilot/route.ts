@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {signInternalAttestation} from '../../../lib/internal-attestation';
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../lib/inbox-auth';
 import { isInstagramStagingRequest, isInstagramStagingApi } from '../../../lib/instagram-staging-guard';
 
@@ -24,6 +25,10 @@ export async function GET(request: NextRequest) {
         'x-chatpro-inbox-key':key,
         'x-chatpro-user-id':session.userId,
         'x-chatpro-company-id':session.companyId,
+        'x-mw1-internal-assertion':signInternalAttestation({
+          kind:'user',userId:session.userId,companyId:session.companyId,
+          companySlug:session.companySlug,method:'GET',path:'/inbox/instagram-pilot',
+        }),
       },
       cache:'no-store',
       signal:AbortSignal.timeout(10000),
