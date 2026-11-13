@@ -21,9 +21,10 @@ describe('SEG-003C asymmetric assertion guard (synthetic only)',()=>{
   const original=process.env.MW1_INTERNAL_ATTESTATION_PUBLIC_KEY;
   const now=1763060400000;
   const seconds=Math.floor(now/1000);
+  let nonceCounter=0;
   const claims=(action:InternalAction=base)=>({
     v:1,...action,body:undefined,
-    iat:seconds,exp:seconds+20,nonce:'ab'.repeat(16),bodyHash:bodyHash(action.body),
+    iat:seconds,exp:seconds+20,nonce:(++nonceCounter).toString(16).padStart(32,'0'),bodyHash:bodyHash(action.body),
   });
   function token(payload:Record<string,unknown>=claims(),key=first.privateKey){
     const encoded=Buffer.from(JSON.stringify(payload)).toString('base64url');
