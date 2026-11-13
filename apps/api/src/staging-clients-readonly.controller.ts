@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { verifyInternalAttestation } from './internal-attestation';
 
 /**
  * SEG-003: read-only staging contact lookup.
@@ -70,7 +71,14 @@ export class StagingClientsReadonlyController {
     @Query('company') slug = '',
     @Query('search') search = '',
     @Query('limit') limit = '100',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
   ) {
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind:'user',userId,companyId,companySlug:slug,
+        method:'GET',path:'/clients',body:{search,limit},
+      });
+    }
     const actor = await this.authorize(key, type, userId, companyId, slug);
     const take = Math.min(Math.max(Number.parseInt(limit, 10) || 100, 1), 150);
     // No cross-tenant joins or reads before authorization.
@@ -116,7 +124,14 @@ export class StagingClientsReadonlyController {
     @Headers('x-chatpro-company-id') companyId = '',
     @Query('company') slug = '',
     @Query('phone') phone = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
   ) {
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      verifyInternalAttestation(identityAssertion, {
+        kind:'user',userId,companyId,companySlug:slug,
+        method:'GET',path:'/clients/profile',body:{phone},
+      });
+    }
     const actor = await this.authorize(key, type, userId, companyId, slug);
     if (!phone || typeof phone !== 'string' || phone.length > 60)
       throw new ForbiddenException('Cliente no disponible.');
