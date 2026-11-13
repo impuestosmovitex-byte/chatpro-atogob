@@ -124,7 +124,7 @@ export class StagingInboxController {
     const {data:permissions,error:permissionsError}=permissionIds.length
       ?await client.from('app_permissions').select('key').in('id',permissionIds)
       :{data:[],error:null};
-    if(permissionsError||!(permissions??[]).some(x=>x.key==='inbox.view'))
+    if(permissionsError||!((permissions??[]) as Array<{key:string}>).some(x=>x.key==='inbox.view'))
       throw new ForbiddenException('Sin permiso para consultar la bandeja.');
   }
 
