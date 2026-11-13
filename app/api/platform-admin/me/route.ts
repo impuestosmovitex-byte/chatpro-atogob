@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { signInternalAttestation } from '../../../lib/internal-attestation';
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../lib/inbox-auth';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,12 @@ export async function GET(request: NextRequest) {
     target.searchParams.set('user', session.userId);
 
     const response = await fetch(target, {
-      headers: { 'x-chatpro-inbox-key': inboxKey },
+      headers: { 'x-chatpro-inbox-key': inboxKey,
+        'x-mw1-internal-assertion': signInternalAttestation({
+          kind: 'platform', userId: session.userId, companyId: '', companySlug: '',
+          method: 'GET', path: '/platform-admin/me',
+        }),
+      },
       cache: 'no-store',
     });
 
