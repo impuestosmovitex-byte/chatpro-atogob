@@ -83,6 +83,7 @@ describe('SEG-003C staging admin invitation recovery — no live data',()=>{
       return {error:null};
     },
   };
+   return q;
   },
   auth:{admin:{
     async createUser(){
