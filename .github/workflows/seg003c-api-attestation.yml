@@ -32,6 +32,6 @@ jobs:
       - name: Audit all platform admin routes and explicit prelogin exceptions
         run: node ../../.github/scripts/seg003c-platform-coverage.cjs
       - name: SEG-003C asymmetric service assertion and SEG-003B regression tests
-        run: npm test -- --runInBand --runTestsByPath src/internal-attestation.spec.ts src/tenant-admin-authorization.spec.ts src/staging-clients-readonly.spec.ts src/seg003-inbox-tenant-isolation.spec.ts src/platform-recovery-request.spec.ts src/staging-admin-invitation-recovery.spec.ts
+        run: npm test -- --runInBand --runTestsByPath src/internal-attestation.spec.ts src/tenant-admin-authorization.spec.ts src/staging-clients-readonly.spec.ts src/seg003-inbox-tenant-isolation.spec.ts src/platform-recovery-request.spec.ts src/staging-admin-invitation-recovery.spec.ts src/staging-my-plan-seg003c.spec.ts
       - name: Compile NestJS (no deployment)
         run: npm run build
