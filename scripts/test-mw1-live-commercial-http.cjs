@@ -9,6 +9,7 @@ async function request(path,opts={}){
   const checks=[
     ['/inicio',['ChatPro MW1','Solicitar demostración']],
     ['/por-que',['video','MW1']],
+    ['/precios',['Planes','MW1']],
     ['/demo',['Bandeja omnicanal','MW1']],
     ['/integraciones',['Integraciones']],
     ['/agendar-demo',['WhatsApp','Enviar solicitud de demostración']],
@@ -18,6 +19,8 @@ async function request(path,opts={}){
     assert.equal(res.status,200,path+' expected 200 got '+res.status+' '+html.slice(0,160));
     for(const term of terms)assert.ok(html.toLowerCase().includes(term.toLowerCase()),path+' missing '+term);
     if(path==='/inicio'||path==='/integraciones')assert.ok(!html.includes('Telegram'),path+' still mentions Telegram');
+    if(path!=='/agendar-demo')assert.ok(html.includes('href="/agendar-demo"'),path+' missing demo CTA navigation');
+    if(path==='/inicio')assert.ok(html.includes('href="/precios"'),'/inicio missing plans navigation');
     console.log('OK',path,res.status,html.length);
   }
   const logo=await request('/media/mw1-official-logo.svg');
@@ -29,6 +32,10 @@ async function request(path,opts={}){
   if(admin.res.status===200)
     assert.ok(!admin.html.includes('MW1 QA NO CONTACTAR'),'unauthenticated visitor must not view prospect data');
   console.log('OK guarded admin prospect route',admin.res.status);
+  if(process.env.MW1_SMOKE_READ_ONLY==='1'){
+    console.log('Read-only smoke completed; synthetic form POST was already verified separately.');
+    return;
+  }
   const payload={
     companyName:'MW1 QA NO CONTACTAR',
     contactName:'Prueba sintetica MW1',
