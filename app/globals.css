@@ -3582,3 +3582,149 @@ h2 {
 }
 
 /* END CHATPRO-CUSTOMER-IDENTITY-V1 */
+
+
+/* MW1 premium inbox preview. Presentation-only rules; keep the existing functional DOM and event handlers. */
+@media (min-width:1041px) {
+  .chatpro-shell:has(.inbox-layout) {
+    background:#f6f8fc;
+    --accent:#ffc928;
+    --accent-soft:#fff7d9;
+    --line:#e8edf4;
+  }
+  .chatpro-shell:has(.inbox-layout) .workspace {
+    padding:26px clamp(15px,2vw,32px);
+    min-width:0;
+  }
+  .chatpro-shell:has(.inbox-layout) .workspace-header {
+    margin-bottom:22px;
+    align-items:center;
+  }
+  .chatpro-shell:has(.inbox-layout) .workspace-header h1 {
+    font-size:clamp(23px,2.1vw,32px);
+    color:#10203d;
+    font-weight:850;
+    letter-spacing:-.045em;
+  }
+  .chatpro-shell:has(.inbox-layout) .workspace-header .eyebrow {
+    color:#71819a;
+    font-size:10px;
+  }
+  .chatpro-shell:has(.inbox-layout) .advisor-presence {
+    background:#fff;
+    border:1px solid #e9edf5;
+    border-radius:15px;
+    box-shadow:0 5px 16px #1127470a;
+    padding:8px 12px;
+  }
+  .chatpro-shell:has(.inbox-layout) .channel-tabs {
+    border-bottom:none;
+    gap:9px;
+    margin-bottom:17px;
+    flex-wrap:wrap;
+  }
+  .chatpro-shell:has(.inbox-layout) .channel-tab {
+    display:inline-flex;
+    align-items:center;
+    margin:0;
+    padding:10px 16px;
+    min-height:40px;
+    border:1px solid #e9edf5;
+    border-radius:999px;
+    color:#2b3547;
+    background:#fff;
+    box-shadow:0 3px 8px #13264608;
+  }
+  .chatpro-shell:has(.inbox-layout) .channel-tab.active {
+    color:#fff;
+    background:#112341;
+    border-color:#112341;
+    box-shadow:0 4px 12px #11234126;
+  }
+  .chatpro-shell:has(.inbox-layout) .channel-tab.active small { color:#e2ebfa; }
+  .chatpro-shell:has(.inbox-layout) .inbox-layout {
+    grid-template-columns:minmax(260px, 30%) minmax(330px, 1fr) minmax(240px, 25%);
+    min-height:600px;
+    height:calc(100dvh - 210px);
+    border-radius:20px;
+    border:1px solid #e8edf4;
+    box-shadow:0 14px 42px rgba(21,40,75,.07);
+  }
+  .chatpro-shell:has(.inbox-layout) .conversation-list-panel { background:#fff; }
+  .chatpro-shell:has(.inbox-layout) .list-panel-heading { padding:19px 17px 13px; }
+  .chatpro-shell:has(.inbox-layout) .conversation-search {
+    border-radius:13px;
+    border-color:#e4eaf2;
+    background:#f9fafc;
+  }
+  .chatpro-shell:has(.inbox-layout) .filter-chip {
+    padding:8px 11px;
+    border-radius:10px;
+    color:#586982;
+    background:#f8faff;
+  }
+  .chatpro-shell:has(.inbox-layout) .filter-chip.selected {
+    background:#fff2bf;
+    color:#142442;
+    border-color:#f7d96e;
+  }
+  .chatpro-shell:has(.inbox-layout) .conversation-list { padding:7px; }
+  .chatpro-shell:has(.inbox-layout) .conversation-row {
+    border:1px solid transparent;
+    border-bottom-color:#edf0f5;
+    border-radius:13px;
+    margin:2px 0;
+    padding:14px 11px;
+  }
+  .chatpro-shell:has(.inbox-layout) .conversation-row:hover { background:#f7faff; }
+  .chatpro-shell:has(.inbox-layout) .conversation-row.selected {
+    background:#fff9e9;
+    border:1px solid #f5d775;
+    box-shadow:inset 3px 0 0 #ffbf00;
+  }
+  .chatpro-shell:has(.inbox-layout) .avatar { background:#e6f6ed; color:#177a4a; }
+  .chatpro-shell:has(.inbox-layout) .chat-panel { background:#fbfcff; }
+  .chatpro-shell:has(.inbox-layout) .chat-header {
+    min-height:90px;
+    padding:16px;
+    background:#fff;
+  }
+  .chatpro-shell:has(.inbox-layout) .chat-actions { flex-wrap:wrap; }
+  .chatpro-shell:has(.inbox-layout) .button { border-radius:12px; }
+  .chatpro-shell:has(.inbox-layout) .button.primary {
+    color:#0f1c32;
+    background:#ffc928;
+  }
+  .chatpro-shell:has(.inbox-layout) .button.primary:hover:not(:disabled) { background:#f3b800; }
+  .chatpro-shell:has(.inbox-layout) .message-feed { background:#fcfdff; }
+  .chatpro-shell:has(.inbox-layout) .message-bubble {
+    border:1px solid #edf1f6;
+    border-radius:16px;
+    padding:12px 14px;
+    box-shadow:0 3px 9px #0e29400a;
+  }
+  .chatpro-shell:has(.inbox-layout) .message-row.customer .message-bubble { background:#f0f2f6; }
+  .chatpro-shell:has(.inbox-layout) .message-row.ai .message-bubble { background:#edf3ff; }
+  .chatpro-shell:has(.inbox-layout) .message-row.advisor .message-bubble { background:#e5f9ea; }
+  .chatpro-shell:has(.inbox-layout) .reply-box { background:#fff; padding:15px; }
+  .chatpro-shell:has(.inbox-layout) .reply-compose { border-radius:18px; }
+  .chatpro-shell:has(.inbox-layout) .wa-text-send { background:#ffc928; color:#14243d; }
+  .chatpro-shell:has(.inbox-layout) .context-panel { background:#fff; padding:20px 16px; }
+  .chatpro-shell:has(.inbox-layout) .context-list,
+  .chatpro-shell:has(.inbox-layout) .storefront-card,
+  .chatpro-shell:has(.inbox-layout) .contact-card-form {
+    border:1px solid #e9edf5;
+    border-radius:15px;
+    background:#fff;
+    padding:14px;
+    margin-bottom:13px;
+  }
+  .chatpro-shell:has(.inbox-layout) .context-panel h2 { color:#142442; }
+  .chatpro-shell:has(.inbox-layout) .context-panel dt { color:#8290a6; }
+}
+@media (min-width:1041px) and (max-width:1350px) {
+  .chatpro-shell:has(.inbox-layout) .inbox-layout {
+    grid-template-columns:minmax(225px, 31%) minmax(300px, 1fr) minmax(200px, 24%);
+  }
+  .chatpro-shell:has(.inbox-layout) .chat-header { flex-wrap:wrap; }
+}
