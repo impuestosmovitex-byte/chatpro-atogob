@@ -23,6 +23,12 @@ assert.equal(enabled('piloto-mw1-prueba','piloto-mw1-prueba'),false);
 const gateway=fs.readFileSync('proxy.ts','utf8');
 assert.ok(gateway.includes("pathname === '/panel'") &&
   gateway.includes('isUnifiedPanelEnabled(session.companySlug)'));
+assert.ok(gateway.includes('await getAccessCapabilities(session);') &&
+  gateway.includes('Revoked tenant access or unreachable authorization API'),
+  'Entering new panel must recheck current membership, fail closed');
+assert.ok(gateway.indexOf('await getAccessCapabilities(session);') <
+  gateway.indexOf('// SEG-002: only a verified individual'),
+  'Membership check applies before module navigation');
 assert.ok(gateway.includes("'/panel',"));
 const sidebar=fs.readFileSync('app/components/AppSidebar.tsx','utf8');
 assert.ok(sidebar.includes("unifiedPanelEnabled ? [{ href: '/panel'"));
