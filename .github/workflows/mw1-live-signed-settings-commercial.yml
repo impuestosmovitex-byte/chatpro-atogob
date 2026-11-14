@@ -1,0 +1,39 @@
+name: MW1 live Web AI settings + commercial preservation (READ ONLY)
+on:
+  push:
+    branches:
+      - feature/mw1-staging-signed-ai-settings-20261114
+permissions:
+  contents: read
+jobs:
+  http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Verify real staging routes without session and preserved image
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const base='https://mw1-web-staging-staging.up.railway.app';
+          const routes=[
+            ['/inicio',200],
+            ['/login',200],
+            ['/panel',307],
+            ['/configuracion/ia',307],
+            ['/api/settings',401],
+            ['/api/auth/session',401],
+          ];
+          (async()=>{
+            for(const [path,expected] of routes){
+              const r=await fetch(base+path,{redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(20000)});
+              console.log('GET',path,'=>',r.status);
+              assert.equal(r.status,expected);
+            }
+            const img=await fetch(base+'/media/mw1-hero-uploaded.avif',{
+              redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(20000),
+            });
+            console.log('HERO IMAGE',img.status,img.headers.get('content-type'));
+            assert.equal(img.status,200);
+            assert.match(img.headers.get('content-type')||'',/^image\/avif/);
+          })().catch(error=>{console.error(error);process.exitCode=1});
+          NODE

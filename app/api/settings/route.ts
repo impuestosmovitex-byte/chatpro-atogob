@@ -1,5 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
+import { signInternalAttestation } from '../../lib/internal-attestation';
 import {
   INBOX_SESSION_COOKIE,
   getInboxSession,
@@ -67,7 +68,16 @@ export async function GET(request: NextRequest) {
     target.searchParams.set('company', session.companySlug);
 
     const response = await fetch(target, {
-      headers: { 'x-chatpro-inbox-key': inboxKey },
+      headers: process.env.MW1_STAGING_MODE === 'true' ? {
+        'x-chatpro-inbox-key': inboxKey,
+        'x-chatpro-session-type': session.type,
+        'x-chatpro-user-id': session.userId || '',
+        'x-chatpro-company-id': session.companyId,
+        'x-mw1-internal-assertion': signInternalAttestation({
+          kind: 'user', userId: session.userId || '', companyId: session.companyId,
+          companySlug: session.companySlug, method: 'GET', path: '/settings',
+        }),
+      } : { 'x-chatpro-inbox-key': inboxKey },
       cache: 'no-store',
     });
 
@@ -95,6 +105,10 @@ export async function PUT(request: NextRequest) {
 
   if (!canManageSettings(session)) {
     return forbidden('No tienes permiso para administrar esta configuración.');
+  }
+
+  if (process.env.MW1_STAGING_MODE === 'true') {
+    return forbidden('Los ajustes de IA están disponibles en modo consulta en staging.');
   }
 
   try {

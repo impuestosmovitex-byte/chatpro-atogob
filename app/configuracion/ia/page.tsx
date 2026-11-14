@@ -430,6 +430,7 @@ export default function ConfiguracionPage() {
   const [message, setMessage] = useState('');
   const [activeView, setActiveView] =
     useState<AiEditorView>('assistant');
+  const [stagingReadOnly, setStagingReadOnly] = useState(false);
 
   const exceededInstructionFields =
     getExceededInstructionFields(configuration);
@@ -460,6 +461,13 @@ export default function ConfiguracionPage() {
     window.history.replaceState(null, '', nextUrl);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  useEffect(() => {
+    void fetch('/api/auth/capabilities', { cache: 'no-store' })
+      .then(async response => response.ok ? response.json() as Promise<{ staging?: boolean }> : null)
+      .then(data => setStagingReadOnly(data?.staging === true))
+      .catch(() => setStagingReadOnly(false));
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -1819,12 +1827,13 @@ export default function ConfiguracionPage() {
             </div>
           ) : null}
 
+          {stagingReadOnly ? <p role="status" className={styles.message}>Staging: configuración de IA en modo consulta. No se guardan cambios ni se modifican instrucciones.</p> : null}
           {message ? <p className={styles.message}>{message}</p> : null}
 
           <button
             className={styles.save}
             type="submit"
-            disabled={loading || saving || hasExceededInstructionLimits}
+            disabled={loading || saving || stagingReadOnly || hasExceededInstructionLimits}
           >
             {saving ? 'Guardando…' : 'Guardar configuración de IA'}
           </button>
