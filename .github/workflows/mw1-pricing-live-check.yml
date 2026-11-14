@@ -1,0 +1,33 @@
+name: MW1 pricing text live staging verification
+on:
+  push:
+    branches:
+      - feature/mw1-pricing-copy-public-20261114
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify live plan labels and navigation without writes
+        run: |
+          node - <<'NODE'
+          (async()=>{
+            const host='https://mw1-web-staging-staging.up.railway.app';
+            const res=await fetch(host+'/precios',{redirect:'manual',signal:AbortSignal.timeout(20000)});
+            if(res.status!==200)throw Error('Precios HTTP '+res.status);
+            const html=await res.text();
+            for(const forbidden of ['Propuesta orientativa · pendiente de aprobación','Tarifa publicada en ambiente de pruebas']){
+              if(html.includes(forbidden))throw Error('Internal copy still visible: '+forbidden);
+            }
+            for(const required of ['Básico','Eco','Pro','Solicitar demostración']){
+              if(!html.includes(required))throw Error('Missing '+required);
+            }
+            console.log('PASS public plans, correct navigation and no internal staging text');
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
