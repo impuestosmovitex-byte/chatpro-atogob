@@ -1,0 +1,23 @@
+name: MW1 staging automation UI no-deploy validation
+on:
+  push:
+    branches:
+      - feature/mw1-staging-automations-ui-state-20261114
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: node scripts/test-mw1-staging-automations-ui-state.cjs
+      - run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'

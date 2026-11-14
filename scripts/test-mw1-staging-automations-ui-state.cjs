@@ -1,0 +1,11 @@
+'use strict';
+const fs=require('node:fs'), assert=require('node:assert/strict');
+const page=fs.readFileSync('app/automatizaciones/page.tsx','utf8');
+assert.ok(page.includes("data.code === 'STAGING_AUTOMATIONS_UNAVAILABLE'"));
+assert.ok(page.includes('setStagingUnavailable(true)'));
+assert.ok(page.includes('setStagingUnavailable(false)'));
+assert.ok(page.includes('{stagingUnavailable ? ('));
+assert.ok(page.includes('No se muestran cifras ni controles de envío'));
+assert.ok(page.includes('role="status"'));
+assert.ok(page.includes('async function save('));
+console.log('Staging UI unavailable state handled; production editor retained');
