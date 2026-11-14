@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, Headers, Query, UnauthorizedException } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Headers, Param, Query, UnauthorizedException } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
 import { verifyInternalAttestation } from './internal-attestation';
 
@@ -85,11 +85,53 @@ export class StagingInboxController {
       lastMessage:null,contact:null,
     })),pendingTotal:0,hasMore:false,stagingReadOnly:true };
   }
+  /**
+   * Read-only detail for the already tagged synthetic SEG-003D conversations.
+   * No live message history, outgoing actions or channel credentials are exposed.
+   * A live conversation without the exact QA marker remains unavailable.
+   */
+  @Get(':sessionId')
+  async detail(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Headers('x-chatpro-user-id') userId = '',
+    @Headers('x-chatpro-company-id') companyId = '',
+    @Query('company') slug = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
+    @Param('sessionId') sessionId = '',
+  ) {
+    await this.authorizeRead(key,userId,companyId,slug,identityAssertion,'/inbox/:sessionId');
+    if (!sessionId || sessionId.length > 120)
+      throw new ForbiddenException('Conversación de prueba no disponible.');
+
+    const client=this.db.getClient();
+    const {data:session,error}=await client.from('conversation_sessions')
+      .select('id,company_id,customer_phone,stage,context,last_message_at,pending_count,pending_since,attention_status,assigned_to_user_id,assigned_to_name,taken_at,closed_at')
+      .eq('company_id',companyId).eq('id',sessionId).maybeSingle();
+    if (error || !session || session.context?.qa_fixture !== 'SEG003D-FUNCIONAL-20261114' ||
+        session.context?.synthetic !== true) {
+      throw new ForbiddenException('Solo conversaciones sintéticas aprobadas están disponibles en staging.');
+    }
+    return {
+      ok:true,
+      company:{id:companyId,slug},
+      session:{
+        id:session.id,companyId:session.company_id,customerPhone:session.customer_phone,
+        stage:session.stage,lastMessageAt:session.last_message_at,
+        attentionStatus:session.attention_status,assignedToUserId:session.assigned_to_user_id,
+        assignedToName:session.assigned_to_name,takenAt:session.taken_at,closedAt:session.closed_at,
+        pendingCount:session.pending_count??0,pendingSince:session.pending_since,
+        context:{synthetic:true},lastMessage:null,contact:null,
+      },
+      contact:null,messages:[],historyRestricted:true,
+      stagingReadOnly:true,synthetic:true,
+    };
+  }
+
   /** Keep current shared inbox.view visibility. Only authenticated tenant
    * members may read; assignment governs management, not shared reading. */
   private async authorizeRead(
     key:string,userId:string,companyId:string,slug:string,
-    identityAssertion:string,path:'/inbox'|'/inbox/instagram-pilot',
+    identityAssertion:string,path:'/inbox'|'/inbox/instagram-pilot'|'/inbox/:sessionId',
   ):Promise<void>{
     const expected=process.env.CHATPRO_INBOX_KEY?.trim();
     if(process.env.MW1_STAGING_MODE!=='true'||!expected||key!==expected||
