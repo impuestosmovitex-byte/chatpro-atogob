@@ -44,7 +44,6 @@ export function HeroMedia() {
   return (
     <div className={styles.heroMedia} aria-label="Vista ilustrativa de la interfaz MW1">
       <ProductPreview />
-      <p style={{fontSize:12,color:'#657187',padding:'10px 15px'}}>Representación ilustrativa de MW1 con datos ficticios. No es una captura real ni un video.</p>
     </div>
   );
 }
