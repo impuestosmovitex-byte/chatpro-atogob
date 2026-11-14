@@ -1,0 +1,36 @@
+name: MW1 staging automations fail closed (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-staging-automations-failclosed-20261114
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Check staging automation fail-closed and unchanged production proxy
+        run: node scripts/test-mw1-staging-automations-failclosed.cjs
+      - name: Validate Next app types and build
+        run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Public staging endpoint rejects unauthenticated requests
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          (async()=>{
+            const response=await fetch('https://mw1-web-staging-staging.up.railway.app/api/automations',{
+              redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(15000)});
+            console.log('Anonymous staging /api/automations',response.status);
+            assert.equal(response.status,401);
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
