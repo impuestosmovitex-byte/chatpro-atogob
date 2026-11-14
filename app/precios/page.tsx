@@ -29,10 +29,10 @@ export default async function PreciosPage(){
     <div className={styles.eyebrow}>Planes MW1</div>
     <h2>Elige el plan que se ajusta a tu negocio.</h2>
     <p>Desde pequeños comercios hasta equipos de ventas: clientes y conversaciones en una sola plataforma. Selecciona el plan que quieras y solicita la configuración asistida.</p>
-    <p className={styles.pricingClarification}>Las tarifas publicadas se indican en cada plan. Los demás valores son referencias provisionales. Ninguno representa un cobro automático ni activa suscripciones.</p>
+    <p className={styles.pricingClarification}>Los precios mostrados son de referencia. Confirma el valor final, el alcance y las condiciones con nuestro equipo comercial.</p>
    </div>
    <PlansInteractive plans={prices}/>
   </section>
-  <footer className={styles.footer}>MW1 · Los precios configurados en pruebas no generan pagos ni activan cuentas. Las condiciones comerciales requieren confirmación.</footer>
+  <footer className={styles.footer}>MW1 · Conoce nuestras soluciones y solicita una demostración personalizada.</footer>
  </main>;
 }
