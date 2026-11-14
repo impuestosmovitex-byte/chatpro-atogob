@@ -104,9 +104,9 @@ begin
  if v_review.action is distinct from 'activation_review_approved'
     or v_review.proposed_tier is distinct from p_tier
     or v_review.details->>'assignmentUpdatedAt' is distinct from
-         to_char(v_assignment.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US')
+         to_char(v_assignment.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS')
     or v_review.details->>'draftUpdatedAt' is distinct from
-         to_char(v_draft.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US')
+         to_char(v_draft.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS')
  then
    raise exception 'Company-specific plan review is missing, stale or superseded';
  end if;
