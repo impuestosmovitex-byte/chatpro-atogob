@@ -272,6 +272,7 @@ type InboxConversation = {
   contact?: Contact | null;
   messages: InboxMessage[];
   historyRestricted?: boolean;
+  stagingReadOnly?: boolean;
 };
 
 type ApiList = {
@@ -293,6 +294,7 @@ type ApiConversation = {
   conversation?: InboxConversation;
   contact?: Contact | null;
   historyRestricted?: boolean;
+  stagingReadOnly?: boolean;
 };
 
 const statusLabel: Record<AttentionStatus, string> = {
@@ -2079,6 +2081,7 @@ export default function Home() {
             contact: data.contact ?? current.contact,
             messages: uniqueMessages,
             historyRestricted: data.historyRestricted === true,
+            stagingReadOnly: data.stagingReadOnly === true,
           };
         });
       } else {
@@ -2090,6 +2093,7 @@ export default function Home() {
           contact: data.contact ?? null,
           messages: initialMessages,
           historyRestricted: data.historyRestricted === true,
+          stagingReadOnly: data.stagingReadOnly === true,
         });
 
         setHasOlderMessages(
@@ -5181,7 +5185,12 @@ export default function Home() {
                       Cargando mensajes anteriores…
                     </p>
                   ) : null}
-                  {!loadingChat && !selected.messages.length ? (
+                  {!loadingChat && selected.stagingReadOnly ? (
+                    <p role="status" className="feed-loading">
+                      Vista de prueba, solo lectura. Esta conversación es ficticia y no permite enviar mensajes ni consultar historiales reales.
+                    </p>
+                  ) : null}
+                  {!loadingChat && !selected.messages.length && !selected.stagingReadOnly ? (
                     <p className="feed-loading">
                       {isInternalTest
                         ? "Escribe como cliente para probar el agente. Esta prueba no envía mensajes por WhatsApp."
@@ -5409,7 +5418,11 @@ export default function Home() {
                   </div>
                 ) : null}
 
-                {isInternalTest ? (
+                {selected.stagingReadOnly ? (
+                  <div className="reply-box" role="status">
+                    <p>Conversación ficticia de staging. Los envíos, las transferencias y los cambios de estado permanecen desactivados.</p>
+                  </div>
+                ) : isInternalTest ? (
                   <form
                     className="reply-box"
                     onSubmit={sendInternalTestMessage}

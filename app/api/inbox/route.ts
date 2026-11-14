@@ -75,10 +75,10 @@ export async function GET(request: NextRequest) {
   if (!session || (process.env.MW1_STAGING_MODE === 'true' &&
     (session.type !== 'user' || !session.userId || !session.companyId || !session.companySlug)))
     return unauthorized();
-  if (process.env.MW1_STAGING_MODE === 'true' && (request.nextUrl.searchParams.has('sessionId') || request.nextUrl.searchParams.has('mode'))) {
+  if (process.env.MW1_STAGING_MODE === 'true' && request.nextUrl.searchParams.has('mode')) {
     return NextResponse.json({
       ok: false, code: 'STAGING_INBOX_DISABLED',
-      error: 'El detalle y las acciones de conversaciones todavía no están disponibles en staging.',
+      error: 'Las acciones de conversaciones todavía no están disponibles en staging.',
     }, {status:503,headers:{'Cache-Control':'no-store'}});
   }
 
@@ -138,7 +138,8 @@ export async function GET(request: NextRequest) {
         ...(process.env.MW1_STAGING_MODE === 'true' ? {
           'x-mw1-internal-assertion': signInternalAttestation({
             kind:'user',userId:session.userId??'',companyId:session.companyId,
-            companySlug:session.companySlug,method:'GET',path:'/inbox',
+            companySlug:session.companySlug,method:'GET',
+            path:sessionId?'/inbox/:sessionId':'/inbox',
           }),
         } : {}),
       },

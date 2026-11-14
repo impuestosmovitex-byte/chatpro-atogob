@@ -26,6 +26,7 @@ const PUBLIC_PATHS = new Set([
 
 const ADVISOR_ALLOWED_PAGES = [
   '/',
+  '/panel', // Unified navigation only; underlying APIs retain their permissions.
   '/clientes',
 ];
 
