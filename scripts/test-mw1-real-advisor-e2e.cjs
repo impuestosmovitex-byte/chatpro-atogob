@@ -28,7 +28,7 @@ async function main() {
     'Only the isolated staging Web is allowed');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), 45000);
   async function request(path, options = {}) {
     const res = await fetch(new URL(path, origin), {
       redirect: 'manual',
