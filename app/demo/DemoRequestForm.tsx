@@ -129,8 +129,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     <label className={styles.consent}>
       <input required type="checkbox" checked={consent}
         onChange={event=>setConsent(event.target.checked)}/>
-      <span>Autorizo a MW1 a contactarme por correo o WhatsApp para responder esta solicitud
-        comercial y coordinar, si corresponde, la prueba guiada. Enviarla no crea una cuenta, no activa un plan ni genera cargos.</span>
+      <span>Autorizo el tratamiento de mis datos personales para gestionar esta solicitud y el contacto por correo o WhatsApp para coordinar mi demostración o prueba guiada. Este permiso no autoriza campañas automáticas. Enviarla no crea una cuenta, no activa un plan ni genera cargos.</span>
     </label>
     {!isTrial&&<label className={styles.consent}>
       <input type="checkbox" checked={marketingConsent} onChange={e=>setMarketingConsent(e.target.checked)}/>
