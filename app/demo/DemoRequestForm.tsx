@@ -35,7 +35,6 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     event.preventDefault();
     if(sending||!consent)return;
 
-    if(!isTrial&&(!businessSector||!hasOnlineStore))return;
     setError('');setSending(true);
     try{
       const response=await fetch('/api/marketing/demo-request',{
@@ -52,13 +51,13 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     }finally{setSending(false);}
   }
   if(success)return <div role="status" className={styles.success}>
-    <strong>{isTrial?'Recibimos tu solicitud de prueba de 14 días':'Solicitud recibida para coordinar tu demostración'}</strong>
-    <p>{isTrial?'Nuestro equipo revisará tu número, el plan y la conexión de canales. Los 14 días comenzarán únicamente después de que confirmemos y activemos la cuenta. Aún no se han creado usuarios ni iniciado cobros.':'Un asesor de MW1 te contactará para acordar el día y la hora. La reunión todavía no está confirmada. No se ha creado ninguna cuenta ni generado ningún cobro.'}</p>
+    <strong>{isTrial?'Recibimos tu solicitud de prueba de 14 días':'¡Recibimos tu solicitud!'}</strong>
+    <p>{isTrial?'Nuestro equipo revisará tu número, el plan y la conexión de canales. Los 14 días comenzarán únicamente después de que confirmemos y activemos la cuenta. Aún no se han creado usuarios ni iniciado cobros.' :'El equipo comercial de MW1 continuará el contacto por los medios autorizados. No se ha programado ninguna reunión, creado ninguna cuenta ni generado ningún cobro.'}</p>
   </div>;
   return <form onSubmit={event=>void submit(event)} className={styles.form}>
     <p className={styles.caption}>{isTrial
       ?'Solicita 14 días de prueba guiada del plan que elijas. No necesitas tarjeta. La prueba no empieza al enviar este formulario; primero coordinaremos la activación contigo.'
-      :'Solicita una reunión con un asesor de MW1. Te contactaremos por WhatsApp o correo para acordar el día y la hora. Este formulario no reserva automáticamente un horario ni genera cobros.'}</p>
+      :'Déjanos tus datos y nuestro equipo comercial continuará el contacto. No necesitas seleccionar un horario ni crear una cuenta.'}</p>
     <label>Empresa
       <input required minLength={2} maxLength={100} autoComplete="organization"
         value={companyName} onChange={event=>setCompanyName(event.target.value)}
@@ -70,9 +69,9 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
         placeholder="Nombre y apellido"/>
     </label>
     {!isTrial&&<>
-      <label>Sector de tu empresa
-        <select required value={businessSector} onChange={e=>setBusinessSector(e.target.value)}>
-          <option value="">Selecciona el sector</option>
+      <label>Sector de tu empresa (opcional)
+        <select value={businessSector} onChange={e=>setBusinessSector(e.target.value)}>
+          <option value="">Prefiero no indicarlo</option>
           <option value="moda">Moda y accesorios</option>
           <option value="retail">Comercio y tiendas</option>
           <option value="servicios">Servicios profesionales</option>
@@ -82,9 +81,9 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
           <option value="otro">Otro sector</option>
         </select>
       </label>
-      <label>¿Tu negocio tiene página web o tienda virtual?
-        <select required value={hasOnlineStore} onChange={e=>setHasOnlineStore(e.target.value)}>
-          <option value="">Selecciona una opción</option>
+      <label>¿Tienes página web o tienda virtual? (opcional)
+        <select value={hasOnlineStore} onChange={e=>setHasOnlineStore(e.target.value)}>
+          <option value="">Prefiero no indicarlo</option>
           <option value="tienda">Sí, tienda virtual</option>
           <option value="web">Sí, página informativa</option>
           <option value="no">No tengo</option>
@@ -96,31 +95,14 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
         value={contactEmail} onChange={event=>setContactEmail(event.target.value)}
         placeholder="correo@empresa.com"/>
     </label>
-    {planLabels[planInterest]&&<p role="status" className={styles.caption}>Seleccionaste el plan <strong>{planLabels[planInterest]}</strong>. Puedes cambiarlo aquí antes de enviar tu solicitud.</p>}
-    {(requestedUsers!==null||requestedConnections!==null)&&<p role="status" className={styles.caption}>Tu configuración solicitada: <strong>{requestedUsers??'Por confirmar'} usuarios</strong> y <strong>{requestedConnections??'Por confirmar'} conexiones</strong>. Son valores para revisión comercial, no cupos activados.</p>}
-    <label>Plan de interés
-      <select value={planInterest} onChange={event=>setPlanInterest(event.target.value)}>
-        <option value="sin_definir">No estoy seguro</option>
-        <option value="basico">Básico</option>
-        <option value="eco">Eco</option>
-        <option value="pro">Pro</option>
-      </select>
-    </label>
+
+
     <>
       <label>WhatsApp para que podamos contactarte
         <input required type="tel" inputMode="tel" autoComplete="tel" maxLength={20}
           value={contactPhone} onChange={event=>setContactPhone(event.target.value)}
           placeholder="Ej. +573001234567"/>
       </label>
-      <label>¿Cómo utilizas WhatsApp actualmente?
-        <select value={whatsappSetup} onChange={event=>setWhatsappSetup(event.target.value)}>
-          <option value="business_app">Tengo WhatsApp Business en mi celular</option>
-          <option value="cloud_api">Mi número ya está conectado a una API</option>
-          <option value="new_number">Voy a conectar un número nuevo</option>
-          <option value="unsure">No estoy seguro; necesito asesoría</option>
-        </select>
-      </label>
-      <p className={styles.caption}>No desinstales WhatsApp Business ni borres tus chats. Revisaremos primero si tu número puede usar coexistencia o necesita otro procedimiento.</p>
     </>
     <div className={styles.hidden} aria-hidden="true">
       <label>Sitio web <input tabIndex={-1} autoComplete="off"
@@ -137,7 +119,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     </label>}
     {error&&<p role="alert" className={styles.error}>{error}</p>}
     <button type="submit" disabled={sending||!consent}>
-      {sending?'Enviando…':isTrial?'Solicitar mis 14 días de prueba':'Solicitar cita para demostración'}
+      {sending?'Enviando…':isTrial?'Solicitar mis 14 días de prueba':'Enviar solicitud de demostración'}
     </button>
   </form>;
 }
