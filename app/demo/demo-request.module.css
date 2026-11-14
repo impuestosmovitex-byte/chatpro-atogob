@@ -9,3 +9,5 @@
 .error{font-size:12px!important;color:#a62626}
 .success{background:#f0faf3;border:1px solid #a8dfb8;border-radius:11px;padding:17px;color:#1d5534;line-height:1.6}
 .hidden{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}
+
+.optional{border:1px solid #e1e7f0;border-radius:11px;padding:12px 14px;background:#fbfcff}.optional summary{cursor:pointer;font-size:13px;font-weight:800;color:#172235}.optional[open]{display:grid;gap:13px}.optional[open] summary{margin-bottom:2px}
