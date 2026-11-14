@@ -51,7 +51,7 @@ declare
  v_rights jsonb;
  v_current_active integer;
  v_review record;
- v_existing_entitlements record;
+ v_existing_entitlements public.company_entitlements%ROWTYPE;
 begin
  -- RPC callable only with privileged server credential. Reject ordinary sessions.
  if current_setting('request.jwt.claim.role',true) is distinct from 'service_role' then
