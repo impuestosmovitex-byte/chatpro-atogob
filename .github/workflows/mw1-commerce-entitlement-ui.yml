@@ -1,0 +1,24 @@
+name: MW1 commerce entitlement UI safety (NO DEPLOY)
+on:
+  push:
+    branches:
+      - fix/mw1-panel-commerce-entitlement-20261114
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: node scripts/test-mw1-commerce-entitlement.cjs
+      - run: npx tsc --noEmit
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
