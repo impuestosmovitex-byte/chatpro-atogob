@@ -1,0 +1,10 @@
+'use strict';
+const fs=require('node:fs'), assert=require('node:assert/strict');
+const route=fs.readFileSync('app/api/automations/route.ts','utf8');
+assert.ok(route.includes('STAGING_AUTOMATIONS_UNAVAILABLE'),'No isolated automation tables: explicit unavailable result');
+assert.ok(route.includes('status: 503'),'Read-only absence must not return fake empty records');
+assert.equal(route.split("code: 'STAGING_AUTOMATIONS_READ_ONLY'").length-1,2,'Both PUT and POST must deny staged writes');
+assert.equal(route.split("status: 403, headers: { 'Cache-Control': 'no-store' }").length-1,2,'Both mutation methods must fail closed');
+assert.ok(route.includes('await fetch(target'),'Existing production controller proxy retained');
+assert.ok(route.indexOf("code: 'STAGING_AUTOMATIONS_READ_ONLY'") < route.indexOf("const body = (await request.json())"),'Reject staged mutations before reading requests');
+console.log('MW1 staging automations explicitly unavailable, writes denied, production proxy retained');
