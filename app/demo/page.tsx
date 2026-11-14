@@ -5,6 +5,7 @@ import {
 } from "../components/marketing/MarketingHeader";
 import styles from "../components/marketing/marketing.module.css";
 import {DemoRequestForm} from "./DemoRequestForm";
+import {DemoVisuals} from "./DemoVisuals";
 
 export default function DemoPage() {
   return (
@@ -22,6 +23,8 @@ export default function DemoPage() {
 
         <ProductPreview />
       </section>
+
+      <DemoVisuals />
 
       <section className={styles.section}>
         <div className={styles.demoGrid}>
