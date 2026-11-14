@@ -10,7 +10,7 @@ type Lead={
  requestType:'trial'|'demo';createdAt:string;followUpOn:string|null;
  internalNote:string;requestedUsers:number|null;requestedConnections:number|null;
 };
-type Response={ok?:boolean;error?:string;requests?:Lead[]};
+type Response={ok?:boolean;error?:string;requests?:Lead[];page?:number;hasMore?:boolean};
 const statuses:Record<string,string>={new:'Nuevo',contacted:'Contactado',qualified:'Calificado',closed:'Cerrado'};
 const plans:Record<string,string>={inicial:'Básico',pro:'Eco',empresa:'Pro',sin_definir:'Por definir'};
 const fields=(note:string)=>({
@@ -31,17 +31,19 @@ export default function ProspectosPage(){
  const [query,setQuery]=useState('');
  const [status,setStatus]=useState('all');
  const [reload,setReload]=useState(0);
- const load=useCallback(async(signal:AbortSignal)=>{
+ const [page,setPage]=useState(0);
+ const [hasMore,setHasMore]=useState(false);
+ const load=useCallback(async(signal:AbortSignal,pageIndex:number)=>{
    setLoading(true);setError('');
    try{
-     const res=await fetch('/api/platform-admin/demo-requests',{cache:'no-store',signal});
+     const res=await fetch('/api/platform-admin/demo-requests?page='+pageIndex,{cache:'no-store',signal});
      const data=await res.json() as Response;
      if(!res.ok||!data.ok)throw new Error(data.error||'No se pudieron consultar los prospectos.');
-     if(!signal.aborted)setRows(Array.isArray(data.requests)?data.requests:[]);
+     if(!signal.aborted){setRows(Array.isArray(data.requests)?data.requests:[]);setHasMore(data.hasMore===true);setQuery('');}
    }catch(cause){if(!signal.aborted){setRows([]);setError(cause instanceof Error?cause.message:'No se pudo cargar.');}}
    finally{if(!signal.aborted)setLoading(false);}
  },[]);
- useEffect(()=>{const controller=new AbortController();void load(controller.signal);return()=>controller.abort();},[load,reload]);
+ useEffect(()=>{const controller=new AbortController();void load(controller.signal,page);return()=>controller.abort();},[load,reload,page]);
  const today=bogotaToday();
  const visible=useMemo(()=>rows.filter(lead=>{
    if(status!=='all'&&lead.status!==status)return false;
@@ -67,7 +69,7 @@ export default function ProspectosPage(){
      <article><small>Seguimientos pendientes hoy o vencidos</small><strong>{rows.filter(x=>x.followUpOn&&x.followUpOn<=today&&x.status!=='closed').length}</strong></article>
      <article><small>Próximos / Vencidos</small><strong>{upcoming} / {overdue}</strong></article>
     </div>
-    <p className={styles.disclaimer}>Los indicadores se calculan únicamente sobre las últimas 50 solicitudes que devuelve la API existente. No representan necesariamente todo el historial.</p>
+    <p className={styles.disclaimer}>Los indicadores describen únicamente esta página de hasta 50 registros; puedes navegar a páginas anteriores. La búsqueda filtra la página actual.</p>
     <div className={styles.filters}>
       <label>Buscar por empresa, contacto, correo o WhatsApp
        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar prospecto" maxLength={120}/></label>
@@ -89,6 +91,7 @@ export default function ProspectosPage(){
        <p className={styles.cardNote}>{lead.requestType==='trial'?'Solicitud de prueba guiada':'Solicitud de demostración'} · Sin reserva automática</p>
       </article>;
     })}</div>}
+    <nav className={styles.pagination} aria-label="Páginas de prospectos"><button type="button" disabled={loading||page===0} onClick={()=>setPage(p=>Math.max(0,p-1))}>← Anterior</button><span>Página {page+1}</span><button type="button" disabled={loading||!hasMore} onClick={()=>setPage(p=>p+1)}>Siguiente →</button></nav>
     <div className={styles.bottom}><p>Para modificar estado, fecha o notas, utiliza el módulo de empresas existente. Las notas internas pueden contener datos de consentimiento: no deben eliminarse al editar.</p>
       <Link href="/admin/empresas">Gestionar seguimiento en Empresas</Link>
     </div>
