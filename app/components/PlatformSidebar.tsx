@@ -6,6 +6,7 @@ import {useState} from 'react';
 const links=[
  {href:'/admin',label:'Resumen MW1',icon:'▦'},
  {href:'/admin/empresas',label:'Empresas',icon:'▤'},
+ {href:'/admin/prospectos',label:'Prospectos MW1',icon:'◎'},
  {href:'/admin/funciones',label:'Funciones por empresa',icon:'⚙'},
  {href:'/admin/asignacion-planes',label:'Asignación de planes',icon:'📋'},
  {href:'/admin/planes',label:'Planes y precios',icon:'◇'},
