@@ -1,0 +1,38 @@
+name: MW1 staging IA fail-closed and disconnected channel smoke (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-staging-ia-failclosed-20261114
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Verify staging failures cannot enable edits or fake connections
+        run: node scripts/test-mw1-staging-readonly-ui.cjs
+      - name: Compile existing commercial and unified Web
+        run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Inspect real Railway public session boundary
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const base='https://mw1-web-staging-staging.up.railway.app';
+          (async()=>{
+            for(const [path,status] of [['/login',200],['/panel',307],['/api/inbox/channels',401],['/api/settings',401]]){
+              const res=await fetch(base+path,{redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(15000)});
+              console.log(path,res.status);
+              assert.equal(res.status,status);
+            }
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE

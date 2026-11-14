@@ -1,0 +1,14 @@
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const page=fs.readFileSync('app/configuracion/ia/page.tsx','utf8');
+const channels=fs.readFileSync('app/api/inbox/channels/route.ts','utf8');
+assert.ok(page.includes('useState(true)'),'IA editor must fail closed before capability check');
+assert.ok(page.includes('data?.staging !== false'),'Missing staging claim must keep IA read-only');
+assert.ok(page.includes('setStagingReadOnly(true)'),'Capability fetch failure must keep IA read-only');
+assert.ok(page.includes('stagingReadOnly || hasExceededInstructionLimits'),'IA save button must disable when read-only');
+assert.ok(channels.includes('session.userId && session.companyId'),'Only authenticated staging users can get channels snapshot');
+assert.ok(channels.includes('channels: []')&&channels.includes('connectionsDisabled: true'));
+assert.ok(!channels.includes("code:'STAGING_INBOX_DISABLED'"),'Expected 503 channel error must not remain');
+assert.ok(channels.includes('const target = new URL(`${apiBase}/integrations`)'),'Production integration lookup must remain');
+console.log('MW1 staging IA fails closed and disconnected channels use non-error snapshot, production untouched');
