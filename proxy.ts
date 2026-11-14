@@ -8,6 +8,7 @@ import { getAccessCapabilities } from './app/lib/access-capabilities';
 const PUBLIC_PATHS = new Set([
   '/login',
   '/inicio',
+  '/agendar-demo',
   '/precios',
   '/demo',
   '/integraciones',
