@@ -58,7 +58,9 @@ export default function LoginPage() {
         !destination.startsWith('//') && !destination.includes('\\\\') &&
         !destination.startsWith('/admin') && !destination.startsWith('/api/') &&
         !destination.startsWith('/login');
-      const safeDestination = allowedReturn ? destination : '/';
+      // The unified workspace is the default landing only in staging.
+      // Keep explicit return paths and existing production landing unchanged.
+      const safeDestination = allowedReturn ? destination : (staging && !platformLogin ? '/panel' : '/');
       router.replace(platformLogin && safeDestination==='/' ? '/admin' : safeDestination);
       router.refresh();
     } catch {
