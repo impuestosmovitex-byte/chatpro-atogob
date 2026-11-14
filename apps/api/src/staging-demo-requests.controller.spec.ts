@@ -12,6 +12,7 @@ describe('Isolated staging commercial demo intake',()=>{
     contactEmail:'pruebas@example.org',planInterest:'eco',
     visitorDigest:'b'.repeat(64),consent:true,
     businessSector:'moda',hasOnlineStore:'tienda',marketingConsent:false,
+    contactPhone:'+573001112233',
   };
   beforeEach(()=>{
     process.env.MW1_STAGING_MODE='true';
@@ -54,6 +55,13 @@ describe('Isolated staging commercial demo intake',()=>{
     }));
     expect(insert.mock.calls[0][0].internal_note).toContain('Sector: moda');
     expect(insert.mock.calls[0][0].internal_note).toContain('Presencia web: tienda');
+  });
+  test('requires a valid WhatsApp number for demo intake',async()=>{
+    await expect(controller.submit('internal-test-value',{...data,contactPhone:''}))
+      .rejects.toThrow(/WhatsApp/);
+    await expect(controller.submit('internal-test-value',{...data,contactPhone:'invalid-number'}))
+      .rejects.toThrow(/WhatsApp/);
+    expect(insert).not.toHaveBeenCalled();
   });
   test('rejects invalid qualification values without writing',async()=>{
     await expect(controller.submit('internal-test-value',{...data,businessSector:'injected'}))
