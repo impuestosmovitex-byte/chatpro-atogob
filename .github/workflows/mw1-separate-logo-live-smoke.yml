@@ -1,0 +1,36 @@
+name: MW1 deployed logo separation verification
+on:
+  push:
+    branches:
+      - feature/mw1-new-icon-internal-old-logo-public-20261114
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check public landing and original new logo route
+        run: |
+          node - <<'NODE'
+          (async()=>{
+            const base='https://mw1-web-staging-staging.up.railway.app';
+            const [logo,old,home,app]=await Promise.all([
+              fetch(base+'/media/logo-chatpro-azul-amarillo.png',{redirect:'manual'}),
+              fetch(base+'/media/mw1-official-logo.svg',{redirect:'manual'}),
+              fetch(base+'/inicio',{redirect:'manual'}),
+              fetch(base+'/',{redirect:'manual'})
+            ]);
+            if(logo.status!==200||!(logo.headers.get('content-type')||'').includes('image/png'))throw Error('new icon not served '+logo.status);
+            if((await logo.arrayBuffer()).byteLength!==1022951)throw Error('new uploaded icon bytes mismatch');
+            if(old.status!==200)throw Error('old public logo absent');
+            if(home.status!==200)throw Error('landing home error '+home.status);
+            if(!(await home.text()).includes('mw1-official-logo.svg'))throw Error('public page no longer uses original logo');
+            if(![200,301,302,303,307,308,401,403].includes(app.status))throw Error('workspace route error '+app.status);
+            console.log('PASS: original public logo, exact new PNG and protected workspace');
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
