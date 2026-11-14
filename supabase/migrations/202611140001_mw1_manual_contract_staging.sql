@@ -134,6 +134,9 @@ begin
   where company_id=p_company_id for update;
  select * into v_existing_entitlements from public.company_entitlements
   where company_id=p_company_id for update;
+ if v_existing_entitlements.max_users > v_users then
+   raise exception 'Activation cannot silently reduce existing seat capacity';
+ end if;
  if v_old is not null then
    if v_old->>'tier'<>p_tier then
      raise exception 'Plan switches require a separate reviewed migration process';
