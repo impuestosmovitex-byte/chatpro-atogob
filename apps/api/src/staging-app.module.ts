@@ -23,6 +23,7 @@ import { IntegrationCredentialsService } from './integration-credentials.service
 import { StagingWhatsappWebhookController } from './staging-whatsapp-webhook.controller';
 import { StagingInstagramWebhookController } from './staging-instagram-webhook.controller';
 import { UsersController } from './users.controller';
+import { RolesController } from './roles.controller';
 import { StagingMyPlanController } from './staging-my-plan.controller';
 import { StagingSubscriptionAdminController } from './staging-subscription-admin.controller';
 import { StagingSalesAssistantController, StagingSalesAssistantService } from './staging-sales-assistant.controller';
@@ -50,6 +51,8 @@ class StagingHealthController {
     StagingWhatsappWebhookController,
     StagingInstagramWebhookController,
     UsersController,
+    // Reuse the secured tenant role reader; staging writes are explicitly denied.
+    RolesController,
     StagingMyPlanController,
     StagingSubscriptionAdminController,
     AccessController,
