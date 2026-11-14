@@ -1,0 +1,33 @@
+name: MW1 premium inbox visual-only safety gate
+on:
+  push:
+    branches:
+      - feature/mw1-premium-inbox-ui-advisor-safe-20261114
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Visual-only scope assertions
+        run: |
+          grep -q 'src="/media/mw1-official-logo.svg"' app/components/AppSidebar.tsx
+          grep -q 'MW1 premium inbox preview' app/globals.css
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Build Next.js
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Unified access regression
+        run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - name: Signed sessions regression
+        run: node scripts/test-mw1-signed-workspace-http.cjs
