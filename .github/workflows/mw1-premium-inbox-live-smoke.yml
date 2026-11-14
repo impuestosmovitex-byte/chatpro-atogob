@@ -1,0 +1,32 @@
+name: MW1 premium inbox deployed smoke (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-premium-inbox-ui-advisor-safe-20261114
+permissions:
+  contents: read
+jobs:
+  public-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify actual staging logo and guarded CRM
+        run: |
+          node - <<'NODE'
+          (async()=>{
+            const base='https://mw1-web-staging-staging.up.railway.app';
+            const logo=await fetch(base+'/media/mw1-official-logo.svg',{redirect:'manual'});
+            if(logo.status!==200)throw Error('Official logo HTTP '+logo.status);
+            const svg=await logo.text();
+            if(!svg.includes('ChatPro MW1'))throw Error('Wrong logo');
+            const inbox=await fetch(base+'/',{redirect:'manual'});
+            if(![200,301,302,303,307,308,401,403].includes(inbox.status))throw Error('Inbox HTTP '+inbox.status);
+            const admin=await fetch(base+'/admin/prospectos',{redirect:'manual'});
+            if(![301,302,303,307,308,401,403].includes(admin.status))throw Error('Super Admin guard HTTP '+admin.status);
+            console.log('PASS official asset and protected workspace access');
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
