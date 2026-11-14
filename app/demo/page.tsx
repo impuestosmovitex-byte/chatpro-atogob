@@ -4,7 +4,7 @@ import {
   ProductPreview,
 } from "../components/marketing/MarketingHeader";
 import styles from "../components/marketing/marketing.module.css";
-import {DemoRequestForm} from "./DemoRequestForm";
+import {DemoVisuals} from "./DemoVisuals";
 
 export default function DemoPage() {
   return (
@@ -23,6 +23,8 @@ export default function DemoPage() {
         <ProductPreview />
       </section>
 
+      <DemoVisuals />
+
       <section className={styles.section}>
         <div className={styles.demoGrid}>
           <article className={styles.demoMain}>
@@ -36,12 +38,11 @@ export default function DemoPage() {
           </article>
 
           <article id="agendar-demostracion" className={styles.demoCard} style={{scrollMarginTop:110}}>
-            <h3>Agendar una demostración de MW1</h3>
-            <p>Primero conocemos tu negocio y te mostramos MW1. Si decides contratar, recibirás las instrucciones de pago por un enlace seguro y te acompañaremos en la configuración de canales, usuarios e IA.</p>
-            {process.env.MW1_STAGING_MODE==='true'?<DemoRequestForm/>:
-              <p>Las solicitudes en línea se habilitarán cuando finalicemos las pruebas de seguridad y privacidad.</p>}
+            <h3>Solicitar una demostración de MW1</h3>
+            <p>Completa un formulario breve. El equipo comercial continuará el contacto y te explicará los siguientes pasos.</p>
+            
             <div style={{ marginTop: 22, display:'flex', gap:12, flexWrap:'wrap', alignItems:'center' }}>
-              <Link href="/precios" className={styles.primaryButton}>Consultar planes y acompañamiento</Link>
+              <Link href="/agendar-demo" className={styles.primaryButton}>Solicitar una reunión</Link>
               <Link href="/login" className={styles.secondaryButton}>Ya soy cliente</Link>
             </div>
           </article>
