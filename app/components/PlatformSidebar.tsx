@@ -28,7 +28,7 @@ export function PlatformSidebar(){
  return <aside style={{position:'fixed',left:0,top:0,bottom:0,zIndex:20,width:176,
   display:'flex',flexDirection:'column',background:'#fffaf0',color:'#172235',padding:'22px 11px',
   boxSizing:'border-box',overflowY:'auto'}}>
-  <Link href="/admin" style={{padding:'9px 12px 18px',fontSize:23,fontWeight:900,textDecoration:'none',color:'#172235'}}>MW1</Link>
+  <Link href="/admin" aria-label="MW1 — Super Admin" style={{display:"flex",alignItems:"center",justifyContent:"center",height:82,padding:"0 12px 12px",textDecoration:"none",overflow:"hidden"}}><img src="/media/logo-chatpro-azul-amarillo.png" alt="Icono ChatPro MW1" width={100} height={100} style={{width:100,height:100,objectFit:"contain",transform:"scale(1.4)"}} /></Link>
   <div style={{fontSize:10,letterSpacing:'0.13em',fontWeight:900,padding:'0 12px 14px',color:'#886b11'}}>PLATAFORMA · SUPERADMIN</div>
   <nav aria-label="Administración global MW1" style={{display:'grid',gap:6}}>
    {links.map(item=><Link key={item.href} href={item.href} style={{
