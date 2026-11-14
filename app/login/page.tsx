@@ -26,6 +26,7 @@ export default function LoginPage() {
       const data = (await response.json()) as {
         ok?: boolean;
         error?: string;
+        unifiedPanelEnabled?: boolean;
       };
 
       if (!response.ok || !data.ok) {
@@ -34,9 +35,9 @@ export default function LoginPage() {
       }
 
       const destination = new URLSearchParams(window.location.search).get('next');
-      router.replace(
-        destination && destination.startsWith('/') ? destination : '/',
-      );
+      const safeReturn = destination && destination.startsWith('/') &&
+        !destination.startsWith('//') && !destination.includes('\\\\');
+      router.replace(safeReturn ? destination : (data.unifiedPanelEnabled ? '/panel' : '/'));
       router.refresh();
     } catch {
       setError('No se pudo conectar con Chat Pro MW1. Intenta nuevamente.');

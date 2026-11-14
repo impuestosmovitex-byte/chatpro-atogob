@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isUnifiedPanelEnabled } from '../../../lib/unified-panel-rollout';
 import {
   createInboxSessionToken,
   INBOX_SESSION_COOKIE,
@@ -62,7 +63,10 @@ function companyFrom(body: LoginBody): string {
 }
 
 function responseWithSession(session: Omit<ChatProSession, 'expiresAt'>) {
-  const response = NextResponse.json({ ok: true });
+  const response = NextResponse.json({
+    ok: true,
+    unifiedPanelEnabled: session.type === 'user' && isUnifiedPanelEnabled(session.companySlug),
+  });
 
   response.cookies.set({
     name: INBOX_SESSION_COOKIE,
