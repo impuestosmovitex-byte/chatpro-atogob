@@ -30,17 +30,17 @@ export default function PorQuePage(){
    <div className={styles.intro}>
     <p className={styles.kicker}>Conoce MW1 en 90 segundos</p>
     <h2 id="video-mw1">Así funciona MW1, de la primera conversación al seguimiento.</h2>
-    <p>Estamos preparando el video oficial. Por ahora, este recorrido describe lo que se mostrará, sin simular que ya existe una grabación.</p>
+    <p>Descubre cómo MW1 puede ayudarte a organizar la atención, automatizar tareas y dar seguimiento a tus clientes.</p>
    </div>
-   <div className={styles.videoPlaceholder} role="group" aria-label="Guion del próximo video explicativo de MW1">
-    <div className={styles.videoBadge}>VIDEO EN PREPARACIÓN · 60–90 SEGUNDOS</div>
+   <div className={styles.videoPlaceholder} role="group" aria-label="Cómo funciona MW1">
+    
     <div className={styles.videoMark}>MW1</div>
     <p>Una bandeja. Tu equipo. Más contexto para atender.</p>
     <ol className={styles.videoChapters}>
      <li>Mensajes dispersos</li><li>Bandeja unificada</li><li>Respuestas con IA</li>
      <li>Intervención del asesor</li><li>Clientes y estadísticas</li><li>Solicita tu demo</li>
     </ol>
-    <Link href="/agendar-demo" className={marketing.primaryButton}>Quiero conocer MW1</Link>
+    <Link href="/agendar-demo" className={marketing.primaryButton}>Solicitar una demostración ahora</Link>
    </div>
   </section>
   <section className={styles.hero}>

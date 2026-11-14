@@ -4,10 +4,14 @@
 .caption{font-size:12px!important;color:#6a7588;line-height:1.55}
 .consent{display:flex;align-items:flex-start;gap:10px;font-size:12px;line-height:1.5;color:#4a5569}
 .consent input{margin-top:3px}
-.form button{border:0;background:#172235;color:white;font-weight:800;padding:13px 16px;border-radius:10px;cursor:pointer}
+.form button{border:0;background:#ffc400;color:#152034;font-weight:800;padding:13px 16px;border-radius:10px;cursor:pointer}
 .form button:disabled{opacity:.55;cursor:not-allowed}
 .error{font-size:12px!important;color:#a62626}
-.success{background:#f0faf3;border:1px solid #a8dfb8;border-radius:11px;padding:17px;color:#1d5534;line-height:1.6}
+.success{background:linear-gradient(145deg,#14223d 0%,#0b1934 100%);border:1px solid #263a60;border-radius:18px;padding:34px 28px;color:#fff;line-height:1.65;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 45px rgba(13,27,54,.18)}
+.success strong{font-size:clamp(24px,3vw,35px);line-height:1.15;letter-spacing:-.035em;color:#fff}
+.success p{font-size:15px;line-height:1.75;color:#e1e9f6;margin:0}
+.successEyebrow{color:#ffcf3f;font-size:11px;font-weight:900;letter-spacing:.12em}
+.successFooter{display:block;border-top:1px solid rgba(255,255,255,.2);margin-top:5px;padding-top:15px;color:#ffcf3f;font-weight:700;font-size:12px}
 .hidden{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}
 
 .optional{border:1px solid #e1e7f0;border-radius:11px;padding:12px 14px;background:#fbfcff}.optional summary{cursor:pointer;font-size:13px;font-weight:800;color:#172235}.optional[open]{display:grid;gap:13px}.optional[open] summary{margin-bottom:2px}
