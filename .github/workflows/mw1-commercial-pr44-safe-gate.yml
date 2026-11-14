@@ -1,0 +1,29 @@
+name: MW1 commercial refinements on latest unified web (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-commercial-copy-on-pr44-20261114
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Build website
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Unified owner/advisor authorization
+        run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - name: Signed workspace isolation
+        run: node scripts/test-mw1-signed-workspace-http.cjs
