@@ -41,6 +41,6 @@ jobs:
           cache-dependency-path: apps/api/package-lock.json
       - run: npm ci
       - name: Commercial demo intake unit tests
-        run: npx jest --runInBand staging-demo-requests.controller.spec.ts
+        run: npx jest --runInBand staging-demo-requests.controller.spec.ts platform-demo-followup.spec.ts
       - name: NestJS application compilation (excludes unrelated legacy specs)
         run: npx nest build
