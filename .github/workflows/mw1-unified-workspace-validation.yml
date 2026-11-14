@@ -45,3 +45,5 @@ jobs:
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+      - name: Authenticated owner/advisor HTTP integration with disposable signed sessions and mock API
+        run: node scripts/test-mw1-signed-workspace-http.cjs
