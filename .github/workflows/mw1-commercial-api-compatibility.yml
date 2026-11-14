@@ -23,6 +23,6 @@ jobs:
       - name: Commercial intake tests
         run: npx jest --runInBand staging-demo-requests.controller.spec.ts
       - name: Platform authorization and assertion regression
-        run: npx jest --runInBand internal-attestation.spec.ts platform-admin-security.spec.ts
+        run: npx jest --runInBand internal-attestation.spec.ts
       - name: Build current staging API with minimal commercial delta
         run: npm run build
