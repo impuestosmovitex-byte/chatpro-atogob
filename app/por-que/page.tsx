@@ -38,7 +38,7 @@ export default function PorQuePage(){
     <p>Una bandeja. Tu equipo. Más contexto para atender.</p>
     <ol className={styles.videoChapters}>
      <li>Mensajes dispersos</li><li>Bandeja unificada</li><li>Respuestas con IA</li>
-     <li>Intervención del asesor</li><li>Clientes y estadísticas</li><li>Agenda tu demo</li>
+     <li>Intervención del asesor</li><li>Clientes y estadísticas</li><li>Solicita tu demo</li>
     </ol>
     <Link href="/agendar-demo" className={marketing.primaryButton}>Quiero conocer MW1</Link>
    </div>
@@ -50,7 +50,7 @@ export default function PorQuePage(){
     <p className={styles.lead}>MW1 es una plataforma diseñada para integrar, gestionar y controlar los mensajes y canales de comunicación de tu empresa desde un solo lugar.</p>
     <p className={styles.sublead}>Centraliza la atención, organiza a tus asesores y apóyate en inteligencia artificial para que las conversaciones no dependan de que estés conectado todo el día.</p>
     <div className={styles.actions}>
-     <Link href="/agendar-demo" className={marketing.primaryButton}>Agendar una demostración ↗</Link>
+     <Link href="/agendar-demo" className={marketing.primaryButton}>Solicitar una demostración ↗</Link>
      <Link href="/precios" className={marketing.secondaryButton}>Conocer los planes</Link>
     </div>
     <span className={styles.heroDisclaimer}>Disponibilidad según plan, canales conectados y configuración. MW1 apoya a tu equipo; no garantiza ventas ni resultados comerciales específicos.</span>
