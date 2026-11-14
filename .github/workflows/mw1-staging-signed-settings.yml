@@ -1,0 +1,35 @@
+name: MW1 staging signed AI settings Web integration (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-staging-signed-ai-settings-20261114
+permissions:
+  contents: read
+jobs:
+  signed-settings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Verify signed staging AI requests and write lock
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs'), assert=require('node:assert/strict');
+          const route=fs.readFileSync('app/api/settings/route.ts','utf8');
+          const ui=fs.readFileSync('app/configuracion/ia/page.tsx','utf8');
+          assert.ok(route.includes('signInternalAttestation({') && route.includes("path: '/settings'"));
+          assert.ok(route.includes("if (process.env.MW1_STAGING_MODE === 'true') {") &&
+            route.includes("return forbidden('Los ajustes de IA están disponibles en modo consulta en staging.')"));
+          assert.ok(ui.includes('stagingReadOnly || hasExceededInstructionLimits'));
+          assert.ok(ui.includes('modo consulta'));
+          NODE
+      - name: Verify unchanged Next Web builds
+        run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
