@@ -6,6 +6,11 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const page = fs.readFileSync('app/panel/page.tsx', 'utf8');
+const gateway = fs.readFileSync('proxy.ts', 'utf8');
+const advisorPages = gateway.match(/const ADVISOR_ALLOWED_PAGES = \[([\s\S]*?)\];/);
+assert.ok(advisorPages && advisorPages[1].includes("'/panel'"), 'Advisor must be allowed to open unified panel');
+const advisorApis = gateway.match(/const ADVISOR_ALLOWED_APIS = \[([\s\S]*?)\];/);
+assert.ok(advisorApis && !advisorApis[1].includes("'/api/platform-admin'"), 'Unified panel must not grant platform APIs to advisors');
 const extracted = page.match(/function buildModules\(workspace: WorkspaceState\): Module\[\] \{[\s\S]*?\n\}\n\nexport default function UnifiedWorkspacePage/);
 assert.ok(extracted, 'Missing unified workspace role-aware module selector');
 const source = extracted[0].replace(/\n\nexport default function UnifiedWorkspacePage$/, '');
@@ -29,4 +34,4 @@ for(const label of ['Equipo y roles','Integraciones','Mi plan','Pedidos','Catál
 const otherTenant=expectedModuleLabels({inbox:false,clients:true},'owner',false,'piloto-mw1-prueba');
 assert.equal(otherTenant.includes('Bandeja omnicanal'),false,'A company slug cannot confer inbox permission');
 assert.equal(otherTenant.includes('Clientes'),true,'Positive entitlement should remain available');
-console.log('MW1 unified workspace role checks: 5 cases passed (owner, advisor, denied, non-manager, tenant-neutral).');
+console.log('MW1 unified workspace role checks: 6 cases passed (owner, advisor, denied, non-manager, tenant-neutral, middleware).');
