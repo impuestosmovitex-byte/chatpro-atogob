@@ -181,6 +181,16 @@ async function run(){
       assert.equal(r.status,403,key+' cannot access platform admin');
       console.log('PASS synthetic authenticated '+key+' in '+companyA.slug);
     }
+    // Simulate membership revocation after a previously valid signed cookie.
+    // The Web must consult current permissions from the API on each staging session read.
+    const revokedOwnerCookie = signedCookie(actors.owner);
+    actorById.delete(actors.owner.userId);
+    r=await get('/api/auth/session',revokedOwnerCookie);
+    assert.equal(r.status,403,'Signed cookie for revoked owner must be rejected');
+    r=await get('/api/auth/session',signedCookie(actors.advisor));
+    assert.equal(r.status,200,'Other still-active advisor session remains valid');
+    console.log('PASS stale signed owner session rejected by current API membership');
+
     const cookie=signedCookie(actors.restricted);
     r=await get('/panel',cookie);assert.equal(r.status,200);
     r=await get('/api/auth/capabilities',cookie);
