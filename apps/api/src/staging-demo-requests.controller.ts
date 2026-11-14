@@ -47,7 +47,7 @@ export class StagingDemoRequestsController {
     const marketingConsent=data.marketingConsent===true;
     const acceptedSectors=new Set(['moda','retail','servicios','educacion','salud','restaurantes','otro']);
     const acceptedWebOptions=new Set(['tienda','web','no']);
-    if(!isTrial&&(!acceptedSectors.has(businessSector)||!acceptedWebOptions.has(hasOnlineStore)))
+    if(!isTrial&&((businessSector&&!acceptedSectors.has(businessSector))||(hasOnlineStore&&!acceptedWebOptions.has(hasOnlineStore))))
       throw new BadRequestException('Indica el sector y si tienes tienda virtual.');
     if((!isTrial&&!contactPhone)||(contactPhone&&!/^\+?[0-9]{7,19}$/.test(contactPhone)))
       throw new BadRequestException('El WhatsApp de contacto no es válido.');
@@ -93,8 +93,8 @@ export class StagingDemoRequestsController {
       // No se crean columnas ni se envían mensajes. Migrar a campos propios
       // solo después de autorización y revisión de seguridad.
       ...(!isTrial?{internal_note:[
-        `Sector: ${businessSector}`,
-        `Presencia web: ${hasOnlineStore}`,
+        `Sector: ${businessSector||'No indicado'}`,
+        `Presencia web: ${hasOnlineStore||'No indicada'}`,
         `Consentimiento para novedades MW1: ${marketingConsent?'Sí':'No'}`,
         `Consentimiento de contacto para demo: Sí`,
       ].join(' | ')}:{}),
