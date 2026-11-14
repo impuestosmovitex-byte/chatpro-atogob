@@ -1,0 +1,23 @@
+name: MW1 commercial full-resolution image and automation UI (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-original-hero-automations-ui-20261114
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: node scripts/test-mw1-staging-automations-ui-state.cjs
+      - run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
