@@ -44,10 +44,10 @@ export function HeroMedia() {
   return (
     <div className={styles.heroMedia}>
       <Image
-        src="/media/mw1-hero.webp"
-        alt="Emprendedora mostrando MW1 en la pantalla de su computador portátil"
-        width={1042}
-        height={850}
+        src="/media/mw1-hero-uploaded.png"
+        alt="Emprendedora con camiseta negra mostrando MW1 en la pantalla de su computador"
+        width={1448}
+        height={1086}
         className={styles.heroPhotoReal}
         priority
         unoptimized
