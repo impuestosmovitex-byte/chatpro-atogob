@@ -9,6 +9,7 @@ async function request(path,opts={}){
   const checks=[
     ['/inicio',['ChatPro MW1','Solicitar demostración']],
     ['/por-que',['video','MW1']],
+    ['/precios',['Planes','MW1']],
     ['/demo',['Bandeja omnicanal','MW1']],
     ['/integraciones',['Integraciones']],
     ['/agendar-demo',['WhatsApp','Enviar solicitud de demostración']],
