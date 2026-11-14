@@ -94,6 +94,15 @@ export class AccessController {
     if(await this.isPlatformAdmin(userId))
       throw new UnauthorizedException('La administración de plataforma no es una cuenta de empresa.');
 
+    // A valid session can outlive an administrator's profile deactivation.
+    // Never list tenant access for a currently disabled user.
+    const { data: activeProfile, error: profileError } =
+      await this.supabaseService.getClient().from('app_profiles')
+        .select('active').eq('user_id', userId).maybeSingle();
+    if (profileError || activeProfile?.active !== true) {
+      throw new UnauthorizedException('Usuario inactivo o sin acceso.');
+    }
+
     const { data: membershipData, error: membershipError } =
       await this.supabaseService
         .getClient()
@@ -210,11 +219,11 @@ export class AccessController {
     const { data: profileData, error: profileError } = await this.supabaseService
       .getClient()
       .from('app_profiles')
-      .select('user_id, full_name')
+      .select('user_id, full_name, active')
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (profileError || !profileData) {
+    if (profileError || profileData?.active !== true) {
       throw new UnauthorizedException(
         profileError?.message || 'No se pudo validar el usuario.',
       );
