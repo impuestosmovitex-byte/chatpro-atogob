@@ -27,7 +27,7 @@ jobs:
           const assert = require('node:assert/strict');
           const base='https://mw1-web-staging-staging.up.railway.app';
           const targets=[
-            ['/panel',200],
+            ['/panel',307],
             ['/api/auth/session',401],
             ['/api/auth/capabilities',401],
             ['/api/clients',401],
