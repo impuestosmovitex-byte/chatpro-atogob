@@ -49,6 +49,7 @@ type Execution = {
 type ResponseData = {
   ok?: boolean;
   error?: string;
+  code?: string;
   message?: string;
   company?: { name?: string };
   automations?: Automation[];
@@ -182,6 +183,7 @@ export default function AutomationsPage() {
   const [testPhones, setTestPhones] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [stagingUnavailable, setStagingUnavailable] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -193,11 +195,20 @@ export default function AutomationsPage() {
       });
       const data = (await response.json()) as ResponseData;
 
+      if (data.code === 'STAGING_AUTOMATIONS_UNAVAILABLE') {
+        setStagingUnavailable(true);
+        setAutomations([]);
+        setExecutions([]);
+        return;
+      }
+
       if (!response.ok || !data.ok) {
         throw new Error(
           data.error || 'No se pudieron cargar las automatizaciones.',
         );
       }
+
+      setStagingUnavailable(false);
 
       setCompanyName(data.company?.name || 'Empresa');
       setAutomations(data.automations || []);
@@ -471,6 +482,18 @@ export default function AutomationsPage() {
           </div>
         </section>
 
+        {stagingUnavailable ? (
+          <section className={styles.empty} role="status" aria-live="polite">
+            <strong>Automatizaciones no disponibles en este entorno de pruebas.</strong>
+            <p>
+              La base aislada de staging no contiene el historial ni los flujos
+              productivos. Las automatizaciones de ATOGOB y MAOGO continúan
+              funcionando en su CRM actual, sin modificaciones.
+            </p>
+            <p>No se muestran cifras ni controles de envío porque no se han consultado datos reales.</p>
+          </section>
+        ) : (
+          <>
         <section className={styles.metrics}>
           <article>
             <span>Activas</span>
@@ -750,6 +773,8 @@ export default function AutomationsPage() {
             </div>
           )}
         </section>
+          </>
+        )}
       </section>
     </main>
   );
