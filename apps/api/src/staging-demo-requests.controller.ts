@@ -42,6 +42,13 @@ export class StagingDemoRequestsController {
     const contactPhone=clean(data.contactPhone,20).replace(/[\s()-]/g,'');
     const whatsappSetup=clean(data.whatsappSetup,24);
     const isTrial=requestType==='trial';
+    const businessSector=clean(data.businessSector,40);
+    const hasOnlineStore=clean(data.hasOnlineStore,20);
+    const marketingConsent=data.marketingConsent===true;
+    const acceptedSectors=new Set(['moda','retail','servicios','educacion','salud','restaurantes','otro']);
+    const acceptedWebOptions=new Set(['tienda','web','no']);
+    if(!isTrial&&(!acceptedSectors.has(businessSector)||!acceptedWebOptions.has(hasOnlineStore)))
+      throw new BadRequestException('Indica el sector y si tienes tienda virtual.');
     if(contactPhone&&!/^\+?[0-9]{7,19}$/.test(contactPhone))
       throw new BadRequestException('El WhatsApp de contacto no es válido.');
     if(isTrial&&!['inicial','pro'].includes(legacyPlanKey))
@@ -82,6 +89,15 @@ export class StagingDemoRequestsController {
       visitor_digest:visitorDigest,consent_at:new Date().toISOString(),
       status:'new',source:isTrial?'web_trial':'web_demo',
       requested_users:requestedUsers,requested_connections:requestedConnections,
+      // Se aprovecha temporalmente el campo privado de notas ya existente.
+      // No se crean columnas ni se envían mensajes. Migrar a campos propios
+      // solo después de autorización y revisión de seguridad.
+      ...(!isTrial?{internal_note:[
+        `Sector: ${businessSector}`,
+        `Presencia web: ${hasOnlineStore}`,
+        `Consentimiento para novedades MW1: ${marketingConsent?'Sí':'No'}`,
+        `Consentimiento de contacto para demo: Sí`,
+      ].join(' | ')}:{}),
       ...(contactPhone?{contact_phone:contactPhone}:{}),
       ...(isTrial?{whatsapp_setup:whatsappSetup,trial_requested_days:14}:{}),
     });
