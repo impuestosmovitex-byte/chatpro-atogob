@@ -22,14 +22,14 @@ function expectedModuleLabels(permissions, role, commerce, companySlug='mw1-demo
 }
 const allowed={inbox:true,clients:true,statistics:true,automations:true,configuration:true};
 const owner=expectedModuleLabels(allowed,'owner',true);
-for(const label of ['Bandeja omnicanal','Clientes','Estadísticas','Automatizaciones','Asistente de IA','Equipo y roles','Integraciones','Mi plan','Pedidos','Catálogo'])
+for(const label of ['Bandeja omnicanal','Clientes','Estadísticas','Automatizaciones','Asistente de IA','Usuarios y asesores','Canales e integraciones','Mi plan','Pedidos','Catálogo'])
   assert.ok(owner.includes(label), 'Owner must see authorised module: '+label);
 const advisor=expectedModuleLabels({inbox:true,clients:true},'seg003_qa_inbox',false);
 assert.deepEqual(Array.from(advisor), ['Bandeja omnicanal','Clientes']);
 const restricted=expectedModuleLabels({},'advisor',false,'piloto-mw1-prueba');
 assert.equal(restricted.length,0,'Advisor without grants must see no business modules');
 const advisorWithConfig=expectedModuleLabels({...allowed},'advisor',true);
-for(const label of ['Equipo y roles','Integraciones','Mi plan','Pedidos','Catálogo'])
+for(const label of ['Usuarios y asesores','Canales e integraciones','Mi plan','Pedidos','Catálogo'])
   assert.equal(advisorWithConfig.includes(label),false,'Non-manager must not see '+label);
 const maogoOwner=expectedModuleLabels({clients:true},'owner',false,'emprende-con-maogo');
 assert.ok(maogoOwner.includes('Leads MAOGO'),'MAOGO owner retains existing leads module');
@@ -40,6 +40,23 @@ assert.ok(page.includes('accessPayload.ok === true && accessPayload.enabled === 
 const loginSource=fs.readFileSync('app/login/page.tsx','utf8');
 assert.ok(loginSource.includes("allowedReturn ? destination : (staging && !platformLogin ? '/panel' : '/')"),
   'Staging company login should default to unified workspace while preserving return paths and production login');
+const managerModules=expectedModuleLabels(allowed,'owner',false);
+for (const label of ['Asistente de IA','Configuración de IA','Configuración','Usuarios y asesores','Roles y permisos','Canales e integraciones','Mi plan']) {
+  assert.ok(managerModules.includes(label), 'Manager must access pre-existing module: '+label);
+}
+const advisorAdministrative=expectedModuleLabels({...allowed},'advisor',false);
+for (const label of ['Asistente de IA','Configuración de IA','Configuración','Usuarios y asesores','Roles y permisos','Canales e integraciones']) {
+  assert.equal(advisorAdministrative.includes(label),false,'Advisor must not get middleware-blocked administrative module: '+label);
+}
+assert.equal(managerModules.includes('Administración de empresas'),false,
+  'Platform superadmin must not be linked from a tenant session');
+const sidebarCompanySwitch=fs.readFileSync('app/components/AppSidebar.tsx','utf8');
+assert.ok(sidebarCompanySwitch.includes("window.location.hostname === 'mw1-web-staging-staging.up.railway.app'") &&
+  sidebarCompanySwitch.includes("? '/panel'") && sidebarCompanySwitch.includes(": '/'"),
+  'Staging tenant switch returns to unified panel but production retains old landing');
+const routeChecks=['app/ia/page.tsx','app/configuracion/ia/page.tsx','app/usuarios/page.tsx',
+  'app/usuarios/roles/page.tsx','app/configuracion/integraciones/page.tsx','app/admin/empresas/page.tsx'];
+for(const route of routeChecks)assert.ok(fs.existsSync(route),'Reused existing module page must exist: '+route);
 const otherTenant=expectedModuleLabels({inbox:false,clients:true},'owner',false,'piloto-mw1-prueba');
 assert.equal(otherTenant.includes('Bandeja omnicanal'),false,'A company slug cannot confer inbox permission');
 assert.equal(otherTenant.includes('Clientes'),true,'Positive entitlement should remain available');

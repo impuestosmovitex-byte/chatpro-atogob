@@ -39,14 +39,17 @@ function buildModules(workspace: WorkspaceState): Module[] {
   if (c.clients && management && session.companySlug === 'emprende-con-maogo') modules.push({ label: 'Leads MAOGO', href: '/leads', description: 'Acceso al módulo de prospectos ya existente de MAOGO.', category: 'Atención' });
   if (c.statistics) modules.push({ label: 'Estadísticas', href: '/estadisticas', description: 'Indicadores de la empresa activa.', category: 'Seguimiento' });
   if (c.automations) modules.push({ label: 'Automatizaciones', href: '/automatizaciones', description: 'Flujos existentes de la empresa, sin crear conexiones nuevas.', category: 'Seguimiento' });
-  if (c.configuration) {
-    modules.push({ label: 'Asistente de IA', href: '/ia', description: 'Configuración y herramientas de IA ya existentes.', category: 'Administración' });
-    modules.push({ label: 'Configuración', href: '/configuracion', description: 'Identidad, horarios, áreas y ajustes de la empresa.', category: 'Administración' });
-    if (management) {
-      modules.push({ label: 'Equipo y roles', href: '/usuarios', description: 'Acceso a la administración existente de usuarios.', category: 'Administración' });
-      modules.push({ label: 'Integraciones', href: '/configuracion/integraciones', description: 'Consulta de conexiones; no se reconectan canales.', category: 'Administración' });
-      modules.push({ label: 'Mi plan', href: '/configuracion/mi-plan', description: 'Ver plan y condiciones disponibles; sin activar cobros.', category: 'Administración' });
-    }
+  // SEG-003: advisors may hold a granular configuration entitlement,
+  // but the existing configuration pages and their APIs require a manager.
+  // Never advertise links that the middleware will reject.
+  if (c.configuration && management) {
+    modules.push({ label: 'Asistente de IA', href: '/ia', description: 'Abrir el módulo de IA existente de esta empresa.', category: 'Administración' });
+    modules.push({ label: 'Configuración de IA', href: '/configuracion/ia', description: 'Ajustar el asistente existente sin recrear instrucciones ni datos.', category: 'Administración' });
+    modules.push({ label: 'Configuración', href: '/configuracion', description: 'Identidad, horarios, áreas y ajustes actuales de la empresa.', category: 'Administración' });
+    modules.push({ label: 'Usuarios y asesores', href: '/usuarios', description: 'Administrar usuarios existentes de la empresa activa.', category: 'Administración' });
+    modules.push({ label: 'Roles y permisos', href: '/usuarios/roles', description: 'Consultar y administrar roles autorizados en el módulo existente.', category: 'Administración' });
+    modules.push({ label: 'Canales e integraciones', href: '/configuracion/integraciones', description: 'Ver conexiones de WhatsApp, Instagram y Messenger existentes, sin reconectarlas.', category: 'Administración' });
+    modules.push({ label: 'Mi plan', href: '/configuracion/mi-plan', description: 'Ver plan vigente sin iniciar cobros.', category: 'Administración' });
   }
   if (commerce && management) {
     modules.push({ label: 'Pedidos', href: '/pedidos', description: 'Módulo opcional sujeto a la habilitación existente.', category: 'Comercio opcional' });
