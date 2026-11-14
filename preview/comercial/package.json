@@ -1,0 +1,9 @@
+{
+  "name": "mw1-commercial-static-preview",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}
