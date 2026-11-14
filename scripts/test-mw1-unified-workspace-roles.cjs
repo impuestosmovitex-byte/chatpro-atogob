@@ -34,4 +34,18 @@ for(const label of ['Equipo y roles','Integraciones','Mi plan','Pedidos','Catál
 const otherTenant=expectedModuleLabels({inbox:false,clients:true},'owner',false,'piloto-mw1-prueba');
 assert.equal(otherTenant.includes('Bandeja omnicanal'),false,'A company slug cannot confer inbox permission');
 assert.equal(otherTenant.includes('Clientes'),true,'Positive entitlement should remain available');
-console.log('MW1 unified workspace role checks: 6 cases passed (owner, advisor, denied, non-manager, tenant-neutral, middleware).');
+const inboxRoute=fs.readFileSync('app/api/inbox/route.ts','utf8');
+const inboxUi=fs.readFileSync('app/page.tsx','utf8');
+assert.ok(inboxRoute.includes("path:sessionId?'/inbox/:sessionId':'/inbox'"),
+  'Synthetic detail route must sign the canonical API path');
+assert.ok(inboxRoute.includes("request.nextUrl.searchParams.has('mode')"),
+  'Transfer-targets must stay blocked in staging');
+assert.ok(inboxRoute.includes("if (process.env.MW1_STAGING_MODE === 'true') {") &&
+  inboxRoute.includes("El envío de mensajes aún no está habilitado"),
+  'Staging write actions must remain disabled');
+assert.ok(inboxUi.includes('stagingReadOnly: data.stagingReadOnly === true'),
+  'Client must propagate read-only result from API');
+assert.ok(inboxUi.includes('selected.stagingReadOnly ? (') &&
+  inboxUi.includes('Los envíos, las transferencias y los cambios de estado permanecen desactivados.'),
+  'A synthetic conversation must not display the normal reply composer');
+console.log('MW1 unified workspace role checks: 11 checks passed (owner, advisor, denied, non-manager, tenant-neutral, middleware).');
