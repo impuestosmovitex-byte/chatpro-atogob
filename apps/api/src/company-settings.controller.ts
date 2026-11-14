@@ -1,6 +1,7 @@
 
 import {
   BadRequestException,
+  ForbiddenException,
   Body,
   Controller,
   Get,
@@ -9,6 +10,9 @@ import {
   Query,
   UnauthorizedException,
 } from '@nestjs/common';
+import { TenantAdminAuthorization } from './tenant-admin-authorization';
+import { verifyInternalAttestation } from './internal-attestation';
+import { SupabaseService } from './supabase.service';
 import {
   ConversationMemoryService,
   type CompanyProfile,
@@ -454,14 +458,27 @@ function validateSettingsTextLimits(body: SettingsBody) {
 export class CompanySettingsController {
   constructor(
     private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly supabaseService: SupabaseService,
   ) {}
 
   @Get()
   async getSettings(
     @Headers('x-chatpro-inbox-key') accessKey: string | undefined,
     @Query('company') company: string | undefined,
+    @Headers('x-chatpro-user-id') actorUserId = '',
+    @Headers('x-chatpro-session-type') actorSessionType = '',
+    @Headers('x-chatpro-company-id') actorCompanyId = '',
+    @Headers('x-mw1-internal-assertion') identityAssertion = '',
   ) {
     this.requireAccess(accessKey);
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      await new TenantAdminAuthorization(this.supabaseService)
+        .assertCurrentManager(actorUserId, actorSessionType, actorCompanyId, company ?? '');
+      verifyInternalAttestation(identityAssertion, {
+        kind: 'user', userId: actorUserId, companyId: actorCompanyId,
+        companySlug: company ?? '', method: 'GET', path: '/settings',
+      });
+    }
     const profile = await this.getProfile(company);
 
     return {
@@ -482,6 +499,8 @@ export class CompanySettingsController {
     @Body() body: SettingsBody,
   ) {
     this.requireAccess(accessKey);
+    if (process.env.MW1_STAGING_MODE === 'true')
+      throw new ForbiddenException('La edición de la IA no está habilitada en staging.');
     validateSettingsTextLimits(body);
 
     const slug = company?.trim().toLowerCase();

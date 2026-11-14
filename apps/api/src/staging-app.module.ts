@@ -23,6 +23,10 @@ import { IntegrationCredentialsService } from './integration-credentials.service
 import { StagingWhatsappWebhookController } from './staging-whatsapp-webhook.controller';
 import { StagingInstagramWebhookController } from './staging-instagram-webhook.controller';
 import { UsersController } from './users.controller';
+import { CompanySettingsController } from './company-settings.controller';
+import { ConversationMemoryService } from './conversation-memory.service';
+import { PushNotificationService } from './push-notification.service';
+import { ConversationEventsService } from './conversation-events.service';
 import { RolesController } from './roles.controller';
 import { StagingMyPlanController } from './staging-my-plan.controller';
 import { StagingSubscriptionAdminController } from './staging-subscription-admin.controller';
@@ -53,6 +57,8 @@ class StagingHealthController {
     UsersController,
     // Reuse the secured tenant role reader; staging writes are explicitly denied.
     RolesController,
+    // Reuse existing settings reader; its PUT is disabled for staging.
+    CompanySettingsController,
     StagingMyPlanController,
     StagingSubscriptionAdminController,
     AccessController,
@@ -63,7 +69,8 @@ class StagingHealthController {
     NativeCommerceController,
     StagingSalesAssistantController,
   ],
-  providers: [SupabaseService, IntegrationCredentialsService, AccessAuthService, StagingSalesAssistantService,
+  providers: [SupabaseService, PushNotificationService, ConversationEventsService, ConversationMemoryService,
+    IntegrationCredentialsService, AccessAuthService, StagingSalesAssistantService,
     StagingWhatsappCoexistenceOAuthHandshakeService,
     {provide:StagingWhatsappCoexistenceMetaCodeExchangeService,
       useFactory:()=>new StagingWhatsappCoexistenceMetaCodeExchangeService()},
