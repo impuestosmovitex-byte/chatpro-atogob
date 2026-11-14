@@ -15,6 +15,46 @@ export default function AssignmentDraftPage(){
  const [message,setMessage]=useState('');
  const [readiness,setReadiness]=useState<{commerciallyReady:boolean;reasons:string[]}|null>(null);
  const [busy,setBusy]=useState(false);
+ const [paymentReference,setPaymentReference]=useState('');
+ const [amountCop,setAmountCop]=useState('');
+ const [verifiedAt,setVerifiedAt]=useState('');
+ const [startsAt,setStartsAt]=useState('');
+ const [expiresAt,setExpiresAt]=useState('');
+ const [additionalUsers,setAdditionalUsers]=useState('0');
+ const [contractReason,setContractReason]=useState('');
+ const [verifiedChecked,setVerifiedChecked]=useState(false);
+ const [contract,setContract]=useState<{tier:string;expires_at:string;included_users:number;additional_users:number;status:string}|null>(null);
+ const [contractHistory,setContractHistory]=useState<Array<{id:string;action:string;actor_id:string;recorded_at:string}>>([]);
+ async function loadContract(id:string){
+  try{
+   const res=await fetch('/api/platform-admin/manual-company-contract?companyId='+encodeURIComponent(id),{cache:'no-store'});
+   if(!res.ok)return;
+   const data=await res.json();
+   if(data.ok){setContract(data.contract||null);setContractHistory(data.history||[]);}
+  }catch{/* Contract has not been enabled in this staging environment yet. */}
+ }
+ async function activateManualContract(){
+  if(!companyId||busy||!verifiedChecked)return;
+  if(!window.confirm('¿Confirmas que verificaste personalmente el pago de prueba y deseas activar la contratación para esta empresa de staging?'))return;
+  setBusy(true);setMessage('');
+  try{
+   const body={
+    companyId,tier,paymentReference:paymentReference.trim(),
+    amountCop:Number(amountCop),verifiedAt:new Date(verifiedAt).toISOString(),
+    startsAt:new Date(startsAt).toISOString(),expiresAt:new Date(expiresAt).toISOString(),
+    additionalUsers:Number(additionalUsers),reason:contractReason.trim(),
+    confirmation:'CONFIRMO PAGO VERIFICADO Y ACTIVACION'
+   };
+   const response=await fetch('/api/platform-admin/manual-company-contract',{
+    method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+   const result=await response.json();
+   if(!response.ok||!result.ok)throw new Error(result.error||'No se pudo activar.');
+   setVerifiedChecked(false);setPaymentReference('');setContractReason('');
+   await loadContract(companyId);
+   setMessage('Contrato manual aplicado en staging, con usuarios y auditoría. No se efectuó ningún cobro.');
+  }catch(e){setMessage(e instanceof Error?e.message:'Error al activar.');}
+  finally{setBusy(false);}
+ }
  const [loading,setLoading]=useState(true);
  useEffect(()=>{(async()=>{
   try{
@@ -48,6 +88,10 @@ export default function AssignmentDraftPage(){
  }
  function selectCompany(id:string){
   setCompanyId(id);
+  setContract(null);setContractHistory([]);
+  setVerifiedChecked(false);setPaymentReference('');setAmountCop('');setVerifiedAt('');
+  setStartsAt('');setExpiresAt('');setAdditionalUsers('0');setContractReason('');
+  if(id)void loadContract(id);
   setEvents([]);
   if(id)void fetch('/api/platform-admin/company-plan-activation-history?companyId='+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(data=>{if(data.ok)setEvents(data.events||[]);}).catch(()=>{});
   setReadiness(null);
@@ -128,6 +172,36 @@ export default function AssignmentDraftPage(){
         </button>)}
       </div>
      </div>}
+    {companyId&&<section style={{borderTop:'1px solid #cbd5e1',paddingTop:22,display:'grid',gap:10}}>
+      <h2>Contratación y activación manual — solo staging</h2>
+      <p>Solo después de la revisión aprobada. Verifica el pago fuera de MW1; no se genera enlace ni se realiza ningún cobro. Para renovar, registra una referencia de pago diferente.</p>
+      {contract&&<p role="status">Contrato actual: <strong>{contract.tier.toUpperCase()}</strong> · {contract.included_users+contract.additional_users} usuarios contratados · vence {new Date(contract.expires_at).toLocaleDateString('es-CO')} · {contract.status}</p>}
+      <label>Referencia del pago verificado (solo datos ficticios en pruebas)
+       <input value={paymentReference} onChange={e=>setPaymentReference(e.target.value)} maxLength={100} placeholder="MW1-TEST-0001" style={{display:'block',padding:10,width:'100%'}}/></label>
+      <label>Importe verificado, COP
+       <input type="number" min={1} step={1} value={amountCop} onChange={e=>setAmountCop(e.target.value)} style={{display:'block',padding:10}}/></label>
+      <label>Fecha y hora de verificación del pago
+       <input type="datetime-local" value={verifiedAt} onChange={e=>setVerifiedAt(e.target.value)} style={{display:'block',padding:10}}/></label>
+      <label>Inicio de vigencia
+       <input type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)} style={{display:'block',padding:10}}/></label>
+      <label>Vencimiento
+       <input type="datetime-local" value={expiresAt} onChange={e=>setExpiresAt(e.target.value)} style={{display:'block',padding:10}}/></label>
+      <label>Usuarios adicionales contratados (sobre los incluidos)
+       <input type="number" min={0} max={100} step={1} value={additionalUsers} onChange={e=>setAdditionalUsers(e.target.value)} style={{display:'block',padding:10}}/></label>
+      <label>Justificación interna de la verificación
+       <textarea value={contractReason} onChange={e=>setContractReason(e.target.value)} maxLength={500} rows={2} style={{display:'block',padding:10,width:'100%'}}/></label>
+      <label><input type="checkbox" checked={verifiedChecked} onChange={e=>setVerifiedChecked(e.target.checked)}/> Confirmo que el pago de prueba fue verificado manualmente y que tengo autorización para activar esta empresa.</label>
+      <button type="button" disabled={busy||!verifiedChecked||!paymentReference||!amountCop||!verifiedAt||!startsAt||!expiresAt||contractReason.trim().length<8}
+       onClick={()=>void activateManualContract()}
+       style={{padding:12,border:0,borderRadius:8,background:'#172235',color:'white'}}>
+       {busy?'Procesando…':'Aplicar contratación manual en staging'}
+      </button>
+      <h3>Historial de contrataciones</h3>
+      {contractHistory.length===0?<p>No hay contrataciones aplicadas.</p>:<table style={{width:'100%'}}>
+       <thead><tr><th>Fecha</th><th>Acción</th><th>Administrador</th></tr></thead>
+       <tbody>{contractHistory.map(h=><tr key={h.id}><td>{new Date(h.recorded_at).toLocaleString('es-CO')}</td><td>{h.action}</td><td>{h.actor_id}</td></tr>)}</tbody>
+      </table>}
+    </section>}
     {companyId&&<section><h2>Historial de solicitudes</h2>
      <p style={{fontSize:13,fontWeight:700}}>Estado de revisión: {events.length===0?'Sin solicitudes':events[0].action==='activation_rejected'?'Rechazada':events[0].action==='activation_requested'?'Pendiente de revisión':'Evento registrado'}</p>
      {events.length===0?<p>No hay solicitudes registradas para esta empresa.</p>:
