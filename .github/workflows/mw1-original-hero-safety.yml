@@ -1,0 +1,28 @@
+name: MW1 original full-resolution hero validation (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-hero-quality-correction-20261114
+permissions:
+  contents: read
+jobs:
+  hero-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exact original user image, do not optimize or resize
+        run: |
+          test -s public/media/mw1-hero-original.png
+          test "$(sha256sum public/media/mw1-hero-original.png | awk '{print $1}')" = "1bc60ef4a7b9a08e64f3e2ef935d70d334d7325c084f9cb382798c901762f540"
+          test "$(stat -c%s public/media/mw1-hero-original.png)" = "3338786"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - run: node scripts/test-mw1-signed-workspace-http.cjs
