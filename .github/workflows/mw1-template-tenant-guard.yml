@@ -1,0 +1,25 @@
+name: MW1 isolated template access guard (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-staging-template-tenant-guard-20261114
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Verify templates are tenant-scoped, never synced or saved in isolated staging
+        run: node scripts/test-mw1-template-tenant-guard.cjs
+      - name: Verify combined commercial and operational Web builds
+        run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
