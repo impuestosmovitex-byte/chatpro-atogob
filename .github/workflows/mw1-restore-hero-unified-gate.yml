@@ -1,0 +1,29 @@
+name: MW1 restore hero on unified login safety gate
+on:
+  push:
+    branches:
+      - feature/mw1-restore-hero-on-unified-login-20261114
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Build Next.js
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Unified workspace role regression
+        run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - name: Signed workspace security
+        run: node scripts/test-mw1-signed-workspace-http.cjs
