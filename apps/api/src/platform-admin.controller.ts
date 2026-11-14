@@ -12,6 +12,7 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { AccessAuthService } from './access-auth.service';
 import { verifyInternalAttestation } from './internal-attestation';
 import { SupabaseService } from './supabase.service';
+import {validateManualContract} from './mw1-manual-contract';
 import {companyReadiness} from './platform-company-readiness';
 import {emptyPlanDraft,PLAN_KEYS,validatePlanDraft} from './platform-plan-drafts';
 import {estimateAiCostUsd} from './platform-ai-cost';
@@ -218,6 +219,66 @@ export class PlatformAdminController {
     };
   }
 
+  @Post('manual-company-contract')
+  async applyManualCompanyContract(
+    @Headers('x-mw1-internal-assertion') attestation = '',
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Body() body: unknown,
+  ) {
+    this.assertInternalKey(key);
+    verifyInternalAttestation(attestation,{kind:'platform',userId:user,companyId:'',companySlug:'',method:'POST',path:'/platform-admin/manual-company-contract',body});
+    await this.assertPlatformAdmin(user);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Disponible únicamente en staging.');
+    let contract:ReturnType<typeof validateManualContract>;
+    try { contract=validateManualContract(body); }
+    catch(e) { throw new BadRequestException(e instanceof Error?e.message:'Contrato inválido.'); }
+    const client=this.supabaseService.getClient();
+    const {data:existing,error:existingError}=await client.from('companies')
+      .select('id,slug').eq('id',contract.companyId).maybeSingle();
+    if(existingError||!existing)throw new BadRequestException('Empresa no encontrada.');
+    if(['atogob','maogo','emprende-con-maogo'].includes(existing.slug))
+      throw new BadRequestException('Esta empresa operativa no puede modificarse.');
+    const {data,error}=await client.rpc('mw1_apply_manual_contract',{
+      p_company_id:contract.companyId,p_actor_id:user,p_tier:contract.tier,
+      p_payment_reference:contract.paymentReference,p_amount_cop:contract.amountCop,
+      p_verified_at:contract.verifiedAt,p_starts_at:contract.startsAt,
+      p_expires_at:contract.expiresAt,p_additional_users:contract.additionalUsers,
+      p_reason:contract.reason,
+    });
+    if(error)throw new BadRequestException(
+      'No se pudo registrar la contratación. Comprueba la aprobación, el pago y los límites.'
+    );
+    return {ok:true,contract:data,providerCharged:false,stagingOnly:true};
+  }
+
+  @Get('manual-company-contract')
+  async readManualCompanyContract(
+    @Headers('x-mw1-internal-assertion') attestation = '',
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Query('companyId') companyId = '',
+  ) {
+    this.assertInternalKey(key);
+    verifyInternalAttestation(attestation,{kind:'platform',userId:user,companyId:'',companySlug:'',method:'GET',path:'/platform-admin/manual-company-contract'});
+    await this.assertPlatformAdmin(user);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Disponible únicamente en staging.');
+    if(!/^[0-9a-f-]{36}$/i.test(companyId))
+      throw new BadRequestException('Empresa inválida.');
+    const client=this.supabaseService.getClient();
+    const {data:contract,error}=await client.from('mw1_manual_company_contracts')
+      .select('company_id,tier,payment_reference,amount_cop,verified_at,starts_at,expires_at,included_users,additional_users,status,activated_by,activated_at')
+      .eq('company_id',companyId).maybeSingle();
+    if(error)throw new BadRequestException('No fue posible consultar la contratación.');
+    const {data:history,error:historyError}=await client.from('mw1_manual_contract_history')
+      .select('id,action,actor_id,payment_reference,recorded_at')
+      .eq('company_id',companyId).order('recorded_at',{ascending:false}).limit(50);
+    if(historyError)throw new BadRequestException('No fue posible consultar el historial.');
+    return {ok:true,contract:contract??null,history:history??[],stagingOnly:true};
+  }
+
   @Post('company-plan-activation-review')
   async reviewCompanyPlanRequest(
     @Headers('x-chatpro-inbox-key') key = '',
@@ -255,10 +316,29 @@ export class PlatformAdminController {
     const latest=events?.[0];
     if(latest?.action!=='activation_requested')
       throw new BadRequestException('No existe solicitud pendiente para revisar.');
+    const {data:assignment,error:assignmentError}=await client
+      .from('mw1_company_plan_assignment_drafts')
+      .select('tier,updated_at').eq('company_id',company.id).maybeSingle();
+    const {data:draft,error:draftError}=await client
+      .from('mw1_commercial_feature_drafts')
+      .select('updated_at').eq('tier',latest.proposed_tier).maybeSingle();
+    const {data:approval,error:approvalError}=await client
+      .from('mw1_commercial_feature_approvals')
+      .select('draft_updated_at').eq('tier',latest.proposed_tier).maybeSingle();
+    if(assignmentError||draftError||approvalError||!assignment||!draft||!approval||
+       assignment.tier!==latest.proposed_tier||
+       approval.draft_updated_at!==draft.updated_at)
+      throw new BadRequestException('La asignación o aprobación comercial no está vigente.');
+    const postgresUtc=(date:string)=>{
+      const d=new Date(date).toISOString();
+      return d.slice(0,23)+'000';
+    };
     const action=input.decision==='reject'?'activation_rejected':'activation_review_approved';
     const {data,error}=await client.from('mw1_plan_activation_audit')
       .insert({company_id:company.id,proposed_tier:latest.proposed_tier,
-       action,actor_id:user,details:{reason:input.reason.trim(),applied:false}})
+       action,actor_id:user,details:{reason:input.reason.trim(),applied:false,
+        assignmentUpdatedAt:postgresUtc(assignment.updated_at),
+        draftUpdatedAt:postgresUtc(draft.updated_at)}})
       .select('id,action,created_at').single();
     if(error)throw new BadRequestException('No se pudo registrar la decisión.');
     return {ok:true,event:data,applied:false,informationalOnly:true};
