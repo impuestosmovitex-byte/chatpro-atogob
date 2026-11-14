@@ -135,7 +135,12 @@ export function AppSidebar({
         if (session.userId && (normalizedRoleKey === 'owner' || normalizedRoleKey === 'admin')) {
           try {
             const commerce = await fetch('/api/native-commerce/access', { cache: 'no-store' });
-            if (alive) setOrdersEnabled(commerce.ok);
+            if (commerce.ok) {
+              const access = (await commerce.json()) as { ok?: boolean; enabled?: boolean };
+              if (alive) setOrdersEnabled(access.ok === true && access.enabled === true);
+            } else if (alive) {
+              setOrdersEnabled(false);
+            }
           } catch {
             if (alive) setOrdersEnabled(false);
           }
@@ -218,7 +223,7 @@ export function AppSidebar({
     ...baseNavigation.filter(
       (item) =>
         effectiveCapabilities[item.capability] &&
-        (item.href !== '/leads' || isServiceTenant),
+        (item.href !== '/leads' || (isServiceTenant && fullAccess)),
     ),
     ...(ordersEnabled ? [
       { href: '/pedidos', label: 'Pedidos', icon: '▤', exact: true },
@@ -399,7 +404,7 @@ export function AppSidebar({
           </Link>
         ) : null}
 
-        {!demoNavigation && effectiveCapabilities.clients && isServiceTenant ? (
+        {!demoNavigation && effectiveCapabilities.clients && isServiceTenant && fullAccess ? (
           <Link
             className={`${styles.mobileNavItem} ${
               isActive(pathname, '/leads') ? styles.mobileNavActive : ''
