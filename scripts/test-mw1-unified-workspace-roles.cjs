@@ -31,6 +31,12 @@ assert.equal(restricted.length,0,'Advisor without grants must see no business mo
 const advisorWithConfig=expectedModuleLabels({...allowed},'advisor',true);
 for(const label of ['Equipo y roles','Integraciones','Mi plan','Pedidos','Catálogo'])
   assert.equal(advisorWithConfig.includes(label),false,'Non-manager must not see '+label);
+const maogoOwner=expectedModuleLabels({clients:true},'owner',false,'emprende-con-maogo');
+assert.ok(maogoOwner.includes('Leads MAOGO'),'MAOGO owner retains existing leads module');
+assert.equal(expectedModuleLabels({clients:true},'advisor',false,'emprende-con-maogo').includes('Leads MAOGO'),false,'Advisor must not be linked to a middleware-blocked leads route');
+const sidebarSource=fs.readFileSync('app/components/AppSidebar.tsx','utf8');
+assert.ok(sidebarSource.includes('access.ok === true && access.enabled === true'), 'Sidebar must honor explicit commerce access flag');
+assert.ok(page.includes('accessPayload.ok === true && accessPayload.enabled === true'), 'Panel must honor explicit commerce access flag');
 const otherTenant=expectedModuleLabels({inbox:false,clients:true},'owner',false,'piloto-mw1-prueba');
 assert.equal(otherTenant.includes('Bandeja omnicanal'),false,'A company slug cannot confer inbox permission');
 assert.equal(otherTenant.includes('Clientes'),true,'Positive entitlement should remain available');
@@ -48,4 +54,4 @@ assert.ok(inboxUi.includes('stagingReadOnly: data.stagingReadOnly === true'),
 assert.ok(inboxUi.includes('selected.stagingReadOnly ? (') &&
   inboxUi.includes('Los envíos, las transferencias y los cambios de estado permanecen desactivados.'),
   'A synthetic conversation must not display the normal reply composer');
-console.log('MW1 unified workspace role checks: 11 checks passed (owner, advisor, denied, non-manager, tenant-neutral, middleware).');
+console.log('MW1 unified workspace role checks: core permissions and MAOGO leads/commerce consistency passed (owner, advisor, denied, non-manager, tenant-neutral, middleware).');

@@ -36,6 +36,7 @@ function buildModules(workspace: WorkspaceState): Module[] {
   const modules: Module[] = [];
   if (c.inbox) modules.push({ label: 'Bandeja omnicanal', href: '/', description: 'Conversaciones y atención humana desde el módulo existente.', category: 'Atención' });
   if (c.clients) modules.push({ label: 'Clientes', href: '/clientes', description: 'Contactos e historial sujetos a los permisos de la empresa.', category: 'Atención' });
+  if (c.clients && management && session.companySlug === 'emprende-con-maogo') modules.push({ label: 'Leads MAOGO', href: '/leads', description: 'Acceso al módulo de prospectos ya existente de MAOGO.', category: 'Atención' });
   if (c.statistics) modules.push({ label: 'Estadísticas', href: '/estadisticas', description: 'Indicadores de la empresa activa.', category: 'Seguimiento' });
   if (c.automations) modules.push({ label: 'Automatizaciones', href: '/automatizaciones', description: 'Flujos existentes de la empresa, sin crear conexiones nuevas.', category: 'Seguimiento' });
   if (c.configuration) {
