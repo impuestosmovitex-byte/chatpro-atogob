@@ -68,7 +68,22 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
         value={contactName} onChange={event=>setContactName(event.target.value)}
         placeholder="Nombre y apellido"/>
     </label>
-    {!isTrial&&<>
+    <label>Correo de contacto
+      <input required type="email" maxLength={180} autoComplete="email"
+        value={contactEmail} onChange={event=>setContactEmail(event.target.value)}
+        placeholder="correo@empresa.com"/>
+    </label>
+
+
+    <>
+      <label>WhatsApp para que podamos contactarte
+        <input required type="tel" inputMode="tel" autoComplete="tel" maxLength={20}
+          value={contactPhone} onChange={event=>setContactPhone(event.target.value)}
+          placeholder="Ej. +573001234567"/>
+      </label>
+    </>
+    {!isTrial&&<details className={styles.optional}>
+      <summary>Cuéntanos un poco más de tu negocio (opcional)</summary>
       <label>Sector de tu empresa (opcional)
         <select value={businessSector} onChange={e=>setBusinessSector(e.target.value)}>
           <option value="">Prefiero no indicarlo</option>
@@ -89,21 +104,7 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
           <option value="no">No tengo</option>
         </select>
       </label>
-    </>}
-    <label>Correo de contacto
-      <input required type="email" maxLength={180} autoComplete="email"
-        value={contactEmail} onChange={event=>setContactEmail(event.target.value)}
-        placeholder="correo@empresa.com"/>
-    </label>
-
-
-    <>
-      <label>WhatsApp para que podamos contactarte
-        <input required type="tel" inputMode="tel" autoComplete="tel" maxLength={20}
-          value={contactPhone} onChange={event=>setContactPhone(event.target.value)}
-          placeholder="Ej. +573001234567"/>
-      </label>
-    </>
+    </details>}
     <div className={styles.hidden} aria-hidden="true">
       <label>Sitio web <input tabIndex={-1} autoComplete="off"
         value={website} onChange={e=>setWebsite(e.target.value)}/></label>
