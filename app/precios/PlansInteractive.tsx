@@ -40,9 +40,9 @@ export default function PlansInteractive({plans}:{plans:PlanCardOption[]}){
       <ul style={{minHeight:0}}>{plan.conditional.map(x=><li key={x}>{x}</li>)}</ul>
      </details>
      <div style={{marginTop:'auto',display:'grid',gap:9}}>
-      <Link href={`/demo?plan=${encodeURIComponent(plan.key)}#agendar-demostracion`} className={styles.primaryButton}
+      <Link href={`/agendar-demo?plan=${encodeURIComponent(plan.key)}`} className={styles.primaryButton}
        style={{display:'flex',justifyContent:'center',width:'100%',background:'#f4bf00',color:'#172235',fontWeight:850,border:0,cursor:'pointer'}}>
-       Agendar demostración
+       Solicitar demostración
       </Link>
       <p style={{fontSize:12,color:'#68758b',marginTop:4,lineHeight:1.5}}>
        Conoce el plan en una reunión guiada. Puedes explorar el simulador más abajo. <Link href={`/demo?plan=${plan.key}`}
