@@ -1,0 +1,22 @@
+.shell{min-height:100vh;display:grid;grid-template-columns:242px minmax(0,1fr);background:#f5f6f8;color:#171b25}
+.workspace{width:100%;max-width:1240px;margin:0 auto;padding:42px clamp(20px,4vw,62px) 64px;box-sizing:border-box}
+.heading{max-width:760px;margin-bottom:30px}
+.eyebrow{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;color:#7c293b}
+.heading h1{margin:10px 0 10px;font-size:clamp(29px,3vw,43px);letter-spacing:-.04em;line-height:1.12}
+.heading p{font-size:15px;color:#626b7b;line-height:1.65;margin:0}
+.identity{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:32px}
+.identity>div{display:flex;flex-direction:column;min-width:165px;flex:1;gap:6px;background:#fff;border:1px solid #e4e7ed;border-radius:16px;padding:18px 20px}
+.small{font-size:12px;color:#687282}
+.identity strong{font-size:14px;overflow-wrap:anywhere}
+.group{margin:28px 0}
+.group h2{font-size:18px;letter-spacing:-.02em;margin:0 0 14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px}
+.card{text-decoration:none;display:flex;flex-direction:column;gap:12px;min-height:124px;box-sizing:border-box;padding:21px;background:white;border:1px solid #e4e7ed;border-radius:16px;transition:box-shadow .15s,border-color .15s;color:inherit}
+.card:hover,.card:focus-visible{border-color:#9f5266;box-shadow:0 8px 26px rgba(31,25,35,.08)}
+.cardTitle{display:flex;justify-content:space-between;gap:10px;font-size:16px;font-weight:750}
+.cardTitle span{color:#84354b}
+.description{color:#626b7b;font-size:13px;line-height:1.55}
+.notice,.error{border-radius:12px;padding:17px 20px;background:white;border:1px solid #e4e7ed}
+.error{border-color:#d9a5a5;color:#8e2633}
+.footerNote{font-size:12px;color:#737a85;margin-top:32px}
+@media(max-width:900px){.shell{display:block}.workspace{padding:28px 20px 100px}}
