@@ -15,6 +15,7 @@ import {companyReadiness} from './platform-company-readiness';
 import {emptyPlanDraft,PLAN_KEYS,validatePlanDraft} from './platform-plan-drafts';
 import {estimateAiCostUsd} from './platform-ai-cost';
 import {validateManualContract} from './mw1-manual-contract';
+import {verifyManualAdminAttestation} from './mw1-manual-attestation';
 import {validateFinanceScenario,validateFinanceActual} from './platform-finance-scenario';
 import {validateFinanceCompanyEntry} from './platform-company-finance';
 
@@ -188,11 +189,14 @@ export class PlatformAdminController {
   // Staging-only manual contract activation. No payment gateways or billing webhooks.
   @Post('manual-company-contract')
   async applyManualCompanyContract(
+    @Headers('x-mw1-internal-assertion') attestation = '',
     @Headers('x-chatpro-inbox-key') key = '',
     @Query('user') user = '',
     @Body() body: unknown,
   ) {
     this.assertInternalKey(key);
+    verifyManualAdminAttestation({signature:attestation,userId:user,method:'POST',
+      path:'/platform-admin/manual-company-contract',body});
     await this.assertPlatformAdmin(user);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Disponible únicamente en staging.');
@@ -220,11 +224,14 @@ export class PlatformAdminController {
 
   @Get('manual-company-contract')
   async readManualCompanyContract(
+    @Headers('x-mw1-internal-assertion') attestation = '',
     @Headers('x-chatpro-inbox-key') key = '',
     @Query('user') user = '',
     @Query('companyId') companyId = '',
   ) {
     this.assertInternalKey(key);
+    verifyManualAdminAttestation({signature:attestation,userId:user,method:'GET',
+      path:'/platform-admin/manual-company-contract'});
     await this.assertPlatformAdmin(user);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Disponible únicamente en staging.');
@@ -244,11 +251,14 @@ export class PlatformAdminController {
 
   @Post('company-plan-activation-review')
   async reviewCompanyPlanRequest(
+    @Headers('x-mw1-internal-assertion') attestation = '',
     @Headers('x-chatpro-inbox-key') key = '',
     @Query('user') user = '',
     @Body() body: unknown,
   ) {
     this.assertInternalKey(key);
+    verifyManualAdminAttestation({signature:attestation,userId:user,method:'POST',
+      path:'/platform-admin/company-plan-activation-review',body});
     await this.assertPlatformAdmin(user);
     if(process.env.MW1_STAGING_MODE!=='true')
       throw new UnauthorizedException('Solo disponible en staging.');
@@ -272,10 +282,30 @@ export class PlatformAdminController {
     const latest=events?.[0];
     if(latest?.action!=='activation_requested')
       throw new BadRequestException('No existe solicitud pendiente para revisar.');
+    const {data:assignment,error:assignmentError}=await client
+      .from('mw1_company_plan_assignment_drafts')
+      .select('tier,updated_at').eq('company_id',company.id).maybeSingle();
+    const {data:draft,error:draftError}=await client
+      .from('mw1_commercial_feature_drafts')
+      .select('updated_at').eq('tier',latest.proposed_tier).maybeSingle();
+    const {data:approval,error:approvalError}=await client
+      .from('mw1_commercial_feature_approvals')
+      .select('draft_updated_at').eq('tier',latest.proposed_tier).maybeSingle();
+    if(assignmentError||draftError||approvalError||!assignment||!draft||!approval||
+       assignment.tier!==latest.proposed_tier||
+       approval.draft_updated_at!==draft.updated_at)
+      throw new BadRequestException('La asignación o aprobación comercial no está vigente.');
+    // PostgreSQL formats UTC timestamp with six fractional digits.
+    const postgresUtc=(date:string)=>{
+      const d=new Date(date).toISOString();
+      return d.slice(0,23)+'000';
+    };
     const action=input.decision==='reject'?'activation_rejected':'activation_review_approved';
     const {data,error}=await client.from('mw1_plan_activation_audit')
       .insert({company_id:company.id,proposed_tier:latest.proposed_tier,
-       action,actor_id:user,details:{reason:input.reason.trim(),applied:false}})
+       action,actor_id:user,details:{reason:input.reason.trim(),applied:false,
+        assignmentUpdatedAt:postgresUtc(assignment.updated_at),
+        draftUpdatedAt:postgresUtc(draft.updated_at)}})
       .select('id,action,created_at').single();
     if(error)throw new BadRequestException('No se pudo registrar la decisión.');
     return {ok:true,event:data,applied:false,informationalOnly:true};
