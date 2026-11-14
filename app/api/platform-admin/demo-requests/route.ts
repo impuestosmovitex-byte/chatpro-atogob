@@ -15,6 +15,9 @@ export async function GET(request:NextRequest){
   try{
     const url=new URL('/platform-admin/demo-requests',base);
     url.searchParams.set('user',session.userId);
+    const page=request.nextUrl.searchParams.get('page')||'0';
+    if(!/^(0|[1-9][0-9]{0,2})$/.test(page))return NextResponse.json({ok:false,error:'Página inválida.'},{status:400});
+    url.searchParams.set('page',page);
     const upstream=await fetch(url,{
       headers:{'x-chatpro-inbox-key':key,'x-mw1-internal-assertion':signInternalAttestation({kind:'platform',userId:session.userId,companyId:'',companySlug:'',method:'GET',path:'/platform-admin/demo-requests'})},
       cache:'no-store',signal:AbortSignal.timeout(12000),

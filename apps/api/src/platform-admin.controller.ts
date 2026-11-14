@@ -730,19 +730,26 @@ export class PlatformAdminController {
   async listDemoRequests(
     @Headers('x-chatpro-inbox-key') providedKey = '',
     @Query('user') userId = '',
+    @Query('page') requestedPage = '0',
   ) {
     this.assertInternalKey(providedKey);
     await this.assertPlatformAdmin(userId);
     if(process.env.MW1_STAGING_MODE!=='true'){
       throw new UnauthorizedException('Solicitudes disponibles únicamente en el entorno de pruebas.');
     }
+    // Paginación limitada del MISMO registro existente, sin replicar prospectos.
+    if(!/^(0|[1-9][0-9]{0,2})$/.test(requestedPage))
+      throw new BadRequestException('Página inválida.');
+    const page=Number(requestedPage);
+    const limit=50;
     const {data,error}=await this.supabaseService.getClient()
       .from('platform_demo_requests')
       .select('id,company_name,contact_name,contact_email,contact_phone,whatsapp_setup,trial_requested_days,trial_activated_at,requested_users,requested_connections,source,plan_interest,status,internal_note,next_followup_on,created_at')
       .order('created_at',{ascending:false})
-      .limit(50);
+      .order('id',{ascending:false})
+      .range(page*limit,page*limit+limit);
     if(error)throw new BadRequestException('No fue posible consultar las solicitudes.');
-    return {ok:true,requests:(data??[]).map(record=>({
+    return {ok:true,page,hasMore:(data??[]).length>limit,requests:(data??[]).slice(0,limit).map(record=>({
       id:record.id,
       companyName:record.company_name,
       contactName:record.contact_name,

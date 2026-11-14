@@ -82,3 +82,11 @@
  .paymentPanel {padding:24px;border-radius:20px;}
  .cta {width:calc(100% - 32px);padding:46px 22px;}
 }
+
+.videoPlaceholder{background:#172235;color:#fff;border-radius:28px;padding:clamp(24px,5vw,58px);min-height:360px;text-align:center;display:flex;flex-direction:column;gap:18px;align-items:center;justify-content:center;box-shadow:0 24px 54px rgba(23,34,53,.14)}
+.videoBadge{border:1px solid #657287;border-radius:30px;padding:7px 14px;font-size:11px;font-weight:800;letter-spacing:.08em;color:#ffe27b}
+.videoMark{font-weight:950;font-size:clamp(64px,10vw,112px);line-height:1;letter-spacing:-.08em;color:#ffe27b}
+.videoPlaceholder>p{font-size:clamp(15px,2vw,21px);font-weight:650}
+.videoChapters{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;list-style:none;padding:0;margin:7px 0 10px}
+.videoChapters li{background:#2a3850;border:1px solid #43516a;padding:8px 12px;border-radius:20px;font-size:12px}
+@media(max-width:600px){.videoPlaceholder{border-radius:18px}.videoChapters{gap:6px}}
