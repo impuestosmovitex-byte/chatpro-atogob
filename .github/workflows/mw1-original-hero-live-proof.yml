@@ -1,0 +1,43 @@
+name: MW1 original hero real domain verification (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-original-hero-on-latest-20261114
+permissions:
+  contents: read
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify live original photo identical to source
+        run: |
+          node - <<'NODE'
+          const {createHash}=require('node:crypto');
+          const {readFileSync}=require('node:fs');
+          (async()=>{
+            const url='https://mw1-web-staging-staging.up.railway.app';
+            const original=readFileSync('public/media/mw1-hero-original.png');
+            const sourceHash=createHash('sha256').update(original).digest('hex');
+            const page=await fetch(url+'/inicio',{redirect:'manual'});
+            if(page.status!==200)throw Error('/inicio HTTP '+page.status);
+            const html=await page.text();
+            for(const marker of ['/media/mw1-hero-original.png','Solicitar demostración','/precios']){
+              if(!html.includes(marker))throw Error('/inicio missing '+marker);
+            }
+            const response=await fetch(url+'/media/mw1-hero-original.png',{redirect:'manual'});
+            if(response.status!==200)throw Error('image HTTP '+response.status);
+            if(!(response.headers.get('content-type')||'').includes('image/png'))throw Error('not PNG: '+response.headers.get('content-type'));
+            const bytes=Buffer.from(await response.arrayBuffer());
+            const receivedHash=createHash('sha256').update(bytes).digest('hex');
+            if(bytes.length!==original.length||receivedHash!==sourceHash)throw Error('live image differs from original: '+bytes.length+'/'+original.length);
+            const admin=await fetch(url+'/admin/prospectos',{redirect:'manual'});
+            if(![301,302,303,307,308,401,403].includes(admin.status))throw Error('admin access not guarded: '+admin.status);
+            console.log('PASS identical PNG source and live image',bytes.length,sourceHash);
+            console.log('PASS homepage CTA and admin access protection');
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
