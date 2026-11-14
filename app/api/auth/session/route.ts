@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getInboxSession, INBOX_SESSION_COOKIE } from '../../../lib/inbox-auth';
+import { isUnifiedPanelEnabled } from '../../../lib/unified-panel-rollout';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    unifiedPanelEnabled: session.type === 'user' && isUnifiedPanelEnabled(session.companySlug),
     session: {
       type: session.type,
       userId: session.userId,
