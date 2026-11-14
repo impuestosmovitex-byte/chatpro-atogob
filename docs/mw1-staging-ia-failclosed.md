@@ -1,0 +1,2 @@
+# MW1 staging IA: comportamiento seguro ante error de permisos
+Este cambio **no modifica datos ni conecta servicios**. Mientras la API de capacidades no haya respondido con `staging: false`, la pantalla de Configuración de IA presenta el modo consulta y deshabilita Guardar. El servidor staging rechaza cualquier PUT con 403 independientemente del cliente. En producción, una respuesta válida de capacidades con `staging: false` conserva el editor anterior. No modificar rutas comerciales ni conexiones.

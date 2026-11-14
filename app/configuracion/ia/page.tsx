@@ -430,7 +430,8 @@ export default function ConfiguracionPage() {
   const [message, setMessage] = useState('');
   const [activeView, setActiveView] =
     useState<AiEditorView>('assistant');
-  const [stagingReadOnly, setStagingReadOnly] = useState(false);
+  // Fail closed until capabilities confirm editing is allowed.
+  const [stagingReadOnly, setStagingReadOnly] = useState(true);
 
   const exceededInstructionFields =
     getExceededInstructionFields(configuration);
@@ -465,8 +466,8 @@ export default function ConfiguracionPage() {
   useEffect(() => {
     void fetch('/api/auth/capabilities', { cache: 'no-store' })
       .then(async response => response.ok ? response.json() as Promise<{ staging?: boolean }> : null)
-      .then(data => setStagingReadOnly(data?.staging === true))
-      .catch(() => setStagingReadOnly(false));
+      .then(data => setStagingReadOnly(data?.staging !== false))
+      .catch(() => setStagingReadOnly(true));
   }, []);
 
   useEffect(() => {
