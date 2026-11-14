@@ -387,3 +387,6 @@
 .brandWord { color:#172235; font-weight:900; }
 .brandWord > span { color:#aa8200; }
 .item:focus-visible, .logout:focus-visible { outline:3px solid #f4bf00;outline-offset:2px; }
+
+/* Uploaded MW1 identity: show original artwork without cropping or text replacement. */
+.brandLogo { width:92px; height:92px; max-width:100%; object-fit:contain; display:block; }
