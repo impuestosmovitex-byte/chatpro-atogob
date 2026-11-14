@@ -55,6 +55,7 @@ export default function ProspectosPage(){
  return <div className={styles.site}>
   <PlatformSidebar/>
   <main className={styles.main}>
+   <Link className={styles.mobileBack} href="/admin">← Super Admin</Link>
    <div className={styles.topline}>MW1 / ADMINISTRACIÓN COMERCIAL</div>
    <div className={styles.header}>
     <div><h1>Prospectos y demostraciones</h1>
