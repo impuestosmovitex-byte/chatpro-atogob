@@ -87,7 +87,7 @@ export default function UnifiedWorkspacePage() {
         if (management) {
           try {
             const access = await fetch('/api/native-commerce/access', { cache: 'no-store' });
-            commerce = access.ok;
+            commerce = access.ok && ((await access.json().catch(() => null)) as { enabled?: unknown } | null)?.enabled === true;
           } catch {
             commerce = false;
           }
