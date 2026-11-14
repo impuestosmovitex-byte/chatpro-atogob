@@ -135,7 +135,10 @@ export function AppSidebar({
         if (session.userId && (normalizedRoleKey === 'owner' || normalizedRoleKey === 'admin')) {
           try {
             const commerce = await fetch('/api/native-commerce/access', { cache: 'no-store' });
-            if (alive) setOrdersEnabled(commerce.ok);
+            if (alive) {
+               const payload = commerce.ok ? await commerce.json().catch(() => null) as { enabled?: unknown } | null : null;
+               setOrdersEnabled(commerce.ok && payload?.enabled === true);
+             }
           } catch {
             if (alive) setOrdersEnabled(false);
           }
