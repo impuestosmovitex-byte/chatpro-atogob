@@ -1,0 +1,26 @@
+name: MW1 live staging roles authorization boundary (READ ONLY)
+on:
+  push:
+    branches:
+      - feature/mw1-staging-readonly-roles-20261114
+permissions:
+  contents: read
+jobs:
+  live-roles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify deployed API roles exists and rejects unauthenticated callers
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const base='https://mw1-api-staging-staging.up.railway.app';
+          const probes=[['/',200],['/roles?company=mw1-demo-mercado',401],['/access-capabilities?company=mw1-demo-mercado&user=synthetic-anonymous',401]];
+          (async()=>{
+            for(const [path,status] of probes){
+              const r=await fetch(base+path,{redirect:'manual',cache:'no-store',headers:{'accept':'application/json'},signal:AbortSignal.timeout(15000)});
+              console.log('GET',path,'=>',r.status);
+              assert.equal(r.status,status,'Unexpected staging response to '+path);
+            }
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
