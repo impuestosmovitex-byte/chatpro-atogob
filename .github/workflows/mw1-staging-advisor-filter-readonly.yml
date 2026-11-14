@@ -1,0 +1,25 @@
+name: MW1 staging advisor filter mode read-only (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-staging-advisor-filter-readonly-20261114
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Check advisor filter read-only and protected tenant routing
+        run: node scripts/test-mw1-advisor-filter-readonly.cjs
+      - name: Compile unified and commercial Web
+        run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'

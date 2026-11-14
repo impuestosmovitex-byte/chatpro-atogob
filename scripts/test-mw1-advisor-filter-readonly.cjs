@@ -1,0 +1,12 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const inbox=fs.readFileSync('app/api/inbox/route.ts','utf8');
+assert.ok(inbox.includes("request.nextUrl.searchParams.get('mode') === 'transfer-targets'"));
+assert.ok(inbox.includes('ok: true, targets: [], stagingReadOnly: true, transfersDisabled: true'));
+assert.ok(inbox.includes("status:403,headers:{'Cache-Control':'no-store'}"));
+assert.ok(inbox.includes("if (process.env.MW1_STAGING_MODE === 'true') {"),'Staging POST remains blocked');
+assert.ok(inbox.includes("code:'STAGING_INBOX_DISABLED'"),'No sending operations in staging');
+assert.ok(inbox.includes("mode === 'transfer-targets'"),'Preserve original production target proxy');
+assert.ok(inbox.includes("target.searchParams.set('company', company)"),'Preserve tenant binding');
+console.log('PASS staging transfer-target selector read-only; writes disabled; production proxy untouched');
