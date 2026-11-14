@@ -360,7 +360,7 @@ export default function AutomationMessagesPage() {
           <div className={styles.loading}>
             Cargando mensajes…
           </div>
-        ) : (
+        ) : error ? null : (
           <div className={styles.flowList}>
             <section className={styles.flow}>
               <div className={styles.flowHeading}>

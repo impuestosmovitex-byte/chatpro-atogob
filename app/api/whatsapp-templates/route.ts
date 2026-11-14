@@ -105,6 +105,16 @@ export async function GET(request: NextRequest) {
 
   if ('response' in access) return access.response;
 
+  // The isolated staging API has no automation-message tables.
+  // Do not read another tenant's production configuration or imply an empty one.
+  if (process.env.MW1_STAGING_MODE === 'true') {
+    return NextResponse.json({
+      ok: false,
+      code: 'STAGING_TEMPLATE_CONFIG_UNAVAILABLE',
+      error: 'Las plantillas y mensajes se consultarán en el CRM de cada empresa. No hay configuración de envíos en la base aislada de staging.',
+    }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+  }
+
   try {
     const { apiBase, inboxKey } = config();
     const target = new URL(`${apiBase}/whatsapp-templates`);
@@ -134,6 +144,15 @@ export async function POST(request: NextRequest) {
   const access = await authorize(request);
 
   if ('response' in access) return access.response;
+
+  // Staging has no real message configuration. Never write or send.
+  if (process.env.MW1_STAGING_MODE === 'true') {
+    return NextResponse.json({
+      ok: false,
+      code: 'STAGING_TEMPLATE_CONFIG_READ_ONLY',
+      error: 'No se permite modificar mensajes ni plantillas en staging.',
+    }, { status: 403, headers: { 'Cache-Control': 'no-store' } });
+  }
 
   try {
     const body = (await request.json().catch(() => ({}))) as {
@@ -176,6 +195,15 @@ export async function PUT(request: NextRequest) {
   const access = await authorize(request);
 
   if ('response' in access) return access.response;
+
+  // Staging has no real message configuration. Never write or send.
+  if (process.env.MW1_STAGING_MODE === 'true') {
+    return NextResponse.json({
+      ok: false,
+      code: 'STAGING_TEMPLATE_CONFIG_READ_ONLY',
+      error: 'No se permite modificar mensajes ni plantillas en staging.',
+    }, { status: 403, headers: { 'Cache-Control': 'no-store' } });
+  }
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
