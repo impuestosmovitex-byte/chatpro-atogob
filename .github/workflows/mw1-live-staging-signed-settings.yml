@@ -1,0 +1,26 @@
+name: MW1 staging live settings/roles boundary (READ ONLY)
+on:
+  push:
+    branches:
+      - feature/mw1-staging-readonly-settings-20261114
+permissions:
+  contents: read
+jobs:
+  live-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify real staging registered endpoints require user authentication
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const base='https://mw1-api-staging-staging.up.railway.app';
+          const routes=[['/',200],['/settings?company=mw1-demo-mercado',401],['/roles?company=mw1-demo-mercado',401]];
+          (async()=>{
+            for(const [path,status] of routes){
+              const response=await fetch(base+path,{redirect:'manual',cache:'no-store',headers:{accept:'application/json'},signal:AbortSignal.timeout(20000)});
+              console.log('GET',path,'=>',response.status);
+              assert.equal(response.status,status,'Staging route not registered or not secured: '+path);
+            }
+          })().catch(err=>{console.error(err);process.exitCode=1});
+          NODE
