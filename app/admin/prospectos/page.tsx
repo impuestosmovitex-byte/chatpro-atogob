@@ -18,7 +18,11 @@ const fields=(note:string)=>({
  web:note.match(/(?:^| \| )Presencia web: ([^|]+)/)?.[1]?.trim()||'Por confirmar',
 });
 function localDay(iso:string){return new Date(iso).toLocaleDateString('es-CO',{year:'numeric',month:'short',day:'numeric',timeZone:'America/Bogota'});}
-function bogotaToday(){return new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'America/Bogota'}).format(new Date());}
+function bogotaToday(){
+ const parts=new Intl.DateTimeFormat('en-US',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'America/Bogota'}).formatToParts(new Date());
+ const part=(type:string)=>parts.find(x=>x.type===type)?.value||'';
+ return `${part('year')}-${part('month')}-${part('day')}`;
+}
 
 export default function ProspectosPage(){
  const [rows,setRows]=useState<Lead[]>([]);
