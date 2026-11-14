@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import styles from "./marketing.module.css";
 
 export function MarketingHeader() {
@@ -6,8 +7,7 @@ export function MarketingHeader() {
     <header className={styles.header}>
       <div className={styles.navWrap}>
         <Link href="/inicio" className={styles.logo} aria-label="MW1, ir al inicio">
-          <span className={styles.logoMark}>M</span>
-          <span>MW1</span>
+          <Image src="/media/mw1-official-logo.svg" alt="ChatPro MW1" width={180} height={48} priority unoptimized style={{width:"min(180px, 35vw)",height:"auto"}} />
         </Link>
 
         <nav className={styles.nav} aria-label="Navegación principal">
