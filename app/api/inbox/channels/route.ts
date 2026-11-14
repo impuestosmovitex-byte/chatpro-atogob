@@ -38,11 +38,18 @@ export async function GET(request: NextRequest) {
     request.cookies.get(INBOX_SESSION_COOKIE)?.value,
   );
 
-  if (process.env.MW1_STAGING_MODE === 'true' && session?.type === 'user') {
+  if (process.env.MW1_STAGING_MODE === 'true' &&
+      session?.type === 'user' && session.userId && session.companyId) {
+    // There are no live channel connections in the isolated staging API.
+    // Do not turn an intentional disconnection into a transient HTTP 503.
+    // In production the existing /integrations behavior is unchanged.
     return NextResponse.json({
-      ok:false,code:'STAGING_INBOX_DISABLED',
-      error:'La conexión de canales reales no está habilitada en este entorno de pruebas.',
-    },{status:503,headers:{'Cache-Control':'no-store'}});
+      ok: true,
+      channels: [],
+      stagingReadOnly: true,
+      connectionsDisabled: true,
+      message: 'Canales reales no conectados en staging. Las conexiones productivas no se modifican.',
+    }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   if (!session) {
