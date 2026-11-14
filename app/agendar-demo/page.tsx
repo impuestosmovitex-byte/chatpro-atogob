@@ -5,8 +5,8 @@ import {DemoRequestForm} from '../demo/DemoRequestForm';
 import styles from '../components/marketing/marketing.module.css';
 
 export const metadata:Metadata={
- title:'Agendar una demostración de MW1',
- description:'Solicita una reunión guiada para conocer el CRM MW1. Un asesor confirma la disponibilidad y el horario.',
+ title:'Solicitar una demostración de MW1',
+ description:'Solicita una demostración del CRM MW1. El equipo comercial continuará el contacto.',
 };
 
 export default function AgendarDemoPage(){
@@ -15,11 +15,11 @@ export default function AgendarDemoPage(){
   <section className={styles.section}>
    <div className={styles.sectionIntroCentered}>
     <div className={styles.eyebrow}>Conoce MW1 para tu empresa</div>
-    <h1 style={{fontSize:'clamp(34px,5vw,56px)',lineHeight:1.1,letterSpacing:'-.04em',margin:'12px 0'}}>Agenda una demostración personalizada.</h1>
-    <p>Cuéntanos quién eres y qué necesita tu empresa. Te contactaremos para coordinar el día y la hora. El envío de este formulario todavía no confirma una reserva.</p>
+    <h1 style={{fontSize:'clamp(34px,5vw,56px)',lineHeight:1.1,letterSpacing:'-.04em',margin:'12px 0'}}>Solicita una demostración de MW1.</h1>
+    <p>Cuéntanos quién eres y qué necesita tu empresa. El equipo comercial continuará el contacto por los canales autorizados. Esta página no agenda reuniones.</p>
    </div>
    <div style={{maxWidth:650,margin:'32px auto',background:'#fff',border:'1px solid #e0e6ef',borderRadius:24,padding:'clamp(20px,4vw,40px)',boxShadow:'0 18px 50px rgba(23,34,53,.06)'}}>
-    <h2 style={{fontSize:23,letterSpacing:'-.025em'}}>Solicita tu reunión</h2>
+    <h2 style={{fontSize:23,letterSpacing:'-.025em'}}>Déjanos tus datos</h2>
     <p style={{color:'#58667c',fontSize:14,lineHeight:1.7,marginTop:10}}>La solicitud utiliza el registro comercial existente de MW1. No crea una cuenta, no conecta WhatsApp y no genera cobros.</p>
     {process.env.MW1_STAGING_MODE==='true'
       ?<DemoRequestForm/>
@@ -31,6 +31,6 @@ export default function AgendarDemoPage(){
     <Link href="/demo" className={styles.secondaryButton}>Ver recorrido ilustrativo antes de agendar</Link>
    </div>
   </section>
-  <footer className={styles.footer}>MW1 · Solicitudes comerciales supervisadas</footer>
+  <footer className={styles.footer}>MW1 · Solicitudes de demostración</footer>
  </main>;
 }
