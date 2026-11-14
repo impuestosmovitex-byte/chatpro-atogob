@@ -1,0 +1,36 @@
+name: MW1 exact original hero on latest staging (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-original-hero-on-latest-20261114
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Exact original photograph exists and matches user's upload
+        run: |
+          test "$(git hash-object public/media/mw1-hero-original.png)" = "4f9a5894eacddcb3d3a6ee6876273cae13cb389f"
+          test "$(stat -c%s public/media/mw1-hero-original.png)" = "2440095"
+          grep -q 'src="/media/mw1-hero-original.png"' app/components/marketing/MarketingHeader.tsx
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Unified roles regression
+        run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - name: Signed workspace regression
+        run: node scripts/test-mw1-signed-workspace-http.cjs
+      - name: Staging automation security regression
+        run: node scripts/test-mw1-staging-automations-failclosed.cjs
