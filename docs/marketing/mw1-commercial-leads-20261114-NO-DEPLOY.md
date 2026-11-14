@@ -36,3 +36,11 @@ No existe en este cambio una agenda en tiempo real. El formulario solicita conta
 - Completar campos sector/sitio con esquema revisado y prueba e2e de persistencia.
 - Verificar compatibilidad con PR #44 y SEG-003 antes de cualquier despliegue.
 - **NO MERGE. NO DEPLOY.** No se cambia login, Railway, credenciales, Meta, WhatsApp, Shopify ni datos reales.
+
+## Avance 2 — captación sin migración (14 noviembre 2026)
+- La página /agendar-demo solicita nombre, empresa, WhatsApp, correo, sector y presencia web.
+- Se distinguen dos autorizaciones: obligatoria para gestionar la solicitud; opcional para noticias/promociones MW1. **No se activa ninguna campaña.**
+- Se validan sector y tipo de sitio web con listas cerradas en API. Los valores de calificación y permiso opcional se persisten provisionalmente en `platform_demo_requests.internal_note`; el consentimiento para gestionar la solicitud sigue en `consent_at`. No afirmar que son columnas separadas ni usar la nota como autorización para un envío sin revalidación.
+- El endpoint frontend transfiere los campos a la API; la API mantiene el registro exclusivo staging, la protección del secreto y la limitación por IP. La deduplicación por correo en 24h es una mejora de conveniencia, **no** garantía transaccional ante concurrencia.
+- Tests de API actualizados para validar estos datos; workflow CI solo compilación y pruebas unitarias, sin conexión a Railway/Supabase y sin despliegue.
+- Pendientes antes del piloto externo: URL y contenido definitivo de política de privacidad, versionado y prueba de consentimiento, esquema formal para calificación, antispam distribuido, idempotencia transaccional, captura de evidencia de origen, validación admin y pruebas end-to-end. La conexión de Meta sigue desactivada.
