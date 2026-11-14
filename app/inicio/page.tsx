@@ -132,7 +132,6 @@ export default function InicioPage() {
         <div className={styles.homeCtaDecoration} aria-hidden="true"><span>MW1</span><MarketingIcon name="sparkles"/></div>
       </section>
 
-      <section className={styles.section} aria-labelledby="commercial-video"><div className={styles.sectionIntroCentered}><div className={styles.eyebrow}>MW1 en acción</div><h2 id="commercial-video">Descubre el CRM en una demostración guiada.</h2><p>Espacio reservado para un video oficial de MW1. Aún no hay una grabación publicada.</p><Link href="/por-que" className={styles.primaryButton}>Ver el recorrido explicativo</Link></div></section>
 
       <footer className={styles.footer}>MW1 · Atención, ventas y automatización con IA</footer>
     </main>
