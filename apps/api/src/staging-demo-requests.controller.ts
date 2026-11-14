@@ -49,7 +49,7 @@ export class StagingDemoRequestsController {
     const acceptedWebOptions=new Set(['tienda','web','no']);
     if(!isTrial&&(!acceptedSectors.has(businessSector)||!acceptedWebOptions.has(hasOnlineStore)))
       throw new BadRequestException('Indica el sector y si tienes tienda virtual.');
-    if(contactPhone&&!/^\+?[0-9]{7,19}$/.test(contactPhone))
+    if((!isTrial&&!contactPhone)||(contactPhone&&!/^\+?[0-9]{7,19}$/.test(contactPhone)))
       throw new BadRequestException('El WhatsApp de contacto no es válido.');
     if(isTrial&&!['inicial','pro'].includes(legacyPlanKey))
       throw new BadRequestException('La prueba gratuita de 14 días solo está disponible para los planes Básico y Eco. Solicita una asesoría para Pro.');
