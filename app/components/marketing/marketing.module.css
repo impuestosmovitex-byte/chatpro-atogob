@@ -1885,3 +1885,21 @@
   .hero h1 { font-size:32px; }
   .heroActions,.homeCtaActions { grid-template-columns:1fr; }
 }
+
+
+/* MW1 public hero: original 1448 × 1086 image, maintain 4:3 without any crop or stretch. */
+.heroMedia {
+  min-height: 0;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  padding: 0;
+}
+.heroPhotoReal {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  object-position: center;
+  image-rendering: auto;
+}
