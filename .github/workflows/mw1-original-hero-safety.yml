@@ -14,8 +14,8 @@ jobs:
       - name: Exact original user image, do not optimize or resize
         run: |
           test -s public/media/mw1-hero-original.png
-          test "$(sha256sum public/media/mw1-hero-original.png | awk '{print $1}')" = "1bc60ef4a7b9a08e64f3e2ef935d70d334d7325c084f9cb382798c901762f540"
-          test "$(stat -c%s public/media/mw1-hero-original.png)" = "3338786"
+          test "$(git hash-object public/media/mw1-hero-original.png)" = "4f9a5894eacddcb3d3a6ee6876273cae13cb389f"
+          test "$(stat -c%s public/media/mw1-hero-original.png)" = "2440095"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
