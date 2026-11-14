@@ -18,15 +18,8 @@ El usuario solicita **sector**, **tiene tienda virtual** y preferencias de comun
 Formulario → registro en `platform_demo_requests` → validación comercial → deduplicación de contacto por empresa + WhatsApp normalizado/correo → creación/actualización autorizada de contacto en empresa interna comercial **aún no creada** → tareas de seguimiento → agenda → demo → oportunidad comercial → contratación supervisada.
 Nunca mezclar leads comerciales de MW1 con ATOGOB o MAOGO ni usar compañías productivas por defecto. Requiere autorización de empresa interna, permisos tenant-aware y proceso idempotente. No se ejecutan mensajes.
 
-## Calendar/Meet — arquitectura prevista y no implementada
-1. Verificar proveedor y calendario autorizado sin usar cuentas personales por defecto.
-2. Backend verifica eventos free/busy en ventana de agenda por token OAuth de menor privilegio.
-3. Reservar horario atómicamente: bloqueo temporal con expiración e idempotency key; revalidar free/busy antes del evento.
-4. Crear evento Google Calendar con Meet, guardar `external_event_id`, `meeting_url`, timezone `America/Bogota`, prospecto, estado y auditoría.
-5. Confirmaciones solo por correo autorizado; WhatsApp únicamente con consentimiento específico, número verificado y plantilla aprobada por Meta.
-6. Mostrar agenda al administrador autorizado; permitir reprogramación/cancelación y reconciliación de fallas.
-
-No existe en este cambio una agenda en tiempo real. El formulario solicita contacto para coordinación manual.
+## Calendario y reuniones — FUERA DE ALCANCE
+No desarrollar, conectar, simular ni habilitar selección de horarios, Google Calendar, Meet o agendamiento en esta etapa. La página solamente registra al prospecto; una futura etapa comercial definirá el contacto y las citas fuera de este PR.
 
 ## Riesgos y validaciones pendientes
 - No se ejecutó build/test de Next.js o NestJS contra entorno local. Revisar CI del PR antes de considerar merge.
@@ -38,7 +31,7 @@ No existe en este cambio una agenda en tiempo real. El formulario solicita conta
 - **NO MERGE. NO DEPLOY.** No se cambia login, Railway, credenciales, Meta, WhatsApp, Shopify ni datos reales.
 
 ## Avance 2 — captación sin migración (14 noviembre 2026)
-- La página /agendar-demo solicita nombre, empresa, WhatsApp, correo, sector y presencia web.
+- La página /agendar-demo solicita únicamente nombre, empresa, WhatsApp, correo y consentimiento de contacto; sector y presencia web están ocultos bajo sección opcional desplegable.
 - Se distinguen dos autorizaciones: obligatoria para gestionar la solicitud; opcional para noticias/promociones MW1. **No se activa ninguna campaña.**
 - Se validan sector y tipo de sitio web con listas cerradas en API. Los valores de calificación y permiso opcional se persisten provisionalmente en `platform_demo_requests.internal_note`; el consentimiento para gestionar la solicitud sigue en `consent_at`. No afirmar que son columnas separadas ni usar la nota como autorización para un envío sin revalidación.
 - El endpoint frontend transfiere los campos a la API; la API mantiene el registro exclusivo staging, la protección del secreto y la limitación por IP. La deduplicación por correo en 24h es una mejora de conveniencia, **no** garantía transaccional ante concurrencia.
@@ -52,3 +45,11 @@ No existe en este cambio una agenda en tiempo real. El formulario solicita conta
 - No crea ni modifica reuniones, clientes, empresas, planes, consentimiento ni conversaciones. Los cambios de estado siguen realizándose en la sección existente Empresas. Las notas de calificación se muestran solo tras autenticación.
 - Limitación explícita: las estadísticas de la pantalla describen la muestra cargada y no el universo completo de leads. Necesita paginación, reportes y RLS revisados antes de ser un panel analítico definitivo.
 - No exponer esta vista fuera de staging antes de validación de acceso de usuario de empresa, usuario no autenticado y Super Admin.
+
+## Decisión de supervisor — prioridad comercial visual
+- Formularios cortos; no selección de horarios ni fecha de reuniones.
+- Solicitud registrada en `platform_demo_requests`; panel `/admin/prospectos` usa el mismo endpoint protegido de Super Admin.
+- Paginación segura de 50 elementos por página: siguiente/anterior; la búsqueda y métricas del panel son por página cargada. No duplicar registros ni crear esquema paralelo.
+- Prototipo navegable en `preview/comercial/index.html` con seis vistas, logo oficial y únicamente datos ficticios. Servidor estático de Node sin dependencias ni claves, CSP con `connect-src 'none'`, sin acceso a ningún backend. Este prototipo no valida autenticación ni guardado real.
+- Riesgos de base: la rama del PR #45 sigue divergiendo de PR #44; reconciliar solo después de la revisión visual y de SEG-003. No fusionar automáticamente.
+- Plan de publicación sujeto a autorización: proyecto Railway **nuevo y separado**, servicio estático con `rootDirectory=/preview/comercial`, comando `node server.mjs`, rama fijada a `feature/mw1-commercial-leads-20261114`, sin variables o credenciales MW1 ni red privada; sin configurar servicios MW1 existentes. Comprobar en incógnito escritorio/móvil que las seis vistas abren y que el servidor rechaza POST. No publicar todavía.
