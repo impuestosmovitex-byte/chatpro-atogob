@@ -63,6 +63,14 @@ describe('Isolated staging commercial demo intake',()=>{
       .rejects.toThrow(/WhatsApp/);
     expect(insert).not.toHaveBeenCalled();
   });
+  test('accepts omitted optional qualification without losing the lead',async()=>{
+    await controller.submit('internal-test-value',{...data,businessSector:'',hasOnlineStore:''});
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      contact_phone:'+573001112233',
+      internal_note:expect.stringContaining('Sector: No indicado'),
+    }));
+    expect(insert.mock.calls[0][0].internal_note).toContain('Presencia web: No indicada');
+  });
   test('rejects invalid qualification values without writing',async()=>{
     await expect(controller.submit('internal-test-value',{...data,businessSector:'injected'}))
       .rejects.toThrow(/sector/);
