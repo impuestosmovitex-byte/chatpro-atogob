@@ -440,3 +440,22 @@
   .logout { border-color:#3d5276; background:#152a4a; color:#fff; }
   .logout:hover { background:#29456d; }
 }
+
+/* New owner-supplied standalone MW1 icon: center the symbol, not the white canvas. */
+.brand { overflow:hidden; }
+.brandLogo {
+  width:104px;
+  height:104px;
+  max-height:none;
+  flex:0 0 auto;
+  object-fit:contain;
+  transform:scale(1.48);
+  transform-origin:center;
+}
+@media (min-width:1041px) {
+  .brand { height:79px; min-height:79px; padding:0; }
+}
+@media (max-width:1040px) {
+  .brand { max-height:70px; }
+  .brandLogo { width:84px; height:84px; transform:scale(1.45); }
+}
