@@ -37,6 +37,9 @@ assert.equal(expectedModuleLabels({clients:true},'advisor',false,'emprende-con-m
 const sidebarSource=fs.readFileSync('app/components/AppSidebar.tsx','utf8');
 assert.ok(sidebarSource.includes('access.ok === true && access.enabled === true'), 'Sidebar must honor explicit commerce access flag');
 assert.ok(page.includes('accessPayload.ok === true && accessPayload.enabled === true'), 'Panel must honor explicit commerce access flag');
+const loginSource=fs.readFileSync('app/login/page.tsx','utf8');
+assert.ok(loginSource.includes("allowedReturn ? destination : (staging && !platformLogin ? '/panel' : '/')"),
+  'Staging company login should default to unified workspace while preserving return paths and production login');
 const otherTenant=expectedModuleLabels({inbox:false,clients:true},'owner',false,'piloto-mw1-prueba');
 assert.equal(otherTenant.includes('Bandeja omnicanal'),false,'A company slug cannot confer inbox permission');
 assert.equal(otherTenant.includes('Clientes'),true,'Positive entitlement should remain available');
