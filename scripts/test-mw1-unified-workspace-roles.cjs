@@ -22,14 +22,14 @@ function expectedModuleLabels(permissions, role, commerce, companySlug='mw1-demo
 }
 const allowed={inbox:true,clients:true,statistics:true,automations:true,configuration:true};
 const owner=expectedModuleLabels(allowed,'owner',true);
-for(const label of ['Bandeja omnicanal','Clientes','Estadísticas','Automatizaciones','Asistente de IA','Equipo y roles','Integraciones','Mi plan','Pedidos','Catálogo'])
+for(const label of ['Bandeja omnicanal','Clientes','Estadísticas','Automatizaciones','Asistente de IA','Usuarios y asesores','Canales e integraciones','Mi plan','Pedidos','Catálogo'])
   assert.ok(owner.includes(label), 'Owner must see authorised module: '+label);
 const advisor=expectedModuleLabels({inbox:true,clients:true},'seg003_qa_inbox',false);
 assert.deepEqual(Array.from(advisor), ['Bandeja omnicanal','Clientes']);
 const restricted=expectedModuleLabels({},'advisor',false,'piloto-mw1-prueba');
 assert.equal(restricted.length,0,'Advisor without grants must see no business modules');
 const advisorWithConfig=expectedModuleLabels({...allowed},'advisor',true);
-for(const label of ['Equipo y roles','Integraciones','Mi plan','Pedidos','Catálogo'])
+for(const label of ['Usuarios y asesores','Canales e integraciones','Mi plan','Pedidos','Catálogo'])
   assert.equal(advisorWithConfig.includes(label),false,'Non-manager must not see '+label);
 const maogoOwner=expectedModuleLabels({clients:true},'owner',false,'emprende-con-maogo');
 assert.ok(maogoOwner.includes('Leads MAOGO'),'MAOGO owner retains existing leads module');
