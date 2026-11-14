@@ -1,0 +1,33 @@
+name: MW1 exact photo on operational staging gate
+on:
+  push:
+    branches:
+      - feature/mw1-exact-photo-on-operational-20261114
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Verify image identity and source
+        run: |
+          test "$(git hash-object public/media/mw1-hero-uploaded.avif)" = "14ff6cc7c8a20f287ecb6540db6ef122a1e4f249"
+          grep -q 'src="/media/mw1-hero-uploaded.avif"' app/components/marketing/MarketingHeader.tsx
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Production web build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Roles and permissions
+        run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - name: Signed access regression
+        run: node scripts/test-mw1-signed-workspace-http.cjs
