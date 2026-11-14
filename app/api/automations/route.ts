@@ -62,6 +62,17 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (process.env.MW1_STAGING_MODE === 'true') {
+    // The isolated staging database intentionally has no automation tables.
+    // Never treat missing data as empty/disabled production automations.
+    return NextResponse.json({
+      ok: false,
+      code: 'STAGING_AUTOMATIONS_UNAVAILABLE',
+      error: 'Las automatizaciones de las empresas reales siguen en su CRM habitual. El entorno aislado de staging no contiene sus datos.',
+      stagingReadOnly: true,
+    }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+  }
+
   try {
     const { apiBase, inboxKey } = config();
     const target = new URL(`${apiBase}/automations`);
@@ -105,6 +116,14 @@ export async function PUT(request: NextRequest) {
       },
       { status: 403 },
     );
+  }
+
+  if (process.env.MW1_STAGING_MODE === 'true') {
+    return NextResponse.json({
+      ok: false,
+      code: 'STAGING_AUTOMATIONS_READ_ONLY',
+      error: 'No se permiten cambios ni envíos de automatizaciones en staging.',
+    }, { status: 403, headers: { 'Cache-Control': 'no-store' } });
   }
 
   try {
@@ -197,6 +216,14 @@ export async function POST(request: NextRequest) {
       },
       { status: 403 },
     );
+  }
+
+  if (process.env.MW1_STAGING_MODE === 'true') {
+    return NextResponse.json({
+      ok: false,
+      code: 'STAGING_AUTOMATIONS_READ_ONLY',
+      error: 'No se permiten cambios ni envíos de automatizaciones en staging.',
+    }, { status: 403, headers: { 'Cache-Control': 'no-store' } });
   }
 
   try {
