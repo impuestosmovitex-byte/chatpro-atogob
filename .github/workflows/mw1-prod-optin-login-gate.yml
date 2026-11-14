@@ -1,0 +1,25 @@
+name: MW1 production opt-in login routing (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-prod-optin-login-route-gate-20261114
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Verify secure company opt-in redirects and membership gate
+        run: node scripts/test-mw1-panel-optin.cjs
+      - name: Build existing CRM with opt-in disabled by default
+        run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'

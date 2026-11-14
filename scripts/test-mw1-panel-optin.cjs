@@ -30,6 +30,14 @@ assert.ok(gateway.indexOf('await getAccessCapabilities(session);') <
   gateway.indexOf('// SEG-002: only a verified individual'),
   'Membership check applies before module navigation');
 assert.ok(gateway.includes("'/panel',"));
+assert.ok(gateway.indexOf("if (pathname === '/login')") <
+  gateway.indexOf('if (isPublicPath(pathname))'),
+  'Login sessions must be handled before the public-route bypass');
+assert.ok(gateway.includes("isUnifiedPanelEnabled(loginSession.companySlug) ? '/panel' : '/'"),
+  'Login existing tenant session routes to panel only when opted in');
+assert.ok(gateway.includes('if (pathname === \'/panel\')'),
+  'Panel retains independent authorization revalidation');
+
 const sidebar=fs.readFileSync('app/components/AppSidebar.tsx','utf8');
 assert.ok(sidebar.includes("unifiedPanelEnabled ? [{ href: '/panel'"));
 const login=fs.readFileSync('app/api/auth/login/route.ts','utf8');
