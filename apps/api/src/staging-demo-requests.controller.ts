@@ -69,6 +69,13 @@ export class StagingDemoRequestsController {
       .eq('visitor_digest',visitorDigest).gte('created_at',since);
     if(countError)throw new BadRequestException('No se pudo verificar la solicitud.');
     if((count??0)>=3)return {ok:true,message:'Solicitud recibida. Nuestro equipo revisará tu información.'};
+    // Idempotencia básica: evitar duplicar el mismo correo en solicitudes de 24 h.
+    // La búsqueda es interna y nunca revela si ese correo ya está registrado.
+    const {count:existing,error:duplicateError}=await client.from('platform_demo_requests')
+      .select('id',{count:'exact',head:true})
+      .eq('contact_email',contactEmail).eq('source','web_demo').gte('created_at',since);
+    if(duplicateError)throw new BadRequestException('No se pudo verificar la solicitud.');
+    if((existing??0)>0&&!isTrial)return {ok:true,message:'Solicitud recibida. Nuestro equipo revisará tu información.'};
     const {error}=await client.from('platform_demo_requests').insert({
       company_name:companyName,contact_name:contactName,
       contact_email:contactEmail,plan_interest:legacyPlanKey,
