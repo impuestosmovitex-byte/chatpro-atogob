@@ -93,6 +93,20 @@ function secureResponse(response: NextResponse): NextResponse {
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  // A signed-in user must not be sent back to the login form.
+  // An opted-in tenant opens the new panel, everyone else keeps the old CRM.
+  if (pathname === '/login') {
+    const loginSession = await getInboxSession(
+      request.cookies.get(INBOX_SESSION_COOKIE)?.value,
+    );
+    if (loginSession) {
+      const destination = loginSession.type === 'user' &&
+        isUnifiedPanelEnabled(loginSession.companySlug) ? '/panel' : '/';
+      return secureResponse(NextResponse.redirect(new URL(destination, request.url)));
+    }
+    return secureResponse(NextResponse.next());
+  }
+
   if (isPublicPath(pathname)) {
     return secureResponse(NextResponse.next());
   }
@@ -100,16 +114,6 @@ export async function proxy(request: NextRequest) {
   const session = await getInboxSession(
     request.cookies.get(INBOX_SESSION_COOKIE)?.value,
   );
-
-  if (pathname === '/login') {
-    if (session) {
-      return secureResponse(
-        NextResponse.redirect(new URL('/', request.url)),
-      );
-    }
-
-    return secureResponse(NextResponse.next());
-  }
 
   if (!session) {
     if (pathname.startsWith('/api/')) {
