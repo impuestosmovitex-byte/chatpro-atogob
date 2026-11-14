@@ -51,13 +51,15 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     }finally{setSending(false);}
   }
   if(success)return <div role="status" className={styles.success}>
-    <strong>{isTrial?'Recibimos tu solicitud de prueba de 14 días':'¡Recibimos tu solicitud!'}</strong>
-    <p>{isTrial?'Nuestro equipo revisará tu número, el plan y la conexión de canales. Los 14 días comenzarán únicamente después de que confirmemos y activemos la cuenta. Aún no se han creado usuarios ni iniciado cobros.' :'El equipo comercial de MW1 continuará el contacto por los medios autorizados. No se ha programado ninguna reunión, creado ninguna cuenta ni generado ningún cobro.'}</p>
+    <span className={styles.successEyebrow}>UN NUEVO PASO PARA TU EMPRESA</span>
+    <strong>{isTrial?'¡Recibimos tu solicitud!':'¡Genial! Estás más cerca de hacer crecer tu empresa.'}</strong>
+    <p>{isTrial?'Nuestro equipo revisará tu número, el plan y la conexión de canales. Los 14 días comenzarán únicamente después de que confirmemos y activemos la cuenta. Aún no se han creado usuarios ni iniciado cobros.' :'Imagina aprovechar más oportunidades de venta, reducir tareas operativas y tener más tranquilidad como emprendedor. Recibimos tus datos y nuestro equipo comercial se pondrá en contacto contigo para mostrarte cómo MW1 puede ayudarte.'}</p>
+    <span className={styles.successFooter}>MW1 · Tu negocio más organizado, tu tiempo mejor aprovechado.</span>
   </div>;
   return <form onSubmit={event=>void submit(event)} className={styles.form}>
     <p className={styles.caption}>{isTrial
       ?'Solicita 14 días de prueba guiada del plan que elijas. No necesitas tarjeta. La prueba no empieza al enviar este formulario; primero coordinaremos la activación contigo.'
-      :'Déjanos tus datos y nuestro equipo comercial continuará el contacto. No necesitas seleccionar un horario ni crear una cuenta.'}</p>
+      :'Completa tus datos para que nuestro equipo pueda contactarte.'}</p>
     <label>Empresa
       <input required minLength={2} maxLength={100} autoComplete="organization"
         value={companyName} onChange={event=>setCompanyName(event.target.value)}
@@ -82,29 +84,6 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
           placeholder="Ej. +573001234567"/>
       </label>
     </>
-    {!isTrial&&<details className={styles.optional}>
-      <summary>Cuéntanos un poco más de tu negocio (opcional)</summary>
-      <label>Sector de tu empresa (opcional)
-        <select value={businessSector} onChange={e=>setBusinessSector(e.target.value)}>
-          <option value="">Prefiero no indicarlo</option>
-          <option value="moda">Moda y accesorios</option>
-          <option value="retail">Comercio y tiendas</option>
-          <option value="servicios">Servicios profesionales</option>
-          <option value="educacion">Educación</option>
-          <option value="salud">Salud y bienestar</option>
-          <option value="restaurantes">Restaurantes y alimentos</option>
-          <option value="otro">Otro sector</option>
-        </select>
-      </label>
-      <label>¿Tienes página web o tienda virtual? (opcional)
-        <select value={hasOnlineStore} onChange={e=>setHasOnlineStore(e.target.value)}>
-          <option value="">Prefiero no indicarlo</option>
-          <option value="tienda">Sí, tienda virtual</option>
-          <option value="web">Sí, página informativa</option>
-          <option value="no">No tengo</option>
-        </select>
-      </label>
-    </details>}
     <div className={styles.hidden} aria-hidden="true">
       <label>Sitio web <input tabIndex={-1} autoComplete="off"
         value={website} onChange={e=>setWebsite(e.target.value)}/></label>
@@ -112,12 +91,8 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     <label className={styles.consent}>
       <input required type="checkbox" checked={consent}
         onChange={event=>setConsent(event.target.checked)}/>
-      <span>Autorizo el tratamiento de mis datos personales para gestionar esta solicitud y el contacto por correo o WhatsApp para coordinar mi demostración o prueba guiada. Este permiso no autoriza campañas automáticas. Enviarla no crea una cuenta, no activa un plan ni genera cargos.</span>
+      <span>Autorizo el tratamiento de mis datos para atender mi solicitud y contactarme por WhatsApp o correo sobre MW1. Este permiso no autoriza campañas publicitarias automáticas.</span>
     </label>
-    {!isTrial&&<label className={styles.consent}>
-      <input type="checkbox" checked={marketingConsent} onChange={e=>setMarketingConsent(e.target.checked)}/>
-      <span>También deseo recibir novedades y ofertas comerciales de MW1. Opcional; no es necesario para solicitar la demo.</span>
-    </label>}
     {error&&<p role="alert" className={styles.error}>{error}</p>}
     <button type="submit" disabled={sending||!consent}>
       {sending?'Enviando…':isTrial?'Solicitar mis 14 días de prueba':'Enviar solicitud de demostración'}
