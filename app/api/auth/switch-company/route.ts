@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isUnifiedPanelEnabled } from '../../../lib/unified-panel-rollout';
 import {
   createInboxSessionToken,
   getInboxSession,
@@ -76,7 +77,10 @@ export async function POST(request: NextRequest) {
     }
 
     const token = await createInboxSessionToken(data.session);
-    const result = NextResponse.json({ ok: true, session: data.session });
+    const result = NextResponse.json({
+      ok: true, session: data.session,
+      unifiedPanelEnabled: data.session.type === 'user' && isUnifiedPanelEnabled(data.session.companySlug),
+    });
 
     result.cookies.set({
       name: INBOX_SESSION_COOKIE,

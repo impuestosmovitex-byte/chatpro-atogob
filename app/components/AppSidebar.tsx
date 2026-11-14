@@ -92,6 +92,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const pathname = usePathname();
   const [roleKey, setRoleKey] = useState('');
+  const [unifiedPanelEnabled, setUnifiedPanelEnabled] = useState(false);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [activeCompany, setActiveCompany] = useState(companyName);
   const [activeSlug, setActiveSlug] = useState('');
@@ -131,6 +132,7 @@ export function AppSidebar({
           const capabilitiesData = (await capabilitiesResponse.json()) as {
             ok?: boolean;
             capabilities?: Capabilities;
+            unifiedPanelEnabled?: boolean;
           };
 
           if (
@@ -140,6 +142,7 @@ export function AppSidebar({
             capabilitiesData.capabilities
           ) {
             setCapabilities(capabilitiesData.capabilities);
+            setUnifiedPanelEnabled(capabilitiesData.unifiedPanelEnabled === true);
           }
         } catch {
           const fullAccess =
@@ -207,6 +210,7 @@ export function AppSidebar({
     icon: string;
     exact?: boolean;
   }> = [
+    ...(unifiedPanelEnabled ? [{ href: '/panel', label: 'Centro de operaciones', icon: '◫', exact: true }] : []),
     ...baseNavigation.filter(
       (item) =>
         effectiveCapabilities[item.capability] &&
@@ -241,6 +245,7 @@ export function AppSidebar({
       const data = (await response.json()) as {
         ok?: boolean;
         error?: string;
+        unifiedPanelEnabled?: boolean;
       };
 
       if (!response.ok || !data.ok) {
@@ -248,7 +253,7 @@ export function AppSidebar({
         return;
       }
 
-      window.location.assign('/');
+      window.location.assign(data.unifiedPanelEnabled ? '/panel' : '/');
     } catch {
       setMessage('No se pudo cambiar de empresa.');
     } finally {
