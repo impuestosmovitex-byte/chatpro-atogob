@@ -150,11 +150,19 @@ export async function proxy(request: NextRequest) {
     );
   }
 
-  // Disabled by default: only an explicitly approved company may enter.
-  if (pathname === '/panel' &&
-    (session.type !== 'user' || !session.userId ||
-     !isUnifiedPanelEnabled(session.companySlug))) {
-    return secureResponse(NextResponse.redirect(new URL('/', request.url)));
+  // Opt-in only. Revalidate the CURRENT company membership at the gateway,
+  // not only inside the browser. No impact on the original CRM routes.
+  if (pathname === '/panel') {
+    if (session.type !== 'user' || !session.userId ||
+        !isUnifiedPanelEnabled(session.companySlug)) {
+      return secureResponse(NextResponse.redirect(new URL('/', request.url)));
+    }
+    try {
+      await getAccessCapabilities(session);
+    } catch {
+      // Revoked tenant access or unreachable authorization API: fail closed.
+      return secureResponse(NextResponse.redirect(new URL('/', request.url)));
+    }
   }
 
   // SEG-002: only a verified individual can enter Statistics.
