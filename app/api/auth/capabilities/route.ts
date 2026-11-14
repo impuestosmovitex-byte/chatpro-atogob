@@ -4,6 +4,7 @@ import {
   INBOX_SESSION_COOKIE,
 } from '../../../lib/inbox-auth';
 import { getAccessCapabilities } from '../../../lib/access-capabilities';
+import { isUnifiedPanelEnabled } from '../../../lib/unified-panel-rollout';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       capabilities: await getAccessCapabilities(session),
+      unifiedPanelEnabled: session.type === 'user' && isUnifiedPanelEnabled(session.companySlug),
     });
   } catch (error) {
     return NextResponse.json(

@@ -4,6 +4,7 @@ import {
   INBOX_SESSION_COOKIE,
 } from './app/lib/inbox-auth';
 import { getAccessCapabilities } from './app/lib/access-capabilities';
+import { isUnifiedPanelEnabled } from './app/lib/unified-panel-rollout';
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -21,6 +22,7 @@ const PUBLIC_PATHS = new Set([
 
 const ADVISOR_ALLOWED_PAGES = [
   '/',
+  '/panel',
   '/clientes',
 ];
 
@@ -146,6 +148,13 @@ export async function proxy(request: NextRequest) {
     return secureResponse(
       NextResponse.redirect(new URL('/revision-atogob', request.url)),
     );
+  }
+
+  // Disabled by default: only an explicitly approved company may enter.
+  if (pathname === '/panel' &&
+    (session.type !== 'user' || !session.userId ||
+     !isUnifiedPanelEnabled(session.companySlug))) {
+    return secureResponse(NextResponse.redirect(new URL('/', request.url)));
   }
 
   // SEG-002: only a verified individual can enter Statistics.
