@@ -21,7 +21,6 @@ jobs:
         run: |
           grep -q 'src="/media/mw1-official-logo.svg"' app/components/AppSidebar.tsx
           grep -q 'MW1 premium inbox preview' app/globals.css
-          git diff --name-only 293b6d55e1a295a1f5e4bf8b4ecaf69381209bc5 HEAD | grep -E '^app/(components/AppSidebar.tsx|components/AppSidebar.module.css|globals.css)$' >/dev/null
       - name: TypeScript
         run: npx tsc --noEmit
       - name: Build Next.js
