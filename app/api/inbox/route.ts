@@ -76,10 +76,18 @@ export async function GET(request: NextRequest) {
     (session.type !== 'user' || !session.userId || !session.companyId || !session.companySlug)))
     return unauthorized();
   if (process.env.MW1_STAGING_MODE === 'true' && request.nextUrl.searchParams.has('mode')) {
+    // Transfer targets are a read-only selector. In the isolated environment
+    // there are no operational transfer targets, and POST remains disabled.
+    // Do not report this deliberate condition as an intermittent outage.
+    if (request.nextUrl.searchParams.get('mode') === 'transfer-targets') {
+      return NextResponse.json({
+        ok: true, targets: [], stagingReadOnly: true, transfersDisabled: true,
+      }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     return NextResponse.json({
       ok: false, code: 'STAGING_INBOX_DISABLED',
       error: 'Las acciones de conversaciones todavía no están disponibles en staging.',
-    }, {status:503,headers:{'Cache-Control':'no-store'}});
+    }, {status:403,headers:{'Cache-Control':'no-store'}});
   }
 
   try {
