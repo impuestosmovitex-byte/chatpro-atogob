@@ -44,3 +44,26 @@ jobs:
         run: npx jest --runInBand staging-demo-requests.controller.spec.ts platform-demo-followup.spec.ts
       - name: NestJS application compilation (excludes unrelated legacy specs)
         run: npx nest build
+  static-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify preview server syntax
+        run: node --check preview/comercial/server.mjs
+      - name: Verify static mockup has no backend or outbound connections
+        run: |
+          test -f preview/comercial/index.html
+          ! grep -E 'fetch\(|XMLHttpRequest|WebSocket|supabase|CHATPRO_INBOX_KEY|localhost:|api/marketing/demo-request' preview/comercial/index.html
+      - name: Verify isolated preview HTTP
+        run: |
+          PORT=9876 node preview/comercial/server.mjs &
+          PID=$!
+          trap 'kill "$PID" || true' EXIT
+          for i in 1 2 3 4 5; do curl -fsS http://127.0.0.1:9876/healthz && break || sleep 1; done
+          curl -fsS http://127.0.0.1:9876/ -o /tmp/mw1-preview.html
+          grep -q 'MAQUETA DE REVISIÓN' /tmp/mw1-preview.html
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:9876/)" = '405'
