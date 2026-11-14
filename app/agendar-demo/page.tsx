@@ -4,6 +4,9 @@ import {MarketingHeader} from '../components/marketing/MarketingHeader';
 import {DemoRequestForm} from '../demo/DemoRequestForm';
 import styles from '../components/marketing/marketing.module.css';
 
+// Server-render at request time so the existing staging flag cannot be frozen during build.
+export const dynamic='force-dynamic';
+
 export const metadata:Metadata={
  title:'Solicitar una demostración de MW1',
  description:'Solicita una demostración del CRM MW1. El equipo comercial continuará el contacto.',
