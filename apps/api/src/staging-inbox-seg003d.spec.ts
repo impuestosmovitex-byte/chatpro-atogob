@@ -12,7 +12,7 @@ const original={
  ack:process.env.MW1_INTERNAL_SINGLE_REPLICA_ACK,
  replicas:process.env.MW1_INTERNAL_REPLICA_COUNT,
 };
-function signed(path:'/inbox'|'/inbox/instagram-pilot',userId=USER_A,
+function signed(path:'/inbox'|'/inbox/instagram-pilot'|'/inbox/:sessionId',userId=USER_A,
  companyId=COMPANY_A,slug='alfa'){
  const now=Math.floor(Date.now()/1000);
  const claim={v:1,kind:'user',userId,companyId,companySlug:slug,
@@ -167,6 +167,34 @@ describe('SEG-003D staging inbox (shared inbox.view visibility, synthetic tenant
    .rejects.toBeInstanceOf(UnauthorizedException);
   const denied=fixtures({...data,app_role_permissions:[]});
   await expect(denied.pilot()).rejects.toBeInstanceOf(ForbiddenException);
+ });
+ it('reads only tagged synthetic conversation detail for an authorized member',async()=>{
+  const qa={qa_fixture:'SEG003D-FUNCIONAL-20261114',synthetic:true};
+  const {controller,reads}=fixtures({conversation_sessions:[
+    {id:'fixture-one',company_id:COMPANY_A,customer_phone:'000000000101',
+      stage:'open',context:qa,attention_status:'human',assigned_to_user_id:USER_A},
+    {id:'fixture-two',company_id:COMPANY_B,customer_phone:'000000000101',
+      stage:'open',context:qa,attention_status:'human',assigned_to_user_id:USER_B},
+  ]});
+  const result=await controller.detail('test-key',USER_A,COMPANY_A,'alfa',signed('/inbox/:sessionId'),'fixture-one');
+  expect(result).toMatchObject({ok:true,synthetic:true,stagingReadOnly:true,historyRestricted:true});
+  expect(result.session.companyId).toBe(COMPANY_A);
+  expect(result.messages).toEqual([]);
+  expect(reads.filter(x=>x.table==='conversation_sessions').at(-1)?.filters)
+    .toEqual(expect.arrayContaining([['company_id',COMPANY_A],['id','fixture-one']]));
+  await expect(controller.detail('test-key',USER_A,COMPANY_A,'alfa',signed('/inbox/:sessionId'),'fixture-two'))
+    .rejects.toBeInstanceOf(ForbiddenException);
+ });
+ it('blocks untagged conversation detail and revoked/unsigned actors',async()=>{
+  const {controller,reads}=fixtures();
+  await expect(controller.detail('test-key',USER_A,COMPANY_A,'alfa',signed('/inbox/:sessionId'),'assigned'))
+    .rejects.toBeInstanceOf(ForbiddenException);
+  await expect(controller.detail('test-key',USER_A,COMPANY_A,'alfa','','assigned'))
+    .rejects.toBeInstanceOf(UnauthorizedException);
+  const revoked=fixtures({company_memberships:[]});
+  await expect(revoked.controller.detail('test-key',USER_A,COMPANY_A,'alfa',signed('/inbox/:sessionId'),'assigned'))
+    .rejects.toBeInstanceOf(ForbiddenException);
+  expect(revoked.reads.some(x=>x.table==='conversation_sessions')).toBe(false);
  });
  it('pilot requires active membership, refuses alternate slug and does not send',async()=>{
   const {pilot,reads}=fixtures();

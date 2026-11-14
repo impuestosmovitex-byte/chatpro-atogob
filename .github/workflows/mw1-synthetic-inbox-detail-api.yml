@@ -1,0 +1,26 @@
+name: MW1 synthetic inbox detail API (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-staging-synthetic-inbox-detail-20261114
+permissions:
+  contents: read
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - name: Test synthetic detail read, role revocation and tenant isolation
+        run: npm test -- --runInBand --runTestsByPath src/staging-inbox-seg003d.spec.ts
+      - name: Compile NestJS
+        run: npm run build
