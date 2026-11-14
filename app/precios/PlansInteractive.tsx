@@ -26,9 +26,6 @@ export default function PlansInteractive({plans}:{plans:PlanCardOption[]}){
      <div className={styles.price}>${pesos(plan.price)}
       <span style={{fontSize:14,fontWeight:500}}> / mes</span>
      </div>
-     <p style={{fontSize:12,fontWeight:750,color:plan.published?'#166036':'#85610a'}}>
-      {plan.published?'Tarifa publicada en ambiente de pruebas':'Propuesta orientativa · pendiente de aprobación'}
-     </p>
      <p style={{fontSize:14,color:'#657187',margin:'10px 0'}}>{plan.summary}</p>
      <p style={{fontWeight:800,marginBottom:8}}>{plan.users} usuarios · {plan.connections} conexiones</p>
      <ul>{plan.highlights.map(x=><li key={x}>{x}</li>)}</ul>
