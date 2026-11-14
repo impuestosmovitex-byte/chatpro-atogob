@@ -38,7 +38,7 @@ create or replace function public.mw1_apply_manual_contract(
  p_company_id uuid,p_actor_id uuid,p_tier text,p_payment_reference text,
  p_amount_cop bigint,p_verified_at timestamptz,p_starts_at timestamptz,
  p_expires_at timestamptz,p_additional_users integer,p_reason text
-) returns jsonb language plpgsql security definer set search_path=pg_catalog,pg_temp as $
+) returns jsonb language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
 declare
  v_company record;
  v_approval record;
