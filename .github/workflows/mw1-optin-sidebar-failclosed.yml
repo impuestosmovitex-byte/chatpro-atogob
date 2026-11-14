@@ -1,0 +1,27 @@
+name: MW1 opt-in sidebar permissions fail closed (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-prod-optin-sidebar-failclosed-20261114
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Verify independent ATOGOB / MAOGO flag and live-membership gateway
+        run: node scripts/test-mw1-panel-optin.cjs
+      - name: Verify nav failure does not guess permissions for opted-in tenant
+        run: node scripts/test-mw1-optin-sidebar.cjs
+      - name: Validate original CRM and unified Web compile
+        run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
