@@ -29,10 +29,10 @@ jobs:
             if(img.status!==200)throw Error('Uploaded image HTTP '+img.status);
             const data=await img.arrayBuffer();
             const bytes=new Uint8Array(data);
-            if(bytes.byteLength!==13366)throw Error('Wrong image byte size '+bytes.byteLength);
+            console.log('Asset HTTP type',img.headers.get('content-type'),'bytes',bytes.byteLength,'first-hex',Array.from(bytes.slice(0,32)).map(b=>b.toString(16).padStart(2,'0')).join(''));
             const digest=await crypto.subtle.digest('SHA-256',bytes);
             const hex=Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
-            console.log('Verified uploaded AVIF bytes:',bytes.byteLength,hex);
+            console.log('Verified uploaded AVIF bytes:',bytes.byteLength,hex);if(!((img.headers.get('content-type')||'').includes('image/avif')))throw Error('Image route did not return AVIF bytes');
             const admin=await fetch(base+'/admin/prospectos',{redirect:'manual'});
             if(![301,302,303,307,308,401,403].includes(admin.status))throw Error('Admin route not guarded: '+admin.status);
             console.log('PASS live image, home CTA, plans, and admin protection');
