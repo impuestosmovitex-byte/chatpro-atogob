@@ -1,0 +1,37 @@
+name: MW1 hero photo live HTTP check (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-restore-hero-on-unified-login-20261114
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify live hero image, basic navigation, and admin protection
+        run: |
+          node - <<'NODE'
+          (async()=>{
+            const host='https://mw1-web-staging-staging.up.railway.app';
+            const res=await fetch(host+'/inicio',{redirect:'manual'});
+            if(res.status!==200)throw Error('Home HTTP '+res.status);
+            const html=await res.text();
+            for(const value of ['/media/mw1-hero.webp','Solicitar demostración','/precios','ChatPro MW1']){
+              if(!html.includes(value))throw Error('Home missing '+value);
+            }
+            if(html.includes('Espacio reservado para un video oficial'))throw Error('Old placeholder returned');
+            const pic=await fetch(host+'/media/mw1-hero.webp');
+            if(pic.status!==200)throw Error('Hero asset HTTP '+pic.status);
+            const mime=pic.headers.get('content-type')||'';
+            if(!mime.includes('image/'))throw Error('Hero is not an image: '+mime);
+            const login=await fetch(host+'/admin/prospectos',{redirect:'manual'});
+            if(![301,302,303,307,308,401,403].includes(login.status))throw Error('Admin access not protected: '+login.status);
+            console.log('PASS live photo, home CTAs and admin protection');
+          })().catch(e=>{console.error(e);process.exitCode=1})
+          NODE
