@@ -302,10 +302,10 @@ export function AppSidebar({
         <div className={styles.brand}>
           <img
             className={styles.brandLogo}
-            src="/media/mw1-official-logo.svg"
-            alt="ChatPro MW1"
-            width={180}
-            height={48}
+            src="/media/logo-chatpro-azul-amarillo.png"
+            alt="Icono oficial ChatPro azul y amarillo"
+            width={110}
+            height={110}
           />
         </div>
 
