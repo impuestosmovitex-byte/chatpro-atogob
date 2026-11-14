@@ -14,7 +14,10 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
   const[consent,setConsent]=useState(false);
   const[contactPhone,setContactPhone]=useState('');
   const[whatsappSetup,setWhatsappSetup]=useState('unsure');
-  const[website,setWebsite]=useState('');
+  const[website,setWebsite]=useState(''); // Campo trampa antispam
+  const[businessSector,setBusinessSector]=useState('');
+  const[hasOnlineStore,setHasOnlineStore]=useState('');
+  const[marketingConsent,setMarketingConsent]=useState(false);
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     const requested=params.get('plan');
@@ -32,11 +35,13 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
     event.preventDefault();
     if(sending||!consent)return;
 
+    if(!isTrial&&(!businessSector||!hasOnlineStore))return;
     setError('');setSending(true);
     try{
       const response=await fetch('/api/marketing/demo-request',{
         method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({companyName,contactName,contactEmail,planInterest,consent,website,requestType:mode,contactPhone,whatsappSetup,requestedUsers,requestedConnections}),
+        body:JSON.stringify({companyName,contactName,contactEmail,planInterest,consent,website,requestType:mode,contactPhone,whatsappSetup,requestedUsers,requestedConnections,
+          businessSector,hasOnlineStore,marketingConsent}),
       });
       const data=await response.json() as {ok?:boolean;error?:string};
       if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo registrar.');
@@ -64,6 +69,28 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
         value={contactName} onChange={event=>setContactName(event.target.value)}
         placeholder="Nombre y apellido"/>
     </label>
+    {!isTrial&&<>
+      <label>Sector de tu empresa
+        <select required value={businessSector} onChange={e=>setBusinessSector(e.target.value)}>
+          <option value="">Selecciona el sector</option>
+          <option value="moda">Moda y accesorios</option>
+          <option value="retail">Comercio y tiendas</option>
+          <option value="servicios">Servicios profesionales</option>
+          <option value="educacion">Educación</option>
+          <option value="salud">Salud y bienestar</option>
+          <option value="restaurantes">Restaurantes y alimentos</option>
+          <option value="otro">Otro sector</option>
+        </select>
+      </label>
+      <label>¿Tu negocio tiene página web o tienda virtual?
+        <select required value={hasOnlineStore} onChange={e=>setHasOnlineStore(e.target.value)}>
+          <option value="">Selecciona una opción</option>
+          <option value="tienda">Sí, tienda virtual</option>
+          <option value="web">Sí, página informativa</option>
+          <option value="no">No tengo</option>
+        </select>
+      </label>
+    </>}
     <label>Correo de contacto
       <input required type="email" maxLength={180} autoComplete="email"
         value={contactEmail} onChange={event=>setContactEmail(event.target.value)}
@@ -105,6 +132,10 @@ export function DemoRequestForm({mode='demo'}:{mode?:'demo'|'trial'}){
       <span>Autorizo a MW1 a contactarme por correo o WhatsApp para responder esta solicitud
         comercial y coordinar, si corresponde, la prueba guiada. Enviarla no crea una cuenta, no activa un plan ni genera cargos.</span>
     </label>
+    {!isTrial&&<label className={styles.consent}>
+      <input type="checkbox" checked={marketingConsent} onChange={e=>setMarketingConsent(e.target.checked)}/>
+      <span>También deseo recibir novedades y ofertas comerciales de MW1. Opcional; no es necesario para solicitar la demo.</span>
+    </label>}
     {error&&<p role="alert" className={styles.error}>{error}</p>}
     <button type="submit" disabled={sending||!consent}>
       {sending?'Enviando…':isTrial?'Solicitar mis 14 días de prueba':'Solicitar cita para demostración'}
