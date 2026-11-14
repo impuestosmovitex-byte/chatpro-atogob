@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ForbiddenException,
   Controller,
   Get,
   Headers,
@@ -85,6 +86,10 @@ export class RolesController {
     @Body() body: RoleBody,
   ) {
     this.assertInternalKey(providedKey);
+    // Staging reuses the existing role reader but must not permit any role edits.
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      throw new ForbiddenException('La edición de roles no está habilitada en staging.');
+    }
     // SEG-003B: staging fails closed on absent or stale identity.
     if (process.env.MW1_STAGING_MODE === 'true') {
       await new TenantAdminAuthorization(this.supabaseService)
@@ -155,6 +160,10 @@ export class RolesController {
     @Body() body: RoleBody,
   ) {
     this.assertInternalKey(providedKey);
+    // Staging reuses the existing role reader but must not permit any role edits.
+    if (process.env.MW1_STAGING_MODE === 'true') {
+      throw new ForbiddenException('La edición de roles no está habilitada en staging.');
+    }
     // SEG-003B: staging fails closed on absent or stale identity.
     if (process.env.MW1_STAGING_MODE === 'true') {
       await new TenantAdminAuthorization(this.supabaseService)
