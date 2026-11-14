@@ -300,7 +300,13 @@ export function AppSidebar({
     <>
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
-          <span className={styles.brandWord}>MW<span>1</span></span>
+          <img
+            className={styles.brandLogo}
+            src="/media/mw1-official-logo.svg"
+            alt="ChatPro MW1"
+            width={180}
+            height={48}
+          />
         </div>
 
         <nav className={styles.nav} aria-label="Navegación principal">
