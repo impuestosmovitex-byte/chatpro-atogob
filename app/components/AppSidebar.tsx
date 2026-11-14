@@ -19,6 +19,7 @@ type CompanyOption = {
 };
 
 type Session = {
+  type?: 'user' | 'bootstrap' | 'platform';
   companySlug?: string;
   companyName?: string;
   roleKey?: string;
@@ -92,6 +93,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const pathname = usePathname();
   const [roleKey, setRoleKey] = useState('');
+  const [isWorkspaceUser, setIsWorkspaceUser] = useState(false);
   const [ordersEnabled, setOrdersEnabled] = useState(false);
   const [demoNavigation, setDemoNavigation] = useState(false);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
@@ -122,6 +124,7 @@ export function AppSidebar({
           session.roleKey?.trim().toLowerCase() || '';
 
         setRoleKey(normalizedRoleKey);
+        setIsWorkspaceUser(session.type === 'user' && Boolean(session.userId));
         // Start independent tenant reads together instead of waiting for commerce first.
         const capabilitiesRequest = fetch('/api/auth/capabilities', { cache: 'no-store' }).catch(() => null);
         const companiesRequest = session.userId
@@ -211,6 +214,7 @@ export function AppSidebar({
     icon: string;
     exact?: boolean;
   }> = [
+    ...(isWorkspaceUser ? [{ href: '/panel', label: 'Resumen', icon: '◫', exact: true }] : []),
     ...baseNavigation.filter(
       (item) =>
         effectiveCapabilities[item.capability] &&
@@ -351,6 +355,11 @@ export function AppSidebar({
         aria-label="Navegación móvil"
         aria-hidden={hideMobileNavigation}
       >
+        {isWorkspaceUser ? (
+          <Link className={`${styles.mobileNavItem} ${isActive(pathname, '/panel', true) ? styles.mobileNavActive : ''}`} href="/panel">
+            <span aria-hidden="true">◫</span><small>Resumen</small>
+          </Link>
+        ) : null}
         {ordersEnabled ? (
           <Link className={`${styles.mobileNavItem} ${isActive(pathname, '/pedidos') ? styles.mobileNavActive : ''}`} href="/pedidos">
             <span aria-hidden="true">▤</span><small>Pedidos</small>

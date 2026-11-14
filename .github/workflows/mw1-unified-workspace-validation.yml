@@ -1,0 +1,47 @@
+name: MW1 unified workspace validation (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-unified-workspace-20261114
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Validate TypeScript
+        run: npx tsc --noEmit
+      - name: Validate owner/advisor workspace navigation with synthetic roles
+        run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - name: Smoke-check deployed MW1 staging website without credentials
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const base='https://mw1-web-staging-staging.up.railway.app';
+          const targets=[
+            ['/panel',307],
+            ['/api/auth/session',401],
+            ['/api/auth/capabilities',401],
+            ['/api/clients',401],
+            ['/api/inbox',401],
+          ];
+          (async()=>{
+            for (const [path,expected] of targets) {
+              const response=await fetch(base+path,{redirect:'manual',signal:AbortSignal.timeout(15000)});
+              console.log('GET',path,response.status);
+              assert.equal(response.status,expected,'Unexpected staging HTTP response for '+path);
+            }
+          })().catch(error=>{console.error(error);process.exitCode=1});
+          NODE
+      - name: Compile existing MW1 web plus unified workspace (no deployment)
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
