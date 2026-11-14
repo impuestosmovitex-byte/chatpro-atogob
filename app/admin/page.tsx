@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import {PlatformSidebar} from '../components/PlatformSidebar';
 const sections=[
+ {href:'/admin/prospectos',title:'Prospectos comerciales',desc:'Consultar interesados, etapas y próximos seguimientos, sin activar integraciones.'},
  {href:'/admin/empresas',title:'Empresas',desc:'Crear empresas y sus propios usuarios, consultar módulos e integraciones.'},
  {href:'/admin/planes',title:'Planes y precios',desc:'Administrar borradores de Básico, Eco y Pro, aprobar y publicar tarifas.'},
  {href:'/admin/simulador-financiero',title:'Rentabilidad',desc:'Proyectar ingresos, infraestructura y costos de cada plan.'},
@@ -20,7 +21,7 @@ export default function PlatformHome(){
     <p style={{color:'#506078',lineHeight:1.6}}>MW1 se comercializa inicialmente por demostración y configuración asistida. El primer pago se gestiona mediante un enlace seguro enviado por el equipo. No se activa ninguna empresa por una captura o comprobante de pago sin verificar.</p>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginTop:16}}>
      {[
-      {number:'01',title:'Atender interesados',desc:'Revisar solicitudes y programar la demostración.',href:'/admin/empresas'},
+      {number:'01',title:'Atender interesados',desc:'Consultar solicitudes y preparar el seguimiento manual.',href:'/admin/prospectos'},
       {number:'02',title:'Confirmar plan y pago',desc:'Verificar el pago con el proveedor antes de habilitar servicios.',href:'/admin/solicitudes-suscripcion'},
       {number:'03',title:'Crear empresa y propietario',desc:'Asignar plan, cupos incluidos y credenciales independientes.',href:'/admin/empresas'},
       {number:'04',title:'Acompañar integraciones',desc:'El propietario inicia sesión, conecta canales y prueba su primera conversación.',href:'/admin/empresas'}

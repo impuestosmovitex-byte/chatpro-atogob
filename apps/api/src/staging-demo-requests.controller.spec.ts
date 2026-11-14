@@ -11,6 +11,8 @@ describe('Isolated staging commercial demo intake',()=>{
     companyName:'Tienda Beta',contactName:'Persona Prueba',
     contactEmail:'pruebas@example.org',planInterest:'eco',
     visitorDigest:'b'.repeat(64),consent:true,
+    businessSector:'moda',hasOnlineStore:'tienda',marketingConsent:false,
+    contactPhone:'+573001112233',
   };
   beforeEach(()=>{
     process.env.MW1_STAGING_MODE='true';
@@ -20,7 +22,10 @@ describe('Isolated staging commercial demo intake',()=>{
       from:(table:string)=>{
         if(table!=='platform_demo_requests')throw Error('wrong table');
         return {
-          select:()=>({eq:()=>({gte:()=>Promise.resolve({count,error:null})})}),
+          select:()=>({eq:()=>({
+            eq:()=>({gte:()=>Promise.resolve({count:0,error:null})}),
+            gte:()=>Promise.resolve({count,error:null}),
+          })}),
           insert,
         };
       },
@@ -41,6 +46,29 @@ describe('Isolated staging commercial demo intake',()=>{
       company_name:'Tienda Beta',plan_interest:'pro',status:'new',
     });
     expect(JSON.stringify(res)).not.toContain('pruebas@example.org');
+  });
+  test('records qualification and separate optional consent without a migration',async()=>{
+    await controller.submit('internal-test-value',{...data,contactPhone:'+573001112233',marketingConsent:true});
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      contact_phone:'+573001112233',
+      internal_note:expect.stringContaining('Consentimiento para novedades MW1: Sí'),
+    }));
+    expect(insert.mock.calls[0][0].internal_note).toContain('Sector: moda');
+    expect(insert.mock.calls[0][0].internal_note).toContain('Presencia web: tienda');
+  });
+  test('requires a valid WhatsApp number for demo intake',async()=>{
+    await expect(controller.submit('internal-test-value',{...data,contactPhone:''}))
+      .rejects.toThrow(/WhatsApp/);
+    await expect(controller.submit('internal-test-value',{...data,contactPhone:'invalid-number'}))
+      .rejects.toThrow(/WhatsApp/);
+    expect(insert).not.toHaveBeenCalled();
+  });
+  test('rejects invalid qualification values without writing',async()=>{
+    await expect(controller.submit('internal-test-value',{...data,businessSector:'injected'}))
+      .rejects.toThrow(/sector/);
+    await expect(controller.submit('internal-test-value',{...data,hasOnlineStore:'url-arbitrary'}))
+      .rejects.toThrow(/sector/);
+    expect(insert).not.toHaveBeenCalled();
   });
   test('maps commercial names to legacy storage without modifying entitlements',async()=>{
     await controller.submit('internal-test-value',{...data,planInterest:'pro'});

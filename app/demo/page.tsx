@@ -5,6 +5,7 @@ import {
 } from "../components/marketing/MarketingHeader";
 import styles from "../components/marketing/marketing.module.css";
 import {DemoRequestForm} from "./DemoRequestForm";
+import {DemoVisuals} from "./DemoVisuals";
 
 export default function DemoPage() {
   return (
@@ -22,6 +23,8 @@ export default function DemoPage() {
 
         <ProductPreview />
       </section>
+
+      <DemoVisuals />
 
       <section className={styles.section}>
         <div className={styles.demoGrid}>
@@ -41,7 +44,7 @@ export default function DemoPage() {
             {process.env.MW1_STAGING_MODE==='true'?<DemoRequestForm/>:
               <p>Las solicitudes en línea se habilitarán cuando finalicemos las pruebas de seguridad y privacidad.</p>}
             <div style={{ marginTop: 22, display:'flex', gap:12, flexWrap:'wrap', alignItems:'center' }}>
-              <Link href="/precios" className={styles.primaryButton}>Consultar planes y acompañamiento</Link>
+              <Link href="/agendar-demo" className={styles.primaryButton}>Solicitar una reunión</Link>
               <Link href="/login" className={styles.secondaryButton}>Ya soy cliente</Link>
             </div>
           </article>

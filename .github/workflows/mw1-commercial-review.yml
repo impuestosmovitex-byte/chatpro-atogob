@@ -1,0 +1,46 @@
+name: MW1 commercial review (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-commercial-leads-20261114
+  pull_request:
+    branches:
+      - feature/mw1-unified-workspace-20261114
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: TypeScript check
+        run: npx tsc --noEmit
+      - name: Build web without publishing
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+  api-demo-intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - name: Commercial demo intake unit tests
+        run: npx jest --runInBand staging-demo-requests.controller.spec.ts platform-demo-followup.spec.ts
+      - name: NestJS application compilation (excludes unrelated legacy specs)
+        run: npx nest build

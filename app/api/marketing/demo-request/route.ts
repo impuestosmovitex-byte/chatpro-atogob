@@ -37,6 +37,9 @@ export async function POST(request:NextRequest){
     whatsappSetup:requestData.whatsappSetup,
     requestedUsers:requestData.requestedUsers,
     requestedConnections:requestData.requestedConnections,
+    businessSector:requestData.businessSector,
+    hasOnlineStore:requestData.hasOnlineStore,
+    marketingConsent:requestData.marketingConsent===true,
     visitorDigest:digest,
   };
   try{

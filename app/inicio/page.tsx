@@ -7,11 +7,7 @@ const channels: { icon: MarketingIconName; label: string }[] = [
   { icon: "whatsapp", label: "WhatsApp" },
   { icon: "instagram", label: "Instagram" },
   { icon: "messenger", label: "Messenger" },
-  { icon: "telegram", label: "Telegram" },
-  { icon: "web", label: "Sitio web" },
-  { icon: "catalog", label: "Catálogo" },
-  { icon: "payment", label: "Pagos" },
-  { icon: "bot", label: "IA 24/7" },
+  { icon: "bot", label: "IA para atención" },
 ];
 
 const customization: {icon: MarketingIconName; title: string; description: string}[] = [
@@ -34,7 +30,7 @@ export default function InicioPage() {
             y aumenta tus resultados automatizando procesos clave de tu empresa.
           </p>
           <div className={styles.heroActions}>
-            <Link href="/demo" className={styles.primaryButton}>Solicitar demostración <span aria-hidden="true">↗</span></Link>
+            <Link href="/agendar-demo" className={styles.primaryButton}>Solicitar demostración <span aria-hidden="true">↗</span></Link>
             <Link href="/precios" className={styles.secondaryButton}>Ver planes</Link>
           </div>
           <p className={styles.heroFootnote}>Atención más organizada. Tu negocio mantiene el control.</p>
@@ -45,8 +41,8 @@ export default function InicioPage() {
       <section className={styles.channelsArea} aria-labelledby="channels-heading">
         <div className={styles.heroStrip}>
           <div className={styles.stripLead}>
-            <strong id="channels-heading">Conecta tus canales y herramientas en un solo lugar</strong>
-            <span>Atiende, vende y haz seguimiento desde MW1.</span>
+            <strong id="channels-heading">Organiza tu atención desde una sola bandeja</strong>
+            <span>Los canales se habilitan según aprobación y configuración.</span>
           </div>
           {channels.map(({icon,label})=>(
             <div className={styles.stripItem} data-channel={icon} key={label}>
@@ -89,7 +85,7 @@ export default function InicioPage() {
           <article className={styles.showcaseCard}>
             <div className={styles.showcaseTitle}>
               <span className={styles.showcaseIcon}><MarketingIcon name="bot"/></span>
-              <div><h3>Atención con IA 24/7</h3><p>Respuestas que mantienen tu estilo</p></div>
+              <div><h3>Atención con IA configurable</h3><p>Respuestas que mantienen tu estilo</p></div>
             </div>
             <div className={styles.sampleBot} aria-label="Ejemplo ilustrativo de atención automatizada">
               <div className={styles.sampleBotIdentity}><span className={styles.sampleRobot}><MarketingIcon name="bot"/></span><div><strong>Asistente MW1</strong><small>Atención automatizada</small></div><span className={styles.botOnline}>24/7</span></div>
@@ -126,7 +122,7 @@ export default function InicioPage() {
       <section className={styles.homeCta}>
         <div className={styles.homeCtaContent}>
           <div className={styles.eyebrow}>Da el siguiente paso</div>
-          <h2>Empieza hoy y descubre cómo MW1 puede ayudarte a atender mejor y vender más.</h2>
+          <h2>Conoce cómo MW1 puede ayudarte a organizar conversaciones y seguimiento.</h2>
           <p>Organiza tus conversaciones, automatiza respuestas y mejora el seguimiento comercial desde un solo lugar.</p>
           <div className={styles.homeCtaActions}>
             <Link href="/demo" className={styles.primaryButton}>Solicitar demostración <span aria-hidden="true">↗</span></Link>
@@ -135,6 +131,8 @@ export default function InicioPage() {
         </div>
         <div className={styles.homeCtaDecoration} aria-hidden="true"><span>MW1</span><MarketingIcon name="sparkles"/></div>
       </section>
+
+      <section className={styles.section} aria-labelledby="commercial-video"><div className={styles.sectionIntroCentered}><div className={styles.eyebrow}>MW1 en acción</div><h2 id="commercial-video">Descubre el CRM en una demostración guiada.</h2><p>Espacio reservado para un video oficial de MW1. Aún no hay una grabación publicada.</p><Link href="/por-que" className={styles.primaryButton}>Ver el recorrido explicativo</Link></div></section>
 
       <footer className={styles.footer}>MW1 · Atención, ventas y automatización con IA</footer>
     </main>

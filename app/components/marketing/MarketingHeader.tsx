@@ -7,8 +7,7 @@ export function MarketingHeader() {
     <header className={styles.header}>
       <div className={styles.navWrap}>
         <Link href="/inicio" className={styles.logo} aria-label="MW1, ir al inicio">
-          <span className={styles.logoMark}>M</span>
-          <span>MW1</span>
+          <Image src="/media/mw1-official-logo.svg" alt="ChatPro MW1" width={180} height={48} priority unoptimized style={{width:"min(180px, 35vw)",height:"auto"}} />
         </Link>
 
         <nav className={styles.nav} aria-label="Navegación principal">
@@ -20,7 +19,7 @@ export function MarketingHeader() {
 
         <div className={styles.navActions}>
           <Link href="/login" className={styles.secondaryButton}>Iniciar sesión</Link>
-          <Link href="/demo" className={styles.primaryButton}>Solicitar demostración</Link>
+          <Link href="/agendar-demo" className={styles.primaryButton}>Solicitar demostración</Link>
           <details className={styles.mobileMenu}>
             <summary aria-label="Abrir navegación">
               <span aria-hidden="true">☰</span>
@@ -30,7 +29,7 @@ export function MarketingHeader() {
               <Link href="/por-que">¿Por qué MW1?</Link>
               <Link href="/precios">Planes</Link>
               <Link href="/demo">Demo</Link>
-              <Link href="/demo">Solicitar demostración</Link>
+              <Link href="/agendar-demo">Solicitar demostración</Link>
               <Link href="/integraciones">Integraciones</Link>
               <Link href="/login">Iniciar sesión</Link>
             </nav>
@@ -43,17 +42,9 @@ export function MarketingHeader() {
 
 export function HeroMedia() {
   return (
-    <div className={styles.heroMedia}>
-      <Image
-        src="/media/mw1-hero.webp"
-        alt="Emprendedora de Emprende con Maogo mostrando la plataforma educativa en su computador"
-        width={1042}
-        height={850}
-        className={styles.heroPhotoReal}
-        priority
-        unoptimized
-        sizes="(max-width: 860px) 100vw, (max-width: 1240px) 46vw, 560px"
-      />
+    <div className={styles.heroMedia} aria-label="Vista ilustrativa de la interfaz MW1">
+      <ProductPreview />
+      <p style={{fontSize:12,color:'#657187',padding:'10px 15px'}}>Representación ilustrativa de MW1 con datos ficticios. No es una captura real ni un video.</p>
     </div>
   );
 }
@@ -84,13 +75,12 @@ export function ProductPreview() {
             <span className={styles.activeTab}>Todas</span>
             <span>WhatsApp</span>
             <span>Instagram</span>
-            <span>Telegram</span>
           </div>
           {[
             ["María González", "Quiero conocer los planes", "WA"],
             ["Carlos Ramírez", "¿Tienen integración con pagos?", "IG"],
-            ["Laura Torres", "Quiero agendar una demo", "TG"],
-            ["Empresa Nova", "Necesito ayuda con un cliente", "WEB"],
+            ["Laura Torres", "Quiero agendar una demo", "WA"],
+            ["Empresa Nova", "Necesito ayuda con un cliente", "IG"],
           ].map(([name, message, channel]) => (
             <div className={styles.previewConversation} key={name}>
               <span className={styles.previewAvatar}>{name.charAt(0)}</span>
