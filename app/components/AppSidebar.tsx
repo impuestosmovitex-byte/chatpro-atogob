@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import styles from './AppSidebar.module.css';
@@ -300,7 +301,14 @@ export function AppSidebar({
     <>
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
-          <span className={styles.brandWord}>MW<span>1</span></span>
+          <Image
+            src="/media/Logo%20de%20chat%20azul%20y%20amarillo.png"
+            alt="MW1"
+            width={92}
+            height={92}
+            className={styles.brandLogo}
+            priority
+          />
         </div>
 
         <nav className={styles.nav} aria-label="Navegación principal">
