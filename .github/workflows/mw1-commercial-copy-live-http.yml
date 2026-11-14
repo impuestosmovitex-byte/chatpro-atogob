@@ -1,0 +1,35 @@
+name: MW1 commercial copy live HTTP review (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/mw1-commercial-copy-on-pr44-20261114
+permissions:
+  contents: read
+jobs:
+  live-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check public pages and no hidden staging material
+        run: |
+          MW1_SMOKE_READ_ONLY=1 node scripts/test-mw1-live-commercial-http.cjs
+          node - <<'NODE'
+          (async()=>{
+            const host='https://mw1-web-staging-staging.up.railway.app';
+            for(const [path,forbidden] of [
+              ['/inicio',['Espacio reservado para un video oficial','Descubre el CRM en una demostración guiada']],
+              ['/por-que',['Estamos preparando el video oficial','VIDEO EN PREPARACIÓN']],
+              ['/agendar-demo',['Cuéntanos un poco más de tu negocio','¿Qué veremos en la reunión?']],
+            ]){
+              const response=await fetch(host+path,{redirect:'manual'});
+              if(response.status!==200)throw Error(path+' status '+response.status);
+              const html=await response.text();
+              for(const term of forbidden)if(html.includes(term))throw Error(path+' still contains: '+term);
+              console.log('CLEAN',path);
+            }
+          })().catch(e=>{console.error(e);process.exitCode=1})
+          NODE
