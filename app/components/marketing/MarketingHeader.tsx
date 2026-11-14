@@ -42,8 +42,17 @@ export function MarketingHeader() {
 
 export function HeroMedia() {
   return (
-    <div className={styles.heroMedia} aria-label="Vista ilustrativa de la interfaz MW1">
-      <ProductPreview />
+    <div className={styles.heroMedia}>
+      <Image
+        src="/media/mw1-hero.webp"
+        alt="Emprendedora mostrando MW1 en la pantalla de su computador portátil"
+        width={1042}
+        height={850}
+        className={styles.heroPhotoReal}
+        priority
+        unoptimized
+        sizes="(max-width: 860px) 100vw, (max-width: 1240px) 46vw, 560px"
+      />
     </div>
   );
 }
