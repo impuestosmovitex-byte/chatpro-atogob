@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       capabilities: await getAccessCapabilities(session),
+      staging: process.env.MW1_STAGING_MODE === 'true',
     });
   } catch (error) {
     return NextResponse.json(

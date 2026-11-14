@@ -26,6 +26,7 @@ type WorkspaceState = {
   session: Session;
   capabilities: Capabilities;
   commerce: boolean;
+  staging: boolean;
 };
 type Module = { label: string; href: string; description: string; category: string };
 
@@ -78,6 +79,7 @@ export default function UnifiedWorkspacePage() {
         const capabilityPayload = (await capabilityResponse.json()) as {
           ok?: boolean;
           capabilities?: Capabilities;
+          staging?: boolean;
         };
         if (!capabilityPayload.ok || !capabilityPayload.capabilities)
           throw new Error('No fue posible verificar los permisos actuales.');
@@ -87,12 +89,15 @@ export default function UnifiedWorkspacePage() {
         if (management) {
           try {
             const access = await fetch('/api/native-commerce/access', { cache: 'no-store' });
-            commerce = access.ok;
+            if (access.ok) {
+              const accessPayload = (await access.json()) as { ok?: boolean; enabled?: boolean };
+              commerce = accessPayload.ok === true && accessPayload.enabled === true;
+            }
           } catch {
             commerce = false;
           }
         }
-        if (active) setWorkspace({ session, capabilities: capabilityPayload.capabilities, commerce });
+        if (active) setWorkspace({ session, capabilities: capabilityPayload.capabilities, commerce, staging: capabilityPayload.staging === true });
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'No se pudo abrir el panel.');
       } finally {
@@ -132,6 +137,7 @@ export default function UnifiedWorkspacePage() {
                 <strong>Según permisos de MW1</strong>
               </div>
             </div>
+            {workspace.staging ? <p role="status" className={styles.notice}>Entorno de pruebas: el detalle ficticio de Bandeja es de solo lectura; los envíos, algunas acciones de Clientes y la conexión de canales permanecen restringidos deliberadamente. Estas restricciones no indican una falla de ATOGOB o MAOGO.</p> : null}
             {modules.length === 0 ? <p className={styles.notice}>Tu usuario no tiene módulos habilitados en este momento. Contacta al administrador de tu empresa.</p> : null}
             {categories.map(category => {
               const items = modules.filter(module => module.category === category);
