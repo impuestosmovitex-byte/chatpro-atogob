@@ -93,6 +93,7 @@ export function AppSidebar({
   const pathname = usePathname();
   const [roleKey, setRoleKey] = useState('');
   const [unifiedPanelEnabled, setUnifiedPanelEnabled] = useState(false);
+  const [panelOptedIn, setPanelOptedIn] = useState(false);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [activeCompany, setActiveCompany] = useState(companyName);
   const [activeSlug, setActiveSlug] = useState('');
@@ -112,11 +113,14 @@ export function AppSidebar({
         });
         const sessionData = (await sessionResponse.json()) as {
           session?: Session;
+          unifiedPanelEnabled?: boolean;
         };
 
         if (!alive || !sessionResponse.ok || !sessionData.session) return;
 
         const session = sessionData.session;
+        const optedIn = sessionData.unifiedPanelEnabled === true;
+        setPanelOptedIn(optedIn);
         const normalizedRoleKey =
           session.roleKey?.trim().toLowerCase() || '';
 
@@ -135,14 +139,19 @@ export function AppSidebar({
             unifiedPanelEnabled?: boolean;
           };
 
-          if (
-            alive &&
-            capabilitiesResponse.ok &&
-            capabilitiesData.ok &&
-            capabilitiesData.capabilities
-          ) {
+          if (!alive) return;
+          if (capabilitiesResponse.ok && capabilitiesData.ok &&
+              capabilitiesData.capabilities) {
             setCapabilities(capabilitiesData.capabilities);
             setUnifiedPanelEnabled(capabilitiesData.unifiedPanelEnabled === true);
+          } else if (optedIn) {
+            // For new-panel tenants, never show guessed permissions when API fails.
+            setCapabilities({
+              inbox: false, clients: false, automations: false,
+              statistics: false, configuration: false, testAgent: false,
+              health: false,
+            });
+            setUnifiedPanelEnabled(false);
           }
         } catch {
           const fullAccess =
@@ -151,14 +160,15 @@ export function AppSidebar({
 
           if (alive) {
             setCapabilities({
-              inbox: true,
-              clients: true,
-              automations: fullAccess,
-              statistics: fullAccess,
-              configuration: fullAccess,
-              testAgent: fullAccess,
-              health: fullAccess,
+              inbox: !optedIn,
+              clients: !optedIn,
+              automations: !optedIn && fullAccess,
+              statistics: !optedIn && fullAccess,
+              configuration: !optedIn && fullAccess,
+              testAgent: !optedIn && fullAccess,
+              health: !optedIn && fullAccess,
             });
+            if (optedIn) setUnifiedPanelEnabled(false);
           }
         }
 
@@ -193,13 +203,13 @@ export function AppSidebar({
 
   const fullAccess = roleKey === 'owner' || roleKey === 'admin';
   const effectiveCapabilities: Capabilities = capabilities ?? {
-    inbox: true,
-    clients: true,
-    automations: fullAccess,
-    statistics: fullAccess,
-    configuration: fullAccess,
-    testAgent: fullAccess,
-    health: fullAccess,
+    inbox: !panelOptedIn,
+    clients: !panelOptedIn,
+    automations: !panelOptedIn && fullAccess,
+    statistics: !panelOptedIn && fullAccess,
+    configuration: !panelOptedIn && fullAccess,
+    testAgent: !panelOptedIn && fullAccess,
+    health: !panelOptedIn && fullAccess,
   };
 
   const isServiceTenant = activeSlug === 'emprende-con-maogo';
