@@ -16,3 +16,5 @@ jobs:
           node-version: '22'
       - name: Verify actual existing Railway staging pages and synthetic submission
         run: node scripts/test-mw1-live-commercial-http.cjs
+        env:
+          MW1_SMOKE_READ_ONLY: '1'
