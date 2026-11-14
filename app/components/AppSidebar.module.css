@@ -387,3 +387,56 @@
 .brandWord { color:#172235; font-weight:900; }
 .brandWord > span { color:#aa8200; }
 .item:focus-visible, .logout:focus-visible { outline:3px solid #f4bf00;outline-offset:2px; }
+
+
+/* MW1 premium workspace styling — visual only, existing navigation and permissions unchanged. */
+.brandLogo {
+  display:block;
+  width:min(100%,190px);
+  height:auto;
+  max-height:57px;
+  object-fit:contain;
+}
+@media (min-width: 1041px) {
+  .sidebar {
+    width:236px;
+    flex:0 0 236px;
+    min-height:100vh;
+    padding:22px 13px;
+    color:#ecf2fc;
+    background:linear-gradient(170deg,#101f3e 0%,#08152d 100%);
+    border-right:1px solid #1c3258;
+  }
+  .brand {
+    margin:0 3px 17px;
+    padding:8px 10px;
+    border-radius:15px;
+    background:#fff;
+    min-height:65px;
+    justify-content:center;
+  }
+  .nav { gap:6px; }
+  .item {
+    min-height:44px;
+    border-radius:13px;
+    padding:12px 13px;
+    color:#cbd7eb;
+    font-size:13px;
+    font-weight:700;
+  }
+  .item:hover { color:#fff; background:#243554; }
+  .item.active,
+  .item.active:hover {
+    color:#0e1b35;
+    background:#ffc928;
+    box-shadow:0 5px 12px rgba(255,201,40,.15);
+  }
+  .footer { border-top:1px solid #2a3c59; padding-top:16px; color:#c0cde0; }
+  .footer strong { color:#fff; }
+  .footer small { color:#b8c7df; }
+  .footerAvatar { background:#253b60; border-color:#38527d; color:#fff; }
+  .companyPicker { color:#d8e2f1; }
+  .companyPicker select { border-color:#334a70; background:#162b4b; color:#fff; }
+  .logout { border-color:#3d5276; background:#152a4a; color:#fff; }
+  .logout:hover { background:#29456d; }
+}
