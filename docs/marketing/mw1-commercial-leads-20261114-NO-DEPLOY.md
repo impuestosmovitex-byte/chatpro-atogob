@@ -44,3 +44,11 @@ No existe en este cambio una agenda en tiempo real. El formulario solicita conta
 - El endpoint frontend transfiere los campos a la API; la API mantiene el registro exclusivo staging, la protección del secreto y la limitación por IP. La deduplicación por correo en 24h es una mejora de conveniencia, **no** garantía transaccional ante concurrencia.
 - Tests de API actualizados para validar estos datos; workflow CI solo compilación y pruebas unitarias, sin conexión a Railway/Supabase y sin despliegue.
 - Pendientes antes del piloto externo: URL y contenido definitivo de política de privacidad, versionado y prueba de consentimiento, esquema formal para calificación, antispam distribuido, idempotencia transaccional, captura de evidencia de origen, validación admin y pruebas end-to-end. La conexión de Meta sigue desactivada.
+
+## Avance 3 — pantalla dedicada de prospectos (sin nuevo endpoint)
+- Nueva vista `/admin/prospectos` para superadministrador; enlazada desde el menú y página /admin.
+- Reutiliza exclusivamente GET `/api/platform-admin/demo-requests`, que exige sesión de plataforma y autorización de Super Admin en API. No usa claves ni consultas a base en el navegador.
+- Presenta las últimas 50 solicitudes retornadas por la API, conteo de nuevas y seguimientos, filtro por estado y búsqueda local. El día de corte se calcula en `America/Bogota`.
+- No crea ni modifica reuniones, clientes, empresas, planes, consentimiento ni conversaciones. Los cambios de estado siguen realizándose en la sección existente Empresas. Las notas de calificación se muestran solo tras autenticación.
+- Limitación explícita: las estadísticas de la pantalla describen la muestra cargada y no el universo completo de leads. Necesita paginación, reportes y RLS revisados antes de ser un panel analítico definitivo.
+- No exponer esta vista fuera de staging antes de validación de acceso de usuario de empresa, usuario no autenticado y Super Admin.
