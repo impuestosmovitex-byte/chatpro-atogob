@@ -1,0 +1,33 @@
+name: MW1 customer-facing plans copy safety gate
+on:
+  push:
+    branches:
+      - feature/mw1-pricing-copy-public-20261114
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Verify no public internal plan approval copy
+        run: |
+          ! grep -q 'Propuesta orientativa · pendiente de aprobación' app/precios/PlansInteractive.tsx
+          ! grep -q 'Tarifa publicada en ambiente de pruebas' app/precios/PlansInteractive.tsx
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Production build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Roles regression
+        run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - name: Signed session isolation
+        run: node scripts/test-mw1-signed-workspace-http.cjs
