@@ -271,7 +271,13 @@ export function AppSidebar({
         return;
       }
 
-      window.location.assign('/');
+      // Preserve the current production CRM landing while making the unified
+      // panel the home after switching tenants in the isolated staging Web.
+      window.location.assign(
+        window.location.hostname === 'mw1-web-staging-staging.up.railway.app'
+          ? '/panel'
+          : '/',
+      );
     } catch {
       setMessage('No se pudo cambiar de empresa.');
     } finally {
