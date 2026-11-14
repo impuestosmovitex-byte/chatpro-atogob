@@ -1,0 +1,35 @@
+name: MW1 Super Admin logo-only safety check
+on:
+  push:
+    branches:
+      - feature/mw1-admin-logo-only-20261114
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Check only intended logos
+        run: |
+          test "$(git hash-object public/media/logo-chatpro-azul-amarillo.png)" = "73275e5c752f1d0044881125a70e04f5c9ccce06"
+          grep -q 'src="/media/logo-chatpro-azul-amarillo.png"' app/components/PlatformSidebar.tsx
+          grep -q 'src="/media/logo-chatpro-azul-amarillo.png"' app/components/AppSidebar.tsx
+          grep -q 'src="/media/mw1-official-logo.svg"' app/components/marketing/MarketingHeader.tsx
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Web build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Role checks
+        run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - name: Session checks
+        run: node scripts/test-mw1-signed-workspace-http.cjs
