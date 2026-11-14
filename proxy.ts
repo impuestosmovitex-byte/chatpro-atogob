@@ -8,6 +8,7 @@ import { getAccessCapabilities } from './app/lib/access-capabilities';
 const PUBLIC_PATHS = new Set([
   '/login',
   '/inicio',
+  '/media/mw1-hero-uploaded.avif', // Exact public commercial image only.
   '/agendar-demo',
   '/precios',
   '/demo',
