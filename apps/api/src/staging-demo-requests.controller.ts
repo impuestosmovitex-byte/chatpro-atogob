@@ -42,6 +42,8 @@ export class StagingDemoRequestsController {
     const contactPhone=clean(data.contactPhone,20).replace(/[\s()-]/g,'');
     const whatsappSetup=clean(data.whatsappSetup,24);
     const isTrial=requestType==='trial';
+    if(contactPhone&&!/^\+?[0-9]{7,19}$/.test(contactPhone))
+      throw new BadRequestException('El WhatsApp de contacto no es válido.');
     if(isTrial&&!['inicial','pro'].includes(legacyPlanKey))
       throw new BadRequestException('La prueba gratuita de 14 días solo está disponible para los planes Básico y Eco. Solicita una asesoría para Pro.');
     if(isTrial&&(!/^\+?[0-9]{7,19}$/.test(contactPhone)||
@@ -73,8 +75,8 @@ export class StagingDemoRequestsController {
       visitor_digest:visitorDigest,consent_at:new Date().toISOString(),
       status:'new',source:isTrial?'web_trial':'web_demo',
       requested_users:requestedUsers,requested_connections:requestedConnections,
-      ...(isTrial?{contact_phone:contactPhone,whatsapp_setup:whatsappSetup,
-        trial_requested_days:14}:{}),
+      ...(contactPhone?{contact_phone:contactPhone}:{}),
+      ...(isTrial?{whatsapp_setup:whatsappSetup,trial_requested_days:14}:{}),
     });
     if(error)throw new BadRequestException('No fue posible registrar la solicitud.');
     // No user account, company, plan or WhatsApp message is created.
