@@ -14,6 +14,7 @@ import { SupabaseService } from './supabase.service';
 import {companyReadiness} from './platform-company-readiness';
 import {emptyPlanDraft,PLAN_KEYS,validatePlanDraft} from './platform-plan-drafts';
 import {estimateAiCostUsd} from './platform-ai-cost';
+import {validateManualContract} from './mw1-manual-contract';
 import {validateFinanceScenario,validateFinanceActual} from './platform-finance-scenario';
 import {validateFinanceCompanyEntry} from './platform-company-finance';
 
@@ -182,6 +183,63 @@ export class PlatformAdminController {
       ok: true,
       platformAdmin: await this.isPlatformAdmin(normalizedUserId),
     };
+  }
+
+  // Staging-only manual contract activation. No payment gateways or billing webhooks.
+  @Post('manual-company-contract')
+  async applyManualCompanyContract(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Body() body: unknown,
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Disponible únicamente en staging.');
+    let contract:ReturnType<typeof validateManualContract>;
+    try { contract=validateManualContract(body); }
+    catch(e) { throw new BadRequestException(e instanceof Error?e.message:'Contrato inválido.'); }
+    const client=this.supabaseService.getClient();
+    const {data:existing,error:existingError}=await client.from('companies')
+      .select('id,slug').eq('id',contract.companyId).maybeSingle();
+    if(existingError||!existing)throw new BadRequestException('Empresa no encontrada.');
+    if(['atogob','maogo','emprende-con-maogo'].includes(existing.slug))
+      throw new BadRequestException('Esta empresa operativa no puede modificarse.');
+    const {data,error}=await client.rpc('mw1_apply_manual_contract',{
+      p_company_id:contract.companyId,p_actor_id:user,p_tier:contract.tier,
+      p_payment_reference:contract.paymentReference,p_amount_cop:contract.amountCop,
+      p_verified_at:contract.verifiedAt,p_starts_at:contract.startsAt,
+      p_expires_at:contract.expiresAt,p_additional_users:contract.additionalUsers,
+      p_reason:contract.reason,
+    });
+    if(error)throw new BadRequestException(
+      'No se pudo registrar la contratación. Comprueba la aprobación, el pago y los límites.'
+    );
+    return {ok:true,contract:data,providerCharged:false,stagingOnly:true};
+  }
+
+  @Get('manual-company-contract')
+  async readManualCompanyContract(
+    @Headers('x-chatpro-inbox-key') key = '',
+    @Query('user') user = '',
+    @Query('companyId') companyId = '',
+  ) {
+    this.assertInternalKey(key);
+    await this.assertPlatformAdmin(user);
+    if(process.env.MW1_STAGING_MODE!=='true')
+      throw new UnauthorizedException('Disponible únicamente en staging.');
+    if(!/^[0-9a-f-]{36}$/i.test(companyId))
+      throw new BadRequestException('Empresa inválida.');
+    const client=this.supabaseService.getClient();
+    const {data:contract,error}=await client.from('mw1_manual_company_contracts')
+      .select('company_id,tier,payment_reference,amount_cop,verified_at,starts_at,expires_at,included_users,additional_users,status,activated_by,activated_at')
+      .eq('company_id',companyId).maybeSingle();
+    if(error)throw new BadRequestException('No fue posible consultar la contratación.');
+    const {data:history,error:historyError}=await client.from('mw1_manual_contract_history')
+      .select('id,action,actor_id,payment_reference,recorded_at')
+      .eq('company_id',companyId).order('recorded_at',{ascending:false}).limit(50);
+    if(historyError)throw new BadRequestException('No fue posible consultar el historial.');
+    return {ok:true,contract:contract??null,history:history??[],stagingOnly:true};
   }
 
   @Post('company-plan-activation-review')
