@@ -49,9 +49,8 @@ export default function LoginPage() {
   return (
     <main className={styles.shell}>
       <section className={styles.card}>
-        <div className={styles.brand} aria-label="ChatPro MW1">
-          <span className={styles.brandSymbol} aria-hidden="true">MW1</span>
-          <span className={styles.brandName}>ChatPro <span>MW1</span></span>
+        <div className={styles.brand} aria-label="MW1">
+          <img src="/media/logo-chatpro-azul-amarillo.png" className={styles.brandLogo} alt="MW1" />
         </div>
         <p className={styles.eyebrow}>ACCESO EMPRESARIAL</p>
         <h1>Iniciar sesión</h1>
