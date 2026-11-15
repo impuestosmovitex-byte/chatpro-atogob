@@ -286,7 +286,7 @@ export function AppSidebar({
     <>
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
-          <span className={styles.brandWord}>MW<span>1</span></span>
+          <img src="/media/logo-chatpro-azul-amarillo.png" className={styles.brandLogo} alt="MW1" />
         </div>
 
         <nav className={styles.nav} aria-label="Navegación principal">
