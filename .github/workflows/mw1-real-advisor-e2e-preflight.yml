@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/test-mw1-real-advisor-e2e.cjs
       - scripts/mw1-advisor-browser-live-audit.js
+      - scripts/test-mw1-advisor-browser-audit.cjs
       - .github/workflows/mw1-real-advisor-e2e-preflight.yml
 jobs:
   preflight:
@@ -20,6 +21,9 @@ jobs:
         run: |
           node --check scripts/test-mw1-real-advisor-e2e.cjs
           node --check scripts/mw1-advisor-browser-live-audit.js
+          node --check scripts/test-mw1-advisor-browser-audit.cjs
+      - name: Simulated advisor audit must fail closed
+        run: node scripts/test-mw1-advisor-browser-audit.cjs
       - name: Missing credentials must NOT produce a pass
         shell: bash
         run: |
