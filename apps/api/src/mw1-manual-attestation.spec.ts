@@ -48,9 +48,9 @@ describe('contract review timestamp precision regression',()=>{
   expect(patch).toContain('Company-specific plan review is missing, stale or superseded');
  });
  it('does not change existing table structures or activate contracts',()=>{
-  expect(patch).not.toMatch(/\\balter\\s+table\\b/i);
-  expect(patch).not.toMatch(/\\bupdate\\s+public\\.mw1_plan_activation_audit\\b/i);
-  expect(patch).toMatch(/create or replace function public\\.mw1_apply_manual_contract/i);
+  expect(patch.toLowerCase()).not.toContain('alter table');
+  expect(patch.toLowerCase()).not.toContain('update public.mw1_plan_activation_audit');
+  expect(patch.toLowerCase()).toContain('create or replace function public.mw1_apply_manual_contract');
  });
 });
 describe('staging SQL contract guardrails',()=>{
