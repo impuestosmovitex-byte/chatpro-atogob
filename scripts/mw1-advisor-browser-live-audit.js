@@ -73,10 +73,10 @@
   dialog.id = 'mw1-advisor-live-audit-results';
   dialog.setAttribute('role', 'status');
   dialog.style.cssText = 'position:fixed;z-index:2147483647;right:16px;bottom:16px;max-width:min(560px,calc(100vw - 32px));max-height:70vh;overflow:auto;padding:18px;background:#0e2034;color:white;border:2px solid #f1ba3a;border-radius:12px;font:12px/1.5 monospace;white-space:pre-wrap;box-shadow:0 8px 28px #0006';
-  dialog.textContent = 'MW1 — Prueba real del asesor\\n' +
+  dialog.textContent = 'MW1 — Prueba real del asesor\n' +
     'Permisos: ' + summary.permissions + '\n' +
     results.map(r => r.path + ': ' + r.actual + ' (esperado 403) ' + r.verdict).join('\n') +
-    '\n\n' + summary.final + '\\n(Recarga la página para cerrar)';
+    '\n\n' + summary.final + '\n(Recarga la página para cerrar)';
   document.body.append(dialog);
   return summary;
 })();
