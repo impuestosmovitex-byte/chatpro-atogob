@@ -1,0 +1,37 @@
+name: MW1 real advisor staging gate - safe preflight
+on:
+  push:
+    branches:
+      - feature/mw1-advisor-auth-e2e-gate-20261114
+  pull_request:
+    paths:
+      - scripts/test-mw1-real-advisor-e2e.cjs
+      - scripts/mw1-advisor-browser-live-audit.js
+      - scripts/test-mw1-advisor-browser-audit.cjs
+      - .github/workflows/mw1-real-advisor-e2e-preflight.yml
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate E2E script syntax
+        run: |
+          node --check scripts/test-mw1-real-advisor-e2e.cjs
+          node --check scripts/mw1-advisor-browser-live-audit.js
+          node --check scripts/test-mw1-advisor-browser-audit.cjs
+      - name: Simulated advisor audit must fail closed
+        run: node scripts/test-mw1-advisor-browser-audit.cjs
+      - name: Missing credentials must NOT produce a pass
+        shell: bash
+        run: |
+          set +e
+          env -u MW1_E2E_ADVISOR_PASSWORD -u MW1_E2E_ADVISOR_USER_ID node scripts/test-mw1-real-advisor-e2e.cjs > /tmp/mw1-preflight.out 2>&1
+          status=$?
+          set -e
+          cat /tmp/mw1-preflight.out
+          test "$status" -eq 2
+          grep -Fq 'NOT RUN: real advisor password' /tmp/mw1-preflight.out
+          if grep -Fq 'PASS:' /tmp/mw1-preflight.out; then exit 1; fi
