@@ -556,3 +556,17 @@ button.toolCard:hover {
   }
 }
 
+/* MW1 approved content palette — automation workspace only. */
+.shell {background:#f6f8fc;color:#14243d}
+.header h1,.toolsHeading h2 {color:#102143}
+.eyebrow {color:#91711c}
+.automationTools,.history,.card,.toolCard {
+  border-color:#e3e9f2;border-radius:17px;
+  box-shadow:0 7px 23px #10214309;
+}
+.toolCardActive {background:#fff7d9;border-color:#f1d77d}
+.toolIcon {background:#fff0bb;color:#102143}
+.toolCardActive .toolIcon {background:#ffca05}
+.messageSettings,.scheduleChip {background:#102143;color:#fff}
+.save {background:#ffca05;color:#102143}
+@media(max-width:900px) {.workspace {background:#f6f8fc}}
