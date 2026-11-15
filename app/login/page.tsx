@@ -73,7 +73,7 @@ export default function LoginPage() {
   return (
     <main className={`${styles.shell} ${platformLogin?styles.platformShell:''}`}>
       <section className={styles.card}>
-        <div className={styles.mark}>MW1</div>
+        <div className={styles.mark}><img src="/media/logo-chatpro-azul-amarillo.png" alt="MW1" className={styles.logo} /></div>
         <p className={styles.eyebrow}>{platformLogin?'ACCESO PRIVADO · PLATAFORMA':'MW1 · ACCESO EMPRESARIAL'}</p>
         <h1>{platformLogin?'Administración de MW1':'Accede a tu empresa'}</h1>
         <p className={styles.copy}>
