@@ -38,7 +38,7 @@ type CompanyUser = {
 type ResponseData = {
   ok?: boolean;
   error?: string;
-  message?: string;
+  message?: string | string[];
   company?: { name?: string; slug?: string };
   roles?: Role[];
   users?: CompanyUser[];
@@ -77,6 +77,7 @@ export default function UsuariosPage() {
   const [users, setUsers] = useState<CompanyUser[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
+  const [usersLoaded, setUsersLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
   const [workingUserId, setWorkingUserId] = useState('');
   const [message, setMessage] = useState('');
@@ -85,7 +86,7 @@ export default function UsuariosPage() {
   const [resetPassword, setResetPassword] = useState('');
   const [seatLimit, setSeatLimit] = useState<number | null>(null);
 
-  const isFirstUser = users.length === 0;
+  const isFirstUser = usersLoaded && users.length === 0;
   const availableRoles = useMemo(
     () => (isFirstUser ? roles.filter((role) => role.key === 'owner') : roles),
     [isFirstUser, roles],
@@ -98,6 +99,7 @@ export default function UsuariosPage() {
   async function load() {
     setLoading(true);
     setError('');
+    setUsersLoaded(false);
 
     try {
       const response = await fetch(
@@ -107,7 +109,9 @@ export default function UsuariosPage() {
       const data = (await response.json()) as ResponseData;
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudieron cargar los usuarios.');
+        const detail = Array.isArray(data.message) ? data.message.join(' · ') : data.message;
+        throw new Error(detail || (data.error && data.error !== 'Bad Request' ? data.error : '') ||
+          `No se pudo consultar la lista de usuarios (HTTP ${response.status}).`);
       }
 
       const nextUsers = data.users || [];
@@ -123,6 +127,7 @@ export default function UsuariosPage() {
 
       setCompanyName(data.company?.name || 'Empresa');
       setUsers(nextUsers);
+      setUsersLoaded(true);
       setRoles(nextRoles);
       setAreas(data.areas || []);
       setForm((current) => ({
@@ -153,6 +158,10 @@ export default function UsuariosPage() {
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!usersLoaded) {
+      setError('No se puede crear un usuario hasta verificar la lista de miembros existentes.');
+      return;
+    }
     setCreating(true);
     setMessage('');
     setError('');
@@ -303,8 +312,8 @@ export default function UsuariosPage() {
         <div className={styles.grid}>
           <section className={styles.createCard}>
             <div className={styles.sectionHeading}>
-              <p>{isFirstUser ? 'Configuración inicial' : 'Nuevo acceso'}</p>
-              <h2>{isFirstUser ? 'Crear propietario inicial' : 'Crear usuario'}</h2>
+              <p>{!usersLoaded ? 'Consulta pendiente' : isFirstUser ? 'Configuración inicial' : 'Nuevo acceso'}</p>
+              <h2>{!usersLoaded ? 'Usuarios no disponibles' : isFirstUser ? 'Crear propietario inicial' : 'Crear usuario'}</h2>
               {seatLimit!==null && <p>Usuarios: {users.filter(u=>u.active).length} de {seatLimit} permitidos. {users.filter(u=>u.active).length>=seatLimit ? <Link href="/configuracion/mi-plan">Solicitar más cupos →</Link> : null}</p>}
             </div>
 
@@ -402,6 +411,7 @@ export default function UsuariosPage() {
                 disabled={
                   loading ||
                   creating ||
+                  !usersLoaded ||
                   !availableRoles.length ||
                   !form.roleKey
                 }
@@ -429,12 +439,14 @@ export default function UsuariosPage() {
             <div className={styles.sectionHeading}>
               <p>Equipo actual</p>
               <h2>
-                {loading ? 'Cargando usuarios…' : `${users.length} usuarios`}
+                {loading ? 'Cargando usuarios…' : !usersLoaded ? 'No se pudo verificar el equipo' : `${users.length} usuarios`}
               </h2>
             </div>
 
             {loading ? (
               <div className={styles.empty}>Cargando accesos…</div>
+            ) : !usersLoaded ? (
+              <div className={styles.empty}>La consulta falló. No crees un propietario ni cambies accesos hasta recuperar el listado.</div>
             ) : users.length === 0 ? (
               <div className={styles.empty}>
                 Crea el propietario inicial. Después cada persona entrará con
