@@ -141,7 +141,7 @@ export default function FeatureDraftEditor(){
       setNotice('Funciones pendientes de Eco definidas como No incluido (solo local). Revisa y presiona Guardar eco.');
      }} style={{padding:'10px 14px',border:'1px solid #172235',borderRadius:8,background:'#f8fafc'}}>
      Preparar Eco: marcar pendientes como No incluido (sin guardar)
-    </button>
+    </button>}
    <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
     {tiers.map(t=><button key={t} type="button"
      disabled={busy!==null||dirty[t]||!savedAt[t]||features.some(([key])=>matrix[t][key]==='pending')||approved[t]===savedAt[t]}
