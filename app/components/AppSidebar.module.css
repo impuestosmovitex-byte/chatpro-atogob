@@ -449,7 +449,7 @@
     height: 72px;
     min-height: 72px;
     box-sizing: border-box;
-    margin: 0 0 17px 3px;
+    margin: 0 auto 17px;
     padding: 0;
     overflow: hidden;
     display: flex;
