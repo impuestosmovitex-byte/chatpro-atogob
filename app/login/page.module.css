@@ -138,3 +138,41 @@
   font-size: 12px;
   line-height: 1.4;
 }
+
+/* MW1 production branding parity — visual only; existing login controls unchanged. */
+.shell {
+  background: linear-gradient(160deg, #101f3e 0%, #08152d 100%);
+}
+.card {
+  border-color: rgba(255,255,255,.15);
+  box-shadow: 0 22px 60px rgba(3,12,29,.26);
+}
+.brand {
+  width: 86px;
+  height: 72px;
+  overflow: hidden;
+  margin: 0 auto 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 13px;
+  background: #fff;
+}
+.brandLogo {
+  display: block;
+  width: 90px;
+  height: 90px;
+  max-width: none;
+  flex: 0 0 auto;
+  object-fit: contain;
+  transform: scale(1.38);
+  transform-origin: center;
+}
+.eyebrow { color: #956e00; }
+.card h1 { color: #101f3e; }
+.form button { background: #ffc928; color: #101f3e; }
+.form input:focus { border-color: #ffc928; box-shadow: 0 0 0 3px rgba(255,201,40,.2); }
+@media (max-width: 480px) {
+  .shell { padding: 16px; }
+  .card { padding: 28px 24px; }
+}
