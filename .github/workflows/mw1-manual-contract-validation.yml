@@ -2,7 +2,7 @@ name: MW1 manual contract validation (NO DEPLOY)
 on:
   push:
     branches:
-      - feature/mw1-contract-web-staging-integration-20261114
+      - feature/mw1-eco-approval-ui-staging-20261114
   pull_request:
     branches:
       - feature/mw1-commercial-leads-20261114
