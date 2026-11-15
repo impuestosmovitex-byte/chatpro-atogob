@@ -125,3 +125,55 @@
   background: #f4bf00;
   color: #172235;
 }
+
+/* MW1 login brand alignment — visual only; form and auth behavior unchanged. */
+.shell,
+.platformShell {
+  background:
+    radial-gradient(circle at 14% 14%, rgba(255,201,40,0.09), transparent 34%),
+    linear-gradient(160deg, #101f3e 0%, #08152d 100%);
+}
+.card,
+.platformShell .card {
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 24px 65px rgba(2,10,26,0.27);
+}
+.mark,
+.platformShell .mark {
+  width: 86px;
+  height: 72px;
+  margin: 0 auto 20px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 13px;
+}
+.logo {
+  display: block;
+  width: 90px;
+  height: 90px;
+  max-width: none;
+  flex: 0 0 auto;
+  object-fit: contain;
+  transform: scale(1.38);
+  transform-origin: center;
+}
+.eyebrow,
+.platformShell .eyebrow { color: #956e00; }
+.card h1 { color: #101f3e; }
+.form button,
+.platformShell .form button {
+  background: #ffc928;
+  color: #101f3e;
+}
+.form button:hover:not(:disabled) { background: #f4bf00; }
+.form input:focus {
+  border-color: #ffc928;
+  box-shadow: 0 0 0 3px rgba(255,201,40,0.20);
+}
+@media (max-width: 480px) {
+  .shell { padding: 16px; }
+  .card { padding: 28px 24px; }
+}
