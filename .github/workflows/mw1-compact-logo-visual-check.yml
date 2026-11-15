@@ -1,0 +1,34 @@
+name: MW1 compact sidebar logo visual safety
+on:
+  push:
+    branches:
+      - feature/mw1-sidebar-logo-compact-20261114
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Ensure original logos remain unchanged
+        run: |
+          grep -q 'src="/media/logo-chatpro-azul-amarillo.png"' app/components/AppSidebar.tsx
+          grep -q 'src="/media/mw1-official-logo.svg"' app/components/marketing/MarketingHeader.tsx
+          grep -q 'MW1 authorized change: compact white background' app/components/AppSidebar.module.css
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Next.js build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Role protections
+        run: node scripts/test-mw1-unified-workspace-roles.cjs
+      - name: Signed session protections
+        run: node scripts/test-mw1-signed-workspace-http.cjs
