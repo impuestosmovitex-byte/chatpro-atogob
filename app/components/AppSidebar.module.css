@@ -382,3 +382,51 @@
     display: none;
   }
 }
+
+/* MW1 internal navigation branding — preserve links, capabilities, and permissions. */
+.brandLogo {
+  display: block;
+  width: 90px;
+  height: 90px;
+  max-width: none;
+  flex: 0 0 auto;
+  object-fit: contain;
+  transform: scale(1.38);
+  transform-origin: center;
+}
+@media (min-width: 1041px) {
+  .sidebar {
+    width: 236px;
+    flex: 0 0 236px;
+    min-height: 100vh;
+    padding: 22px 13px;
+    background: linear-gradient(170deg, #101f3e 0%, #08152d 100%);
+    color: #ecf2fc;
+    border-right: 1px solid #1c3258;
+  }
+  .brand {
+    width: 86px;
+    min-width: 86px;
+    height: 72px;
+    min-height: 72px;
+    box-sizing: border-box;
+    margin: 0 auto 17px;
+    padding: 0;
+    overflow: hidden;
+    justify-content: center;
+    border-radius: 13px;
+    background: #fff;
+  }
+  .nav { gap: 6px; }
+  .item { min-height: 44px; border-radius: 13px; padding: 12px 13px; color: #cbd7eb; font-size: 13px; font-weight: 700; }
+  .item:hover { color: #fff; background: #243554; }
+  .item.active, .item.active:hover { color: #0e1b35; background: #ffc928; }
+  .footer { border-top: 1px solid #2a3c59; padding-top: 16px; color: #c0cde0; }
+  .footer strong { color: #fff; }
+  .footer small { color: #b8c7df; }
+  .footerAvatar { background: #253b60; border-color: #38527d; color: #fff; }
+  .companyPicker { color: #d8e2f1; }
+  .companyPicker select { border-color: #334a70; background: #162b4b; color: #fff; }
+  .logout { border-color: #3d5276; background: #152a4a; color: #fff; }
+  .logout:hover { background: #29456d; }
+}
