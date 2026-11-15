@@ -72,17 +72,17 @@ async function main() {
     }
 
     const panel = await request('/panel', { headers: auth });
-    assert.ok([200, 302, 303, 307, 308].includes(panel.status), 'Panel did not respond');
+    assert.equal(panel.status, 200, 'Advisor panel must render, not redirect');
     const inbox = await request('/', { headers: auth });
     assert.equal(inbox.status, 200, 'Inbox route unavailable');
     const clients = await request('/clientes', { headers: auth });
     assert.equal(clients.status, 200, 'Clients route unavailable');
 
-    for (const path of ['/api/statistics', '/api/automations', '/api/platform-admin']) {
+    for (const path of ['/api/statistics', '/api/automations', '/api/users', '/api/platform-admin/me']) {
       const res = await request(path, { headers: auth });
       assert.equal(res.status, 403, path + ' should refuse advisor');
     }
-    for (const path of ['/usuarios', '/configuracion']) {
+    for (const path of ['/usuarios', '/configuracion', '/estadisticas', '/automatizaciones']) {
       const res = await request(path, { headers: auth });
       assert.ok([302, 303, 307, 308, 403].includes(res.status),
         path + ' should not render for advisor');
