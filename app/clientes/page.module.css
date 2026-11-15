@@ -1238,3 +1238,25 @@
   }
 }
 
+/* MW1 approved content palette. The imported AppSidebar remains untouched. */
+.shell {background:#f6f8fc;color:#14243d}
+.header h1 {color:#102143}
+.eyebrow {color:#91711c}
+.listPanel,.profilePanel,.history,.createCard {
+  border-color:#e3e9f2;border-radius:18px;background:#fff;
+  box-shadow:0 7px 24px #10214309;
+}
+.selectedRow {background:#fff7d9;border-color:#ffca05;box-shadow:inset 3px 0 0 #ffca05}
+.clientRow:hover {background:#f8faff}
+.refreshButton,.searchRow button,.inboxButton,.saveButton {
+  background:#102143;color:#fff;border-radius:11px;
+}
+.refreshButton:hover,.searchRow button:hover,.inboxButton:hover {background:#1d345b}
+.profileHeader h2,.listHeader h2,.historyHeader h3 {color:#102143}
+.message_customer {background:#f2f4f8}
+.message_ai {background:#eaf1ff}
+.message_advisor {background:#fff2c9}
+@media(max-width:900px) {
+  .workspace {background:#f6f8fc}
+  .listPanel,.profilePanel,.history {border-radius:14px}
+}
