@@ -29,6 +29,7 @@ export default function FeatureDraftEditor(){
  const [busy,setBusy]=useState<Tier|null>(null);
  const [dirty,setDirty]=useState<Record<Tier,boolean>>({basico:false,eco:false,pro:false});
  const [notice,setNotice]=useState('');
+ const [loadError,setLoadError]=useState(false);
  const [savedAt,setSavedAt]=useState<Record<Tier,string>>({basico:'',eco:'',pro:''});
  const [approved,setApproved]=useState<Record<Tier,string>>({basico:'',eco:'',pro:''});
  const [reviewStatus,setReviewStatus]=useState<Record<Tier,'draft'|'ready'>>({basico:'draft',eco:'draft',pro:'draft'});
@@ -47,8 +48,11 @@ export default function FeatureDraftEditor(){
      return updated;
     });
     const approvalsResponse=await fetch('/api/platform-admin/commercial-feature-approvals',{cache:'no-store'});
-    if(approvalsResponse.ok){const approvalsData=await approvalsResponse.json();setApproved(previous=>{const next={...previous};for(const a of approvalsData.approvals||[]){if(tiers.includes(a.tier as Tier))next[a.tier as Tier]=a.draft_updated_at;}return next;});}
-   }catch(e){setNotice(e instanceof Error?e.message:'No se pudo cargar la matriz.');}
+    if(!approvalsResponse.ok)throw new Error('No se pudo consultar la aprobación real.');
+    const approvalsData=await approvalsResponse.json();
+    if(!approvalsData.ok||!Array.isArray(approvalsData.approvals))throw new Error('Respuesta de aprobaciones inválida.');
+    setApproved(previous=>{const next={...previous};for(const a of approvalsData.approvals){if(tiers.includes(a.tier as Tier))next[a.tier as Tier]=a.draft_updated_at;}return next;});
+   }catch(e){setLoadError(true);setNotice(e instanceof Error?e.message:'No se pudo cargar la matriz.');}
    finally{setLoading(false);}
   })();
  },[]);
@@ -69,7 +73,8 @@ export default function FeatureDraftEditor(){
    setSavedAt(previous=>({...previous,[tier]:data.draft.updated_at}));
    setDirty(previous=>({...previous,[tier]:false}));
    setReviewStatus(previous=>({...previous,[tier]:features.some(([key])=>matrix[tier][key]==='pending')?'draft':'ready'}));
-   setNotice('Borrador de '+tier+' guardado. No modifica permisos reales.');
+   setApproved(previous=>({...previous,[tier]:''}));
+   setNotice('Borrador de '+tier+' guardado en Supabase staging. Requiere aprobación de su versión actual.');
   }catch(e){setNotice(e instanceof Error?e.message:'Error al guardar.');}
   finally{setBusy(null);}
  }
@@ -83,6 +88,11 @@ export default function FeatureDraftEditor(){
     body:JSON.stringify({tier,draftUpdatedAt:savedAt[tier],confirm:'APROBAR BORRADOR COMERCIAL'})});
    const data=await response.json();
    if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo aprobar.');
+   const verifiedResponse=await fetch('/api/platform-admin/commercial-feature-approvals',{cache:'no-store'});
+   const verified=await verifiedResponse.json();
+   if(!verifiedResponse.ok||!verified.ok||!Array.isArray(verified.approvals)||
+      !verified.approvals.some((entry:{tier:string;draft_updated_at:string})=>entry.tier===tier&&entry.draft_updated_at===savedAt[tier]))
+    throw new Error('La aprobación todavía no se confirmó en Supabase.');
    setApproved(prev=>({...prev,[tier]:savedAt[tier]}));
    setNotice('Aprobación comercial interna registrada para '+tier+'. No se han aplicado permisos.');
   }catch(e){setNotice(e instanceof Error?e.message:'Error al aprobar.');}
@@ -93,7 +103,7 @@ export default function FeatureDraftEditor(){
   <p style={{fontSize:13,color:'#64748b'}}>Los cambios quedan guardados únicamente para revisión comercial.
    No publican derechos, no activan cobros ni desconectan empresas.</p>
   {notice&&<p role="status">{notice}</p>}
-  {loading?<p>Cargando matriz…</p>:<>
+  {loading?<p>Cargando matriz…</p>:loadError?<p role="alert">No se pudo verificar la matriz de planes. Recarga antes de guardar o aprobar.</p>:<>
    <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
     <thead><tr><th style={{textAlign:'left',padding:10}}>Función</th>
      {tiers.map(t=><th key={t} style={{textTransform:'capitalize',padding:10}}>{t}</th>)}</tr></thead>
@@ -111,22 +121,33 @@ export default function FeatureDraftEditor(){
    </table></div>
    <p style={{fontSize:12,color:'#64748b'}}>Estado de revisión local: una matriz sin funciones pendientes puede marcarse como lista para revisión, pero nunca queda aprobada ni publicada con este guardado.</p>
    <div style={{display:'flex',gap:12,flexWrap:'wrap',fontSize:13}}>
-    {tiers.map(t=><span key={t}><strong>{t.toUpperCase()}:</strong> {dirty[t]?'Cambios sin guardar':reviewStatus[t]==='ready'?'Lista para revisión interna':'Borrador pendiente'}</span>)}
+    {tiers.map(t=><span key={t}><strong>{t.toUpperCase()}:</strong> {!savedAt[t]?'Sin guardar en Supabase':dirty[t]?'Cambios sin guardar':approved[t]&&approved[t]===savedAt[t]?'Aprobado y verificado':features.some(([key])=>matrix[t][key]==='pending')?'Funciones pendientes':'Pendiente de aprobación'}</span>)}
    </div>
    <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:16}}>
-    {tiers.map(t=><button key={t} type="button" disabled={!dirty[t]||busy!==null}
+    {tiers.map(t=><button key={t} type="button" disabled={(!dirty[t]&&!!savedAt[t])||busy!==null}
      onClick={()=>void save(t)}
      style={{padding:'10px 14px',background:'#172235',color:'white',border:0,borderRadius:8,opacity:!dirty[t]?0.5:1}}>
      {busy===t?'Guardando…':'Guardar '+t+(dirty[t]?' *':'')}
     </button>)}
    </div>
    <p style={{fontSize:12,color:'#64748b'}}>Aprobación interna: requiere guardar primero y definir todas las funciones. No habilita módulos reales.</p>
+   {features.some(([key])=>matrix.eco[key]==='pending')&&<button type="button" disabled={busy!==null}
+     onClick={()=>{
+      if(!window.confirm('¿Marcar las funciones pendientes de Eco como NO INCLUIDAS solo en el formulario? Revisa los cambios antes de guardar. No se activará ninguna empresa.'))return;
+      const rights={...matrix.eco};
+      for(const [key] of features)if(rights[key]==='pending')rights[key]='not_included';
+      setMatrix(previous=>({...previous,eco:rights}));
+      setDirty(previous=>({...previous,eco:true}));
+      setNotice('Funciones pendientes de Eco definidas como No incluido (solo local). Revisa y presiona Guardar eco.');
+     }} style={{padding:'10px 14px',border:'1px solid #172235',borderRadius:8,background:'#f8fafc'}}>
+     Preparar Eco: marcar pendientes como No incluido (sin guardar)
+    </button>
    <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
     {tiers.map(t=><button key={t} type="button"
      disabled={busy!==null||dirty[t]||!savedAt[t]||features.some(([key])=>matrix[t][key]==='pending')||approved[t]===savedAt[t]}
      onClick={()=>void approve(t)}
      style={{padding:'10px 14px',border:'1px solid #172235',background:'white',color:'#172235',borderRadius:8}}>
-     {approved[t]===savedAt[t]?'Aprobado internamente: '+t:'Revisar y aprobar '+t}
+     {savedAt[t]&&approved[t]===savedAt[t]?'Aprobado internamente: '+t:'Revisar y aprobar '+t}
     </button>)}
    </div>
   </>}
