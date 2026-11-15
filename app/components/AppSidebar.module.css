@@ -440,3 +440,31 @@
   .logout { border-color:#3d5276; background:#152a4a; color:#fff; }
   .logout:hover { background:#29456d; }
 }
+
+/* MW1 authorized change: compact white background around the existing sidebar logo only. */
+@media (min-width: 1041px) {
+  .brand {
+    width: 86px;
+    min-width: 86px;
+    height: 72px;
+    min-height: 72px;
+    box-sizing: border-box;
+    margin: 0 0 17px 3px;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 13px;
+    background: #fff;
+  }
+  .brandLogo {
+    width: 90px;
+    height: 90px;
+    max-height: none;
+    flex: 0 0 auto;
+    object-fit: contain;
+    transform: scale(1.38);
+    transform-origin: center;
+  }
+}
