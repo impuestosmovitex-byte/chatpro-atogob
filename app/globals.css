@@ -3582,3 +3582,66 @@ h2 {
 }
 
 /* END CHATPRO-CUSTOMER-IDENTITY-V1 */
+
+/* MW1 approved content palette: conversation workspace ONLY. Do not style sidebar. */
+.chatpro-shell:has(.inbox-layout) {
+  --accent:#ffca05; --accent-soft:#fff6d6; --line:#e5eaf2;
+  background:#f6f8fc; color:#152238;
+}
+.chatpro-shell:has(.inbox-layout) .workspace-header h1 {color:#101f3e;letter-spacing:-.04em;font-weight:850}
+.chatpro-shell:has(.inbox-layout) .channel-tabs {gap:9px;border-bottom:0;flex-wrap:wrap}
+.chatpro-shell:has(.inbox-layout) .channel-tab {
+  margin:0;min-height:40px;padding:9px 15px;border:1px solid #e0e6ef;
+  border-radius:999px;background:#fff;color:#263853;
+  box-shadow:0 3px 10px #142b4808;
+}
+.chatpro-shell:has(.inbox-layout) .channel-tab.active {
+  background:#102143;color:#fff;border-color:#102143;
+  box-shadow:0 4px 12px #10214319;
+}
+.chatpro-shell:has(.inbox-layout) .inbox-layout {
+  background:#fff;border:1px solid #e2e8f1;border-radius:19px;
+  box-shadow:0 12px 32px #1021430a;
+}
+.chatpro-shell:has(.inbox-layout) .conversation-list-panel {background:#fff}
+.chatpro-shell:has(.inbox-layout) .conversation-search {
+  background:#f8faff;border:1px solid #e2e8f1;border-radius:13px;
+}
+.chatpro-shell:has(.inbox-layout) .filter-chip {border:1px solid #e2e8f1;background:#fff;border-radius:999px;color:#263853}
+.chatpro-shell:has(.inbox-layout) .filter-chip.selected {
+  background:#ffca05;border-color:#ffca05;color:#102143;
+}
+.chatpro-shell:has(.inbox-layout) .conversation-row {
+  border-bottom-color:#edf0f5;border-radius:12px;
+}
+.chatpro-shell:has(.inbox-layout) .conversation-row:hover {background:#f8faff}
+.chatpro-shell:has(.inbox-layout) .conversation-row.selected {
+  background:#fff7d9;box-shadow:inset 3px 0 0 #ffca05;border-color:#f3dd8b;
+}
+.chatpro-shell:has(.inbox-layout) .chat-panel {background:#fff}
+.chatpro-shell:has(.inbox-layout) .chat-header {background:#fff;border-bottom-color:#e6eaf1}
+.chatpro-shell:has(.inbox-layout) .message-feed {background:#fcfdff}
+.chatpro-shell:has(.inbox-layout) .message-bubble {
+  border:1px solid #edf0f5;border-radius:16px;
+  box-shadow:0 3px 10px #10214309;
+}
+.chatpro-shell:has(.inbox-layout) .message-row.customer .message-bubble {background:#f2f4f8}
+.chatpro-shell:has(.inbox-layout) .message-row.ai .message-bubble {background:#eaf1ff}
+.chatpro-shell:has(.inbox-layout) .message-row.advisor .message-bubble {background:#fff3c9}
+.chatpro-shell:has(.inbox-layout) .button.primary,
+.chatpro-shell:has(.inbox-layout) .wa-text-send {background:#ffca05;color:#102143;border-color:#ffca05}
+.chatpro-shell:has(.inbox-layout) .reply-box {background:#fff}
+.chatpro-shell:has(.inbox-layout) .context-panel {background:#fff}
+.chatpro-shell:has(.inbox-layout) .context-list,
+.chatpro-shell:has(.inbox-layout) .contact-card-form,
+.chatpro-shell:has(.inbox-layout) .storefront-card {
+  border:1px solid #e5eaf2;border-radius:15px;background:#fff;
+  box-shadow:0 3px 12px #10214307;
+}
+.chatpro-shell:has(.inbox-layout) .context-panel h2 {color:#102143}
+@media(max-width:760px) {
+  .chatpro-shell:has(.inbox-layout) .channel-tabs {gap:6px;flex-wrap:nowrap;overflow-x:auto}
+  .chatpro-shell:has(.inbox-layout) .channel-tab {white-space:nowrap;min-height:40px;padding:9px 12px}
+  .chatpro-shell:has(.inbox-layout) .inbox-layout {border-radius:14px}
+  .chatpro-shell:has(.inbox-layout) .message-bubble {max-width:90%}
+}
