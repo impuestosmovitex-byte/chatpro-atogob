@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - scripts/test-mw1-real-advisor-e2e.cjs
+      - scripts/mw1-advisor-browser-live-audit.js
       - .github/workflows/mw1-real-advisor-e2e-preflight.yml
 jobs:
   preflight:
@@ -16,7 +17,9 @@ jobs:
         with:
           node-version: '22'
       - name: Validate E2E script syntax
-        run: node --check scripts/test-mw1-real-advisor-e2e.cjs
+        run: |
+          node --check scripts/test-mw1-real-advisor-e2e.cjs
+          node --check scripts/mw1-advisor-browser-live-audit.js
       - name: Missing credentials must NOT produce a pass
         shell: bash
         run: |
