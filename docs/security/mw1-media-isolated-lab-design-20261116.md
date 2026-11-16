@@ -31,6 +31,7 @@ Railway: proyecto y entorno NUEVOS (no existentes)
 **Obligatorias para cualquier despliegue futuro:**
 - `MW1_MEDIA_LAB_MODE=true` y `MW1_MEDIA_LAB_ALLOW_START=true` — doble habilitación exclusiva del entrypoint.
 - `MW1_MEDIA_LAB_DATASET_ID` — identificador del conjunto de fixtures con marca `synthetic`.
+- `MW1_MEDIA_LAB_PROJECT_ID` — ID del nuevo proyecto aprobado. El preflight debe exigir coincidencia exacta con el host de `SUPABASE_URL`; esta comparación **no sustituye** la verificación manual de que no sea un proyecto productivo.
 - `MW1_MEDIA_LAB_AUTH_SECRET` — secreto exclusivo efímero del laboratorio; nunca reutilizar `CHATPRO_INBOX_KEY`.
 - `SUPABASE_URL` y clave de acceso del **nuevo proyecto laboratorio**, con permisos mínimos; no compartir URLs ni service_role del staging/producción.
 - `MW1_MEDIA_LAB_STORAGE_BUCKET` — nombre de bucket privado exclusivo del proyecto laboratorio.
