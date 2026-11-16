@@ -1,3 +1,16 @@
+describe('Staging DI bootstrap safety',()=>{
+ it('registers manual expiry provider in the actual staging root, not only AppModule',()=>{
+  const main=code('main.ts');
+  const staging=code('staging-app.module.ts');
+  expect(main).toContain("process.env.MW1_STAGING_MODE === 'true'");
+  expect(main).toContain("import('./staging-app.module.js')");
+  expect(staging).toContain("import { ManualContractAccessService } from './manual-contract-access.service'");
+  const providers=staging.slice(staging.indexOf('providers:'));
+  expect(providers).toContain('ManualContractAccessService');
+  expect(staging).not.toContain('WhatsappWebhookController,');
+  expect(staging).not.toContain('ShopifyAutomationProcessorService,');
+ });
+});
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 
