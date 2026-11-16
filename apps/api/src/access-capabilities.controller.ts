@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 
 type CapabilityKey =
   | 'inbox'
@@ -26,7 +27,8 @@ type CapabilityKey =
 
 @Controller('access-capabilities')
 export class AccessCapabilitiesController {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(private readonly supabaseService: SupabaseService,
+    private readonly manualContractAccess: ManualContractAccessService) {}
 
   @Get()
   async getCapabilities(
@@ -61,6 +63,7 @@ export class AccessCapabilitiesController {
       throw new BadRequestException('Empresa no encontrada.');
     }
 
+    const contractAccess=await this.manualContractAccess.access(companyRow.id);
     const { data: membership, error: membershipError } = await client
       .from('company_memberships')
       .select('role_id,active')
@@ -189,11 +192,22 @@ export class AccessCapabilitiesController {
       testAgent: fullAccess,
     };
 
+    // Recheck on every capabilities request: existing signed sessions cannot
+    // keep using a plan after expires_at. Do not mutate entitlements or data.
+    if(!contractAccess.commercialAllowed){
+      for(const key of Object.keys(capabilities) as CapabilityKey[])
+        capabilities[key]=false;
+    }
     return {
       ok: true,
       roleKey,
       permissionKeys,
       capabilities,
+      subscription:{
+        state:contractAccess.state,
+        commercialAllowed:contractAccess.commercialAllowed,
+        expiresAt:contractAccess.expiresAt,
+      },
     };
   }
 
