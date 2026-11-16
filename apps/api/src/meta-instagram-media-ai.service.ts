@@ -3,6 +3,7 @@ import OpenAI, { toFile } from 'openai';
 import { CompanyIntegrationService } from './company-integration.service';
 import { MetaSocialAiService } from './meta-social-ai.service';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -15,6 +16,7 @@ export class MetaInstagramMediaAiService {
     private readonly companyIntegrationService: CompanyIntegrationService,
     private readonly socialAiService: MetaSocialAiService,
     private readonly supabaseService: SupabaseService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {}
 
   async processWebhook(bodyInput: unknown): Promise<void> {
@@ -167,6 +169,11 @@ export class MetaInstagramMediaAiService {
     if (!sessionRow || sessionRow.attention_status !== 'ai') {
       return;
     }
+
+    // Inbound social webhook processing is retained; avoid transcription and
+    // commercial AI once the manual subscription is no longer valid.
+    const access=await this.manualContractAccess.access(input.companyId);
+    if(!access.commercialAllowed)return;
 
     if (input.providerMessageId) {
       const { data: existing } = await client
