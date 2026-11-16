@@ -4,12 +4,14 @@ import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 
 @Injectable()
 export class MetaSocialMessagingService {
   constructor(
     private readonly supabaseService: SupabaseService,
+    private readonly manualContractAccess: ManualContractAccessService,
     private readonly credentialsService: IntegrationCredentialsService,
   ) {}
 
@@ -19,6 +21,7 @@ export class MetaSocialMessagingService {
     message: string;
     advisorName: string;
   }): Promise<{ messageId: string | null }> {
+    await this.manualContractAccess.assertCommercial(input.companyId);
     const client = this.supabaseService.getClient();
 
     const { data: sessionRow, error: sessionError } =
@@ -298,7 +301,8 @@ export class MetaSocialMessagingService {
     filename: string;
     mediaType: 'image' | 'audio' | 'video' | 'document';
     caption?: string;
-  }): Promise<{ messageId: string | null }> {
+  }): Promise<{
+    await this.manualContractAccess.assertCommercial(input.companyId); messageId: string | null }> {
     return this.sendAdvisorMedia({
       ...input,
       advisorName: 'IA',
@@ -317,6 +321,7 @@ export class MetaSocialMessagingService {
     advisorName: string;
     actorType?: 'advisor' | 'ai';
   }): Promise<{ messageId: string | null }> {
+    await this.manualContractAccess.assertCommercial(input.companyId);
     const client = this.supabaseService.getClient();
 
     if (!input.buffer.length) {
