@@ -2,7 +2,7 @@ name: MW1 manual contract validation (NO DEPLOY)
 on:
   push:
     branches:
-      - feature/mw1-manual-contract-activation-20261114
+      - feature/mw1-renewal-period-guard-staging-20261116
   pull_request:
     branches:
       - feature/mw1-commercial-leads-20261114
@@ -38,5 +38,5 @@ jobs:
           cache: npm
           cache-dependency-path: apps/api/package-lock.json
       - run: npm ci
-      - run: npx jest --runInBand mw1-manual-contract.spec.ts mw1-manual-attestation.spec.ts
+      - run: npx jest --runInBand mw1-manual-contract.spec.ts mw1-manual-attestation.spec.ts mw1-manual-renewal-period.spec.ts
       - run: npx nest build
