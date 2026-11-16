@@ -4,7 +4,7 @@
  * Not referenced by the normal API start scripts or Railway service.
  * Bind localhost only. No DB, Meta, queues, automation, or outbound calls.
  */
-const { validateMediaLabEnv } = require('../../scripts/mw1-media-lab-preflight.cjs');
+const { validateMediaLabEnv } = require('./media-lab-preflight.cjs');
 
 async function run() {
   const result = validateMediaLabEnv(process.env);
