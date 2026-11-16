@@ -1688,23 +1688,94 @@ export class InboxController {
       const location =
         mediaRow.media_url.trim();
 
-      if (
-        location.startsWith('https://') ||
-        location.startsWith('http://')
-      ) {
-        const remote =
-          await fetch(location);
+      if (/^https?:\/\//i.test(location)) {
+        // Prevent SSRF via arbitrary URLs stored in media_url.
+        // Meta-hosted URLs only; other providers must be explicitly vetted.
+        let remoteUrl: URL;
+        try {
+          remoteUrl = new URL(location);
+        } catch {
+          throw new BadRequestException('URL de multimedia social inválida.');
+        }
+        const hostname = remoteUrl.hostname.toLowerCase();
+        const exactMetaHosts = new Set([
+          'graph.facebook.com',
+          'graph.instagram.com',
+          'lookaside.facebook.com',
+          'lookaside.instagram.com',
+        ]);
+        const metaCdnSuffixes = [
+          '.fbcdn.net',
+          '.fbsbx.com',
+          '.cdninstagram.com',
+        ];
+        const trustedHost =
+          exactMetaHosts.has(hostname) ||
+          metaCdnSuffixes.some((suffix) => hostname.endsWith(suffix));
+        if (
+          remoteUrl.protocol !== 'https:' ||
+          (remoteUrl.port && remoteUrl.port !== '443') ||
+          remoteUrl.username ||
+          remoteUrl.password ||
+          !trustedHost
+        ) {
+          throw new BadRequestException(
+            'Origen de multimedia social no autorizado.',
+          );
+        }
 
-        if (!remote.ok) {
+        const maxMediaBytes = 15 * 1024 * 1024;
+        let remote: globalThis.Response;
+        try {
+          // Never follow redirects: their targets have not been authorized.
+          remote = await fetch(remoteUrl, {
+            redirect: 'manual',
+            signal: AbortSignal.timeout(10_000),
+          });
+        } catch {
           throw new BadRequestException(
             'No se pudo descargar la multimedia social.',
           );
         }
 
-        const buffer =
-          Buffer.from(
-            await remote.arrayBuffer(),
+        if (!remote.ok || !remote.body) {
+          await remote.body?.cancel();
+          throw new BadRequestException(
+            'La multimedia social no está disponible desde el origen autorizado.',
           );
+        }
+        const reportedSize = Number(remote.headers.get('content-length'));
+        if (Number.isFinite(reportedSize) && reportedSize > maxMediaBytes) {
+          await remote.body.cancel();
+          throw new BadRequestException(
+            'La multimedia social supera el tamaño permitido.',
+          );
+        }
+
+        const chunks: Buffer[] = [];
+        let totalSize = 0;
+        const reader = remote.body.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            totalSize += value.byteLength;
+            if (totalSize > maxMediaBytes) {
+              await reader.cancel();
+              throw new BadRequestException(
+                'La multimedia social supera el tamaño permitido.',
+              );
+            }
+            chunks.push(Buffer.from(value));
+          }
+        } catch (error) {
+          if (error instanceof BadRequestException) throw error;
+          throw new BadRequestException(
+            'No se pudo completar la descarga de multimedia social.',
+          );
+        } finally {
+          reader.releaseLock();
+        }
 
         response.setHeader(
           'content-type',
@@ -1712,7 +1783,7 @@ export class InboxController {
             'application/octet-stream',
         );
 
-        return response.send(buffer);
+        return response.send(Buffer.concat(chunks, totalSize));
       }
 
       const { data: stored, error: storedError } =
