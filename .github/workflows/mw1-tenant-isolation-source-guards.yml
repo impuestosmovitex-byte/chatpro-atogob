@@ -1,0 +1,29 @@
+name: MW1 staging tenant boundary source guards
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/access.controller.ts'
+      - 'apps/api/src/inbox.controller.ts'
+      - 'apps/api/src/clients.controller.ts'
+      - 'apps/api/src/statistics.controller.ts'
+      - 'scripts/test-mw1-tenant-isolation-source-guards.cjs'
+      - 'scripts/mw1-cross-tenant-readonly-browser-audit.js'
+      - 'scripts/mw1-clients-tenant-readonly-browser-audit.js'
+      - '.github/workflows/mw1-tenant-isolation-source-guards.yml'
+  push:
+    branches:
+      - test/mw1-tenant-isolation-readonly-gates-20261115
+
+jobs:
+  source-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: |
+          node --check scripts/test-mw1-tenant-isolation-source-guards.cjs
+          node --check scripts/mw1-cross-tenant-readonly-browser-audit.js
+          node --check scripts/mw1-clients-tenant-readonly-browser-audit.js
+      - name: Static source regression checks (not E2E)
+        run: node scripts/test-mw1-tenant-isolation-source-guards.cjs
