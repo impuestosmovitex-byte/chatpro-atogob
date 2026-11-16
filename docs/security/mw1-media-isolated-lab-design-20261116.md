@@ -2,6 +2,18 @@
 
 **Estado:** diseño y configuración validable por código, **sin crear ni desplegar servicios**. Fecha: 2026-11-16. PR #73 en borrador, issue #72.
 
+## Implementación inicial real en el PR (sin infraestructura ni despliegue)
+
+El diseño de topología con Supabase nuevo descrito más abajo corresponde a una **fase futura de compatibilidad con medios externos**. La fase 1 implementada en código es **más restrictiva y no utiliza ningún Supabase ni Storage**:
+
+- `apps/api/src/media-lab.module.ts`: únicamente `MediaLabController`, cero providers, ninguna importación de `AppModule` o `InboxController`.
+- `apps/api/src/media-lab.controller.ts`: solo GET `/health` y GET `/lab/media/:fixtureId`. Devuelve dos buffers binarios sintéticos estáticos. Auth Bearer exclusiva, comparación timing-safe, tenant sintético único configurado, 401 sin autorización, 404 para fixture inexistente, cache no-store.
+- `apps/api/media-lab-entry.cjs`: evalúa el preflight **antes de cargar Nest**, y solo permite escuchar `127.0.0.1` en puerto local. **No está referenciado por el arranque normal**.
+- `scripts/mw1-media-lab-preflight.cjs`: rechaza cualquier variable Supabase, DB, Meta, CRM, Redis, Shopify o credencial comercial y exige 2 switches LAB, ID sintético y secreto LAB de al menos 32 caracteres. No prueba que un servicio futuro esté aislado: es un control adicional.
+- `apps/api/src/media-lab.integration.spec.ts`: tests HTTP de acceso, tenant, rutas operativas inexistentes y sin llamadas fetch externas.
+
+**No arranque público, no E2E Meta, no red, no base de datos, no servicio Railway creado.** Si después se desea probar enlaces reales firmados de Meta, se debe proponer una segunda fase aislada, con controles de egress/DNS, autenticación y autorización separados. **No copiar la topología Supabase anterior automáticamente a este laboratorio de fase 1.**
+
 ## Decisión de arquitectura
 
 No reutilizar `mw1-api-staging`, la base Supabase de staging ni el despliegue de producción. El código actual de la rama del PR #73 arranca `AppModule` desde `apps/api/src/main.ts`; eso registra controladores operativos, webhooks y servicios. **No es seguro desplegarlo como laboratorio por el mero hecho de definir una variable de entorno**. La API staging existente sí aísla usando `StagingAppModule`, pero no registra la ruta `GET /inbox/:sessionId/messages/:messageId/media` corregida.
