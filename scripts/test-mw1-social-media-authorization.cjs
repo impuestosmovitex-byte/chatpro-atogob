@@ -19,7 +19,7 @@ assert.match(social, /throw new ForbiddenException/, 'Unauthorized media read mu
 const authorize = social.indexOf('await this.actor(');
 const visibility = social.indexOf('this.canView(');
 const rowRead = social.indexOf(".from('social_conversations')");
-const remoteFetch = social.indexOf('await fetch(location)');
+const remoteFetch = social.indexOf('await fetch(remoteUrl, {');
 const storage = social.indexOf(".from('chatpro-media')");
 assert.ok(authorize >= 0 && visibility > authorize &&
   rowRead > visibility && remoteFetch > visibility && storage > visibility,
