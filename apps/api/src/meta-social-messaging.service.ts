@@ -301,8 +301,8 @@ export class MetaSocialMessagingService {
     filename: string;
     mediaType: 'image' | 'audio' | 'video' | 'document';
     caption?: string;
-  }): Promise<{
-    await this.manualContractAccess.assertCommercial(input.companyId); messageId: string | null }> {
+  }): Promise<{ messageId: string | null }> {
+    await this.manualContractAccess.assertCommercial(input.companyId);
     return this.sendAdvisorMedia({
       ...input,
       advisorName: 'IA',
