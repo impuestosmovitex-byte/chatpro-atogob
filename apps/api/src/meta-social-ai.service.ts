@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { ChatAgentService } from './chat-agent.service';
@@ -12,6 +13,7 @@ export class MetaSocialAiService {
 
   constructor(
     private readonly supabaseService: SupabaseService,
+    private readonly manualContractAccess: ManualContractAccessService,
     private readonly credentialsService: IntegrationCredentialsService,
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly chatAgentService: ChatAgentService,
@@ -26,6 +28,7 @@ export class MetaSocialAiService {
     customerMessage: string;
     credentialsEncrypted: string | null;
   }): Promise<void> {
+    await this.manualContractAccess.assertCommercial(input.companyId);
     const client = this.supabaseService.getClient();
 
     const { data: sessionRow, error: sessionError } =
@@ -161,6 +164,7 @@ export class MetaSocialAiService {
     setupSource?: string;
     apiVersion?: string;
   }): Promise<void> {
+    await this.manualContractAccess.assertCommercial(input.companyId);
     const client = this.supabaseService.getClient();
 
     const { data: sessionRow, error: sessionError } =
@@ -299,6 +303,7 @@ export class MetaSocialAiService {
     setupSource?: string;
     apiVersion?: string;
   }): Promise<void> {
+    await this.manualContractAccess.assertCommercial(input.companyId);
     const client = this.supabaseService.getClient();
 
     const { data: sessionRow, error: sessionError } =
