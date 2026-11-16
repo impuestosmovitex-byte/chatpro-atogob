@@ -44,6 +44,14 @@ describe('Staging manual expiry gates on commercial delivery paths',()=>{
   expect(s.indexOf('this.getDeliveryStatuses(body)')).toBeGreaterThan(0);
   expect(s.indexOf('this.getDeliveryStatuses(body)')).toBeLessThan(s.indexOf('this.getIncomingMessage(body)'));
  });
+ it('blocks Instagram media transcription for expired manual contract',()=>{
+  const s=code('meta-instagram-media-ai.service.ts');
+  const i=s.indexOf('private async processMedia(');
+  const part=s.slice(i,i+5000);
+  expect(part).toContain('manualContractAccess.access(input.companyId)');
+  expect(part).toContain('if(!access.commercialAllowed)return;');
+  expect(part.indexOf('manualContractAccess.access(input.companyId)')).toBeLessThan(part.indexOf('this.transcribeAudio('));
+ });
  it('checks social multimedia batch before AI analysis while retaining captured events',()=>{
   const s=code('meta-social-batch-message.service.ts');
   const i=s.indexOf('private async flushBatch(');
