@@ -1,5 +1,14 @@
 import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { InboxController } from './inbox.controller';
+import { Test } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { ConversationMemoryService } from './conversation-memory.service';
+import { SupabaseService } from './supabase.service';
+import { WhatsappMessagingService } from './whatsapp-messaging.service';
+import { ChatAgentService } from './chat-agent.service';
+import { MetaSocialInboxService } from './meta-social-inbox.service';
+import { MetaSocialMessagingService } from './meta-social-messaging.service';
 
 const TENANT = 'synthetic-tenant-a';
 const FOREIGN_TENANT = 'synthetic-tenant-b';
@@ -108,7 +117,7 @@ function scenario(options: Scenario = {}) {
       MESSAGE,
       response as any,
     );
-  return { cfg, call, from, db, mediaQueries, storageDownload, response, metaSocialInboxService };
+  return { cfg, call, from, db, mediaQueries, storageDownload, response, metaSocialInboxService, conversationMemoryService };
 }
 
 describe('social attachment controller, synthetic integration', () => {
@@ -211,5 +220,105 @@ describe('social attachment controller, synthetic integration', () => {
     );
     await expect(x.call()).rejects.toBeInstanceOf(BadRequestException);
     expect(x.response.send).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * These tests exercise the actual Nest HTTP routing and error translation
+ * using in-memory synthetic providers. No port is exposed, no real DB,
+ * no Meta credentials, no file network access, no Railway deployment.
+ */
+describe('social attachment HTTP in-memory pilot preflight', () => {
+  let app: INestApplication | undefined;
+  const originalKey = process.env.CHATPRO_INBOX_KEY;
+  const originalFetch = global.fetch;
+  const mediaPath = '/inbox/' + SESSION + '/messages/' + MESSAGE + '/media';
+
+  const headers = (companyId = TENANT) => ({
+    'x-chatpro-inbox-key': INTERNAL_KEY,
+    'x-chatpro-session-type': 'user',
+    'x-chatpro-user-id': 'synthetic-advisor',
+    'x-chatpro-user-name': 'Synthetic Advisor',
+    'x-chatpro-company-id': companyId,
+    'x-chatpro-role-key': 'advisor',
+  });
+
+  const setup = async (options: Scenario = {}) => {
+    const x = scenario(options);
+    const module = await Test.createTestingModule({
+      controllers: [InboxController],
+      providers: [
+        { provide: ConversationMemoryService, useValue: x.conversationMemoryService },
+        { provide: SupabaseService, useValue: { getClient: () => x.db } },
+        { provide: WhatsappMessagingService, useValue: {} },
+        { provide: ChatAgentService, useValue: {} },
+        { provide: MetaSocialInboxService, useValue: x.metaSocialInboxService },
+        { provide: MetaSocialMessagingService, useValue: {} },
+      ],
+    }).compile();
+    app = module.createNestApplication();
+    await app.init();
+    return x;
+  };
+
+  beforeEach(() => {
+    process.env.CHATPRO_INBOX_KEY = INTERNAL_KEY;
+    // Fail closed if code attempts real network egress in any test.
+    global.fetch = jest.fn(() => Promise.reject(new Error('Outbound traffic forbidden in synthetic test'))) as typeof fetch;
+  });
+  afterEach(async () => {
+    if (app) { await app.close(); app = undefined; }
+    jest.restoreAllMocks();
+    global.fetch = originalFetch;
+  });
+  afterAll(() => {
+    if (originalKey === undefined) delete process.env.CHATPRO_INBOX_KEY;
+    else process.env.CHATPRO_INBOX_KEY = originalKey;
+  });
+
+  it('GET returns the synthetic storage bytes with proper tenant and inbox.view', async () => {
+    const x = await setup();
+    const reply = await request(app!.getHttpServer())
+      .get(mediaPath).query({company:'synthetic'}).set(headers());
+    expect(reply.status).toBe(200);
+    expect(Buffer.from(reply.body)).toEqual(Buffer.from([1, 2, 3]));
+    expect(x.storageDownload).toHaveBeenCalledTimes(1);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('GET without internal authentication key returns 401 before storage', async () => {
+    const x = await setup();
+    const h: Record<string, string> = headers();
+    delete h['x-chatpro-inbox-key'];
+    const reply = await request(app!.getHttpServer())
+      .get(mediaPath).query({company:'synthetic'}).set(h);
+    expect(reply.status).toBe(401);
+    expect(x.storageDownload).not.toHaveBeenCalled();
+  });
+
+  it('GET with a tenant header from another company returns 401', async () => {
+    const x = await setup();
+    const reply = await request(app!.getHttpServer())
+      .get(mediaPath).query({company:'synthetic'}).set(headers(FOREIGN_TENANT));
+    expect(reply.status).toBe(401);
+    expect(x.storageDownload).not.toHaveBeenCalled();
+    expect(x.mediaQueries.some(q => q.table === 'social_conversations')).toBe(false);
+  });
+
+  it('GET without inbox.view returns 403 and does not access media', async () => {
+    const x = await setup({permission:false});
+    const reply = await request(app!.getHttpServer())
+      .get(mediaPath).query({company:'synthetic'}).set(headers());
+    expect(reply.status).toBe(403);
+    expect(x.storageDownload).not.toHaveBeenCalled();
+  });
+
+  it('GET rejects fake media URL without any remote request', async () => {
+    const x = await setup({mediaUrl:'https://127.0.0.1/private-file'});
+    const reply = await request(app!.getHttpServer())
+      .get(mediaPath).query({company:'synthetic'}).set(headers());
+    expect(reply.status).toBe(400);
+    expect(x.storageDownload).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
