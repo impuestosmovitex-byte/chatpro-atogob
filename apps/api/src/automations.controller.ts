@@ -13,6 +13,7 @@ import {
 import { AutomationRuntimeService } from './automation-runtime.service';
 import { AutomationTestSendService } from './automation-test-send.service';
 import { ConversationMemoryService } from './conversation-memory.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { ShopifyAutomaticTestSendService } from './shopify-automatic-test-send.service';
 
 @Controller('automations')
@@ -20,6 +21,7 @@ export class AutomationsController {
   constructor(
     private readonly automationRuntimeService: AutomationRuntimeService,
     private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly manualContractAccess: ManualContractAccessService,
     private readonly automationTestSendService: AutomationTestSendService,
     private readonly shopifyAutomaticTestSendService: ShopifyAutomaticTestSendService,
   ) {}
@@ -34,6 +36,7 @@ export class AutomationsController {
       await this.conversationMemoryService.getCompanyProfile(
         this.requiredCompany(company),
       );
+    await this.manualContractAccess.assertCommercial(profile.id);
     const dashboard =
       await this.automationRuntimeService.listDashboard(profile.id);
 
@@ -59,6 +62,7 @@ export class AutomationsController {
       await this.conversationMemoryService.getCompanyProfile(
         this.requiredCompany(company),
       );
+    await this.manualContractAccess.assertCommercial(profile.id);
 
     return this.automationTestSendService.sendPrepared(
       profile.id,
@@ -77,6 +81,7 @@ export class AutomationsController {
       await this.conversationMemoryService.getCompanyProfile(
         this.requiredCompany(company),
       );
+    await this.manualContractAccess.assertCommercial(profile.id);
     const result =
       await this.automationRuntimeService.updateDeliveryMode(
         profile.id,
@@ -104,6 +109,7 @@ export class AutomationsController {
       await this.conversationMemoryService.getCompanyProfile(
         this.requiredCompany(company),
       );
+    await this.manualContractAccess.assertCommercial(profile.id);
 
     const result =
       await this.shopifyAutomaticTestSendService.sendIfAllowed(
@@ -140,6 +146,7 @@ export class AutomationsController {
       await this.conversationMemoryService.getCompanyProfile(
         this.requiredCompany(company),
       );
+    await this.manualContractAccess.assertCommercial(profile.id);
     const automation =
       await this.automationRuntimeService.updateDefinition(
         profile.id,
