@@ -1,3 +1,4 @@
+import { parseTrustedSocialMediaUrl } from './social-media-url-policy';
 import {
   BadRequestException,
   Body,
@@ -1691,34 +1692,8 @@ export class InboxController {
       if (/^https?:\/\//i.test(location)) {
         // Prevent SSRF via arbitrary URLs stored in media_url.
         // Meta-hosted URLs only; other providers must be explicitly vetted.
-        let remoteUrl: URL;
-        try {
-          remoteUrl = new URL(location);
-        } catch {
-          throw new BadRequestException('URL de multimedia social inválida.');
-        }
-        const hostname = remoteUrl.hostname.toLowerCase();
-        const exactMetaHosts = new Set([
-          'graph.facebook.com',
-          'graph.instagram.com',
-          'lookaside.facebook.com',
-          'lookaside.instagram.com',
-        ]);
-        const metaCdnSuffixes = [
-          '.fbcdn.net',
-          '.fbsbx.com',
-          '.cdninstagram.com',
-        ];
-        const trustedHost =
-          exactMetaHosts.has(hostname) ||
-          metaCdnSuffixes.some((suffix) => hostname.endsWith(suffix));
-        if (
-          remoteUrl.protocol !== 'https:' ||
-          (remoteUrl.port && remoteUrl.port !== '443') ||
-          remoteUrl.username ||
-          remoteUrl.password ||
-          !trustedHost
-        ) {
+        const remoteUrl = parseTrustedSocialMediaUrl(location);
+        if (!remoteUrl) {
           throw new BadRequestException(
             'Origen de multimedia social no autorizado.',
           );
