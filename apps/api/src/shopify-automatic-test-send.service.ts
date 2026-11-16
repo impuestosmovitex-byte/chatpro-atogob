@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
 
@@ -21,12 +22,16 @@ export class ShopifyAutomaticTestSendService {
     private readonly supabaseService: SupabaseService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
     private readonly whatsappTemplateExecutionService: WhatsappTemplateExecutionService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {}
 
   async sendIfAllowed(
     companyId: string,
     executionId: string,
   ): Promise<'sent' | 'blocked' | 'already_sent'> {
+    // Keep prepared automation records intact when the subscription is expired.
+    const access=await this.manualContractAccess.access(companyId);
+    if(!access.commercialAllowed)return 'blocked';
     const client = this.supabaseService.getClient();
     const { data, error } = await client
       .from('automation_executions')
