@@ -34,6 +34,6 @@ describe('MW1 manual renewal period guard',()=>{
   expect(sql).toContain('create or replace function public.mw1_apply_manual_contract');
   expect(sql).toContain('from public,anon,authenticated;');
   expect(sql).toContain('to service_role;');
-  expect(sql).toContain("SET search_path TO 'pg_catalog', 'pg_temp'");
+  expect(sql).toContain("set search_path=pg_catalog,pg_temp");
  });
 });
