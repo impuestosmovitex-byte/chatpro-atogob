@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { AutomationRuntimeService } from './automation-runtime.service';
 import { ConversationMemoryService } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { ShopifyAbandonedCheckoutSyncService } from './shopify-abandoned-checkout-sync.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
@@ -55,6 +56,7 @@ export class CartRecoveryService {
     private readonly whatsappMessagingService: WhatsappMessagingService,
     private readonly whatsappTemplateExecutionService: WhatsappTemplateExecutionService,
     private readonly automationRuntimeService: AutomationRuntimeService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -134,6 +136,9 @@ export class CartRecoveryService {
     rule: RecoveryRule,
     isLastRule: boolean,
   ): Promise<void> {
+    // Do not claim or advance recovery steps for a suspended subscription.
+    const access=await this.manualContractAccess.access(rule.company_id);
+    if(!access.commercialAllowed)return;
     const automation =
       await this.automationRuntimeService.getDefinition(
         rule.company_id,
