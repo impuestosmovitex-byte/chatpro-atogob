@@ -1,21 +1,18 @@
 name: SEG-005 controlled npm lockfile remediation
 on:
-  push:
-    branches:
-      - security/seg005-npm-dependency-remediation-20261116
-    paths:
-      - .github/workflows/seg005-safe-lockfile-remediation.yml
   pull_request:
     branches:
       - security/mw1-social-media-authz-20261116
     paths:
       - .github/workflows/seg005-safe-lockfile-remediation.yml
-  workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: seg005-safe-deps-remediation-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   remediate-and-check:
-    if: github.ref_name == 'security/seg005-npm-dependency-remediation-20261116' || github.head_ref == 'security/seg005-npm-dependency-remediation-20261116'
+    if: github.head_ref == 'security/seg005-npm-dependency-remediation-20261116'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,4 +60,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "fix(deps): nonbreaking audited lockfile updates [skip ci]"
+          git fetch origin security/seg005-npm-dependency-remediation-20261116
+          git rebase origin/security/seg005-npm-dependency-remediation-20261116
           git push origin HEAD:security/seg005-npm-dependency-remediation-20261116
