@@ -1638,6 +1638,23 @@ export class InboxController {
       );
 
     if (socialMediaConversation) {
+      // Match the normal inbox detail authorization BEFORE reading any
+      // media row or fetching a remote attachment. A matching company and
+      // session ID alone do not prove that the current user may read it.
+      const socialMediaActor = await this.actor(
+        sessionType,
+        userId,
+        fullName,
+        headerCompanyId,
+        roleKey,
+        socialMediaProfile.id,
+      );
+      if (!this.canView(socialMediaActor, socialMediaConversation.session)) {
+        throw new ForbiddenException(
+          'No tienes permiso para ver esta conversación.',
+        );
+      }
+
       const client =
         this.supabaseService.getClient();
 
