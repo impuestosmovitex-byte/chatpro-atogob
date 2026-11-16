@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AccessAuthService } from './access-auth.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { AccessController } from './access.controller';
 import { AccessCapabilitiesController } from './access-capabilities.controller';
 import { StatisticsController } from './statistics.controller';
@@ -192,6 +193,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
     CartRecoveryService,
     CartRecoveryContextService,
     AccessAuthService,
+    ManualContractAccessService,
     PlatformHealthService,
     WhatsappTemplateService,
     WhatsappTemplateExecutionService,
