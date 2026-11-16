@@ -59,7 +59,10 @@ export class AccessController {
   ) {
     this.assertInternalKey(providedKey);
     const company = await this.getCompany(companySlug);
-    await this.manualContractAccess.assertCommercial(company.id);
+    // Bootstrap is needed even if the manual subscription has expired:
+    // owners must be able to reach the renewal UI. Protected commercial
+    // endpoints and advisor login still enforce active subscription.
+    const subscription = await this.manualContractAccess.access(company.id);
 
     const { count, error } = await this.supabaseService
       .getClient()
@@ -78,6 +81,7 @@ export class AccessController {
       ok: true,
       setupRequired: (count ?? 0) === 0,
       company,
+      subscription,
     };
   }
 
