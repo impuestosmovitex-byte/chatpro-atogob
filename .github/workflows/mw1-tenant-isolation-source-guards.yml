@@ -8,6 +8,7 @@ on:
       - 'apps/api/src/clients.controller.ts'
       - 'apps/api/src/statistics.controller.ts'
       - 'scripts/test-mw1-tenant-isolation-source-guards.cjs'
+      - 'scripts/mw1-cross-tenant-readonly-browser-audit.js'
       - '.github/workflows/mw1-tenant-isolation-source-guards.yml'
   push:
     branches:
@@ -19,6 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Syntax check
-        run: node --check scripts/test-mw1-tenant-isolation-source-guards.cjs
+        run: |
+          node --check scripts/test-mw1-tenant-isolation-source-guards.cjs
+          node --check scripts/mw1-cross-tenant-readonly-browser-audit.js
       - name: Static source regression checks (not E2E)
         run: node scripts/test-mw1-tenant-isolation-source-guards.cjs
