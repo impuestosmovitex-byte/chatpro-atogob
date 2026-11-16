@@ -1,3 +1,4 @@
+import { parseTrustedSocialMediaUrl } from './social-media-url-policy';
 import {
   BadRequestException,
   Body,
@@ -1638,6 +1639,23 @@ export class InboxController {
       );
 
     if (socialMediaConversation) {
+      // Match the normal inbox detail authorization BEFORE reading any
+      // media row or fetching a remote attachment. A matching company and
+      // session ID alone do not prove that the current user may read it.
+      const socialMediaActor = await this.actor(
+        sessionType,
+        userId,
+        fullName,
+        headerCompanyId,
+        roleKey,
+        socialMediaProfile.id,
+      );
+      if (!this.canView(socialMediaActor, socialMediaConversation.session)) {
+        throw new ForbiddenException(
+          'No tienes permiso para ver esta conversación.',
+        );
+      }
+
       const client =
         this.supabaseService.getClient();
 
@@ -1671,23 +1689,68 @@ export class InboxController {
       const location =
         mediaRow.media_url.trim();
 
-      if (
-        location.startsWith('https://') ||
-        location.startsWith('http://')
-      ) {
-        const remote =
-          await fetch(location);
+      if (/^https?:\/\//i.test(location)) {
+        // Prevent SSRF via arbitrary URLs stored in media_url.
+        // Meta-hosted URLs only; other providers must be explicitly vetted.
+        const remoteUrl = parseTrustedSocialMediaUrl(location);
+        if (!remoteUrl) {
+          throw new BadRequestException(
+            'Origen de multimedia social no autorizado.',
+          );
+        }
 
-        if (!remote.ok) {
+        const maxMediaBytes = 15 * 1024 * 1024;
+        let remote: globalThis.Response;
+        try {
+          // Never follow redirects: their targets have not been authorized.
+          remote = await fetch(remoteUrl, {
+            redirect: 'manual',
+            signal: AbortSignal.timeout(10_000),
+          });
+        } catch {
           throw new BadRequestException(
             'No se pudo descargar la multimedia social.',
           );
         }
 
-        const buffer =
-          Buffer.from(
-            await remote.arrayBuffer(),
+        if (!remote.ok || !remote.body) {
+          await remote.body?.cancel();
+          throw new BadRequestException(
+            'La multimedia social no está disponible desde el origen autorizado.',
           );
+        }
+        const reportedSize = Number(remote.headers.get('content-length'));
+        if (Number.isFinite(reportedSize) && reportedSize > maxMediaBytes) {
+          await remote.body.cancel();
+          throw new BadRequestException(
+            'La multimedia social supera el tamaño permitido.',
+          );
+        }
+
+        const chunks: Buffer[] = [];
+        let totalSize = 0;
+        const reader = remote.body.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            totalSize += value.byteLength;
+            if (totalSize > maxMediaBytes) {
+              await reader.cancel();
+              throw new BadRequestException(
+                'La multimedia social supera el tamaño permitido.',
+              );
+            }
+            chunks.push(Buffer.from(value));
+          }
+        } catch (error) {
+          if (error instanceof BadRequestException) throw error;
+          throw new BadRequestException(
+            'No se pudo completar la descarga de multimedia social.',
+          );
+        } finally {
+          reader.releaseLock();
+        }
 
         response.setHeader(
           'content-type',
@@ -1695,7 +1758,7 @@ export class InboxController {
             'application/octet-stream',
         );
 
-        return response.send(buffer);
+        return response.send(Buffer.concat(chunks, totalSize));
       }
 
       const { data: stored, error: storedError } =

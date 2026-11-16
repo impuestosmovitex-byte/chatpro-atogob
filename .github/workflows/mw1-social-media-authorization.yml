@@ -1,0 +1,58 @@
+name: MW1 social media authorization guard
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/inbox.controller.ts'
+      - 'apps/api/src/social-media-url-policy.ts'
+      - 'apps/api/src/social-media-url-policy.spec.ts'
+      - 'apps/api/src/inbox-social-media.integration.spec.ts'
+      - 'apps/api/src/media-lab.controller.ts'
+      - 'apps/api/src/media-lab.module.ts'
+      - 'apps/api/src/media-lab.integration.spec.ts'
+      - 'apps/api/media-lab-entry.cjs'
+      - 'apps/api/media-lab-preflight.cjs'
+      - 'apps/api/test-media-lab-entrypoint.cjs'
+      - 'apps/api/package-lock.json'
+      - 'scripts/test-mw1-social-media-authorization.cjs'
+      - 'scripts/mw1-media-lab-preflight.cjs'
+      - 'scripts/test-mw1-media-lab-preflight.cjs'
+      - '.github/workflows/mw1-social-media-authorization.yml'
+  push:
+    branches:
+      - security/mw1-social-media-authz-20261116
+jobs:
+  source-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate syntax
+        run: node --check scripts/test-mw1-social-media-authorization.cjs
+      - name: Ensure social media authorization before download
+        run: node scripts/test-mw1-social-media-authorization.cjs
+      - name: Check isolation config for future media lab (no deploy)
+        run: node scripts/test-mw1-media-lab-preflight.cjs
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run synthetic URL policy tests
+        working-directory: apps/api
+        run: npm test -- --runInBand social-media-url-policy.spec.ts
+      - name: Run synthetic social media controller integration tests
+        working-directory: apps/api
+        run: npm test -- --runInBand inbox-social-media.integration.spec.ts
+      - name: Test isolated lab (no sends, network, database)
+        working-directory: apps/api
+        run: npm test -- --runInBand media-lab.integration.spec.ts
+      - name: Compile API
+        working-directory: apps/api
+        run: npm run build
+      - name: Verify lab module artifact is loadable without starting a server
+        working-directory: apps/api
+        run: node -e "require('./dist/media-lab.module.js'); console.log('Lab module artifact found')"
+      - name: Boot exact local-only lab entrypoint and exercise HTTP
+        working-directory: apps/api
+        run: node test-media-lab-entrypoint.cjs
+      - name: Validate standalone lab environment policy syntax
+        run: node --check apps/api/media-lab-preflight.cjs
+      - name: Validate local-only lab entrypoint syntax
+        run: node --check apps/api/media-lab-entry.cjs
