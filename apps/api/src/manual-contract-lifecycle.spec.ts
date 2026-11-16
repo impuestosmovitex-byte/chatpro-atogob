@@ -66,6 +66,16 @@ describe('MW1 staging renewal lifecycle (isolated DB responses; zero real mutati
   });
   await expect(fixture.service.assertCommercial(companyId)).rejects.toBeInstanceOf(ForbiddenException);
  });
+ it('staging inbox and clients revalidate contract after identity/tenant authorization',()=>{
+  const {readFileSync}=require('node:fs');
+  const {join}=require('node:path');
+  for(const filename of ['staging-inbox.controller.ts','staging-clients-readonly.controller.ts']){
+   const source=readFileSync(join(__dirname,filename),'utf8');
+   expect(source).toContain('ManualContractAccessService');
+   expect(source).toContain('await this.manualContractAccess.assertCommercial(company.id)');
+   expect(source.indexOf("company?.status")).toBeLessThan(source.indexOf('await this.manualContractAccess.assertCommercial(company.id)'));
+  }
+ });
  it('legacy tenants remain permitted without any manual contract record',async()=>{
   const f=makeFixture();
   f.setRecord(null);
