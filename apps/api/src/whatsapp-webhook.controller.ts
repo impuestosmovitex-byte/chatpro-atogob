@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ChatAgentService } from './chat-agent.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { AutomationRuntimeService } from './automation-runtime.service';
 import { CartRecoveryContextService } from './cart-recovery-context.service';
 import { CustomerOrderService } from './customer-order.service';
@@ -45,6 +46,7 @@ export class WhatsappWebhookController {
     private readonly whatsappTemplateExecutionService: WhatsappTemplateExecutionService,
     private readonly cartRecoveryContextService: CartRecoveryContextService,
     private readonly customerOrderService: CustomerOrderService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {}
 
   @Get()
@@ -595,6 +597,10 @@ export class WhatsappWebhookController {
 
     await this.conversationMemoryService.touchSession(session.id);
 
+      // Customer message is stored before the expiry check.
+      const manualAccess=await this.manualContractAccess.access(profile.id);
+      if(!manualAccess.commercialAllowed)return;
+
     if (
       session.attentionStatus === 'waiting' ||
       session.attentionStatus === 'human'
@@ -800,6 +806,9 @@ export class WhatsappWebhookController {
         mimeType: media.mimeType,
         filename: input.filename || media.filename,
       });
+
+      const manualAccess=await this.manualContractAccess.access(profile.id);
+      if(!manualAccess.commercialAllowed)return;
 
       console.log(
         `${input.messageType === 'video' ? 'Video' : 'Documento'} guardado de ${input.phone}`,
@@ -1097,6 +1106,10 @@ export class WhatsappWebhookController {
         mimeType: media.mimeType,
         filename: 'imagen',
       });
+
+      // Keep inbound media in the history; stop paid AI work after expiry.
+      const manualAccess=await this.manualContractAccess.access(profile.id);
+      if(!manualAccess.commercialAllowed)return;
 
       if (
         session.attentionStatus === 'waiting' ||
@@ -2627,6 +2640,10 @@ export class WhatsappWebhookController {
 
       await this.conversationMemoryService.touchSession(session.id);
 
+      // Customer message is stored before the expiry check.
+      const manualAccess=await this.manualContractAccess.access(profile.id);
+      if(!manualAccess.commercialAllowed)return;
+
       if (
         session.attentionStatus === 'waiting' ||
         session.attentionStatus === 'human'
@@ -2960,6 +2977,10 @@ export class WhatsappWebhookController {
       }
 
       await this.conversationMemoryService.touchSession(session.id);
+
+      // Customer message is stored before the expiry check.
+      const manualAccess=await this.manualContractAccess.access(profile.id);
+      if(!manualAccess.commercialAllowed)return;
 
       if (input.templateButton) {
         let repliedAutomation: {
