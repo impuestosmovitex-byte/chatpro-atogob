@@ -28,5 +28,14 @@ const actor = source.slice(source.indexOf('  private async actor('), source.inde
 assert.match(actor, /headerCompanyId\.trim\(\) !== companyId/, 'Actor must match tenant');
 assert.match(actor, /\.from\('company_memberships'\)/, 'Actor must revalidate membership');
 assert.match(actor, /permissions\.has\('inbox\.view'\)/, 'Actor must require inbox.view');
+assert.match(social, /remoteUrl\.protocol !== 'https:'/, 'Remote media must require HTTPS');
+assert.match(social, /exactMetaHosts\.has\(hostname\)/, 'Remote media requires trusted exact hosts');
+assert.match(social, /metaCdnSuffixes\.some\(/, 'Remote media requires trusted CDN suffix');
+assert.match(social, /redirect: 'manual'/, 'Remote media must not follow redirects');
+assert.match(social, /AbortSignal\.timeout\(10_000\)/, 'Remote media requires fetch timeout');
+assert.match(social, /totalSize > maxMediaBytes/, 'Remote media requires streaming byte cap');
+assert.ok(social.indexOf('const socialMediaActor = await this.actor(') <
+  social.indexOf('const maxMediaBytes'), 'Media download limits must follow authentication');
+
 console.log('PASS: social media is gated by tenant membership and inbox.view before bytes are retrieved');
 console.log('NOT RUN: authenticated cross-tenant and cross-advisor HTTP tests');
