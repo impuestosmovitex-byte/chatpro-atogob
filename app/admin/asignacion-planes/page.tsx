@@ -35,7 +35,7 @@ export default function AssignmentDraftPage(){
    const res=await fetch('/api/platform-admin/manual-company-contract?companyId='+encodeURIComponent(id),{cache:'no-store'});
    if(!res.ok)return;
    const data=await res.json();
-   if(data.ok){setContract(data.contract||null);setContractHistory(data.history||[]);}
+   if(data.ok&&selectionRef.current===id){setContract(data.contract||null);setContractHistory(data.history||[]);}
   }catch{/* Contract has not been enabled in this staging environment yet. */}
  }
  async function activateManualContract(){
@@ -118,7 +118,7 @@ export default function AssignmentDraftPage(){
   setVerifiedChecked(false);setPaymentReference('');setAmountCop('');setVerifiedAt('');
   setStartsAt('');setExpiresAt('');setAdditionalUsers('0');setContractReason('');
   if(id)void loadContract(id);
-  setEvents([]);
+  setEvents([]);setReviewReason('');
   if(id)void fetch('/api/platform-admin/company-plan-activation-history?companyId='+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(data=>{if(selectionRef.current===id&&data.ok)setEvents(data.events||[]);}).catch(()=>{});
   setReadiness(null);
   if(id)void fetch('/api/platform-admin/company-plan-assignment-readiness?companyId='+encodeURIComponent(id),{cache:'no-store'}).then(r=>r.json()).then(data=>{if(selectionRef.current===id&&data.ok)setReadiness(data);}).catch(()=>{});
