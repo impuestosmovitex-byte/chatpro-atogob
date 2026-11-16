@@ -1,0 +1,26 @@
+name: SEG-005 remaining advisory inventory
+on:
+  pull_request:
+    branches:
+      - security/mw1-social-media-authz-20261116
+    paths:
+      - 'apps/api/report-seg005-dev-advisories.cjs'
+      - 'apps/api/package-lock.json'
+      - '.github/workflows/seg005-remaining-advisory-inventory.yml'
+permissions:
+  contents: read
+jobs:
+  classify-advisories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install declared package lock exactly without scripts
+        working-directory: apps/api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Print exact advisory IDs packages and scope without fixes
+        working-directory: apps/api
+        run: node report-seg005-dev-advisories.cjs
