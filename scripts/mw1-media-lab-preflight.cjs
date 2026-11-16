@@ -13,6 +13,7 @@ const FORBIDDEN = [
 ];
 const REQUIRED = [
   'MW1_MEDIA_LAB_DATASET_ID',
+  'MW1_MEDIA_LAB_PROJECT_ID',
   'MW1_MEDIA_LAB_AUTH_SECRET',
   'MW1_MEDIA_LAB_STORAGE_BUCKET',
 ];
@@ -44,7 +45,8 @@ function validateMediaLabEnv(env = {}) {
     const projectId = host?.endsWith('.supabase.co')
       ? host.slice(0, -'.supabase.co'.length) : '';
     if (!parsed || parsed.protocol !== 'https:' || !projectId ||
-      BLOCKED_PROJECT_IDS.has(projectId)) {
+      BLOCKED_PROJECT_IDS.has(projectId) ||
+      projectId !== env.MW1_MEDIA_LAB_PROJECT_ID) {
       reasons.push('LAB_DATABASE_PROJECT_NOT_ISOLATED');
     }
   }
