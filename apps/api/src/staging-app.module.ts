@@ -1,6 +1,7 @@
 import {StagingMercadoPagoWebhookController} from './staging-mercadopago-webhook.controller';
 import { Controller, Get, Module } from '@nestjs/common';
 import { AccessAuthService } from './access-auth.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { AccessCapabilitiesController } from './access-capabilities.controller';
 import { StatisticsController } from './statistics.controller';
 import { AccessController } from './access.controller';
@@ -70,7 +71,7 @@ class StagingHealthController {
     StagingSalesAssistantController,
   ],
   providers: [SupabaseService, PushNotificationService, ConversationEventsService, ConversationMemoryService,
-    IntegrationCredentialsService, AccessAuthService, StagingSalesAssistantService,
+    IntegrationCredentialsService, AccessAuthService, ManualContractAccessService, StagingSalesAssistantService,
     StagingWhatsappCoexistenceOAuthHandshakeService,
     {provide:StagingWhatsappCoexistenceMetaCodeExchangeService,
       useFactory:()=>new StagingWhatsappCoexistenceMetaCodeExchangeService()},

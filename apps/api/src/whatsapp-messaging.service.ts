@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { CompanyIntegrationService } from './company-integration.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -34,6 +35,7 @@ export class WhatsappMessagingService {
   constructor(
     private readonly companyIntegrationService: CompanyIntegrationService,
     private readonly credentialsService: IntegrationCredentialsService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {}
 
   async checkConnection(companyId: string): Promise<{
@@ -86,6 +88,7 @@ export class WhatsappMessagingService {
     to: string,
     body: string,
   ): Promise<WhatsappSendResult> {
+    await this.manualContractAccess.assertCommercial(companyId);
     const channel = await this.resolveChannel(companyId);
 
     return this.send(channel, {
@@ -113,6 +116,7 @@ export class WhatsappMessagingService {
       throw new Error('El audio supera el límite de 12 MB.');
     }
 
+    await this.manualContractAccess.assertCommercial(companyId);
     const channel = await this.resolveChannel(companyId);
     const prepared = await this.prepareAudio(input);
     const mediaId = await this.uploadMedia(channel, prepared);
@@ -164,6 +168,7 @@ export class WhatsappMessagingService {
       throw new Error('Formato de imagen no permitido. Usa JPG, PNG o WEBP.');
     }
 
+    await this.manualContractAccess.assertCommercial(companyId);
     const channel = await this.resolveChannel(companyId);
     const mediaId = await this.uploadMedia(channel, {
       buffer: input.buffer,
@@ -212,6 +217,7 @@ export class WhatsappMessagingService {
       'application/octet-stream';
 
     const isVideo = mimeType.startsWith('video/');
+    await this.manualContractAccess.assertCommercial(companyId);
     const channel = await this.resolveChannel(companyId);
 
     const mediaId = await this.uploadMedia(channel, {
@@ -341,6 +347,7 @@ export class WhatsappMessagingService {
     languageCode: string,
     bodyParameters: string[] = [],
   ): Promise<WhatsappSendResult> {
+    await this.manualContractAccess.assertCommercial(companyId);
     const channel = await this.resolveChannel(companyId);
     const template: {
       name: string;
@@ -381,6 +388,7 @@ export class WhatsappMessagingService {
     languageCode: string,
     components: JsonObject[] = [],
   ): Promise<WhatsappSendResult> {
+    await this.manualContractAccess.assertCommercial(companyId);
     const channel = await this.resolveChannel(companyId);
     const template: JsonObject = {
       name: templateName,

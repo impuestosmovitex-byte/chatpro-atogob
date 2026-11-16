@@ -11,12 +11,14 @@ import {
 } from '@nestjs/common';
 import { AutomationMessageConfigService } from './automation-message-config.service';
 import { ConversationMemoryService } from './conversation-memory.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 
 @Controller('automation-messages')
 export class AutomationMessageConfigController {
   constructor(
     private readonly automationMessageConfigService: AutomationMessageConfigService,
     private readonly conversationMemoryService: ConversationMemoryService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {}
 
   @Get()
@@ -29,6 +31,7 @@ export class AutomationMessageConfigController {
       await this.conversationMemoryService.getCompanyProfile(
         this.requiredCompany(company),
       );
+    await this.manualContractAccess.assertCommercial(profile.id);
 
     return {
       ok: true,
@@ -54,6 +57,7 @@ export class AutomationMessageConfigController {
       await this.conversationMemoryService.getCompanyProfile(
         this.requiredCompany(company),
       );
+    await this.manualContractAccess.assertCommercial(profile.id);
 
     return {
       ok: true,

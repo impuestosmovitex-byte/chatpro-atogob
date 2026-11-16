@@ -1,10 +1,12 @@
 import { Controller, ForbiddenException, Get, Headers, Param, Query, UnauthorizedException } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { verifyInternalAttestation } from './internal-attestation';
 
 @Controller('inbox')
 export class StagingInboxController {
-  constructor(private readonly db: SupabaseService) {}
+  constructor(private readonly db: SupabaseService,
+    private readonly manualContractAccess: ManualContractAccessService) {}
 
   /**
    * Read-only message receipt diagnostics for isolated Instagram pilot.
@@ -146,6 +148,7 @@ export class StagingInboxController {
       .select('id,status,slug').eq('id',companyId).eq('slug',slug).maybeSingle();
     if(companyError||company?.status!=='active')
       throw new ForbiddenException('Empresa no autorizada.');
+    await this.manualContractAccess.assertCommercial(company.id);
     const {data:profile,error:profileError}=await client.from('app_profiles')
       .select('active').eq('user_id',userId).maybeSingle();
     if(profileError||profile?.active!==true)

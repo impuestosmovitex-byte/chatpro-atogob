@@ -7,12 +7,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { verifyStatisticsContext } from './statistics-context';
 import { requireStatisticsMembership } from './statistics-membership';
 
 @Controller('statistics')
 export class StatisticsController {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(private readonly supabaseService: SupabaseService,
+    private readonly manualContractAccess: ManualContractAccessService) {}
 
   @Get()
   async getStatistics(
@@ -76,6 +78,7 @@ export class StatisticsController {
       );
     }
 
+    await this.manualContractAccess.assertCommercial(cleanCompanyId);
     const client = this.supabaseService.getClient();
     // Recompute permissions from the database, not from cached role claims.
     await requireStatisticsMembership(client, cleanCompanyId, verified.userId);

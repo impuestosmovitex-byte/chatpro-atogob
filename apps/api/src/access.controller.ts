@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { AccessAuthService } from './access-auth.service';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { verifyInternalAttestation } from './internal-attestation';
 
 type CompanyRow = {
@@ -48,6 +49,7 @@ export class AccessController {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly accessAuthService: AccessAuthService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {}
 
   @Get('bootstrap-status')
@@ -57,6 +59,10 @@ export class AccessController {
   ) {
     this.assertInternalKey(providedKey);
     const company = await this.getCompany(companySlug);
+    // Bootstrap is needed even if the manual subscription has expired:
+    // owners must be able to reach the renewal UI. Protected commercial
+    // endpoints and advisor login still enforce active subscription.
+    const subscription = await this.manualContractAccess.access(company.id);
 
     const { count, error } = await this.supabaseService
       .getClient()
@@ -75,6 +81,7 @@ export class AccessController {
       ok: true,
       setupRequired: (count ?? 0) === 0,
       company,
+      subscription,
     };
   }
 
@@ -277,6 +284,8 @@ export class AccessController {
       );
     }
 
+    await this.manualContractAccess.assertLogin(company.id,role.key);
+
     return {
       ok: true,
       session: {
@@ -440,6 +449,8 @@ export class AccessController {
         'El rol asignado no pertenece a esta empresa.',
       );
     }
+
+    await this.manualContractAccess.assertLogin(company.id,role.key);
 
     return {
       ok: true,

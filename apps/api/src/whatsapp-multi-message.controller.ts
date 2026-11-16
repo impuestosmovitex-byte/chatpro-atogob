@@ -14,6 +14,7 @@ import { CustomerOrderService } from './customer-order.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { WhatsappTemplateExecutionService } from './whatsapp-template-execution.service';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
+import { ManualContractAccessService } from './manual-contract-access.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -38,6 +39,7 @@ export class WhatsappMultiMessageController extends WhatsappWebhookController {
     whatsappTemplateExecutionService: WhatsappTemplateExecutionService,
     cartRecoveryContextService: CartRecoveryContextService,
     customerOrderService: CustomerOrderService,
+    manualContractAccess: ManualContractAccessService,
   ) {
     super(
       chatAgentService,
@@ -48,6 +50,7 @@ export class WhatsappMultiMessageController extends WhatsappWebhookController {
       whatsappTemplateExecutionService,
       cartRecoveryContextService,
       customerOrderService,
+      manualContractAccess,
     );
   }
 

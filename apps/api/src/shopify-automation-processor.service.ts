@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { CompanyShopifyService } from './company-shopify.service';
 import { ShopifyAutomaticTestSendService } from './shopify-automatic-test-send.service';
 
@@ -112,6 +113,7 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
     private readonly supabaseService: SupabaseService,
     private readonly companyShopifyService: CompanyShopifyService,
     private readonly automaticTestSendService: ShopifyAutomaticTestSendService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {}
 
   onModuleInit(): void {
@@ -245,6 +247,13 @@ export class ShopifyAutomationProcessorService implements OnModuleInit {
   }
 
   private async processOne(row: WebhookRow): Promise<void> {
+    // Keep inbound webhook evidence queued for later processing after renewal.
+    // No claim, retry increment, failure or outbound message while expired.
+    const access=await this.manualContractAccess.access(row.company_id);
+    if(!access.commercialAllowed){
+      this.logger.warn('Shopify automation paused: manual contract '+access.state+' for company '+row.company_id);
+      return;
+    }
     const claimed = await this.claim(row);
 
     if (!claimed) {

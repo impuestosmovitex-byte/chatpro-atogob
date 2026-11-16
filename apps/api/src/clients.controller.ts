@@ -16,6 +16,7 @@ import {
   type ConversationSession,
 } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 
 type ContactBody = {
   action?: unknown;
@@ -38,6 +39,7 @@ export class ClientsController {
   constructor(
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly supabaseService: SupabaseService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {}
 
   @Get('profile')
@@ -293,6 +295,7 @@ export class ClientsController {
     roleKey: string,
     companyId: string,
   ): Promise<Actor> {
+    await this.manualContractAccess.assertCommercial(companyId);
     const type = sessionType.trim().toLowerCase();
     const id = userId.trim();
     const name = fullName.trim();
