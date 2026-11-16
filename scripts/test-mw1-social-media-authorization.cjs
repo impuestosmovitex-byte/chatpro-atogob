@@ -28,9 +28,13 @@ const actor = source.slice(source.indexOf('  private async actor('), source.inde
 assert.match(actor, /headerCompanyId\.trim\(\) !== companyId/, 'Actor must match tenant');
 assert.match(actor, /\.from\('company_memberships'\)/, 'Actor must revalidate membership');
 assert.match(actor, /permissions\.has\('inbox\.view'\)/, 'Actor must require inbox.view');
-assert.match(social, /remoteUrl\.protocol !== 'https:'/, 'Remote media must require HTTPS');
-assert.match(social, /exactMetaHosts\.has\(hostname\)/, 'Remote media requires trusted exact hosts');
-assert.match(social, /metaCdnSuffixes\.some\(/, 'Remote media requires trusted CDN suffix');
+assert.match(social, /parseTrustedSocialMediaUrl\(location\)/, 'Remote media must use shared trusted URL policy');
+const mediaPolicy = fs.readFileSync('apps/api/src/social-media-url-policy.ts', 'utf8');
+assert.match(mediaPolicy, /EXACT_MEDIA_HOSTS\.has\(hostname\)/, 'Remote media requires trusted exact hosts');
+assert.match(mediaPolicy, /MEDIA_CDN_SUFFIXES\.some\(/, 'Remote media requires trusted CDN suffix');
+assert.match(mediaPolicy, /url\.protocol !== 'https:'/, 'Remote media must reject HTTP');
+assert.match(mediaPolicy, /url\.username/, 'Remote media must reject credentials');
+assert.match(mediaPolicy, /url\.port/, 'Remote media must restrict ports');
 assert.match(social, /redirect: 'manual'/, 'Remote media must not follow redirects');
 assert.match(social, /AbortSignal\.timeout\(10_000\)/, 'Remote media requires fetch timeout');
 assert.match(social, /totalSize > maxMediaBytes/, 'Remote media requires streaming byte cap');
