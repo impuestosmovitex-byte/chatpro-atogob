@@ -27,6 +27,14 @@ describe('Staging manual expiry gates on commercial delivery paths',()=>{
   expect(guarded).toContain('manualContractAccess.access(rule.company_id)');
   expect(guarded).toContain('if(!access.commercialAllowed)return;');
  });
+ it('returns blocked before loading an automatic Shopify execution for an expired tenant',()=>{
+  const s=code('shopify-automatic-test-send.service.ts');
+  const i=s.indexOf('async sendIfAllowed(');
+  const segment=s.slice(i,i+650);
+  expect(segment).toContain('manualContractAccess.access(companyId)');
+  expect(segment).toContain("if(!access.commercialAllowed)return 'blocked';");
+  expect(segment.indexOf('manualContractAccess.access(companyId)')).toBeLessThan(segment.indexOf("from('automation_executions')"));
+ });
  it('checks social AI and advisor messaging per sending operation',()=>{
   for(const name of ['meta-social-ai.service.ts','meta-social-messaging.service.ts']){
    const s=code(name);
