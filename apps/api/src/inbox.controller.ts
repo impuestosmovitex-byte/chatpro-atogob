@@ -23,6 +23,7 @@ import {
   type InboxSessionSummary,
 } from './conversation-memory.service';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { WhatsappMessagingService } from './whatsapp-messaging.service';
 import { MetaSocialInboxService } from './meta-social-inbox.service';
 import { MetaSocialMessagingService } from './meta-social-messaging.service';
@@ -48,6 +49,7 @@ export class InboxController {
   constructor(
     private readonly conversationMemoryService: ConversationMemoryService,
     private readonly supabaseService: SupabaseService,
+    private readonly manualContractAccess: ManualContractAccessService,
     private readonly whatsappMessagingService: WhatsappMessagingService,
     private readonly chatAgentService: ChatAgentService,
     private readonly metaSocialInboxService: MetaSocialInboxService,
@@ -2331,6 +2333,7 @@ export class InboxController {
     roleKey: string,
     companyId: string,
   ): Promise<Actor> {
+    await this.manualContractAccess.assertCommercial(companyId);
     const type = sessionType.trim().toLowerCase(),
       id = userId.trim(),
       name = fullName.trim(),
