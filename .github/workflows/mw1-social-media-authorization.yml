@@ -44,5 +44,8 @@ jobs:
       - name: Compile API
         working-directory: apps/api
         run: npm run build
+      - name: Verify lab module artifact is loadable without starting a server
+        working-directory: apps/api
+        run: node -e "require('./dist/media-lab.module.js'); console.log('Lab module artifact found')"
       - name: Validate local-only lab entrypoint syntax
         run: node --check apps/api/media-lab-entry.cjs
