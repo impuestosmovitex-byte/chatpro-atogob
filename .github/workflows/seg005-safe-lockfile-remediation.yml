@@ -15,7 +15,7 @@ permissions:
   contents: write
 jobs:
   remediate-and-check:
-    if: github.ref_name == 'security/seg005-npm-dependency-remediation-20261116'
+    if: github.ref_name == 'security/seg005-npm-dependency-remediation-20261116' || github.head_ref == 'security/seg005-npm-dependency-remediation-20261116'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
