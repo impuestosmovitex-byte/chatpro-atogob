@@ -45,5 +45,20 @@ must(clientsList, /await this\.actor\(/, 'Client listing must verify actor');
 must(stats, /verifyStatisticsContext\(/, 'Stats must validate signed context');
 must(stats, /requireStatisticsMembership\(/, 'Stats must revalidate tenant membership');
 must(stats, /p_company_id: cleanCompanyId/, 'Stats query must constrain company ID');
+
+// Staging deliberately uses its own read-only Clients controller (not ClientsController).
+// Guard the exact endpoint used by the advisor E2E screenshots.
+const stagingModule = read('apps/api/src/staging-app.module.ts');
+const stagingClients = read('apps/api/src/staging-clients-readonly.controller.ts');
+must(stagingModule, /StagingClientsReadonlyController/, 'Staging must register its restricted Clients controller');
+must(stagingClients, /verifyInternalAttestation\(/, 'Staging Clients must validate signed identity');
+must(stagingClients, /\.eq\('company_id', actor\.company\.id\)/, 'Staging Clients must scope DB rows by tenant');
+must(stagingClients, /\.eq\('customer_phone', phone\)/, 'Staging profile must select exact phone');
+must(stagingClients, /session\.attention_status === 'human'/, 'Staging Clients must require human assignment for advisor profile access');
+must(stagingClients, /session\.assigned_to_user_id === actor\.userId/, 'Staging Clients must restrict profile to its assigned advisor');
+must(stagingClients, /\.eq\('company_id', company\.id\)\.eq\('user_id', userId\)/, 'Staging Clients must verify active membership scoped by tenant');
+must(stagingClients, /messages: \[\]/, 'Staging Clients profile must not expose messages');
+must(stagingClients, /stagingReadOnly: true/, 'Staging Clients must remain read-only');
+
 console.log('PASS: static tenant guards for switch-company, inbox, clients and statistics');
 console.log('NOT RUN: negative authenticated cross-tenant HTTP/E2E checks (credentials unavailable)');
