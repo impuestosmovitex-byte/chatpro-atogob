@@ -1,0 +1,73 @@
+name: SEG-005 full API regression and dependency review
+on:
+  pull_request:
+    branches:
+      - security/mw1-social-media-authz-20261116
+    paths:
+      - 'apps/api/package-lock.json'
+      - 'apps/api/package.json'
+      - '.github/workflows/seg005-full-api-regression.yml'
+      - 'scripts/test-mw1-social-media-authorization.cjs'
+      - 'apps/api/src/**'
+permissions:
+  contents: read
+jobs:
+  complete-api-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Verify lockfile matches exact root manifest
+        working-directory: apps/api
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const lock = require('./package-lock.json');
+          const pkg = require('./package.json');
+          assert.deepEqual(lock.packages[''].dependencies, pkg.dependencies);
+          assert.deepEqual(lock.packages[''].devDependencies, pkg.devDependencies);
+          console.log('PASS: package-lock root manifest matches package.json exactly');
+          NODE
+      - name: Install revised lockfile without lifecycle scripts
+        working-directory: apps/api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Execute every Jest unit/integration suite, one worker
+        working-directory: apps/api
+        run: npm test -- --runInBand --ci
+      - name: Compile API
+        working-directory: apps/api
+        run: npm run build
+      - name: Check media authorization static guards and lab preflight
+        run: |
+          node scripts/test-mw1-social-media-authorization.cjs
+          node scripts/test-mw1-media-lab-preflight.cjs
+      - name: Boot real lab entrypoint in loopback and test HTTP
+        working-directory: apps/api
+        run: node test-media-lab-entrypoint.cjs
+      - name: Audit runtime with zero critical/high/moderate as release gate
+        working-directory: apps/api
+        run: |
+          npm audit --omit=dev --json > /tmp/seg005-runtime.json || true
+          node - <<'NODE'
+          const report = require('/tmp/seg005-runtime.json');
+          if (!report.metadata?.vulnerabilities) throw new Error('Invalid npm audit response');
+          const counts = report.metadata.vulnerabilities;
+          console.log('RUNTIME_SECURITY_ADVISORY_COUNTS', JSON.stringify(counts));
+          if (counts.critical || counts.high || counts.moderate) {
+            throw new Error('Runtime security gate failed');
+          }
+          NODE
+      - name: Audit development tree read-only (report remaining)
+        working-directory: apps/api
+        run: |
+          npm audit --json > /tmp/seg005-full.json || true
+          node - <<'NODE'
+          const report = require('/tmp/seg005-full.json');
+          if (!report.metadata?.vulnerabilities) throw new Error('Invalid npm audit response');
+          console.log('FULL_SECURITY_ADVISORY_COUNTS', JSON.stringify(report.metadata.vulnerabilities));
+          NODE
