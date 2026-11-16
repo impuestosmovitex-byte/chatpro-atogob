@@ -6,6 +6,10 @@ on:
       - 'apps/api/src/social-media-url-policy.ts'
       - 'apps/api/src/social-media-url-policy.spec.ts'
       - 'apps/api/src/inbox-social-media.integration.spec.ts'
+      - 'apps/api/src/media-lab.controller.ts'
+      - 'apps/api/src/media-lab.module.ts'
+      - 'apps/api/src/media-lab.integration.spec.ts'
+      - 'apps/api/media-lab-entry.cjs'
       - 'apps/api/package-lock.json'
       - 'scripts/test-mw1-social-media-authorization.cjs'
       - 'scripts/mw1-media-lab-preflight.cjs'
@@ -34,6 +38,11 @@ jobs:
       - name: Run synthetic social media controller integration tests
         working-directory: apps/api
         run: npm test -- --runInBand inbox-social-media.integration.spec.ts
+      - name: Test isolated lab (no sends, network, database)
+        working-directory: apps/api
+        run: npm test -- --runInBand media-lab.integration.spec.ts
       - name: Compile API
         working-directory: apps/api
         run: npm run build
+      - name: Validate local-only lab entrypoint syntax
+        run: node --check apps/api/media-lab-entry.cjs
