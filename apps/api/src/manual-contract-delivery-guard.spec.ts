@@ -27,6 +27,30 @@ describe('Staging manual expiry gates on commercial delivery paths',()=>{
   expect(guarded).toContain('manualContractAccess.access(rule.company_id)');
   expect(guarded).toContain('if(!access.commercialAllowed)return;');
  });
+ it('keeps WhatsApp inbound records before expiry suspension and delivery receipts untouched',()=>{
+  const s=code('whatsapp-webhook.controller.ts');
+  for(const name of ['processIncomingLocation','processIncomingAttachment','processIncomingImage','processIncomingAudio','processIncomingText']){
+    const begin=s.indexOf('private async '+name+'(');
+    const next=s.indexOf('\\n  private ',begin+20);
+    const method=s.slice(begin,next<0?undefined:next);
+    const check=method.indexOf('manualAccess=await this.manualContractAccess.access(profile.id)');
+    expect(begin).toBeGreaterThan(0);
+    expect(check).toBeGreaterThan(0);
+    expect(method.indexOf('saveMessage(')).toBeLessThan(check);
+    if(['processIncomingImage','processIncomingAttachment'].includes(name))
+      expect(method.indexOf('persistIncomingMedia(')).toBeLessThan(check);
+    expect(method.slice(check,check+150)).toContain('if(!manualAccess.commercialAllowed)return;');
+  }
+  expect(s.indexOf('this.getDeliveryStatuses(body)')).toBeGreaterThan(0);
+  expect(s.indexOf('this.getDeliveryStatuses(body)')).toBeLessThan(s.indexOf('this.getIncomingMessage(body)'));
+ });
+ it('checks social multimedia batch before AI analysis while retaining captured events',()=>{
+  const s=code('meta-social-batch-message.service.ts');
+  const i=s.indexOf('private async flushBatch(');
+  const guarded=s.slice(i,i+1200);
+  expect(guarded).toContain('manualContractAccess.access(batch.companyId)');
+  expect(guarded.indexOf('manualContractAccess.access(batch.companyId)')).toBeLessThan(guarded.indexOf("from('social_conversation_sessions')"));
+ });
  it('returns blocked before loading an automatic Shopify execution for an expired tenant',()=>{
   const s=code('shopify-automatic-test-send.service.ts');
   const i=s.indexOf('async sendIfAllowed(');
