@@ -60,5 +60,22 @@ must(stagingClients, /\.eq\('company_id', company\.id\)\.eq\('user_id', userId\)
 must(stagingClients, /messages: \[\]/, 'Staging Clients profile must not expose messages');
 must(stagingClients, /stagingReadOnly: true/, 'Staging Clients must remain read-only');
 
+
+ // Browser sessions must be re-issued only after API membership approval.
+ const switchWeb = read('app/api/auth/switch-company/route.ts');
+ must(switchWeb, /current\.userId/, 'Switch Web must use authenticated user, not a supplied userId');
+ must(switchWeb, /signInternalAttestation\(/, 'Switch Web must attest the current identity');
+ must(switchWeb, /if \(!response\.ok \|\| !data\.ok \|\| !data\.session\)/, 'Switch Web must reject failed API result');
+ const approveIndex = switchWeb.indexOf('if (!response.ok || !data.ok || !data.session)');
+ const issueCookieIndex = switchWeb.indexOf('result.cookies.set(');
+ assert.ok(approveIndex >= 0 && issueCookieIndex > approveIndex, 'Switch Web must not set session cookie before API approval');
+ must(access, /verifyInternalAttestation\(identityAssertion/, 'Switch API must verify signed current identity');
+ const stagingInbox = read('apps/api/src/staging-inbox.controller.ts');
+ must(stagingModule, /StagingInboxController/, 'Staging must register restricted inbox');
+ must(stagingInbox, /\.eq\('company_id',companyId\)\.eq\('id',sessionId\)/, 'Staging conversation detail must scope by tenant');
+ must(stagingInbox, /session\.context\?\.synthetic !== true/, 'Staging conversation detail must be synthetic only');
+ must(stagingInbox, /messages:\[\]/, 'Staging conversation detail must not expose message bodies');
+ must(stagingInbox, /stagingReadOnly:true/, 'Staging inbox must remain read-only');
+
 console.log('PASS: static tenant guards for switch-company, inbox, clients and statistics');
 console.log('NOT RUN: negative authenticated cross-tenant HTTP/E2E checks (credentials unavailable)');
