@@ -8,6 +8,8 @@ on:
       - 'apps/api/src/inbox-social-media.integration.spec.ts'
       - 'apps/api/package-lock.json'
       - 'scripts/test-mw1-social-media-authorization.cjs'
+      - 'scripts/mw1-media-lab-preflight.cjs'
+      - 'scripts/test-mw1-media-lab-preflight.cjs'
       - '.github/workflows/mw1-social-media-authorization.yml'
   push:
     branches:
@@ -21,6 +23,8 @@ jobs:
         run: node --check scripts/test-mw1-social-media-authorization.cjs
       - name: Ensure social media authorization before download
         run: node scripts/test-mw1-social-media-authorization.cjs
+      - name: Check isolation config for future media lab (no deploy)
+        run: node scripts/test-mw1-media-lab-preflight.cjs
       - name: Install API dependencies
         working-directory: apps/api
         run: npm ci --ignore-scripts --no-audit --no-fund
