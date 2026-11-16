@@ -1,0 +1,25 @@
+name: MW1 media lab dependency advisory review
+on:
+  pull_request:
+    paths:
+      - 'apps/api/package.json'
+      - 'apps/api/package-lock.json'
+      - 'apps/api/audit-media-lab-dependencies.cjs'
+      - '.github/workflows/mw1-media-lab-dependency-audit.yml'
+  push:
+    branches:
+      - security/mw1-social-media-authz-20261116
+jobs:
+  read-only-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install package tree without build scripts
+        working-directory: apps/api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Report advisory counts without applying fixes
+        working-directory: apps/api
+        run: node audit-media-lab-dependencies.cjs
