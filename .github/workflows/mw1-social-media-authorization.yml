@@ -10,6 +10,7 @@ on:
       - 'apps/api/src/media-lab.module.ts'
       - 'apps/api/src/media-lab.integration.spec.ts'
       - 'apps/api/media-lab-entry.cjs'
+      - 'apps/api/media-lab-preflight.cjs'
       - 'apps/api/package-lock.json'
       - 'scripts/test-mw1-social-media-authorization.cjs'
       - 'scripts/mw1-media-lab-preflight.cjs'
@@ -47,5 +48,7 @@ jobs:
       - name: Verify lab module artifact is loadable without starting a server
         working-directory: apps/api
         run: node -e "require('./dist/media-lab.module.js'); console.log('Lab module artifact found')"
+      - name: Validate standalone lab environment policy syntax
+        run: node --check apps/api/media-lab-preflight.cjs
       - name: Validate local-only lab entrypoint syntax
         run: node --check apps/api/media-lab-entry.cjs
