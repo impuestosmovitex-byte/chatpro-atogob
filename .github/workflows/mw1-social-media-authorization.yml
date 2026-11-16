@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'apps/api/src/inbox.controller.ts'
+      - 'apps/api/src/social-media-url-policy.ts'
+      - 'apps/api/src/social-media-url-policy.spec.ts'
+      - 'apps/api/package-lock.json'
       - 'scripts/test-mw1-social-media-authorization.cjs'
       - '.github/workflows/mw1-social-media-authorization.yml'
   push:
@@ -17,3 +20,12 @@ jobs:
         run: node --check scripts/test-mw1-social-media-authorization.cjs
       - name: Ensure social media authorization before download
         run: node scripts/test-mw1-social-media-authorization.cjs
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run synthetic URL policy tests
+        working-directory: apps/api
+        run: npm test -- --runInBand social-media-url-policy.spec.ts
+      - name: Compile API
+        working-directory: apps/api
+        run: npm run build
