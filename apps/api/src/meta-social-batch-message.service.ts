@@ -8,6 +8,7 @@ import { IntegrationCredentialsService } from './integration-credentials.service
 import { MetaSocialAiService } from './meta-social-ai.service';
 import { MetaSocialMessageService } from './meta-social-message.service';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 
 type JsonObject = Record<string, unknown>;
 type SocialChannel = 'instagram' | 'messenger';
@@ -73,6 +74,7 @@ export class MetaSocialBatchMessageService {
     private readonly batchSocialAiService: MetaSocialAiService,
     private readonly batchConversationMemoryService: ConversationMemoryService,
     private readonly batchAgentSessionRuntimeService: AgentSessionRuntimeService,
+    private readonly manualContractAccess: ManualContractAccessService,
   ) {
     this.legacy = new MetaSocialMessageService(
       batchSupabaseService,
@@ -475,6 +477,11 @@ export class MetaSocialBatchMessageService {
     }
 
     this.pendingBatches.delete(key);
+
+    // Incoming social events have already been persisted. Do not spend AI
+    // tokens or generate a commercial response after contract expiry.
+    const access=await this.manualContractAccess.access(batch.companyId);
+    if(!access.commercialAllowed)return;
 
     const { data: sessionRow, error: sessionError } =
       await this.batchSupabaseService
