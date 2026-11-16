@@ -53,6 +53,22 @@ describe('contract review timestamp precision regression',()=>{
   expect(patch.toLowerCase()).toContain('create or replace function public.mw1_apply_manual_contract');
  });
 });
+describe('opaque Supabase secret-key contract authorization',()=>{
+ const patch=readFileSync(join(__dirname,'../../../supabase/migrations/202611150002_mw1_manual_contract_secret_key_auth_fix.sql'),'utf8');
+ it('uses narrow database execute grants rather than legacy JWT role claims',()=>{
+  expect(patch).not.toContain("current_setting('request.jwt.claim.role'");
+  expect(patch).toContain('from public,anon,authenticated;');
+  expect(patch).toContain('to service_role;');
+  expect(patch).toContain('Super Admin inactive or absent');
+  expect(patch).toContain('Operational tenant cannot be activated here');
+  expect(patch).toContain('Company-specific plan review is missing, stale or superseded');
+ });
+ it('does not write contract or modify existing table schemas at migration time',()=>{
+  expect(patch.toLowerCase()).not.toContain('alter table');
+  expect(patch.toLowerCase()).not.toContain('create table');
+  expect(patch.toLowerCase()).toContain('create or replace function public.mw1_apply_manual_contract');
+ });
+});
 describe('staging SQL contract guardrails',()=>{
  const file=readFileSync(join(__dirname,'../../../supabase/migrations/202611140001_mw1_manual_contract_staging.sql'),'utf8');
  it('does not modify existing audit table or insert its forbidden action',()=>{
