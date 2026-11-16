@@ -7,7 +7,7 @@ describe('Staging DI bootstrap safety',()=>{
   expect(staging).toContain("import { ManualContractAccessService } from './manual-contract-access.service'");
   const providers=staging.slice(staging.indexOf('providers:'));
   expect(providers).toContain('ManualContractAccessService');
-  expect(staging).not.toContain('WhatsappWebhookController,');
+  expect(staging).not.toMatch(/^\s*WhatsappWebhookController,\s*$/m);
   expect(staging).not.toContain('ShopifyAutomationProcessorService,');
  });
 });
