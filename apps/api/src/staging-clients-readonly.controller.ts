@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { SupabaseService } from './supabase.service';
+import { ManualContractAccessService } from './manual-contract-access.service';
 import { verifyInternalAttestation } from './internal-attestation';
 
 /**
@@ -11,7 +12,8 @@ import { verifyInternalAttestation } from './internal-attestation';
  */
 @Controller('clients')
 export class StagingClientsReadonlyController {
-  constructor(private readonly db: SupabaseService) {}
+  constructor(private readonly db: SupabaseService,
+    private readonly manualContractAccess: ManualContractAccessService) {}
 
   private async authorize(
     key: string, type: string, userId: string, companyId: string, slug: string,
@@ -29,6 +31,7 @@ export class StagingClientsReadonlyController {
       .maybeSingle();
     if (companyError || company?.status !== 'active')
       throw new ForbiddenException('Empresa no autorizada.');
+    await this.manualContractAccess.assertCommercial(company.id);
     const { data: profile, error: profileError } = await db.from('app_profiles')
       .select('active').eq('user_id', userId).maybeSingle();
     if (profileError || !profile?.active)
