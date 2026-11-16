@@ -1,0 +1,19 @@
+name: MW1 social media authorization guard
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/inbox.controller.ts'
+      - 'scripts/test-mw1-social-media-authorization.cjs'
+      - '.github/workflows/mw1-social-media-authorization.yml'
+  push:
+    branches:
+      - security/mw1-social-media-authz-20261116
+jobs:
+  source-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate syntax
+        run: node --check scripts/test-mw1-social-media-authorization.cjs
+      - name: Ensure social media authorization before download
+        run: node scripts/test-mw1-social-media-authorization.cjs
