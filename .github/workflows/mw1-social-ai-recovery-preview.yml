@@ -1,9 +1,10 @@
-name: MW1 social AI recovery read-only validation (NO SEND / NO DEPLOY)
+name: MW1 social AI recovery review-only validation (NO SEND / NO DEPLOY)
 
 on:
   push:
     branches:
       - feature/mw1-social-ai-recovery-dry-run-20261116
+      - feature/mw1-social-ai-recovery-executor-20261116
   workflow_dispatch:
 
 permissions:
@@ -27,6 +28,6 @@ jobs:
       - name: Install pinned deps without lifecycle side-effects
         run: npm ci --ignore-scripts
       - name: Unit tests for per-company rules and idempotent replay candidates
-        run: npm test -- --runInBand --runTestsByPath src/social-ai-recovery-preview.spec.ts
+        run: npm test -- --runInBand --runTestsByPath src/social-ai-recovery-preview.spec.ts src/social-ai-recovery-executor.spec.ts
       - name: Compile NestJS
         run: npm run build
