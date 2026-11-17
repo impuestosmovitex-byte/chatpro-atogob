@@ -25,6 +25,9 @@ export class MetaSocialAiService {
     recipientId: string;
     customerMessage: string;
     credentialsEncrypted: string | null;
+    // Optional internal recovery hooks. Normal inbound AI flow is unchanged.
+    beforeRecoverySend?: () => Promise<void>;
+    onRecoverySubmitted?: (providerMessageId: string | null) => void;
   }): Promise<void> {
     const client = this.supabaseService.getClient();
 
@@ -98,6 +101,10 @@ export class MetaSocialAiService {
       );
     }
 
+    // Revalidate original customer message and no human takeover immediately
+    // before the external network call, AFTER generation with current tenant rules.
+    await input.beforeRecoverySend?.();
+
     const providerMessageId =
       await this.sendMessengerText({
         pageId: input.pageId,
@@ -130,6 +137,8 @@ export class MetaSocialAiService {
       );
     }
 
+    input.onRecoverySubmitted?.(providerMessageId);
+
     const { error: updateError } = await client
       .from('social_conversation_sessions')
       .update({
@@ -158,6 +167,9 @@ export class MetaSocialAiService {
     recipientId: string;
     customerMessage: string;
     credentialsEncrypted: string | null;
+    // Optional internal recovery hooks. Normal inbound AI flow is unchanged.
+    beforeRecoverySend?: () => Promise<void>;
+    onRecoverySubmitted?: (providerMessageId: string | null) => void;
     setupSource?: string;
     apiVersion?: string;
   }): Promise<void> {
@@ -233,6 +245,10 @@ export class MetaSocialAiService {
       );
     }
 
+    // Revalidate original customer message and no human takeover immediately
+    // before the external network call, AFTER generation with current tenant rules.
+    await input.beforeRecoverySend?.();
+
     const providerMessageId =
       await this.sendInstagramText({
         instagramId: input.instagramId,
@@ -266,6 +282,8 @@ export class MetaSocialAiService {
         `Instagram respondió, pero no se pudo guardar la respuesta: ${saveError.message}`,
       );
     }
+
+    input.onRecoverySubmitted?.(providerMessageId);
 
     const { error: updateError } = await client
       .from('social_conversation_sessions')
