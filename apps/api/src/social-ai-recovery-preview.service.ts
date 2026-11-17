@@ -25,7 +25,7 @@ type RecoverySession = {
   last_message_at: string;
 };
 export type RecoveryMessage = {
-  id: string;
+  id: string | number;
   company_id: string;
   session_id: string;
   channel: string;
@@ -62,12 +62,13 @@ export function assessSocialAiRecovery(
   now: Date,
 ): RecoveryDecision {
   const sorted = [...messages].sort((a,b) =>
-    Date.parse(b.created_at)-Date.parse(a.created_at) || b.id.localeCompare(a.id));
+    Date.parse(b.created_at)-Date.parse(a.created_at) ||
+    String(b.id).localeCompare(String(a.id),undefined,{numeric:true}));
   const last = sorted[0];
   const reject = (reason: RecoveryReason): RecoveryDecision => ({
     sessionId: session.id, companyId: session.company_id,
     channel: session.channel, reason, eligible:false,
-    lastInboundId: last?.author_type === 'customer' ? last.id : null,
+    lastInboundId: last?.author_type === 'customer' ? String(last.id) : null,
     lastInboundAt: last?.author_type === 'customer' ? last.created_at : null,
     inboundTextParts:0, replayKey:null,
   });
@@ -98,10 +99,10 @@ export function assessSocialAiRecovery(
   }
   if (!consecutive.length || consecutive.length>12)
     return reject('missing_text');
-  const replayKey = `${session.company_id}:${session.id}:${last.id}`;
+  const replayKey = `${session.company_id}:${session.id}:${String(last.id)}`;
   return {
     sessionId:session.id,companyId:session.company_id,channel:session.channel,
-    reason:'ready',eligible:true,lastInboundId:last.id,
+    reason:'ready',eligible:true,lastInboundId:String(last.id),
     lastInboundAt:last.created_at,inboundTextParts:consecutive.length,replayKey,
   };
 }
