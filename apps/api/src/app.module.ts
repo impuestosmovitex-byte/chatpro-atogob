@@ -47,6 +47,8 @@ import { MetaLeadAdsService } from './meta-lead-ads.service';
 import { MetaSocialMessageService } from './meta-social-message.service';
 import { MetaSocialBatchMessageService } from './meta-social-batch-message.service';
 import { MetaSocialAiService } from './meta-social-ai.service';
+import { SocialAiRecoveryPreviewService } from './social-ai-recovery-preview.service';
+import { SocialAiRecoveryExecutorService } from './social-ai-recovery-executor.service';
 import { MetaSocialMessagingService } from './meta-social-messaging.service';
 import { MetaSocialInboxService } from './meta-social-inbox.service';
 import { MetaAdsLeadService } from './meta-ads-lead.service';
@@ -155,6 +157,9 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
       useClass: MetaSocialBatchMessageService,
     },
     MetaSocialAiService,
+    // Internal-only. No controller or schedule; explicit approval + flag required.
+    SocialAiRecoveryPreviewService,
+    SocialAiRecoveryExecutorService,
     MetaSocialMessagingService,
     MetaSocialInboxService,
     WhatsappMessagingService,
