@@ -103,6 +103,6 @@ describe('MW1 social AI recovery dry run',()=>{
   expect(source).not.toMatch(/\.(?:sendInstagramText|sendMessengerText|replyToInstagram|replyToMessenger|reply)\(/);
   expect(source).not.toMatch(/fetch\(/);
   expect(source).toContain('company_settings.ai_instructions');
-  expect(source).toContain('current company-specific profile');
+  expect(source).toContain('the CURRENT company-specific profile');
  });
 });
