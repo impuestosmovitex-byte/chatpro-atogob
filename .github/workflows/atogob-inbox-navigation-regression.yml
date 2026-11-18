@@ -1,0 +1,29 @@
+name: ATOGOB inbox navigation and speed safeguards
+on:
+  pull_request:
+    branches:
+      - feature/mw1-content-brand-colors-20261114
+    paths:
+      - 'app/page.tsx'
+      - 'scripts/test-inbox-navigation-regression.cjs'
+      - '.github/workflows/atogob-inbox-navigation-regression.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked web dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify navigation and finalization guards
+        run: node scripts/test-inbox-navigation-regression.cjs
+      - name: Type check full Next web UI
+        run: npx tsc --noEmit
+      - name: Build Next web with the updated inbox
+        run: npm run build
