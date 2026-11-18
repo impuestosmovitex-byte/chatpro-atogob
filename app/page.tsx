@@ -1970,6 +1970,13 @@ export default function Home() {
       manualConversationAbortRef.current?.abort();
       manualConversationAbortRef.current = new AbortController();
 
+      // Hide the old chat immediately while the advisor opens a different
+      // one. Otherwise its composer remains interactive for ~2 seconds and
+      // can look like the UI navigated back to the previous customer.
+      activeSessionIdRef.current = "";
+      setSelected((current) =>
+        current?.session.id === sessionId ? current : null,
+      );
       setLoadingChat(true);
       setActionMessage("");
       setError("");
@@ -4996,10 +5003,11 @@ export default function Home() {
             {!selected ? (
               <div className="chat-placeholder">
                 <div className="placeholder-orb">◔</div>
-                <h2>Abre una conversación</h2>
+                <h2>{openingSessionId ? "Abriendo conversación…" : "Abre una conversación"}</h2>
                 <p>
-                  Desde aquí podrás ver el historial, tomar el chat y responder
-                  como asesor.
+                  {openingSessionId
+                    ? "Cargando los mensajes del cliente seleccionado."
+                    : "Desde aquí podrás ver el historial, tomar el chat y responder como asesor."}
                 </p>
               </div>
             ) : (
