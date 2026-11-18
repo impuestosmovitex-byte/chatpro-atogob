@@ -1989,7 +1989,7 @@ export default function Home() {
       } else {
         params.set(
           "messageLimit",
-          String(HISTORY_PAGE_SIZE),
+          String(silent ? 40 : HISTORY_PAGE_SIZE),
         );
       }
 
@@ -2394,16 +2394,49 @@ export default function Home() {
         );
       }
 
-      if (action === "message") {
+      if (action !== "message") {
         /*
-         * El mensaje y la lista ya fueron actualizados localmente.
-         * No bloqueamos la interfaz haciendo dos consultas adicionales.
-         * La actualización normal de la bandeja reconciliará después
-         * el estado confirmado del servidor.
+         * No reabrir el chat anterior al terminar la acción: el asesor
+         * puede estar escribiendo en otra conversación. Actualizar el
+         * estado local y dejar que el refresco normal reconcilie la lista,
+         * sin bloquear la navegación ni descargar de nuevo el historial.
          */
-      } else {
-        await loadList(false);
-        await openConversation(sessionId);
+        const attentionStatus =
+          action === "close" ? "closed" :
+          action === "resume_ai" ? "ai" : "human";
+        setSessions((current) =>
+          current.map((item) =>
+            item.id === sessionId
+              ? {
+                  ...item,
+                  attentionStatus,
+                  pendingCount: 0,
+                  pendingSince: null,
+                }
+              : item,
+          ),
+        );
+        setSelected((current) => {
+          if (
+            !current ||
+            current.session.id !== sessionId ||
+            (openingSessionIdRef.current &&
+              openingSessionIdRef.current !== sessionId)
+          ) {
+            return current;
+          }
+          if (action === "close") {
+            return null;
+          }
+          return {
+            ...current,
+            session: {
+              ...current.session,
+              ...(data.session ?? {}),
+              attentionStatus,
+            },
+          };
+        });
       }
 
       const actionLabels: Record<
@@ -2416,7 +2449,13 @@ export default function Home() {
         close: "Conversación finalizada.",
       };
 
-      setActionMessage(actionLabels[action]);
+      if (
+        activeSessionIdRef.current === sessionId &&
+        (!openingSessionIdRef.current ||
+          openingSessionIdRef.current === sessionId)
+      ) {
+        setActionMessage(actionLabels[action]);
+      }
     } catch (caught) {
       if (action === "message") {
         setSelected((current) => {
@@ -2433,7 +2472,15 @@ export default function Home() {
         });
 
         conversationDraftsRef.current[sessionId] = cleanMessage;
-        setMessage(cleanMessage);
+        // The failed send belongs to sessionId; never replace a draft the
+        // advisor has already started typing in another conversation.
+        if (
+          activeSessionIdRef.current === sessionId &&
+          (!openingSessionIdRef.current ||
+            openingSessionIdRef.current === sessionId)
+        ) {
+          setMessage(cleanMessage);
+        }
       }
 
       setActionMessage("");
