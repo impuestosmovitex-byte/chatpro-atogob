@@ -1125,7 +1125,7 @@ export class InboxController {
   @HttpCode(200)
   @UseInterceptors(
     FileInterceptor('image', {
-      limits: { fileSize: 8 * 1024 * 1024 },
+      limits: { fileSize: 25 * 1024 * 1024 },
     }),
   )
   async sendAdvisorImage(
@@ -1314,7 +1314,7 @@ export class InboxController {
       messageType: 'image',
       mediaId: sent.mediaId,
       mediaMimeType: sent.mimeType,
-      mediaFilename: file.originalname || 'imagen.jpg',
+      mediaFilename: sent.normalizedFilename || 'imagen-whatsapp.jpg',
       mediaVoice: false,
     });
 
@@ -1323,9 +1323,9 @@ export class InboxController {
       sessionId: conversation.session.id,
       mediaId: sent.mediaId,
       providerMessageId: sent.messageId,
-      buffer: file.buffer,
+      buffer: sent.normalizedBuffer || file.buffer,
       mimeType: sent.mimeType,
-      filename: file.originalname || 'imagen.jpg',
+      filename: sent.normalizedFilename || 'imagen-whatsapp.jpg',
     });
 
     await this.conversationMemoryService.touchSession(conversation.session.id);
