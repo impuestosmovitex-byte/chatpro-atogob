@@ -51,6 +51,14 @@ describe('WhatsApp image normalization (offline; never calls Meta)', () => {
     expect(normalized.buffer.length).toBeLessThan(MAX_WHATSAPP_IMAGE_BYTES);
   });
 
+  it('compresses a valid image larger than the 5 MB Meta limit', async () => {
+    const largeBmp = fixture('bmp', 'rgb24', 2000, 1200);
+    expect(largeBmp.length).toBeGreaterThan(MAX_WHATSAPP_IMAGE_BYTES);
+    const normalized = await normalizeWhatsappImage(largeBmp);
+    expect(identifyImage(normalized.buffer)).toBe('jpeg');
+    expect(normalized.buffer.length).toBeLessThan(MAX_WHATSAPP_IMAGE_BYTES);
+  }, 60000);
+
   it('rejects fake MIME/invalid bytes without uploading', async () => {
     await expect(normalizeWhatsappImage(Buffer.from('%PDF-1.4 not an image'))).rejects.toThrow('no contiene una imagen');
     await expect(normalizeWhatsappImage(Buffer.alloc(0))).rejects.toThrow('vacía');
