@@ -58,24 +58,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (image.size > 8 * 1024 * 1024) {
+    if (image.size > 25 * 1024 * 1024) {
       return NextResponse.json(
-        { ok: false, error: "La imagen supera el límite de 8 MB." },
+        { ok: false, error: "La imagen original supera 25 MB." },
         { status: 400 },
       );
     }
 
-    if (
-      !["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(
-        image.type,
-      )
-    ) {
-      return NextResponse.json(
-        { ok: false, error: "Formato no permitido. Usa JPG, PNG o WEBP." },
-        { status: 400 },
-      );
-    }
-
+    // The API verifies the decoded bytes and normalizes them; browser MIME is untrusted.
     const { apiBase, inboxKey } = config();
     const target = new URL(
       `${apiBase}/inbox/${encodeURIComponent(sessionId)}/image`,
