@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { CompanyIntegrationService } from './company-integration.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
+import { normalizeWhatsappImage } from './whatsapp-image-normalizer';
 
 type JsonObject = Record<string, unknown>;
 
@@ -21,6 +22,8 @@ export type WhatsappAudioSendResult = WhatsappSendResult & {
 export type WhatsappImageSendResult = WhatsappSendResult & {
   mediaId: string;
   mimeType: string;
+  normalizedBuffer?: Buffer;
+  normalizedFilename?: string;
 };
 
 export type WhatsappMediaDownload = {
@@ -147,33 +150,10 @@ export class WhatsappMessagingService {
       caption?: string;
     },
   ): Promise<WhatsappImageSendResult> {
-    if (!input.buffer.length) {
-      throw new Error('La imagen está vacía.');
-    }
-
-    if (input.buffer.length > 8 * 1024 * 1024) {
-      throw new Error('La imagen supera el límite de 8 MB.');
-    }
-
-    const mimeType = input.mimeType.split(';')[0].trim().toLowerCase();
-
-    const allowed = new Set([
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-      'image/webp',
-    ]);
-
-    if (!allowed.has(mimeType)) {
-      throw new Error('Formato de imagen no permitido. Usa JPG, PNG o WEBP.');
-    }
-
+    // Decode and re-encode before contacting Meta; MIME supplied by the browser is untrusted.
+    const prepared = await normalizeWhatsappImage(input.buffer);
     const channel = await this.resolveChannel(companyId);
-    const mediaId = await this.uploadMedia(channel, {
-      buffer: input.buffer,
-      mimeType,
-      filename: input.filename || 'imagen',
-    });
+    const mediaId = await this.uploadMedia(channel, prepared);
     const caption = input.caption?.trim().slice(0, 1024) || undefined;
 
     const sent = await this.send(channel, {
@@ -189,7 +169,9 @@ export class WhatsappMessagingService {
     return {
       ...sent,
       mediaId,
-      mimeType,
+      mimeType: prepared.mimeType,
+      normalizedBuffer: prepared.buffer,
+      normalizedFilename: prepared.filename,
     };
   }
 
