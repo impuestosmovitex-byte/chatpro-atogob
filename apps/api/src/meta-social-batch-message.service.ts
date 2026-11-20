@@ -189,6 +189,23 @@ export class MetaSocialBatchMessageService {
     const recipient = this.record(input.event.recipient);
     const senderId = this.text(sender.id);
     const recipientId = this.text(recipient.id);
+    const message = this.record(input.event.message);
+
+    // Instagram native-app replies are outgoing echoes, not inbound customer
+    // messages. Preserve them as advisor messages and never feed them to AI.
+    if (
+      input.channel === 'instagram' &&
+      recipientId &&
+      recipientId !== input.accountId &&
+      (senderId === input.accountId || message.is_echo === true)
+    ) {
+      await this.captureInstagramOutboundEcho({
+        companyId: input.companyId,
+        recipientId,
+        message,
+      });
+      return;
+    }
 
     if (!senderId || senderId === input.accountId) {
       return;
@@ -197,8 +214,6 @@ export class MetaSocialBatchMessageService {
     if (recipientId && recipientId !== input.accountId) {
       return;
     }
-
-    const message = this.record(input.event.message);
 
     if (message.is_echo === true) {
       return;
@@ -330,6 +345,139 @@ export class MetaSocialBatchMessageService {
         `[ChatPro][${input.channel}] bloque omnicanal actualizado session=${batchSessionId} images=${imageAttachments.length} text=${customerText ? 'yes' : 'no'}`,
       );
     }
+  }
+
+  private async captureInstagramOutboundEcho(input: {
+    companyId: string;
+    recipientId: string;
+    message: JsonObject;
+  }): Promise<void> {
+    const providerMessageId = this.text(input.message.mid);
+    if (!providerMessageId) {
+      console.warn('[ChatPro][Instagram] Respuesta externa sin mid; se omite para evitar duplicados.');
+      return;
+    }
+
+    const client = this.batchSupabaseService.getClient();
+    const { data: existingMessage, error: duplicateError } = await client
+      .from('social_conversations')
+      .select('id')
+      .eq('company_id', input.companyId)
+      .eq('channel', 'instagram')
+      .eq('provider_message_id', providerMessageId)
+      .limit(1)
+      .maybeSingle();
+
+    if (duplicateError) throw new Error(`No se pudo validar eco Instagram: ${duplicateError.message}`);
+    if (existingMessage) return;
+
+    const { data: knownSession, error: sessionError } = await client
+      .from('social_conversation_sessions')
+      .select('id')
+      .eq('company_id', input.companyId)
+      .eq('channel', 'instagram')
+      .eq('external_customer_id', input.recipientId)
+      .limit(1)
+      .maybeSingle();
+
+    if (sessionError) throw new Error(`No se pudo consultar sesión eco Instagram: ${sessionError.message}`);
+
+    const now = new Date().toISOString();
+    let sessionId = typeof knownSession?.id === 'string' ? knownSession.id : '';
+    if (!sessionId) {
+      const { data: inserted, error: createError } = await client
+        .from('social_conversation_sessions')
+        .insert({
+          company_id: input.companyId,
+          channel: 'instagram',
+          external_customer_id: input.recipientId,
+          attention_status: 'human',
+          assigned_to_name: 'Instagram directo',
+          inbound_message_count: 0,
+          pending_count: 0,
+          last_message_at: now,
+          updated_at: now,
+          taken_at: now,
+        })
+        .select('id')
+        .single();
+
+      if (createError && createError.code !== '23505') {
+        throw new Error(`No se pudo crear sesión de respuesta Instagram: ${createError.message}`);
+      }
+
+      sessionId = typeof inserted?.id === 'string' ? inserted.id : '';
+      if (!sessionId) {
+        const { data: concurrentSession, error: retryError } = await client
+          .from('social_conversation_sessions')
+          .select('id')
+          .eq('company_id', input.companyId)
+          .eq('channel', 'instagram')
+          .eq('external_customer_id', input.recipientId)
+          .maybeSingle();
+        if (retryError || !concurrentSession?.id) {
+          throw new Error('No se pudo recuperar sesión Instagram creada simultáneamente.');
+        }
+        sessionId = String(concurrentSession.id);
+      }
+    }
+
+    const attachments = Array.isArray(input.message.attachments)
+      ? input.message.attachments.map((value) => this.record(value))
+      : [];
+    const firstAttachment = attachments[0] || {};
+    const attachmentType = this.text(firstAttachment.type).toLowerCase();
+    const mediaUrl = this.text(this.record(firstAttachment.payload).url) || null;
+    const rawText = this.text(input.message.text);
+    const messageType = attachmentType === 'image' ? 'image'
+      : attachmentType === 'audio' ? 'audio'
+      : attachmentType === 'video' ? 'video'
+      : attachmentType ? 'attachment' : 'text';
+    const messageText = rawText || (
+      messageType === 'image' ? '📷 Imagen enviada desde Instagram.'
+        : messageType === 'audio' ? '🎵 Audio enviado desde Instagram.'
+        : messageType === 'video' ? '🎥 Video enviado desde Instagram.'
+        : messageType === 'attachment' ? '📎 Archivo enviado desde Instagram.' : ''
+    );
+    if (!messageText) return;
+
+    const { error: saveError } = await client
+      .from('social_conversations')
+      .insert({
+        company_id: input.companyId,
+        session_id: sessionId,
+        channel: 'instagram',
+        external_customer_id: input.recipientId,
+        provider_message_id: providerMessageId,
+        sender: 'assistant',
+        author_type: 'advisor',
+        message_type: messageType,
+        message: messageText,
+        media_url: mediaUrl,
+        created_at: now,
+      });
+
+    if (saveError?.code === '23505') return;
+    if (saveError) throw new Error(`No se pudo guardar respuesta desde Instagram: ${saveError.message}`);
+
+    const { error: updateError } = await client
+      .from('social_conversation_sessions')
+      .update({
+        attention_status: 'human',
+        assigned_to_name: 'Instagram directo',
+        pending_count: 0,
+        pending_since: null,
+        closed_at: null,
+        last_message_at: now,
+        updated_at: now,
+        taken_at: now,
+      })
+      .eq('company_id', input.companyId)
+      .eq('id', sessionId);
+
+    if (updateError) throw new Error(`Respuesta Instagram guardada pero no se actualizó sesión: ${updateError.message}`);
+
+    console.log(`[ChatPro][Instagram] respuesta de Instagram directo sincronizada session=${sessionId}`);
   }
 
   private async saveSocialMessage(input: {
