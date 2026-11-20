@@ -17,6 +17,8 @@ export type WhatsappSendResult = {
 export type WhatsappAudioSendResult = WhatsappSendResult & {
   mediaId: string;
   mimeType: string;
+  preparedBuffer: Buffer;
+  preparedFilename: string;
 };
 
 export type WhatsappImageSendResult = WhatsappSendResult & {
@@ -137,6 +139,8 @@ export class WhatsappMessagingService {
       ...sent,
       mediaId,
       mimeType: prepared.mimeType,
+      preparedBuffer: prepared.buffer,
+      preparedFilename: prepared.filename,
     };
   }
 
@@ -313,11 +317,14 @@ export class WhatsappMessagingService {
       'audio/ogg',
     );
 
-    return this.transcodeToMp3({
-      ...downloaded,
-      filename:
-        `audio-${mediaId.trim()}.` + this.extensionForMime(downloaded.mimeType),
-    });
+    return this.prepareIncomingAudioForTranscription(downloaded);
+  }
+
+  /** Reuse already-downloaded bytes to transcribe; never couple storage to transcription. */
+  async prepareIncomingAudioForTranscription(
+    downloaded: WhatsappMediaDownload,
+  ): Promise<WhatsappMediaDownload> {
+    return this.transcodeToMp3(downloaded);
   }
 
   async sendTemplate(
