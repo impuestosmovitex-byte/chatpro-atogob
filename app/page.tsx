@@ -866,8 +866,7 @@ function AudioMessagePlayer({ item }: { item: InboxMessage }) {
       {!requested ? (
         <button type="button" onClick={() => setRequested(true)}>▶ Escuchar audio</button>
       ) : null}
-      {requested ? (
-      {loading ? (
+      {requested ? (loading ? (
         <span className="wa-audio-loading">Cargando audio…</span>
       ) : playbackError ? (
         <span className="wa-audio-error">{playbackError}</span>
@@ -882,7 +881,6 @@ function AudioMessagePlayer({ item }: { item: InboxMessage }) {
         >
           Tu navegador no permite reproducir este audio.
         </audio>
-      )}
       ) : null}
       <small>
         {item.authorType === "customer" ? "Audio del cliente" : "Audio enviado"}
