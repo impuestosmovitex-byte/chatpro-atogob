@@ -100,16 +100,20 @@ export class WhatsappWebhookController {
     // Process each separately; do not discard all but messages[0].
     const batched = splitWhatsappInboundWebhookMessages(body);
     if (batched.length > 1) {
-      const results = await Promise.allSettled(
-        batched.map((singleMessageBody) => this.receiveMessage(singleMessageBody)),
-      );
-      for (const [index, outcome] of results.entries()) {
-        if (outcome.status === 'rejected') {
-          console.error(
-            '[ChatPro][whatsapp-batch] Error procesando elemento',
-            index + 1,
-            outcome.reason,
-          );
+      // Bounded fan-out avoids saturating storage/DB on large photo bursts.
+      for (let offset = 0; offset < batched.length; offset += 4) {
+        const results = await Promise.allSettled(
+          batched.slice(offset, offset + 4)
+            .map((singleMessageBody) => this.receiveMessage(singleMessageBody)),
+        );
+        for (const [index, outcome] of results.entries()) {
+          if (outcome.status === 'rejected') {
+            console.error(
+              '[ChatPro][whatsapp-batch] Error procesando elemento',
+              offset + index + 1,
+              outcome.reason,
+            );
+          }
         }
       }
       return 'EVENT_RECEIVED';
