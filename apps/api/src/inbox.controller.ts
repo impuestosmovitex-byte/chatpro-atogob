@@ -1357,7 +1357,7 @@ export class InboxController {
   @HttpCode(200)
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: 25 * 1024 * 1024 },
+      limits: { fileSize: 100 * 1024 * 1024 },
     }),
   )
   async sendAdvisorFile(
@@ -1584,23 +1584,24 @@ export class InboxController {
       messageType: isVideo ? 'video' : 'document',
       mediaId: sent.mediaId,
       mediaMimeType: sent.mimeType,
-      mediaFilename:
-        file.originalname ||
-        (isVideo ? 'video.mp4' : 'archivo'),
+      mediaFilename: sent.normalizedFilename || file.originalname || 'archivo',
       mediaVoice: false,
     });
 
-    await this.conversationMemoryService.persistIncomingMedia({
-      companyId: conversation.company.id,
-      sessionId: conversation.session.id,
-      mediaId: sent.mediaId,
-      providerMessageId: sent.messageId,
-      buffer: file.buffer,
-      mimeType: sent.mimeType,
-      filename:
-        file.originalname ||
-        (isVideo ? 'video.mp4' : 'archivo'),
-    });
+    try {
+      await this.conversationMemoryService.persistIncomingMedia({
+        companyId: conversation.company.id,
+        sessionId: conversation.session.id,
+        mediaId: sent.mediaId,
+        providerMessageId: sent.messageId,
+        buffer: sent.normalizedBuffer || file.buffer,
+        mimeType: sent.mimeType,
+        filename: sent.normalizedFilename || file.originalname || 'archivo',
+      });
+    } catch (storageError) {
+      // Meta already accepted the file: do not misreport a failed send and risk duplicates.
+      console.error('[ChatPro][outbound-file] Archivo enviado pero sin copia permanente:', storageError);
+    }
 
     await this.conversationMemoryService.touchSession(
       conversation.session.id,
