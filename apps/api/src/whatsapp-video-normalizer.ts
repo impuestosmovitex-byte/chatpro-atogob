@@ -15,7 +15,7 @@ export type PreparedWhatsappVideo = {
 function isMovieContainer(buffer: Buffer): boolean {
   if (buffer.length < 16 || buffer.toString('ascii', 4, 8) !== 'ftyp') return false;
   const brand = buffer.toString('ascii', 8, 12);
-  return /^[\\x20-\\x7e]{4}$/.test(brand);
+  return /^[ -~]{4}$/.test(brand);
 }
 
 function convert(source: string, destination: string, size: 'large' | 'small'): Promise<void> {
