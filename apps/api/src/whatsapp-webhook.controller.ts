@@ -1,3 +1,4 @@
+import { splitWhatsappInboundWebhookMessages } from './whatsapp-webhook-batch';
 import OpenAI, { toFile } from 'openai';
 import {
   Body,
@@ -93,6 +94,25 @@ export class WhatsappWebhookController {
           error,
         );
       }
+    }
+
+    // Meta can include many images, audios, documents or videos in one event.
+    // Process each separately; do not discard all but messages[0].
+    const batched = splitWhatsappInboundWebhookMessages(body);
+    if (batched.length > 1) {
+      const results = await Promise.allSettled(
+        batched.map((singleMessageBody) => this.receiveMessage(singleMessageBody)),
+      );
+      for (const [index, outcome] of results.entries()) {
+        if (outcome.status === 'rejected') {
+          console.error(
+            '[ChatPro][whatsapp-batch] Error procesando elemento',
+            index + 1,
+            outcome.reason,
+          );
+        }
+      }
+      return 'EVENT_RECEIVED';
     }
 
     const message = this.getIncomingMessage(body);
