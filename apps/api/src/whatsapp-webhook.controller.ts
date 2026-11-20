@@ -2714,18 +2714,28 @@ export class WhatsappWebhookController {
 
       let transcription = '';
       let transcriptionError = '';
+      let originalAudio: { buffer: Buffer; mimeType: string; filename: string } | null = null;
 
       try {
-        const media = await this.whatsappMessagingService.downloadMedia(
+        originalAudio = await this.whatsappMessagingService.downloadRawMedia(
           profile.id,
           input.mediaId,
+          input.mimeType || 'audio/ogg',
         );
 
-        transcription = await this.transcribeIncomingAudio({
-          buffer: media.buffer,
-          filename: media.filename,
-          companyName: profile.name,
-        });
+        try {
+          const playable = await this.whatsappMessagingService.prepareIncomingAudioForTranscription(
+            originalAudio,
+          );
+          transcription = await this.transcribeIncomingAudio({
+            buffer: playable.buffer,
+            filename: playable.filename,
+            companyName: profile.name,
+          });
+        } catch (error) {
+          transcriptionError = error instanceof Error ? error.message : 'No se pudo transcribir el audio.';
+          console.error('Fallo de transcripción, pero se conserva el audio original:', error);
+        }
       } catch (error) {
         transcriptionError =
           error instanceof Error
@@ -2758,6 +2768,23 @@ export class WhatsappWebhookController {
 
       if (saved === 'duplicate') {
         return;
+      }
+
+      // Persist the original recording even if OpenAI or the transcoder is unavailable.
+      if (originalAudio) {
+        try {
+          await this.conversationMemoryService.persistIncomingMedia({
+            companyId: profile.id,
+            sessionId: session.id,
+            mediaId: input.mediaId,
+            providerMessageId: input.incomingMessageId,
+            buffer: originalAudio.buffer,
+            mimeType: originalAudio.mimeType,
+            filename: originalAudio.filename,
+          });
+        } catch (storageError) {
+          console.error('[ChatPro][inbound-audio] No se pudo conservar el audio:', storageError);
+        }
       }
 
       await this.conversationMemoryService.touchSession(session.id);
