@@ -1,3 +1,4 @@
+import { canArchiveAnsweredHumanChat } from './social-inbox-rules';
 import { Injectable } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { SupabaseService } from './supabase.service';
@@ -82,9 +83,7 @@ export class MetaSocialInboxService {
 
         if (lastError) throw lastError;
         if (
-          lastMessage?.author_type !== 'advisor' ||
-          !lastMessage.created_at ||
-          lastMessage.created_at > cutoff
+          !canArchiveAnsweredHumanChat(lastMessage, cutoff)
         ) continue;
 
         // A new customer message changes last_message_at and blocks closure.
