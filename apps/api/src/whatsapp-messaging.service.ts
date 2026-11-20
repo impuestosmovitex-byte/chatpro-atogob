@@ -6,6 +6,7 @@ import { extname, join } from 'node:path';
 import { CompanyIntegrationService } from './company-integration.service';
 import { IntegrationCredentialsService } from './integration-credentials.service';
 import { normalizeWhatsappImage } from './whatsapp-image-normalizer';
+import { normalizeWhatsappVideo } from './whatsapp-video-normalizer';
 
 type JsonObject = Record<string, unknown>;
 
@@ -193,22 +194,46 @@ export class WhatsappMessagingService {
       throw new Error('El archivo está vacío.');
     }
 
-    if (input.buffer.length > 25 * 1024 * 1024) {
-      throw new Error('El archivo supera el límite configurado de 25 MB.');
-    }
-
     const mimeType =
       input.mimeType.split(';')[0].trim().toLowerCase() ||
       'application/octet-stream';
 
     const isVideo = mimeType.startsWith('video/');
+    const allowedDocuments = new Set([
+      'application/pdf', 'text/plain', 'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ]);
+
+    if (!isVideo && !allowedDocuments.has(mimeType)) {
+      throw new Error('Formato de documento no admitido por WhatsApp.');
+    }
+    if (!isVideo && input.buffer.length > 100 * 1024 * 1024) {
+      throw new Error('El documento supera los 100 MB permitidos por WhatsApp.');
+    }
+    if (!isVideo) {
+      const pdf = mimeType === 'application/pdf';
+      const officeZip = mimeType.includes('openxmlformats');
+      const oldOffice = ['application/msword', 'application/vnd.ms-excel', 'application/vnd.ms-powerpoint'].includes(mimeType);
+      const signature = input.buffer.subarray(0, 8);
+      const valid = pdf ? signature.subarray(0, 5).toString('ascii') === '%PDF-'
+        : officeZip ? signature.subarray(0, 2).toString('ascii') === 'PK'
+        : oldOffice ? signature.equals(Buffer.from([0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1]))
+        : mimeType === 'text/plain' && !input.buffer.includes(0);
+      if (!valid) {
+        throw new Error('El contenido real del documento no coincide con su formato.');
+      }
+    }
+
+    const prepared = isVideo
+      ? await normalizeWhatsappVideo(input.buffer)
+      : { buffer: input.buffer, mimeType, filename: input.filename || 'archivo' };
     const channel = await this.resolveChannel(companyId);
 
-    const mediaId = await this.uploadMedia(channel, {
-      buffer: input.buffer,
-      mimeType,
-      filename: input.filename || (isVideo ? 'video.mp4' : 'archivo'),
-    });
+    const mediaId = await this.uploadMedia(channel, prepared);
 
     const caption =
       input.caption?.trim().slice(0, 1024) || undefined;
@@ -237,7 +262,9 @@ export class WhatsappMessagingService {
     return {
       ...sent,
       mediaId,
-      mimeType,
+      mimeType: prepared.mimeType,
+      normalizedBuffer: prepared.buffer,
+      normalizedFilename: prepared.filename,
     };
   }
 
