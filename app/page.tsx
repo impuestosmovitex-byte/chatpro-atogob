@@ -2445,6 +2445,27 @@ export default function Home() {
          * La actualización normal de la bandeja reconciliará después
          * el estado confirmado del servidor.
          */
+      } else if (action === "close") {
+        // The close endpoint has already confirmed success. A subsequent
+        // GET for that closed session is intentionally rejected by the API.
+        // Clear the active view instead of reopening it (400 Bad Request).
+        if (activeSessionIdRef.current === sessionId) {
+          activeSessionIdRef.current = "";
+          conversationRequestRef.current += 1;
+          silentConversationRequestRef.current += 1;
+          manualConversationAbortRef.current?.abort();
+          setSelected(null);
+          setMessage("");
+          setPreparedTemplate(null);
+          setTemplateOpen(false);
+        }
+        // Do not turn an already successful close into a reported failure
+        // merely because the follow-up list refresh was unsuccessful.
+        try {
+          await loadList(false);
+        } catch (refreshError) {
+          console.warn("[MW1][close] Chat cerrado; falló refrescar lista:", refreshError);
+        }
       } else {
         await loadList(false);
         await openConversation(sessionId);
