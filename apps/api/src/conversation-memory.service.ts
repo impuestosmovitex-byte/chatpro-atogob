@@ -1677,60 +1677,74 @@ export class ConversationMemoryService {
 
   @Interval(10 * 60 * 1000)
   async closeInactiveHumanConversations(): Promise<void> {
-    const cutoff = new Date(
-      Date.now() - 24 * 60 * 60 * 1000,
-    ).toISOString();
-
+    // Archive answered human chats after 12h. Never hide a conversation
+    // whose last message came from the customer or has pending messages.
+    const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
     const client = this.supabaseService.getClient();
 
     const { data, error } = await client
       .from('conversation_sessions')
-      .select('id')
+      .select('id, company_id, last_message_at')
       .eq('attention_status', 'human')
-      .lte('taken_at', cutoff)
+      .eq('pending_count', 0)
+      .lte('last_message_at', cutoff)
+      .order('last_message_at', { ascending: true })
       .limit(500);
 
     if (error) {
-      console.error(
-        '[ChatPro][human-timeout] No se pudieron consultar chats:',
-        error,
-      );
+      console.error('[ChatPro][human-timeout] No se pudieron consultar chats:', error);
       return;
     }
 
     let closed = 0;
-
     for (const row of data ?? []) {
-      if (!row?.id) {
-        continue;
-      }
-
+      if (!row?.id || !row.company_id) continue;
       try {
-        const session = await this.getSessionById(row.id);
+        const { data: lastMessage, error: lastError } = await client
+          .from('conversations')
+          .select('author_type, created_at')
+          .eq('company_id', row.company_id)
+          .eq('session_id', row.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
+        if (lastError) throw lastError;
         if (
-          !(await this.isHumanConversationInactive(
-            session,
-            24,
-          ))
-        ) {
-          continue;
-        }
+          lastMessage?.author_type !== 'advisor' ||
+          !lastMessage.created_at ||
+          lastMessage.created_at > cutoff
+        ) continue;
 
-        await this.closeConversation(session.id);
-        closed += 1;
-      } catch (error) {
-        console.error(
-          `[ChatPro][human-timeout] Falló sesión=${row.id}:`,
-          error,
-        );
+        // Conditional update protects replies that arrive during this job.
+        const { data: updated, error: updateError } = await client
+          .from('conversation_sessions')
+          .update({
+            attention_status: 'closed',
+            assigned_to_user_id: null,
+            assigned_to_name: null,
+            taken_at: null,
+            closed_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+          .eq('company_id', row.company_id)
+          .eq('attention_status', 'human')
+          .eq('pending_count', 0)
+          .eq('last_message_at', row.last_message_at)
+          .select('id');
+
+        if (updateError) throw updateError;
+        if (updated?.length) {
+          closed += 1;
+          console.log(`[ChatPro][human-timeout] archivada sesión=${row.id} motivo=última-respuesta-asesor-12h`);
+        }
+      } catch (closeError) {
+        console.error(`[ChatPro][human-timeout] Falló sesión=${row.id}:`, closeError);
       }
     }
 
     if (closed > 0) {
-      console.log(
-        `[ChatPro][human-timeout] conversaciones finalizadas=${closed}`,
-      );
+      console.log(`[ChatPro][human-timeout] conversaciones archivadas=${closed}`);
     }
   }
 
