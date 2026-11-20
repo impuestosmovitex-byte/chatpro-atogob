@@ -51,114 +51,71 @@ export class MetaSocialInboxService {
 
   @Interval(10 * 60 * 1000)
   async closeInactiveHumanSocialConversations(): Promise<void> {
-    const idleHours = 24;
-    const cutoffTime =
-      Date.now() - idleHours * 60 * 60 * 1000;
-    const cutoff = new Date(cutoffTime).toISOString();
-
+    const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
     const client = this.supabaseService.getClient();
-
     const { data, error } = await client
       .from('social_conversation_sessions')
-      .select('id, channel, taken_at')
+      .select('id, company_id, channel, last_message_at')
       .eq('attention_status', 'human')
-      .lte('taken_at', cutoff)
+      .eq('pending_count', 0)
+      .lte('last_message_at', cutoff)
+      .order('last_message_at', { ascending: true })
       .limit(500);
 
     if (error) {
-      console.error(
-        '[ChatPro][social-human-timeout] No se pudieron consultar chats sociales:',
-        error,
-      );
+      console.error('[ChatPro][social-human-timeout] No se pudieron consultar chats sociales:', error);
       return;
     }
 
     let closed = 0;
-
     for (const row of data ?? []) {
-      const sessionId =
-        typeof row?.id === 'string' ? row.id : '';
-
-      if (!sessionId) {
-        continue;
-      }
-
+      if (!row?.id || !row.company_id) continue;
       try {
-        const lastAdvisorActivity =
-          await this.getLastSocialAdvisorActivityAt(
-            sessionId,
-          );
+        const { data: lastMessage, error: lastError } = await client
+          .from('social_conversations')
+          .select('author_type, created_at')
+          .eq('company_id', row.company_id)
+          .eq('session_id', row.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-        const candidateTimes = [
-          lastAdvisorActivity,
-          typeof row.taken_at === 'string'
-            ? row.taken_at
-            : null,
-        ]
-          .filter(
-            (value): value is string =>
-              Boolean(value),
-          )
-          .map((value) =>
-            new Date(value).getTime(),
-          )
-          .filter((value) =>
-            Number.isFinite(value),
-          );
+        if (lastError) throw lastError;
+        if (
+          lastMessage?.author_type !== 'advisor' ||
+          !lastMessage.created_at ||
+          lastMessage.created_at > cutoff
+        ) continue;
 
-        if (!candidateTimes.length) {
-          continue;
-        }
-
-        const referenceTime =
-          Math.max(...candidateTimes);
-
-        if (referenceTime > cutoffTime) {
-          continue;
-        }
-
-        await this.assertSocialConversationCanClose(sessionId);
-
-        const now = new Date().toISOString();
-
-        const { error: closeError } = await client
+        // A new customer message changes last_message_at and blocks closure.
+        const { data: updated, error: updateError } = await client
           .from('social_conversation_sessions')
           .update({
             attention_status: 'closed',
             assigned_to_user_id: null,
             assigned_to_name: null,
             taken_at: null,
-            closed_at: now,
-            updated_at: now,
+            closed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           })
-          .eq('id', sessionId)
-          .eq('attention_status', 'human');
+          .eq('id', row.id)
+          .eq('company_id', row.company_id)
+          .eq('attention_status', 'human')
+          .eq('pending_count', 0)
+          .eq('last_message_at', row.last_message_at)
+          .select('id');
 
-        if (closeError) {
-          throw new Error(
-            `No se pudo cerrar la conversación social: ${closeError.message}`,
-          );
+        if (updateError) throw updateError;
+        if (updated?.length) {
+          closed += 1;
+          console.log(`[ChatPro][social-human-timeout] archivada sesión=${row.id} canal=${row.channel} motivo=última-respuesta-asesor-12h`);
         }
-
-        closed += 1;
-
-        console.log(
-          `[ChatPro][social-human-timeout] cerrada sesión=${sessionId} canal=${String(
-            row.channel ?? 'social',
-          )} motivo=inactividad-${idleHours}h`,
-        );
       } catch (closeError) {
-        console.error(
-          `[ChatPro][social-human-timeout] Falló sesión=${sessionId}:`,
-          closeError,
-        );
+        console.error(`[ChatPro][social-human-timeout] Falló sesión=${row.id}:`, closeError);
       }
     }
-
     if (closed > 0) {
-      console.log(
-        `[ChatPro][social-human-timeout] conversaciones finalizadas=${closed}`,
-      );
+      console.log(`[ChatPro][social-human-timeout] conversaciones archivadas=${closed}`);
     }
   }
 
