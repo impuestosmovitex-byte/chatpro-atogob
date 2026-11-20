@@ -61,9 +61,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (file.size > 25 * 1024 * 1024) {
+    if (file.size > 100 * 1024 * 1024) {
       return NextResponse.json(
-        { ok: false, error: "El archivo supera el límite de 25 MB." },
+        { ok: false, error: "El archivo supera el límite de 100 MB." },
         { status: 400 },
       );
     }
@@ -71,12 +71,15 @@ export async function POST(request: NextRequest) {
     const allowed = new Set([
       "video/mp4",
       "video/3gpp",
+      "video/quicktime",
       "application/pdf",
       "text/plain",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/vnd.ms-excel",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ]);
 
     if (!allowed.has(file.type)) {
@@ -84,7 +87,7 @@ export async function POST(request: NextRequest) {
         {
           ok: false,
           error:
-            "Formato no permitido. Usa MP4, 3GP, PDF, TXT, DOC, DOCX, XLS o XLSX.",
+            "Formato no permitido. Usa MP4, MOV, 3GP, PDF, TXT, DOC, DOCX, XLS, XLSX, PPT o PPTX.",
         },
         { status: 400 },
       );
