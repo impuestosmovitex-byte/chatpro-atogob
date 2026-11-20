@@ -1,3 +1,4 @@
+import { canArchiveAnsweredHumanChat } from './social-inbox-rules';
 import { Injectable } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { SupabaseService } from './supabase.service';
@@ -1711,9 +1712,7 @@ export class ConversationMemoryService {
 
         if (lastError) throw lastError;
         if (
-          lastMessage?.author_type !== 'advisor' ||
-          !lastMessage.created_at ||
-          lastMessage.created_at > cutoff
+          !canArchiveAnsweredHumanChat(lastMessage, cutoff)
         ) continue;
 
         // Conditional update protects replies that arrive during this job.
