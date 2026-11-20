@@ -373,7 +373,7 @@ export class MetaSocialBatchMessageService {
 
     const { data: knownSession, error: sessionError } = await client
       .from('social_conversation_sessions')
-      .select('id')
+      .select('id, attention_status, assigned_to_name, assigned_to_user_id, last_message_at')
       .eq('company_id', input.companyId)
       .eq('channel', 'instagram')
       .eq('external_customer_id', input.recipientId)
@@ -464,7 +464,7 @@ export class MetaSocialBatchMessageService {
       .from('social_conversation_sessions')
       .update({
         attention_status: 'human',
-        assigned_to_name: 'Instagram directo',
+        assigned_to_name: knownSession?.assigned_to_name || 'Instagram directo',
         pending_count: 0,
         pending_since: null,
         closed_at: null,
@@ -473,7 +473,8 @@ export class MetaSocialBatchMessageService {
         taken_at: now,
       })
       .eq('company_id', input.companyId)
-      .eq('id', sessionId);
+      .eq('id', sessionId)
+      .lte('last_message_at', now);
 
     if (updateError) throw new Error(`Respuesta Instagram guardada pero no se actualizó sesión: ${updateError.message}`);
 
