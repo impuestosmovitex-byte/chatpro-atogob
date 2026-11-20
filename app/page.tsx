@@ -2885,12 +2885,15 @@ export default function Home() {
       "image/jpg",
       "image/png",
       "image/webp",
+      "image/gif",
+      "image/bmp",
+      "image/tiff",
     ]);
 
     const invalidFile = files.find((file) => !allowed.has(file.type));
 
     if (invalidFile) {
-      setError("Formato no permitido. Usa JPG, PNG o WEBP.");
+      setError("Formato no permitido. Usa JPG, PNG, WEBP, GIF, BMP o TIFF.");
       return;
     }
 
@@ -2942,6 +2945,13 @@ export default function Home() {
         jpeg: "image/jpeg",
         png: "image/png",
         webp: "image/webp",
+        gif: "image/gif",
+        bmp: "image/bmp",
+        tif: "image/tiff",
+        tiff: "image/tiff",
+        mov: "video/quicktime",
+        ppt: "application/vnd.ms-powerpoint",
+        pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         mp4: "video/mp4",
         "3gp": "video/3gpp",
         pdf: "application/pdf",
@@ -2999,6 +3009,7 @@ export default function Home() {
     const allowed = new Set([
       "video/mp4",
       "video/3gpp",
+      "video/quicktime",
       "audio/aac",
       "audio/amr",
       "audio/mpeg",
@@ -3014,6 +3025,8 @@ export default function Home() {
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/vnd.ms-excel",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ]);
 
     if (!allowed.has(file.type)) {
@@ -3029,12 +3042,15 @@ export default function Home() {
       return;
     }
 
-    const maxBytes = (isAudio ? 12 : 25) * 1024 * 1024;
+    const isVideo = file.type.startsWith("video/");
+    const maxBytes = (isAudio ? 12 : isVideo ? 35 : 100) * 1024 * 1024;
     if (file.size > maxBytes) {
       setError(
         isAudio
           ? "El audio supera el límite de 12 MB."
-          : "El archivo supera el límite de 25 MB.",
+          : isVideo
+            ? "El video original supera los 35 MB admitidos para conversión."
+            : "El documento supera los 100 MB de WhatsApp.",
       );
       return;
     }
@@ -5828,7 +5844,7 @@ export default function Home() {
                             ref={imageInputRef}
                             type="file"
                             multiple
-                            accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/aac,audio/amr,audio/mpeg,audio/mp4,audio/ogg,audio/webm,audio/wav,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,video/mp4,video/3gpp,video/quicktime,audio/aac,audio/amr,audio/mpeg,audio/mp4,audio/ogg,audio/webm,audio/wav,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
                             hidden
                             onChange={(event) =>
                               selectMediaFiles(event.target.files)
