@@ -1107,9 +1107,23 @@ export class InboxController {
       messageType: 'audio',
       mediaId: sent.mediaId,
       mediaMimeType: sent.mimeType,
-      mediaFilename: 'audio.ogg',
-      mediaVoice: true,
+      mediaFilename: sent.preparedFilename,
+      mediaVoice: sent.mimeType.startsWith('audio/ogg'),
     });
+    // Keep an independent, durable copy of the exact audio accepted by Meta.
+    try {
+      await this.conversationMemoryService.persistIncomingMedia({
+        companyId: conversation.company.id,
+        sessionId: conversation.session.id,
+        mediaId: sent.mediaId,
+        providerMessageId: sent.messageId,
+        buffer: sent.preparedBuffer,
+        mimeType: sent.mimeType,
+        filename: sent.preparedFilename,
+      });
+    } catch (storageError) {
+      console.error('[ChatPro][outbound-audio] Meta aceptó el audio pero no se pudo conservar la copia:', storageError);
+    }
     await this.conversationMemoryService.touchSession(conversation.session.id);
 
     return {
