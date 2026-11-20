@@ -1269,6 +1269,8 @@ export default function Home() {
   const manualConversationAbortRef = useRef<AbortController | null>(null);
   const listRequestRef = useRef(0);
   const listAbortRef = useRef<AbortController | null>(null);
+  const listBusyRef = useRef(false);
+  const lastListRefreshAtRef = useRef(0);
   const nextSessionsOffsetRef = useRef(0);
   const pendingSessionsTotalRef = useRef(0);
   const activeSessionIdRef = useRef("");
@@ -1568,6 +1570,14 @@ export default function Home() {
     const reset = options.reset === true;
     const lightRefresh = options.lightRefresh === true;
 
+    // An automatic refresh must never cancel an in-flight user-driven refresh.
+    if (lightRefresh && listBusyRef.current) return;
+    if (lightRefresh && Date.now() - lastListRefreshAtRef.current < 6500) return;
+    if (!append) {
+      lastListRefreshAtRef.current = Date.now();
+      listBusyRef.current = true;
+    }
+
     const listRequestId = append ? 0 : ++listRequestRef.current;
     const listController = append ? null : new AbortController();
 
@@ -1705,6 +1715,9 @@ export default function Home() {
           : "No se pudo cargar la bandeja.",
       );
     } finally {
+      if (!append && listRequestId === listRequestRef.current) {
+        listBusyRef.current = false;
+      }
       if (append) {
         setLoadingMoreSessions(false);
       } else if (showSpinner) {
@@ -3431,7 +3444,9 @@ export default function Home() {
     const fullRefreshVisibleList = () => {
       if (
         document.visibilityState === "visible" &&
-        !debouncedSearch.trim()
+        !debouncedSearch.trim() &&
+        !listBusyRef.current &&
+        Date.now() - lastListRefreshAtRef.current >= 6500
       ) {
         void loadList(false);
       }
@@ -3439,7 +3454,7 @@ export default function Home() {
 
     const lightTimer = window.setInterval(
       lightRefreshVisibleList,
-      5000,
+      8000,
     );
 
     const fullTimer = window.setInterval(
