@@ -595,8 +595,30 @@ function ImageMessageViewer({ item }: { item: InboxMessage }) {
   const [loading, setLoading] = useState(true);
   const [imageError, setImageError] = useState("");
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [requested, setRequested] = useState(false);
+  const placeholderRef = useRef<HTMLSpanElement | null>(null);
+
+  // Only load images near the visible conversation, avoiding hundreds of Graph calls.
+  useEffect(() => {
+    if (requested) return;
+    const node = placeholderRef.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setRequested(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setRequested(true);
+      },
+      { rootMargin: "160px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [requested]);
 
   useEffect(() => {
+    if (!requested) return;
     const controller = new AbortController();
     let objectUrl = "";
 
@@ -667,7 +689,7 @@ function ImageMessageViewer({ item }: { item: InboxMessage }) {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [item.id, item.sessionId]);
+  }, [item.id, item.sessionId, requested]);
 
   useEffect(() => {
     if (!viewerOpen) {
@@ -691,6 +713,9 @@ function ImageMessageViewer({ item }: { item: InboxMessage }) {
     };
   }, [viewerOpen]);
 
+  if (!requested) {
+    return <span ref={placeholderRef} className="wa-image-loading"><button type="button" onClick={() => setRequested(true)}>Ver imagen</button></span>;
+  }
   if (loading) {
     return <small className="wa-image-loading">Cargando imagen…</small>;
   }
@@ -757,8 +782,10 @@ function AudioMessagePlayer({ item }: { item: InboxMessage }) {
   const [source, setSource] = useState("");
   const [loading, setLoading] = useState(true);
   const [playbackError, setPlaybackError] = useState("");
+  const [requested, setRequested] = useState(false);
 
   useEffect(() => {
+    if (!requested) return;
     const controller = new AbortController();
     let objectUrl = "";
 
@@ -832,10 +859,14 @@ function AudioMessagePlayer({ item }: { item: InboxMessage }) {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [item.id, item.sessionId]);
+  }, [item.id, item.sessionId, requested]);
 
   return (
     <div className="wa-audio-message">
+      {!requested ? (
+        <button type="button" onClick={() => setRequested(true)}>▶ Escuchar audio</button>
+      ) : null}
+      {requested ? (
       {loading ? (
         <span className="wa-audio-loading">Cargando audio…</span>
       ) : playbackError ? (
@@ -852,6 +883,7 @@ function AudioMessagePlayer({ item }: { item: InboxMessage }) {
           Tu navegador no permite reproducir este audio.
         </audio>
       )}
+      ) : null}
       <small>
         {item.authorType === "customer" ? "Audio del cliente" : "Audio enviado"}
       </small>
@@ -865,8 +897,10 @@ function FileMessageViewer({ item }: { item: InboxMessage }) {
   const [loading, setLoading] = useState(true);
   const [mediaError, setMediaError] = useState("");
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [requested, setRequested] = useState(false);
 
   useEffect(() => {
+    if (!requested) return;
     const controller = new AbortController();
     let objectUrl = "";
 
@@ -943,7 +977,7 @@ function FileMessageViewer({ item }: { item: InboxMessage }) {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [item.id, item.sessionId]);
+  }, [item.id, item.sessionId, requested]);
 
   useEffect(() => {
     if (!viewerOpen || item.messageType !== "video") {
@@ -967,6 +1001,9 @@ function FileMessageViewer({ item }: { item: InboxMessage }) {
     };
   }, [viewerOpen, item.messageType]);
 
+  if (!requested) {
+    return <button type="button" className="wa-document-message" onClick={() => setRequested(true)}>{item.messageType === "video" ? "▶ Ver video" : "📄 Abrir documento"}</button>;
+  }
   if (loading) {
     return (
       <small className="wa-file-loading">
@@ -2860,18 +2897,13 @@ export default function Home() {
     }
 
     const oversizedFile = files.find(
-      (file) => file.size > 8 * 1024 * 1024,
+      (file) => file.size > 25 * 1024 * 1024,
     );
 
     if (oversizedFile) {
       setError(
-        `La imagen ${oversizedFile.name || "seleccionada"} supera el límite de 8 MB.`,
+        `La imagen ${oversizedFile.name || "seleccionada"} supera el límite de 25 MB.`,
       );
-      return;
-    }
-
-    if (imageFiles.length + files.length > 10) {
-      setError("Puedes enviar hasta 10 imágenes por vez.");
       return;
     }
 
@@ -2960,7 +2992,7 @@ export default function Home() {
 
     if (files.length > 1) {
       setError(
-        "Puedes seleccionar hasta 10 imágenes a la vez. Los videos, audios y documentos se adjuntan uno por uno.",
+        "Las fotografías se pueden seleccionar juntas. Los videos, audios y documentos se adjuntan uno por uno.",
       );
       return;
     }
@@ -3114,6 +3146,7 @@ export default function Home() {
 
     try {
       for (let index = 0; index < imageFiles.length; index += 1) {
+        setActionMessage(`Enviando imagen ${index + 1} de ${imageFiles.length}…`);
         const imageFile = imageFiles[index];
         const form = new FormData();
 
