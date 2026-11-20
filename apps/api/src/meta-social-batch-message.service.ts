@@ -1,3 +1,4 @@
+import { isInstagramNativeOutgoingEcho } from './social-inbox-rules';
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import OpenAI from 'openai';
@@ -195,9 +196,12 @@ export class MetaSocialBatchMessageService {
     // messages. Preserve them as advisor messages and never feed them to AI.
     if (
       input.channel === 'instagram' &&
-      recipientId &&
-      recipientId !== input.accountId &&
-      (senderId === input.accountId || message.is_echo === true)
+      isInstagramNativeOutgoingEcho(
+        input.accountId,
+        senderId,
+        recipientId,
+        message.is_echo === true,
+      )
     ) {
       await this.captureInstagramOutboundEcho({
         companyId: input.companyId,
