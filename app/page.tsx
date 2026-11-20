@@ -881,7 +881,7 @@ function AudioMessagePlayer({ item }: { item: InboxMessage }) {
         >
           Tu navegador no permite reproducir este audio.
         </audio>
-      ) : null}
+      )) : null}
       <small>
         {item.authorType === "customer" ? "Audio del cliente" : "Audio enviado"}
       </small>
