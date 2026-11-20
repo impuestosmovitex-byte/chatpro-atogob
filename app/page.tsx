@@ -865,8 +865,7 @@ function AudioMessagePlayer({ item }: { item: InboxMessage }) {
     <div className="wa-audio-message">
       {!requested ? (
         <button type="button" onClick={() => setRequested(true)}>▶ Escuchar audio</button>
-      ) : null}
-      {requested ? (loading ? (
+      ) : loading ? (
         <span className="wa-audio-loading">Cargando audio…</span>
       ) : playbackError ? (
         <span className="wa-audio-error">{playbackError}</span>
@@ -875,20 +874,17 @@ function AudioMessagePlayer({ item }: { item: InboxMessage }) {
           controls
           preload="metadata"
           src={source}
-          onError={() =>
-            setPlaybackError("El navegador no pudo reproducir este audio.")
-          }
+          onError={() => setPlaybackError("El navegador no pudo reproducir este audio.")}
         >
           Tu navegador no permite reproducir este audio.
         </audio>
-      )) : null}
+      )}
       <small>
         {item.authorType === "customer" ? "Audio del cliente" : "Audio enviado"}
       </small>
     </div>
   );
 }
-
 
 function FileMessageViewer({ item }: { item: InboxMessage }) {
   const [source, setSource] = useState("");
