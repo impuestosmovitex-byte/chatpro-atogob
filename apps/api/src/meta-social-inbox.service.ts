@@ -58,7 +58,6 @@ export class MetaSocialInboxService {
       .from('social_conversation_sessions')
       .select('id, company_id, channel, last_message_at')
       .eq('attention_status', 'human')
-      .eq('pending_count', 0)
       .lte('last_message_at', cutoff)
       .order('last_message_at', { ascending: true })
       .limit(500);
@@ -100,8 +99,7 @@ export class MetaSocialInboxService {
           .eq('id', row.id)
           .eq('company_id', row.company_id)
           .eq('attention_status', 'human')
-          .eq('pending_count', 0)
-          .eq('last_message_at', row.last_message_at)
+              .eq('last_message_at', row.last_message_at)
           .select('id');
 
         if (updateError) throw updateError;
