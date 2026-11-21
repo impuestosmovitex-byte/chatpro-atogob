@@ -20,8 +20,8 @@ describe('Instagram receipt parser', () => {
   expect(parseInstagramReceipts({entry:[{id:account,messaging:[{sender:{id:customer},recipient:{id:'other-business'},read:{mid:'abc'}}]}]}])).toEqual([]);
  });
  it('parses 10 and 13 digit timestamps but rejects bad/future values',()=>{
-  expect(receiptWatermarkIso(1763730000)).toBe('2025-11-21T10:20:00.000Z');
-  expect(receiptWatermarkIso(1763730000000)).toBe('2025-11-21T10:20:00.000Z');
+  expect(receiptWatermarkIso(1763730000)).toBe('2025-11-21T13:00:00.000Z');
+  expect(receiptWatermarkIso(1763730000000)).toBe('2025-11-21T13:00:00.000Z');
   expect(receiptWatermarkIso('oops')).toBeNull();
   expect(receiptWatermarkIso(Date.now()+86_400_000)).toBeNull();
  });
