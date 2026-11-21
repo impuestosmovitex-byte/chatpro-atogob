@@ -19,6 +19,7 @@ import {
   MetaInstagramMediaAiService,
 } from './meta-instagram-media-ai.service';
 import { MetaAdsLeadService } from './meta-ads-lead.service';
+import { InstagramDeliveryReceiptService } from './instagram-delivery-receipt.service';
 
 type JsonObject = Record<string, unknown>;
 
@@ -81,6 +82,10 @@ export class MetaInstagramWebhookController {
     try {
       const normalizedBody =
         this.normalizeInstagramAttachments(body);
+
+      // Read/delivery events are separate from message events. Save receipts
+      // before the regular inbox pipeline, without inventing confirmations.
+      await this.deliveryReceiptService.capture(normalizedBody);
 
       await this.socialMessageService
         .processInstagramWebhook(normalizedBody);
