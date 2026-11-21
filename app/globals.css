@@ -3645,3 +3645,49 @@ h2 {
   .chatpro-shell:has(.inbox-layout) .inbox-layout {border-radius:14px}
   .chatpro-shell:has(.inbox-layout) .message-bubble {max-width:90%}
 }
+
+
+/* Delivery evidence is shown inside message bubbles on all screen widths. */
+.mw1-message-delivery {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 100%;
+  padding-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #64748b;
+  text-align: right;
+}
+.mw1-message-delivery .mw1-delivery-checks {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -4px;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+.mw1-message-delivery .mw1-delivery-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.mw1-message-delivery--read,
+.mw1-message-delivery--read .mw1-delivery-checks { color: #2563eb; }
+.mw1-message-delivery--failed,
+.mw1-message-delivery--failed .mw1-delivery-checks { color: #b91c1c; }
+@media (max-width: 760px) {
+  .mobile-conversation-shell .mw1-message-delivery {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    max-width: 100%;
+    font-size: 12px;
+    margin-top: 6px;
+  }
+  .mobile-conversation-shell .mw1-message-delivery .mw1-delivery-label {
+    display: inline !important;
+    max-width: 100%;
+  }
+}
