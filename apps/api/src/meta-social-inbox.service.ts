@@ -217,7 +217,7 @@ export class MetaSocialInboxService {
       await client
         .from('social_conversations')
         .select(
-          'id, session_id, message, sender, author_type, message_type, media_url, provider_message_id, created_at',
+          'id, session_id, message, sender, author_type, message_type, media_url, provider_message_id, delivery_status, provider_error, created_at',
         )
         .in('session_id', sessionIds)
         .order('created_at', { ascending: false })
@@ -491,7 +491,7 @@ export class MetaSocialInboxService {
     let messagesQuery = client
       .from('social_conversations')
       .select(
-        'id, session_id, message, sender, author_type, message_type, media_url, provider_message_id, created_at',
+        'id, session_id, message, sender, author_type, message_type, media_url, provider_message_id, delivery_status, provider_error, created_at',
       )
       .eq('session_id', sessionId)
       .eq('company_id', company.id);
@@ -803,6 +803,16 @@ export class MetaSocialInboxService {
       providerMessageId:
         typeof row.provider_message_id === 'string'
           ? row.provider_message_id
+          : null,
+      deliveryStatus:
+        typeof row.delivery_status === 'string'
+          ? row.delivery_status
+          : row.author_type !== 'customer' && typeof row.provider_message_id === 'string'
+            ? 'sent'
+            : null,
+      providerError:
+        typeof row.provider_error === 'string'
+          ? row.provider_error
           : null,
       replyToProviderMessageId: null,
       replyToMessage: null,
