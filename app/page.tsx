@@ -4344,6 +4344,7 @@ export default function Home() {
     !mobileSearch.trim();
 
   const selectedStatus = selected?.session.attentionStatus;
+  const selectedChannel = selected ? customerChannel(selected.session, selected.contact) : "whatsapp";
   const readOnlyAutomation =
     selected?.session.context?.read_only_automation === true;
   const showTakeButton =
@@ -5471,45 +5472,38 @@ export default function Home() {
                         <time>{formatDate(item.createdAt)}</time>
                         {item.authorType !== "customer" && !isInternalTest && (
                           <div
+                            className={`mw1-message-delivery mw1-message-delivery--${item.deliveryStatus || "unknown"}`}
                             role="status"
+                            aria-live="polite"
                             aria-label={
                               item.deliveryStatus === "read"
-                                ? "Mensaje leído"
+                                ? "Dos chulos azules: leído, confirmado por Meta"
                                 : item.deliveryStatus === "delivered"
-                                  ? "Mensaje entregado"
+                                  ? "Dos chulos: entregado, confirmado por Meta"
                                   : item.deliveryStatus === "failed"
-                                    ? "Mensaje no entregado"
+                                    ? "Advertencia: Meta rechazó el mensaje"
                                     : item.deliveryStatus === "sent"
-                                      ? "Enviado a Meta, entrega no confirmada"
-                                      : "Estado de entrega sin confirmar"
+                                      ? "Un chulo: enviado a Meta, sin confirmación posterior"
+                                      : "Entrega pendiente de confirmación"
                             }
-                            title={item.providerError || undefined}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "flex-end",
-                              gap: 5,
-                              fontSize: 11,
-                              marginTop: 4,
-                              color:
-                                item.deliveryStatus === "failed"
-                                  ? "#b91c1c"
-                                  : item.deliveryStatus === "read"
-                                    ? "#2563eb"
-                                    : "#64748b",
-                            }}
+                            title={item.providerError || (
+                              selectedChannel === "instagram"
+                                ? "Instagram: se muestra solo lo que Meta confirmó; una respuesta del cliente no equivale a un recibo de lectura."
+                                : "Estado de entrega comunicado por Meta"
+                            )}
                           >
-                            <span aria-hidden="true">
+                            <span className="mw1-delivery-checks" aria-hidden="true">
                               {item.deliveryStatus === "failed" ? "⚠" :
                                 item.deliveryStatus === "read" || item.deliveryStatus === "delivered"
                                   ? "✓✓" : item.deliveryStatus === "sent" ? "✓" : "◷"}
                             </span>
-                            <span>
+                            <span className="mw1-delivery-label">
                               {item.deliveryStatus === "read" ? "Leído" :
                                 item.deliveryStatus === "delivered" ? "Entregado" :
-                                item.deliveryStatus === "failed" ? "No entregado" :
-                                item.deliveryStatus === "sent" ? "Enviado · pendiente de entrega" :
-                                "Entrega sin confirmar"}
+                                item.deliveryStatus === "failed" ? "Meta rechazó el envío" :
+                                item.deliveryStatus === "sent"
+                                  ? selectedChannel === "instagram" ? "Enviado a Instagram · sin recibo de entrega" : "Enviado · entrega sin confirmar"
+                                  : "Estado de entrega sin confirmar"}
                             </span>
                           </div>
                         )}
