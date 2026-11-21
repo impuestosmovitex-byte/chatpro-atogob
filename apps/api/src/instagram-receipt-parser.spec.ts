@@ -15,9 +15,18 @@ describe('Instagram receipt parser', () => {
   expect(r[0].kind).toBe('read');expect(r[0].mids).toEqual(['mid-2']);
  });
  it('ignores inbound message, echo, and arbitrary customer responses',()=>{
-  expect(parseInstagramReceipts({entry:[{id:account,messaging:[{sender:{id:customer},recipient:{id:account},message:{mid:'abc',text:'Gracias'}}]}]}])).toEqual([]);
-  expect(parseInstagramReceipts({entry:[{id:account,messaging:[{sender:{id:account},recipient:{id:customer},read:{mid:'abc'}}]}]}])).toEqual([]);
-  expect(parseInstagramReceipts({entry:[{id:account,messaging:[{sender:{id:customer},recipient:{id:'other-business'},read:{mid:'abc'}}]}]}])).toEqual([]);
+  const inbound = { entry: [{ id:account, messaging:[{
+    sender:{id:customer}, recipient:{id:account}, message:{mid:'abc',text:'Gracias'},
+  }] }] };
+  const echo = { entry: [{ id:account, messaging:[{
+    sender:{id:account}, recipient:{id:customer}, read:{mid:'abc'},
+  }] }] };
+  const unrelated = { entry: [{ id:account, messaging:[{
+    sender:{id:customer}, recipient:{id:'other-business'}, read:{mid:'abc'},
+  }] }] };
+  expect(parseInstagramReceipts(inbound)).toEqual([]);
+  expect(parseInstagramReceipts(echo)).toEqual([]);
+  expect(parseInstagramReceipts(unrelated)).toEqual([]);
  });
  it('parses 10 and 13 digit timestamps but rejects bad/future values',()=>{
   expect(receiptWatermarkIso(1763730000)).toBe('2025-11-21T13:00:00.000Z');
