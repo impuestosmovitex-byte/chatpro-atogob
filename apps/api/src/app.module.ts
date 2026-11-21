@@ -49,6 +49,7 @@ import { MetaSocialBatchMessageService } from './meta-social-batch-message.servi
 import { MetaSocialAiService } from './meta-social-ai.service';
 import { MetaSocialMessagingService } from './meta-social-messaging.service';
 import { MetaSocialInboxService } from './meta-social-inbox.service';
+import { InstagramDeliveryReceiptService } from './instagram-delivery-receipt.service';
 import { MetaAdsLeadService } from './meta-ads-lead.service';
 import { MetaAdsLeadsController } from './meta-ads-leads.controller';
 import { MetaAdsWhatsappMiddleware } from './meta-ads-whatsapp.middleware';
@@ -157,6 +158,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
     MetaSocialAiService,
     MetaSocialMessagingService,
     MetaSocialInboxService,
+    InstagramDeliveryReceiptService,
     WhatsappMessagingService,
     AppService,
     AutomationRuntimeService,
