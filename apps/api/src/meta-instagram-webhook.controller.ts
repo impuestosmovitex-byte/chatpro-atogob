@@ -32,6 +32,8 @@ export class MetaInstagramWebhookController {
       MetaInstagramMediaAiService,
     private readonly metaAdsLeadService:
       MetaAdsLeadService,
+    private readonly deliveryReceiptService:
+      InstagramDeliveryReceiptService,
   ) {}
 
   @Get()
