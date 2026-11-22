@@ -5624,7 +5624,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           : customCustomerMessage
             ? `${customCustomerMessage}${typeof handoff.support_hours_label === 'string' &&
                 handoff.support_hours_label.trim()
-                  ? ` Nuestro horario de asesores es ${handoff.support_hours_label.trim()} (hora de Colombia).`
+                  ? ` Nuestro horario de asesores es ${handoff.support_hours_label.trim()}.`
                   : ''}`
             : verifiedMessage;
 
@@ -7534,7 +7534,7 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
       typeof handoff.support_hours_label === 'string'
         ? handoff.support_hours_label.trim()
         : '';
-    const schedule = hours ? ` Nuestro horario de asesores es ${hours} (hora de Colombia).` : '';
+    const schedule = hours ? ` Nuestro horario de asesores es ${hours}.` : '';
 
     if (session.attentionStatus === 'human') {
       return (
@@ -7545,11 +7545,11 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
     }
 
     if (status === 'waiting_outside_hours') {
-      return 'En este momento nuestros asesores están fuera del horario de atención. Tu solicitud quedó pendiente para que el equipo continúe cuando retome su jornada, en orden de llegada.' + schedule;
+      return 'En este momento nuestros asesores están fuera del horario de atención. Tu solicitud quedó pendiente para que el equipo continúe cuando retome su jornada.' + schedule;
     }
 
     if (status === 'waiting_no_advisor') {
-      return 'En este momento no hay asesores disponibles para atenderte. Tu solicitud quedó pendiente para que el equipo la revise cuando haya disponibilidad, en orden de llegada.' + schedule;
+      return 'En este momento no hay asesores disponibles para atenderte. Tu solicitud quedó pendiente para que el equipo la revise cuando haya disponibilidad.' + schedule;
     }
 
     if (status === 'waiting_no_area') {
