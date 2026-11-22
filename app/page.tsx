@@ -3,6 +3,27 @@
 import { AppSidebar } from "./components/AppSidebar";
 import { FormEvent, useEffect, useMemo, useState, useRef } from "react";
 
+const COMPOSER_EMOJIS = ["😀", "😊", "😍", "🥰", "😂", "😉", "😎", "🥹", "🙏", "👍", "❤️", "🔥", "🎉", "✅", "👌", "💛", "😘", "🤗", "🙌", "💯", "👗", "🛍️", "📦", "✨"];
+
+function ComposerEmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) {
+  return (
+    <div className="mw1-emoji-menu" role="group" aria-label="Seleccionar emoji">
+      <div className="mw1-emoji-menu-head">
+        <strong>Emojis</strong>
+        <button type="button" aria-label="Cerrar emojis" onClick={onClose}>×</button>
+      </div>
+      <div className="mw1-emoji-grid">
+        {COMPOSER_EMOJIS.map((emoji) => (
+          <button type="button" key={emoji} aria-label={`Insertar ${emoji}`} onMouseDown={(event) => event.preventDefault()} onClick={() => onSelect(emoji)}>
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 type AttentionStatus = "ai" | "waiting" | "human" | "closed";
 
 type Contact = {
@@ -1284,6 +1305,10 @@ export default function Home() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [imageSending, setImageSending] = useState(false);
+  const [activeImagePreviewIndex, setActiveImagePreviewIndex] = useState(0);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const imageDraftSessionRef = useRef("");
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentSending, setAttachmentSending] = useState(false);
   const [draggingFile, setDraggingFile] = useState(false);
@@ -2862,6 +2887,22 @@ export default function Home() {
     }
   }
 
+  function insertComposerEmoji(emoji: string) {
+    const input = composerTextareaRef.current;
+    const start = input?.selectionStart ?? message.length;
+    const end = input?.selectionEnd ?? start;
+    const next = message.slice(0, start) + emoji + message.slice(end);
+    setMessage(next);
+    const sessionId = selected?.session.id;
+    if (sessionId) conversationDraftsRef.current[sessionId] = next;
+    setEmojiPickerOpen(false);
+    requestAnimationFrame(() => {
+      input?.focus();
+      const caret = start + emoji.length;
+      input?.setSelectionRange(caret, caret);
+    });
+  }
+
   function clearImageDraft() {
     for (const previewUrl of imagePreviewUrls) {
       URL.revokeObjectURL(previewUrl);
@@ -2869,6 +2910,9 @@ export default function Home() {
 
     setImageFiles([]);
     setImagePreviewUrls([]);
+    setActiveImagePreviewIndex(0);
+    setEmojiPickerOpen(false);
+    imageDraftSessionRef.current = "";
 
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
@@ -2876,6 +2920,7 @@ export default function Home() {
   }
 
   function removeImageDraft(index: number) {
+    setActiveImagePreviewIndex((current) => Math.max(0, current > index ? current - 1 : current === index ? Math.min(index, imageFiles.length - 2) : current));
     const previewUrl = imagePreviewUrls[index];
 
     if (previewUrl) {
@@ -2926,6 +2971,11 @@ export default function Home() {
     }
 
     clearAttachmentDraft();
+    if (!imageFiles.length) {
+      imageDraftSessionRef.current = selected?.session.id || "";
+      setActiveImagePreviewIndex(0);
+    }
+    setEmojiPickerOpen(false);
 
     setImageFiles((current) => [...current, ...files]);
     setImagePreviewUrls((current) => [
@@ -3073,6 +3123,7 @@ export default function Home() {
     }
 
     clearImageDraft();
+    setEmojiPickerOpen(false);
     setAttachmentFile(file);
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
@@ -3168,6 +3219,11 @@ export default function Home() {
 
   async function sendSelectedImages() {
     if (!selected?.session.id || !imageFiles.length) return;
+    if (imageDraftSessionRef.current && imageDraftSessionRef.current !== selected.session.id) {
+      setError("Estas imágenes pertenecen a otra conversación. Descarta el adjunto y vuelve a elegir las fotos en el chat correcto.");
+      return;
+    }
+    if (imageSending || actionLoading) return;
 
     setImageSending(true);
     setError("");
@@ -5636,7 +5692,15 @@ export default function Home() {
                     </button>
                   </form>
                 ) : selected.session.attentionStatus === "human" ? (
-                  <form className="reply-box" onSubmit={sendMessage}>
+                  <form className={`reply-box${imageFiles.length ? " has-image-draft" : ""}`} onSubmit={sendMessage}>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,video/mp4,video/3gpp,video/quicktime,audio/aac,audio/amr,audio/mpeg,audio/mp4,audio/ogg,audio/webm,audio/wav,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                      hidden
+                      onChange={(event) => selectMediaFiles(event.target.files)}
+                    />
                     {recording || (audioBlob && audioPreviewUrl) ? (
                       <div
                         className={`wa-audio-composer ${
@@ -5707,47 +5771,75 @@ export default function Home() {
                           </button>
                         )}
                       </div>
+                    ) : imageFiles.length > 0 ? (
+                      <div className="mw1-image-draft-panel">
+                        <header className="mw1-image-draft-header">
+                          <button type="button" className="mw1-image-draft-close" onClick={() => { clearImageDraft(); }} disabled={imageSending} aria-label="Cancelar adjunto y volver al chat">×</button>
+                          <div>
+                            <strong>Enviar fotos</strong>
+                            <small>{imageFiles.length} {imageFiles.length === 1 ? "imagen" : "imágenes"} · {Math.min(activeImagePreviewIndex + 1, imageFiles.length)} de {imageFiles.length}</small>
+                          </div>
+                          <button type="button" className="mw1-image-draft-add" onClick={() => imageInputRef.current?.click()} disabled={imageSending} aria-label="Agregar más fotos">+ Añadir</button>
+                        </header>
+                        <div className="mw1-image-draft-stage">
+                          <img
+                            src={imagePreviewUrls[Math.min(activeImagePreviewIndex, imagePreviewUrls.length - 1)]}
+                            alt={`Vista previa de la imagen ${activeImagePreviewIndex + 1}`}
+                          />
+                        </div>
+                        <div className="mw1-image-draft-thumbnails" aria-label="Fotos preparadas para enviar">
+                          {imageFiles.map((imageFile, index) => (
+                            <div className={`mw1-image-draft-thumb${index === activeImagePreviewIndex ? " active" : ""}`} key={`${imageFile.name}-${imageFile.lastModified}-${index}`}>
+                              <button type="button" className="mw1-thumb-select" onClick={() => setActiveImagePreviewIndex(index)} aria-label={`Ver foto ${index + 1}`} aria-pressed={index === activeImagePreviewIndex}>
+                                <img src={imagePreviewUrls[index]} alt="" />
+                              </button>
+                              <button type="button" className="mw1-thumb-remove" onClick={() => removeImageDraft(index)} disabled={imageSending} aria-label={`Quitar foto ${index + 1}`}>×</button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mw1-image-draft-footer">
+                          <div className="mw1-caption-compose">
+                            <div className="mw1-emoji-control">
+                              <button type="button" className="mw1-emoji-toggle" onClick={() => setEmojiPickerOpen((v) => !v)} aria-expanded={emojiPickerOpen} aria-label="Elegir emoji para la descripción" disabled={imageSending}>☺</button>
+                              {emojiPickerOpen ? <ComposerEmojiPicker onSelect={insertComposerEmoji} onClose={() => setEmojiPickerOpen(false)} /> : null}
+                            </div>
+                            <textarea
+                              ref={composerTextareaRef}
+                              value={message}
+                              maxLength={1024}
+                              rows={1}
+                              onChange={(event) => {
+                                setMessage(event.target.value);
+                                if (selected?.session.id) conversationDraftsRef.current[selected.session.id] = event.target.value;
+                              }}
+                              onPaste={handleComposerPaste}
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape") setEmojiPickerOpen(false);
+                                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                                  event.preventDefault();
+                                  if (!imageSending) void sendSelectedImages();
+                                }
+                              }}
+                              placeholder="Escribe un mensaje para acompañar las fotos…"
+                              aria-label="Mensaje opcional para las fotografías"
+                            />
+                          </div>
+                          <button type="submit" className="mw1-image-draft-send" disabled={imageSending} aria-label={`Enviar ${imageFiles.length} imágenes`}>
+                            {imageSending ? "Enviando…" : "➤"}
+                          </button>
+                        </div>
+                        <small className="mw1-caption-note">El mensaje acompaña la primera imagen. Shift + Enter para nueva línea.</small>
+                      </div>
                     ) : (
                       <>
-                        {imageFiles.map((imageFile, index) => {
-                          const imagePreviewUrl = imagePreviewUrls[index];
-
-                          if (!imagePreviewUrl) return null;
-
-                          return (
-                            <div
-                              className="wa-image-composer"
-                              key={`${imageFile.name}-${imageFile.lastModified}-${index}`}
-                            >
-                              <button
-                                type="button"
-                                className="wa-image-remove"
-                                onClick={() => removeImageDraft(index)}
-                                disabled={imageSending}
-                                aria-label={`Quitar imagen ${index + 1}`}
-                                title="Quitar imagen"
-                              >
-                                ×
-                              </button>
-                              <img
-                                src={imagePreviewUrl}
-                                alt={`Vista previa de la imagen ${index + 1}`}
-                              />
-                              <div>
-                                <strong>
-                                  {imageFile.name || `Imagen ${index + 1}`}
-                                </strong>
-                                <small>
-                                  {(imageFile.size / 1024 / 1024).toFixed(2)} MB
-                                </small>
-                              </div>
-                            </div>
-                          );
-                        })}
-
                         <div className="reply-compose">
+                          <div className="mw1-emoji-control">
+                            <button type="button" className="mw1-emoji-toggle" onClick={() => setEmojiPickerOpen((v) => !v)} aria-expanded={emojiPickerOpen} aria-label="Elegir emoji">☺</button>
+                            {emojiPickerOpen ? <ComposerEmojiPicker onSelect={insertComposerEmoji} onClose={() => setEmojiPickerOpen(false)} /> : null}
+                          </div>
                           <div className="quick-reply-wrap">
                             <textarea
+                              ref={composerTextareaRef}
                               value={message}
                               onChange={(event) => {
                                 const next = event.target.value;
@@ -5851,16 +5943,6 @@ export default function Home() {
                             </div>
                           ) : null}
 
-                          <input
-                            ref={imageInputRef}
-                            type="file"
-                            multiple
-                            accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,video/mp4,video/3gpp,video/quicktime,audio/aac,audio/amr,audio/mpeg,audio/mp4,audio/ogg,audio/webm,audio/wav,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                            hidden
-                            onChange={(event) =>
-                              selectMediaFiles(event.target.files)
-                            }
-                          />
                           {canSendMedia ? (
                             <button
                               type="button"
@@ -5890,57 +5972,35 @@ export default function Home() {
                             </button>
                           ) : null}
 
-                          {canSendAudio ? (
-                            <button
-                              type="button"
-                              className="wa-idle-icon"
-                              onClick={() => void startAudioRecording()}
-                              disabled={actionLoading || audioSending}
-                              aria-label="Grabar audio"
-                              title="Grabar audio"
-                            >
-                              <svg
-                                aria-hidden="true"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <rect
-                                  x="9"
-                                  y="2"
-                                  width="6"
-                                  height="12"
-                                  rx="3"
-                                />
-                                <path d="M5 10a7 7 0 0 0 14 0" />
-                                <path d="M12 17v5" />
-                                <path d="M8 22h8" />
-                              </svg>
-                            </button>
-                          ) : null}
                         </div>
 
-                        <button
-                          className="wa-text-send"
-                          type="submit"
-                          disabled={
-                            actionLoading ||
-                            imageSending ||
-                            attachmentSending ||
-                            (!message.trim() &&
-                              imageFiles.length === 0 &&
-                              !attachmentFile)
-                          }
-                          aria-label="Enviar mensaje"
-                          title="Enviar mensaje"
-                        >
-                          <span aria-hidden="true">
-                            {actionLoading || imageSending || attachmentSending ? "…" : "➤"}
-                          </span>
-                        </button>
+                        {canSendAudio && !message.trim() && !attachmentFile ? (
+                          <button
+                            type="button"
+                            className="wa-text-send mw1-voice-primary"
+                            onClick={() => void startAudioRecording()}
+                            disabled={actionLoading || audioSending || imageSending || attachmentSending || recording}
+                            aria-label="Grabar audio"
+                            title="Grabar audio"
+                          >
+                            <svg aria-hidden="true" viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="9" y="2" width="6" height="12" rx="3" />
+                              <path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8" />
+                            </svg>
+                          </button>
+                        ) : (
+                          <button
+                            className="wa-text-send"
+                            type="submit"
+                            disabled={actionLoading || imageSending || attachmentSending || (!message.trim() && !attachmentFile)}
+                            aria-label="Enviar mensaje"
+                            title="Enviar mensaje"
+                          >
+                            <span aria-hidden="true">
+                              {actionLoading || imageSending || attachmentSending ? "…" : "➤"}
+                            </span>
+                          </button>
+                        )}
                       </>
                     )}
                   </form>
