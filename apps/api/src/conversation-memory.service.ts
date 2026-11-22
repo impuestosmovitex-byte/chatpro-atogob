@@ -1,3 +1,4 @@
+import { formatConfiguredSupportHours, type SupportHoursRow } from './support-hours-message';
 import OpenAI from 'openai';
 import { qualifiesForStaleAiReview, pickStaleReviewAction, type StaleReviewDecision } from './stale-human-ai-rules';
 import { canArchiveAnsweredHumanChat } from './social-inbox-rules';
@@ -839,6 +840,7 @@ export class ConversationMemoryService {
       'Revisa el último mensaje del cliente y continúa la atención.',
       180,
     );
+    const supportHoursLabel = await this.loadConfiguredSupportHoursLabel(session.companyId);
     await this.conversationEventsService.record({
       companyId: session.companyId,
       sessionId: session.id,
@@ -873,6 +875,7 @@ export class ConversationMemoryService {
         area_id: area?.id ?? null,
         area_name: area?.name ?? null,
         status: 'pending',
+        support_hours_label: supportHoursLabel,
       },
     };
 
@@ -1130,6 +1133,24 @@ export class ConversationMemoryService {
         : null;
 
     return id && name ? { id, name, areaType } : null;
+  }
+
+  private async loadConfiguredSupportHoursLabel(companyId: string): Promise<string> {
+    try {
+      const { data, error } = await this.supabaseService.getClient()
+        .from('company_support_hours')
+        .select('day_of_week, is_open, start_time, end_time')
+        .eq('company_id', companyId)
+        .order('day_of_week', { ascending: true });
+      if (error) {
+        console.error('[MW1][handoff] No se pudo consultar horario público:', error);
+        return '';
+      }
+      return formatConfiguredSupportHours((data ?? []) as SupportHoursRow[]);
+    } catch (error) {
+      console.error('[MW1][handoff] No se pudo formatear el horario:', error);
+      return '';
+    }
   }
 
   private async isHumanAttentionOpen(companyId: string): Promise<boolean> {
