@@ -3870,3 +3870,163 @@ h2 {
     padding-right: 10px;
   }
 }
+
+
+/* MW1 MOBILE KEYBOARD — iOS visual viewport and one anchored composer.
+ * The browser's on-screen keyboard changes the visible viewport without
+ * necessarily changing the CSS layout viewport. Keep controls in the chat.
+ */
+@media (max-width: 760px) {
+  .mobile-conversation-shell {
+    position: fixed;
+    top: var(--mw1-visible-top, 0px);
+    right: 0;
+    bottom: auto;
+    left: 0;
+    height: var(--mw1-visible-height, 100dvh);
+    min-height: 0;
+    max-height: var(--mw1-visible-height, 100dvh);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mobile-conversation-shell .workspace {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .mobile-conversation-shell .inbox-layout,
+  .mobile-conversation-shell .chat-panel {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .mobile-conversation-shell .chat-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mobile-conversation-shell .message-feed {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-conversation-shell .reply-box:not(.has-image-draft) {
+    position: relative;
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    overflow: visible;
+  }
+
+  .mobile-conversation-shell .reply-compose {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    gap: 5px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 3px 7px;
+    overflow: visible;
+  }
+
+  .mobile-conversation-shell .mw1-emoji-control {
+    flex: 0 0 36px;
+    width: 36px;
+    align-self: center;
+  }
+
+  .mobile-conversation-shell .mw1-emoji-toggle {
+    width: 36px;
+    height: 40px;
+    color: #526072;
+    background: transparent;
+  }
+
+  .mobile-conversation-shell .quick-reply-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  .mobile-conversation-shell .quick-reply-wrap textarea {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    max-height: 110px;
+    margin: 0;
+    padding: 11px 2px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    resize: none;
+    overflow-y: auto;
+    font-size: 16px;
+    line-height: 1.25;
+    background: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .mobile-conversation-shell .reply-compose .wa-idle-icon {
+    flex: 0 0 38px;
+    align-self: center;
+  }
+
+  .mobile-conversation-shell .reply-box .wa-text-send {
+    flex: 0 0 44px;
+    align-self: center;
+  }
+
+  .mobile-conversation-shell .quick-reply-menu {
+    position: absolute;
+    inset: auto 0 calc(100% + 10px) 0;
+    z-index: 100;
+    max-height: min(240px, 36dvh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-shadow: 0 10px 28px rgba(16, 33, 67, .15);
+  }
+
+  .mobile-conversation-shell .mw1-emoji-menu {
+    position: absolute;
+    left: -8px;
+    bottom: calc(100% + 12px);
+    z-index: 105;
+    width: min(300px, calc(100vw - 36px));
+    max-height: min(300px, 43dvh);
+    overscroll-behavior: contain;
+  }
+
+  html.mw1-keyboard-open .mobile-conversation-shell .reply-box:not(.has-image-draft) {
+    padding-bottom: 6px;
+  }
+
+  .mobile-conversation-shell .reply-box.has-image-draft {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+    max-height: 100%;
+    padding: 0;
+  }
+}
