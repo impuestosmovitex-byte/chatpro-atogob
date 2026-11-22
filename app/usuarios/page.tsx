@@ -52,6 +52,18 @@ const EMPTY_FORM = {
   areaIds: [] as string[],
 };
 
+function describeUserApiError(data: ResponseData, fallback: string): string {
+  const raw = data as { error?: unknown; message?: unknown };
+  const error = typeof raw.error === 'string' ? raw.error.trim() : '';
+  const details = Array.isArray(raw.message)
+    ? raw.message.filter((item): item is string => typeof item === 'string').join('. ')
+    : typeof raw.message === 'string' ? raw.message.trim() : '';
+  const generic = /^(Bad Request|Unauthorized|Forbidden|Internal Server Error|Not Found)$/i;
+  if (error && !generic.test(error)) return error;
+  if (details && !generic.test(details)) return details;
+  return fallback;
+}
+
 function formatDate(value: string | null): string {
   if (!value) {
     return 'Aún no ha ingresado';
@@ -107,7 +119,7 @@ export default function UsuariosPage() {
       const data = (await response.json()) as ResponseData;
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudieron cargar los usuarios.');
+        throw new Error(describeUserApiError(data, 'No se pudieron cargar los usuarios.'));
       }
 
       const nextUsers = data.users || [];
@@ -151,23 +163,51 @@ export default function UsuariosPage() {
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setCreating(true);
+    if (creating) return;
     setMessage('');
     setError('');
 
+    const fullName = form.fullName.trim();
+    const identifier = form.identifier.toUpperCase().replace(/\s+/g, '');
+    if (!fullName) {
+      setError('Escribe el nombre completo del usuario. El texto de ejemplo no es un nombre ingresado.');
+      return;
+    }
+    if (!identifier) {
+      setError('Escribe la identificación o el código de acceso.');
+      return;
+    }
+    if (!/^[A-Z0-9._-]{3,60}$/.test(identifier)) {
+      setError('La identificación debe tener entre 3 y 60 caracteres y solo puede contener letras, números, punto, guion o guion bajo.');
+      return;
+    }
+    if (users.some((user) => user.identifier.toUpperCase() === identifier)) {
+      setError('Esta identificación ya pertenece a un usuario de la empresa. Elige otra o cambia su contraseña.');
+      return;
+    }
+    if (form.password.length < 8) {
+      setError('La contraseña inicial debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (!availableRoles.some((role) => role.key === form.roleKey)) {
+      setError('Selecciona un rol válido para la empresa.');
+      return;
+    }
+
+    setCreating(true);
     try {
       const response = await fetch(
         `/api/users`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'create', ...form }),
+          body: JSON.stringify({ action: 'create', ...form, fullName, identifier }),
         },
       );
       const data = (await response.json()) as ResponseData;
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudo crear el usuario.');
+        throw new Error(describeUserApiError(data, 'No se pudo crear el usuario. Revisa los datos ingresados.'));
       }
 
       setMessage(data.message || 'Usuario creado correctamente.');
@@ -195,7 +235,7 @@ export default function UsuariosPage() {
         ok?:boolean; error?:string; identifier?:string; password?:string;
       };
       if (!response.ok || !data.ok || !data.identifier || !data.password) {
-        throw new Error(data.error || 'No se pudo crear el acceso.');
+        throw new Error(describeUserApiError(data, 'No se pudo crear el acceso.'));
       }
       setMetaReviewCredentials({identifier:data.identifier, password:data.password});
       setMessage('Usuario exclusivo de revisión creado. Guarda sus credenciales una sola vez.');
@@ -224,7 +264,7 @@ export default function UsuariosPage() {
       const data = (await response.json()) as ResponseData;
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudo actualizar el usuario.');
+        throw new Error(describeUserApiError(data, 'No se pudo actualizar el usuario.'));
       }
 
       setMessage(data.message || 'Usuario actualizado correctamente.');
@@ -267,7 +307,7 @@ export default function UsuariosPage() {
       const data = (await response.json()) as ResponseData;
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'No se pudo cambiar la contraseña.');
+        throw new Error(describeUserApiError(data, 'No se pudo cambiar la contraseña.'));
       }
 
       setMessage(data.message || 'Contraseña actualizada correctamente.');
@@ -357,6 +397,8 @@ export default function UsuariosPage() {
                     }))
                   }
                   placeholder="Ejemplo: Yesid Vargas"
+                  autoComplete="name"
+                  required
                   disabled={loading || creating}
                 />
               </label>
@@ -373,6 +415,9 @@ export default function UsuariosPage() {
                   }
                   placeholder="Ejemplo: 1020304050"
                   autoCapitalize="characters"
+                  minLength={3}
+                  maxLength={60}
+                  required
                   disabled={loading || creating}
                 />
                 <small>
@@ -394,6 +439,8 @@ export default function UsuariosPage() {
                     }))
                   }
                   placeholder="Mínimo 8 caracteres"
+                  autoComplete="new-password"
+                  required
                   disabled={loading || creating}
                 />
               </label>
@@ -409,6 +456,7 @@ export default function UsuariosPage() {
                     }))
                   }
                   disabled={loading || creating || isFirstUser}
+                  required
                 >
                   {availableRoles.map((role) => (
                     <option key={role.key} value={role.key}>
