@@ -5483,12 +5483,14 @@ export class WhatsappWebhookController {
     reason: string,
     summary: string,
   ) {
-    await this.conversationMemoryService.requestHumanAttention(session.id, {
+    const updated = await this.conversationMemoryService.requestHumanAttention(session.id, {
       reason,
       summary,
     });
 
-    return 'Claro, voy a dejar tu solicitud para que un asesor continúe contigo. Ya queda con el contexto de lo que revisamos 😊';
+    // The handoff result knows whether an advisor was assigned or whether
+    // this conversation must wait for office hours / available staff.
+    return this.chatAgentService.humanAttentionReply(updated);
   }
 
   private readCustomerServiceFlow(context: Record<string, unknown>) {
