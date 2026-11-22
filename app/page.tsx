@@ -2887,6 +2887,34 @@ export default function Home() {
     }
   }
 
+  // Some browser helpers inject an extra yellow smiley into our composer.
+  // Keep MW1's single, subtle grey emoji selector and the actual emoji palette.
+  // Only suppress separate, injected emoji-only controls; never alter message text.
+  useEffect(() => {
+    const panel = document.querySelector(".chat-panel");
+    if (!panel || typeof MutationObserver === "undefined") return;
+
+    const hideDuplicateEmoji = () => {
+      panel.querySelectorAll<HTMLElement>(
+        ".reply-box .reply-compose button, .reply-box .reply-compose span, " +
+        ".reply-box .reply-compose [role='button'], " +
+        ".reply-box .mw1-caption-compose button, .reply-box .mw1-caption-compose span, " +
+        ".reply-box .mw1-caption-compose [role='button']",
+      ).forEach((control) => {
+        if (control.closest(".mw1-emoji-control, .mw1-emoji-menu")) return;
+        if (control.children.length > 0) return;
+        if (control.textContent?.trim() !== "😊") return;
+        control.style.setProperty("display", "none", "important");
+        control.setAttribute("aria-hidden", "true");
+      });
+    };
+
+    hideDuplicateEmoji();
+    const observer = new MutationObserver(hideDuplicateEmoji);
+    observer.observe(panel, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [selected?.session.id, imageFiles.length]);
+
   function insertComposerEmoji(emoji: string) {
     const input = composerTextareaRef.current;
     const start = input?.selectionStart ?? message.length;
