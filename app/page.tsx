@@ -2941,6 +2941,10 @@ export default function Home() {
 
   function selectImages(files: File[]) {
     if (!files.length) return;
+    if (recording || audioBlob || audioSending) {
+      setError("Primero envía o descarta la nota de voz antes de adjuntar fotografías.");
+      return;
+    }
 
     const allowed = new Set([
       "image/jpeg",
