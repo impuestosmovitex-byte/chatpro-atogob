@@ -2887,33 +2887,107 @@ export default function Home() {
     }
   }
 
-  // Some browser helpers inject an extra yellow smiley into our composer.
-  // Keep MW1's single, subtle grey emoji selector and the actual emoji palette.
-  // Only suppress separate, injected emoji-only controls; never alter message text.
+  // iOS uses a visual viewport distinct from the layout viewport when its
+  // keyboard opens. Keep the entire chat shell (including the composer) inside
+  // that visible rectangle rather than letting floating controls drift upward.
   useEffect(() => {
-    const panel = document.querySelector(".chat-panel");
-    if (!panel || typeof MutationObserver === "undefined") return;
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    const syncViewport = () => {
+      if (!window.matchMedia("(max-width: 760px)").matches) {
+        root.style.removeProperty("--mw1-visible-height");
+        root.style.removeProperty("--mw1-visible-top");
+        root.classList.remove("mw1-keyboard-open");
+        return;
+      }
+      const visibleHeight = Math.max(250, viewport?.height ?? window.innerHeight);
+      const offsetTop = Math.max(0, viewport?.offsetTop ?? 0);
+      root.style.setProperty("--mw1-visible-height", `${visibleHeight}px`);
+      root.style.setProperty("--mw1-visible-top", `${offsetTop}px`);
+      root.classList.toggle("mw1-keyboard-open", (window.innerHeight - visibleHeight) > 120);
+    };
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    viewport?.addEventListener("resize", syncViewport);
+    viewport?.addEventListener("scroll", syncViewport);
+    return () => {
+      window.removeEventListener("resize", syncViewport);
+      viewport?.removeEventListener("resize", syncViewport);
+      viewport?.removeEventListener("scroll", syncViewport);
+      root.style.removeProperty("--mw1-visible-height");
+      root.style.removeProperty("--mw1-visible-top");
+      root.classList.remove("mw1-keyboard-open");
+    };
+  }, [selected?.session.id]);
 
-    const hideDuplicateEmoji = () => {
-      panel.querySelectorAll<HTMLElement>(
-        ".reply-box .reply-compose button, .reply-box .reply-compose span, " +
-        ".reply-box .reply-compose [role='button'], " +
-        ".reply-box .mw1-caption-compose button, .reply-box .mw1-caption-compose span, " +
-        ".reply-box .mw1-caption-compose [role='button']",
-      ).forEach((control) => {
-        if (control.closest(".mw1-emoji-control, .mw1-emoji-menu")) return;
-        if (control.children.length > 0) return;
-        if (control.textContent?.trim() !== "😊") return;
-        control.style.setProperty("display", "none", "important");
-        control.setAttribute("aria-hidden", "true");
+  // Keep only MW1's neutral grey emoji control. Some external page helpers
+  // insert emoji/quick-reply floating badges, which are neither the MW1 slash
+  // shortcuts nor MW1's built-in emoji picker. Never touch actual chat messages.
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined") return;
+    let frame = 0;
+    const unwanted = new Set(["⚡", "😊"]);
+
+    const suppressDuplicateBadges = () => {
+      frame = 0;
+      document.body.querySelectorAll<HTMLElement>("button, [role='button'], span").forEach((node) => {
+        if (
+          node.closest(
+            ".mw1-emoji-control, .mw1-emoji-menu, .message-feed, " +
+            ".conversation-list, .context-panel, .chat-header, .main-sidebar, " +
+            ".quick-reply-menu, .wa-audio-composer",
+          )
+        ) return;
+
+        const value = node.textContent?.replace(/\uFE0F/g, "").trim();
+        if (!value || !unwanted.has(value)) return;
+        const candidate = node.closest<HTMLElement>("button, [role='button']") || node;
+        if (candidate.closest(".mw1-emoji-control, .mw1-emoji-menu, .message-feed")) return;
+        const text = candidate.textContent?.replace(/\uFE0F/g, "").trim();
+        if (!text || !unwanted.has(text)) return;
+
+        const inComposer = Boolean(candidate.closest(".reply-box"));
+        const floating = ["fixed", "absolute"].includes(window.getComputedStyle(candidate).position) ||
+          (candidate.parentElement && ["fixed", "absolute"].includes(window.getComputedStyle(candidate.parentElement).position));
+        if (!inComposer && !floating) return;
+
+        candidate.style.setProperty("display", "none", "important");
+        candidate.setAttribute("aria-hidden", "true");
       });
     };
-
-    hideDuplicateEmoji();
-    const observer = new MutationObserver(hideDuplicateEmoji);
-    observer.observe(panel, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    const schedule = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(suppressDuplicateBadges);
+    };
+    schedule();
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      if (frame) window.cancelAnimationFrame(frame);
+    };
   }, [selected?.session.id, imageFiles.length]);
+
+  function toggleComposerEmojiPicker() {
+    const next = !emojiPickerOpen;
+    setEmojiPickerOpen(next);
+    setQuickReplyOpen(false);
+    // Do not stack the iOS keyboard beneath MW1's own emoji palette.
+    if (next && window.matchMedia("(max-width: 760px)").matches) {
+      composerTextareaRef.current?.blur();
+    }
+  }
+
+  useEffect(() => {
+    if (!emojiPickerOpen) return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".mw1-emoji-control")) {
+        setEmojiPickerOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", dismissOutside);
+    return () => document.removeEventListener("pointerdown", dismissOutside);
+  }, [emojiPickerOpen]);
 
   function insertComposerEmoji(emoji: string) {
     const input = composerTextareaRef.current;
@@ -5832,7 +5906,7 @@ export default function Home() {
                         <div className="mw1-image-draft-footer">
                           <div className="mw1-caption-compose">
                             <div className="mw1-emoji-control">
-                              <button type="button" className="mw1-emoji-toggle" onClick={() => setEmojiPickerOpen((v) => !v)} aria-expanded={emojiPickerOpen} aria-label="Elegir emoji para la descripción" disabled={imageSending}>☺</button>
+                              <button type="button" className="mw1-emoji-toggle" onClick={toggleComposerEmojiPicker} aria-expanded={emojiPickerOpen} aria-label="Elegir emoji para la descripción" disabled={imageSending}>☺</button>
                               {emojiPickerOpen ? <ComposerEmojiPicker onSelect={insertComposerEmoji} onClose={() => setEmojiPickerOpen(false)} /> : null}
                             </div>
                             <textarea
@@ -5853,6 +5927,7 @@ export default function Home() {
                                 }
                               }}
                               placeholder="Escribe un mensaje para acompañar las fotos…"
+                              onFocus={() => setEmojiPickerOpen(false)}
                               aria-label="Mensaje opcional para las fotografías"
                             />
                           </div>
@@ -5866,7 +5941,7 @@ export default function Home() {
                       <>
                         <div className="reply-compose">
                           <div className="mw1-emoji-control">
-                            <button type="button" className="mw1-emoji-toggle" onClick={() => setEmojiPickerOpen((v) => !v)} aria-expanded={emojiPickerOpen} aria-label="Elegir emoji">☺</button>
+                            <button type="button" className="mw1-emoji-toggle" onClick={toggleComposerEmojiPicker} aria-expanded={emojiPickerOpen} aria-label="Elegir emoji">☺</button>
                             {emojiPickerOpen ? <ComposerEmojiPicker onSelect={insertComposerEmoji} onClose={() => setEmojiPickerOpen(false)} /> : null}
                           </div>
                           <div className="quick-reply-wrap">
@@ -5887,12 +5962,12 @@ export default function Home() {
                                     next.trimStart().startsWith("/"),
                                 );
                               }}
-                              onFocus={() =>
+                              onFocus={() => {
+                                setEmojiPickerOpen(false);
                                 setQuickReplyOpen(
-                                  canUseQuickReplies &&
-                                    message.trimStart().startsWith("/"),
-                                )
-                              }
+                                  canUseQuickReplies && message.trimStart().startsWith("/"),
+                                );
+                              }}
                               onPaste={handleComposerPaste}
                               onKeyDown={(event) => {
                                 if (
