@@ -2944,11 +2944,18 @@ export default function Home() {
         const candidate = node.closest<HTMLElement>("button, [role='button']") || node;
         if (candidate.closest(".mw1-emoji-control, .mw1-emoji-menu, .message-feed")) return;
         const text = candidate.textContent?.replace(/\uFE0F/g, "").trim();
-        if (!text || !unwanted.has(text)) return;
+        if (!text || text.replace(/[⚡😊\s]/g, "") !== "") return;
 
         const inComposer = Boolean(candidate.closest(".reply-box"));
-        const floating = ["fixed", "absolute"].includes(window.getComputedStyle(candidate).position) ||
-          (candidate.parentElement && ["fixed", "absolute"].includes(window.getComputedStyle(candidate.parentElement).position));
+        let floating = false;
+        let ancestor: HTMLElement | null = candidate;
+        for (let level = 0; ancestor && level < 6; level += 1) {
+          if (["fixed", "absolute"].includes(window.getComputedStyle(ancestor).position)) {
+            floating = true;
+            break;
+          }
+          ancestor = ancestor.parentElement;
+        }
         if (!inComposer && !floating) return;
 
         candidate.style.setProperty("display", "none", "important");
