@@ -5611,24 +5611,22 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
           !Array.isArray(context.handoff)
             ? context.handoff as Record<string, unknown>
             : {};
-        const handoffStatus =
-          typeof handoff.status === 'string' ? handoff.status : '';
         const customCustomerMessage =
           typeof args.customer_message === 'string'
             ? args.customer_message.trim().slice(0, 700)
             : '';
 
-        const fallbackCustomerMessage =
-          updatedSession.attentionStatus === 'human'
-            ? 'Listo, te voy a comunicar con un asesor para que te ayude.'
-            : handoffStatus === 'waiting_outside_hours'
-              ? 'Nuestro equipo te atenderá dentro del horario de atención. Mientras tanto, puedo ayudarte con productos, tallas, envíos y pagos.'
-              : handoffStatus === 'waiting_no_advisor'
-                ? 'En este momento todos nuestros asesores están ocupados. Dejé tu solicitud pendiente para que te atiendan apenas estén disponibles.'
-                : 'Dejé tu solicitud pendiente para que un asesor la revise y te responda lo antes posible.';
-
-        const customerMessage =
-          customCustomerMessage || fallbackCustomerMessage;
+        // On real handoff, never let a model-supplied promise overwrite
+        // the actual outside-hours / no-advisor status determined by MW1.
+        const verifiedMessage = this.humanAttentionMessage(updatedSession);
+        const customerMessage = updatedSession.attentionStatus === 'waiting'
+          ? verifiedMessage
+          : customCustomerMessage
+            ? `${customCustomerMessage}${typeof handoff.support_hours_label === 'string' &&
+                handoff.support_hours_label.trim()
+                  ? ` Nuestro horario de asesores es ${handoff.support_hours_label.trim()} (hora de Colombia).`
+                  : ''}`
+            : verifiedMessage;
 
         return {
           ok: true,
@@ -7531,29 +7529,34 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         ? context.handoff as JsonObject
         : {};
     const status =
-      typeof handoff.status === 'string'
-        ? handoff.status.trim()
+      typeof handoff.status === 'string' ? handoff.status.trim() : '';
+    const hours =
+      typeof handoff.support_hours_label === 'string'
+        ? handoff.support_hours_label.trim()
         : '';
+    const schedule = hours ? ` Nuestro horario de asesores es ${hours} (hora de Colombia).` : '';
 
     if (session.attentionStatus === 'human') {
-      return session.assignedToName
-        ? `Para ayudarte mejor, te voy a comunicar con ${session.assignedToName}, uno de nuestros asesores.`
-        : 'Para ayudarte mejor, te voy a comunicar con uno de nuestros asesores.';
+      return (
+        session.assignedToName
+          ? `Te voy a comunicar con ${session.assignedToName}, uno de nuestros asesores.`
+          : 'Te voy a comunicar con uno de nuestros asesores.'
+      ) + schedule;
     }
 
     if (status === 'waiting_outside_hours') {
-      return 'En este momento estamos fuera del horario de atención. Dejé tu solicitud pendiente para que uno de nuestros asesores te responda cuando inicie el próximo horario disponible.';
+      return 'En este momento nuestros asesores están fuera del horario de atención. Tu solicitud quedó pendiente para que el equipo continúe cuando retome su jornada, en orden de llegada.' + schedule;
     }
 
     if (status === 'waiting_no_advisor') {
-      return 'En este momento nuestros asesores no están disponibles. Dejé tu solicitud en espera para que el equipo continúe la atención apenas haya un asesor disponible.';
+      return 'En este momento no hay asesores disponibles para atenderte. Tu solicitud quedó pendiente para que el equipo la revise cuando haya disponibilidad, en orden de llegada.' + schedule;
     }
 
     if (status === 'waiting_no_area') {
-      return 'Dejé tu solicitud pendiente para que el equipo responsable la revise y continúe la atención.';
+      return 'Tu solicitud quedó pendiente para que el equipo responsable la revise y continúe la atención.' + schedule;
     }
 
-    return 'Para ayudarte mejor, dejé tu solicitud pendiente para que uno de nuestros asesores la revise y te responda.';
+    return 'Tu solicitud quedó pendiente para que un asesor la revise y continúe contigo.' + schedule;
   }
 
   private cleanReply(reply: string): string {
