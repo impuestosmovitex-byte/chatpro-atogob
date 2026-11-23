@@ -36,6 +36,7 @@ type InboxBody = {
   action?: unknown;
   sessionId?: unknown;
   targetUserId?: unknown;
+  replyToProviderMessageId?: unknown;
   templateId?: unknown;
   variables?: unknown;
 };
@@ -2091,6 +2092,41 @@ export class InboxController {
       );
     }
 
+    const replyToProviderMessageId = this.readText(body.replyToProviderMessageId);
+    if (replyToProviderMessageId.length > 200) {
+      throw new BadRequestException('El mensaje citado tiene un identificador inválido.');
+    }
+
+    // The WhatsApp context ID must be an actual customer's message in this
+    // company's current session. Never trust a message ID supplied by the UI.
+    let replyToMessage: string | null = null;
+    if (replyToProviderMessageId) {
+      if (socialConversation) {
+        throw new BadRequestException(
+          'La respuesta citada de este tipo de canal todavía no está habilitada.',
+        );
+      }
+      const { data: original, error: replyError } = await this.supabaseService
+        .getClient()
+        .from('conversations')
+        .select('message')
+        .eq('company_id', conversation.company.id)
+        .eq('session_id', conversation.session.id)
+        .eq('provider_message_id', replyToProviderMessageId)
+        .eq('author_type', 'customer')
+        .maybeSingle();
+
+      if (replyError) {
+        throw new BadRequestException('No se pudo verificar el mensaje al que deseas responder.');
+      }
+      if (!original) {
+        throw new BadRequestException(
+          'Ese mensaje no pertenece al cliente de esta conversación. Vuelve a seleccionarlo.',
+        );
+      }
+      replyToMessage = this.readText(original.message).slice(0, 600) || 'Mensaje del cliente';
+    }
+
     if (socialConversation) {
       try {
         await this.metaSocialMessagingService.sendAdvisorText({
@@ -2125,6 +2161,7 @@ export class InboxController {
         conversation.company.id,
         conversation.session.customerPhone,
         message,
+        replyToProviderMessageId || null,
       );
 
     await this.conversationMemoryService.saveMessage({
@@ -2137,6 +2174,8 @@ export class InboxController {
       authorType: 'advisor',
       aiResponse: null,
       providerMessageId: sent.messageId,
+      replyToProviderMessageId: replyToProviderMessageId || null,
+      replyToMessage,
     });
 
     await this.conversationMemoryService.touchSession(
