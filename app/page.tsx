@@ -2759,6 +2759,7 @@ export default function Home() {
     }
 
     try {
+      setReplyTarget(null);
       clearAudioDraft();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -3170,6 +3171,9 @@ export default function Home() {
 
     if (!files.length) return;
 
+    // A quote is supported by the text send path only. Do not imply that
+    // audio, document or images will carry a native WhatsApp quoted reply.
+    setReplyTarget(null);
     if (!selected?.session.id) {
       setError("Primero abre la conversación para adjuntar archivos.");
       return;
