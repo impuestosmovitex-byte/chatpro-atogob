@@ -91,14 +91,17 @@ export class WhatsappMessagingService {
     companyId: string,
     to: string,
     body: string,
+    replyToProviderMessageId?: string | null,
   ): Promise<WhatsappSendResult> {
     const channel = await this.resolveChannel(companyId);
+    const replyTo = replyToProviderMessageId?.trim() || '';
 
     return this.send(channel, {
       messaging_product: 'whatsapp',
       to,
       type: 'text',
       text: { body },
+      ...(replyTo ? { context: { message_id: replyTo } } : {}),
     });
   }
 
