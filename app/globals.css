@@ -4030,3 +4030,97 @@ h2 {
     padding: 0;
   }
 }
+
+
+/* WhatsApp native quoted reply: unobtrusive on laptops and fully visible on phones. */
+.message-bubble .mw1-message-reply-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: 5px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.message-bubble .mw1-message-reply-action:hover,
+.message-bubble .mw1-message-reply-action:focus-visible {
+  color: #1f5d42;
+  background: rgba(31, 93, 66, .08);
+}
+.reply-box:has(.mw1-reply-target) {
+  flex-wrap: wrap;
+}
+.reply-box .mw1-reply-target {
+  display: flex;
+  flex: 0 0 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  padding: 8px 10px;
+  margin: 0;
+  background: #f0f7f2;
+  border-left: 3px solid #288765;
+  border-radius: 9px;
+  color: #173d2f;
+}
+.mw1-reply-target-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+.mw1-reply-target-text strong {
+  font-size: 11px;
+  line-height: 1.2;
+}
+.mw1-reply-target-text span {
+  display: block;
+  font-size: 12px;
+  line-height: 1.25;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mw1-reply-target button {
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: #426456;
+  font-size: 23px;
+  cursor: pointer;
+}
+.mw1-reply-target button:hover { background: #dcefe2; }
+@media (max-width: 760px) {
+  .mobile-conversation-shell .reply-box:has(.mw1-reply-target) {
+    flex-wrap: wrap !important;
+    align-content: flex-end;
+  }
+  .mobile-conversation-shell .reply-box .mw1-reply-target {
+    display: flex !important;
+    flex: 0 0 100% !important;
+    max-width: 100%;
+    margin-bottom: 2px;
+  }
+  .mobile-conversation-shell .mw1-reply-target-text span {
+    font-size: 12px;
+  }
+  .mobile-conversation-shell .mw1-message-reply-action {
+    padding: 5px 7px;
+    font-size: 12px;
+  }
+}
