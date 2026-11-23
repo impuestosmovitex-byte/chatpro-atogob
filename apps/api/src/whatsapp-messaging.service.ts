@@ -1,3 +1,4 @@
+import { whatsappQuotedReplyContext } from './whatsapp-reply-context';
 import { Injectable } from '@nestjs/common';
 import { spawn } from 'node:child_process';
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -101,7 +102,7 @@ export class WhatsappMessagingService {
       to,
       type: 'text',
       text: { body },
-      ...(replyTo ? { context: { message_id: replyTo } } : {}),
+      ...whatsappQuotedReplyContext(replyTo),
     });
   }
 
