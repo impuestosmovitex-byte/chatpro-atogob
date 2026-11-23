@@ -1246,6 +1246,11 @@ export default function Home() {
   const [presence, setPresence] = useState<AdvisorPresence | null>(null);
   const [presenceLoading, setPresenceLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [replyTarget, setReplyTarget] = useState<{
+    sessionId: string;
+    providerMessageId: string;
+    message: string;
+  } | null>(null);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
@@ -2371,6 +2376,8 @@ export default function Home() {
 
     const sessionId = selected.session.id;
     const cleanMessage = message.trim();
+    const quoting = action === "message" && replyTarget?.sessionId === sessionId
+      ? replyTarget : null;
 
     if (action === "message" && !cleanMessage) return;
 
@@ -2392,6 +2399,8 @@ export default function Home() {
         mediaMimeType: null,
         mediaStoragePath: null,
         mediaVoice: false,
+        replyToProviderMessageId: quoting?.providerMessageId || null,
+        replyToMessage: quoting?.message || null,
         createdAt: optimisticCreatedAt,
       };
 
@@ -2447,6 +2456,7 @@ export default function Home() {
           sessionId,
           action,
           message: action === "message" ? cleanMessage : undefined,
+          replyToProviderMessageId: quoting?.providerMessageId || undefined,
         }),
       });
 
@@ -2464,6 +2474,13 @@ export default function Home() {
       }
 
       if (action === "message") {
+        if (quoting) {
+          setReplyTarget((current) =>
+            current?.sessionId === sessionId &&
+            current.providerMessageId === quoting.providerMessageId
+              ? null : current
+          );
+        }
         /*
          * El mensaje y la lista ya fueron actualizados localmente.
          * No bloqueamos la interfaz haciendo dos consultas adicionales.
@@ -5639,6 +5656,30 @@ export default function Home() {
                           <p>{item.message}</p>
                         )}
                         <time>{formatDate(item.createdAt)}</time>
+                        {selectedChannel === "whatsapp" &&
+                          !isInternalTest &&
+                          selected.session.attentionStatus === "human" &&
+                          item.authorType === "customer" &&
+                          item.providerMessageId ? (
+                            <button
+                              type="button"
+                              className="mw1-message-reply-action"
+                              title="Responder a este mensaje del cliente"
+                              aria-label="Responder a este mensaje del cliente"
+                              onClick={() => {
+                                setReplyTarget({
+                                  sessionId: selected.session.id,
+                                  providerMessageId: item.providerMessageId!,
+                                  message: item.message?.trim().slice(0, 300) || "Mensaje del cliente",
+                                });
+                                setEmojiPickerOpen(false);
+                                setQuickReplyOpen(false);
+                                window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+                              }}
+                            >
+                              ↩ Responder
+                            </button>
+                          ) : null}
                         {item.authorType !== "customer" && !isInternalTest && (
                           <div
                             className={`mw1-message-delivery mw1-message-delivery--${item.deliveryStatus || "unknown"}`}
@@ -5814,6 +5855,21 @@ export default function Home() {
                       hidden
                       onChange={(event) => selectMediaFiles(event.target.files)}
                     />
+                    {replyTarget?.sessionId === selected.session.id &&
+                      !recording && !audioBlob && !imageFiles.length && !attachmentFile ? (
+                      <div className="mw1-reply-target" role="status" aria-label="Respuesta a mensaje seleccionado">
+                        <div className="mw1-reply-target-text">
+                          <strong>Respondiendo al cliente</strong>
+                          <span>{replyTarget.message}</span>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Cancelar respuesta citada"
+                          title="Cancelar respuesta citada"
+                          onClick={() => setReplyTarget(null)}
+                        >×</button>
+                      </div>
+                    ) : null}
                     {recording || (audioBlob && audioPreviewUrl) ? (
                       <div
                         className={`wa-audio-composer ${
