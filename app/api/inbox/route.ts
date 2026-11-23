@@ -13,6 +13,7 @@ type InboxRequestBody = {
   agentName?: unknown;
   message?: unknown;
   targetUserId?: unknown;
+  replyToProviderMessageId?: unknown;
   templateId?: unknown;
   variables?: unknown;
 };
@@ -258,6 +259,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         message: text(body.message),
         targetUserId: text(body.targetUserId),
+        replyToProviderMessageId: text(body.replyToProviderMessageId),
       }),
       cache: 'no-store',
     });
