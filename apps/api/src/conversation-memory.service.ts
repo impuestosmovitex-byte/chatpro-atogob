@@ -1242,8 +1242,8 @@ export class ConversationMemoryService {
     }>)
       .filter((row) => row.is_open && Number.isInteger(row.day_of_week) &&
         row.day_of_week >= 0 && row.day_of_week <= 6 &&
-        /^\\d{2}:\\d{2}/.test(row.start_time ?? '') &&
-        /^\\d{2}:\\d{2}/.test(row.end_time ?? ''))
+        /^\d{2}:\d{2}/.test(row.start_time ?? '') &&
+        /^\d{2}:\d{2}/.test(row.end_time ?? ''))
       .sort((a, b) => a.day_of_week - b.day_of_week);
 
     if (!open.length) return null;
