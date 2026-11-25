@@ -821,6 +821,10 @@ export class ConversationMemoryService {
     handoff: { reason?: string; summary?: string } = {},
   ): Promise<ConversationSession> {
     const session = await this.getSessionById(sessionId);
+    // A second request must not erase an existing assignment or queue position.
+    if (session.attentionStatus === 'human' || session.attentionStatus === 'waiting') {
+      return session;
+    }
     const selectedArea = this.readSelectedServiceArea(session.context);
     const area =
       selectedArea ??
@@ -1146,10 +1150,14 @@ export class ConversationMemoryService {
       return false;
     }
 
+    // A missing company timezone is not permission to use another tenant's clock.
     const timezone =
-      typeof settings?.timezone === 'string' && settings.timezone.trim()
+      typeof settings?.timezone === 'string'
         ? settings.timezone.trim()
-        : 'America/Bogota';
+        : '';
+    if (!timezone) {
+      return false;
+    }
 
     const now = new Date();
     let parts: Intl.DateTimeFormatPart[];
@@ -1163,13 +1171,7 @@ export class ConversationMemoryService {
         hourCycle: 'h23',
       }).formatToParts(now);
     } catch {
-      parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Bogota',
-        weekday: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-      }).formatToParts(now);
+      return false;
     }
 
     const value = (type: Intl.DateTimeFormatPartTypes) =>
@@ -1213,6 +1215,63 @@ export class ConversationMemoryService {
     const end = String(day.end_time).slice(0, 5);
 
     return time >= start && time < end;
+  }
+
+  /**
+   * Summarizes the actual weekly hours for this company only. No hard-coded
+   * business schedule or timezone is used in customer-facing messages.
+   * Returns null when hours are missing or cannot be confirmed.
+   */
+  async getHumanAttentionHoursLabel(companyId: string): Promise<string | null> {
+    const client = this.supabaseService.getClient();
+    const { data, error } = await client
+      .from('company_support_hours')
+      .select('day_of_week, is_open, start_time, end_time')
+      .eq('company_id', companyId);
+
+    if (error || !data) {
+      return null;
+    }
+
+    const days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    const open = (data as Array<{
+      day_of_week: number;
+      is_open: boolean;
+      start_time: string | null;
+      end_time: string | null;
+    }>)
+      .filter((row) => row.is_open && Number.isInteger(row.day_of_week) &&
+        row.day_of_week >= 0 && row.day_of_week <= 6 &&
+        /^\d{2}:\d{2}/.test(row.start_time ?? '') &&
+        /^\d{2}:\d{2}/.test(row.end_time ?? ''))
+      .sort((a, b) => a.day_of_week - b.day_of_week);
+
+    if (!open.length) return null;
+
+    const format = (time: string) => {
+      const [h, m] = time.slice(0, 5).split(':').map(Number);
+      const suffix = h < 12 ? 'a. m.' : 'p. m.';
+      return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${suffix}`;
+    };
+
+    const groups = new Map<string, number[]>();
+    for (const row of open) {
+      const key = `${row.start_time!.slice(0, 5)}|${row.end_time!.slice(0, 5)}`;
+      groups.set(key, [...(groups.get(key) ?? []), row.day_of_week]);
+    }
+
+    const labels = Array.from(groups, ([key, dayNumbers]) => {
+      const [start, end] = key.split('|');
+      const consecutive = dayNumbers.every((day, index) =>
+        index === 0 || day === dayNumbers[index - 1] + 1);
+      const dayLabel =
+        consecutive && dayNumbers.length >= 3
+          ? `${days[dayNumbers[0]]} a ${days[dayNumbers[dayNumbers.length - 1]]}`
+          : dayNumbers.map((day) => days[day]).join(', ');
+      return `${dayLabel} de ${format(start)} a ${format(end)}`;
+    });
+
+    return labels.join('; ');
   }
 
   private advisorPresenceCutoffIso(): string {
