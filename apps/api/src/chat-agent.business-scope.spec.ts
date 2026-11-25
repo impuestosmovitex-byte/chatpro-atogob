@@ -117,7 +117,8 @@ describe('MW1 company-scoped replies', () => {
       context: { out_of_scope_streak: 2 },
     });
     expect(requestHumanAttention).toHaveBeenCalledTimes(1);
-    expect(reply).toContain('Asesor de pruebas');
+    expect(reply).toContain('Ya te transfiero');
+    expect(reply).not.toContain('horario');
   });
 
   it('returns a truthful fallback if the handoff fails', async () => {
