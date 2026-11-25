@@ -1256,7 +1256,7 @@ export class ConversationMemoryService {
 
     const groups = new Map<string, number[]>();
     for (const row of open) {
-      const key = `${row.start_time.slice(0, 5)}|${row.end_time.slice(0, 5)}`;
+      const key = `${row.start_time!.slice(0, 5)}|${row.end_time!.slice(0, 5)}`;
       groups.set(key, [...(groups.get(key) ?? []), row.day_of_week]);
     }
 
