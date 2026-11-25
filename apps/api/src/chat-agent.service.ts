@@ -2951,7 +2951,7 @@ export class ChatAgentService {
       '- Nunca prometas que tú mismo avisarás, confirmarás, revisarás, consultarás, escribirás o ejecutarás algo más tarde si no existe una herramienta real que complete esa acción en este mismo turno. Responde con lo que puedes resolver ahora o, si corresponde según la configuración, usa request_human_attention.',
       '- CONFIRMACIÓN OPERATIVA: si el cliente pide confirmar un hecho que no está respaldado explícitamente por configuración o herramienta real —por ejemplo precio en una sede física, inventario de una sede, reserva, disponibilidad para recogida o una condición operativa específica— no preguntes “¿quieres que lo confirme?” ni prometas revisarlo después. Comunica primero lo que sí está confirmado y, si ese dato faltante requiere intervención humana, ejecuta request_human_attention una sola vez en ese mismo turno.',
       '- NO REPITAS CONFIRMACIONES: si tu mensaje anterior planteó una única confirmación y el cliente responde “sí”, “exacto”, “por favor”, “confírmame” o equivalente, no vuelvas a formular la misma pregunta. Ejecuta inmediatamente la acción real disponible; si no existe herramienta/configuración para resolverla y corresponde intervención humana, realiza el handoff real. Nunca encadenes varias preguntas de “¿quieres que confirme?” sobre el mismo dato.',
-      '- Al usar request_human_attention, customer_message debe ser el mensaje exacto que verá la persona: natural, breve, útil y alineado al tono/configuración de la empresa. No uses una frase fija si la empresa configuró otra forma de atención.',
+      '- Al usar request_human_attention, describe brevemente la necesidad en reason/summary. La respuesta al cliente depende del estado REAL que devuelva el backend: asignado, sin asesor o fuera de horario. No afirmes disponibilidad ni horario sin datos del sistema.',
       '- La conversación puede tener session.context.service_area con el área elegida por la persona. Respeta esa área al atender y no la cambies por tu cuenta.',
       '- Atiende primero el caso con la información disponible. Usa request_human_attention solo cuando la persona pida un asesor, no puedas entender o resolver, falte información operativa, o las instrucciones específicas indiquen escalar.',
       '- REGLA DE COMPRENSIÓN: no transfieras por un solo mensaje ambiguo. Pide una aclaración breve y concreta. Si después de esa aclaración la persona sigue sin permitir entender o resolver el caso, usa request_human_attention. No supongas que un número, documento, teléfono, talla, referencia, enlace o dato corto es incorrecto: interprétalo usando el contexto o pide aclaración.',
@@ -4960,22 +4960,28 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
             : {};
         const handoffStatus =
           typeof handoff.status === 'string' ? handoff.status : '';
-        const customCustomerMessage =
-          typeof args.customer_message === 'string'
-            ? args.customer_message.trim().slice(0, 700)
-            : '';
-
-        const fallbackCustomerMessage =
-          updatedSession.attentionStatus === 'human'
-            ? 'Listo, te voy a comunicar con un asesor para que te ayude.'
-            : handoffStatus === 'waiting_outside_hours'
-              ? 'Nuestro equipo te atenderá dentro del horario de atención. Mientras tanto, puedo ayudarte con productos, tallas, envíos y pagos.'
-              : handoffStatus === 'waiting_no_advisor'
-                ? 'En este momento todos nuestros asesores están ocupados. Dejé tu solicitud pendiente para que te atiendan apenas estén disponibles.'
-                : 'Dejé tu solicitud pendiente para que un asesor la revise y te responda lo antes posible.';
-
-        const customerMessage =
-          customCustomerMessage || fallbackCustomerMessage;
+        // The model may request a handoff, but it cannot decide whether an
+        // advisor is online or the business is open. Only the persisted result
+        // of requestHumanAttention may determine what we tell the customer.
+        let customerMessage: string;
+        if (updatedSession.attentionStatus === 'human') {
+          customerMessage = '¡Claro! 😊 Ya te transfiero con uno de nuestros asesores.';
+        } else if (handoffStatus === 'waiting_no_advisor') {
+          customerMessage = 'En este momento nuestros asesores están ocupados. 😊 Tu solicitud quedó pendiente.';
+        } else if (handoffStatus === 'waiting_outside_hours') {
+          let hours: string | null = null;
+          try {
+            hours = await this.conversationMemoryService
+              .getHumanAttentionHoursLabel(updatedSession.companyId);
+          } catch (error) {
+            console.error('[ChatPro][handoff] no se pudo consultar horario:', error);
+          }
+          customerMessage = hours
+            ? `¡Claro! 😊 Nuestro horario de atención es ${hours}. Te atenderemos en el próximo horario.`
+            : '¡Claro! 😊 Te atenderemos en nuestro próximo horario de atención.';
+        } else {
+          customerMessage = 'Tu solicitud quedó pendiente para que nuestro equipo la revise.';
+        }
 
         return {
           ok: true,
@@ -6834,17 +6840,15 @@ ${profile.aiInstructions || 'No hay instrucciones adicionales.'}
         : '';
 
     if (session.attentionStatus === 'human') {
-      return session.assignedToName
-        ? `Para ayudarte mejor, te voy a comunicar con ${session.assignedToName}, uno de nuestros asesores.`
-        : 'Para ayudarte mejor, te voy a comunicar con uno de nuestros asesores.';
+      return '¡Claro! 😊 Ya te transfiero con uno de nuestros asesores.';
     }
 
     if (status === 'waiting_outside_hours') {
-      return 'En este momento estamos fuera del horario de atención. Dejé tu solicitud pendiente para que uno de nuestros asesores te responda cuando inicie el próximo horario disponible.';
+      return '¡Claro! 😊 Te atenderemos en nuestro próximo horario de atención.';
     }
 
     if (status === 'waiting_no_advisor') {
-      return 'En este momento nuestros asesores no están disponibles. Dejé tu solicitud en espera para que el equipo continúe la atención apenas haya un asesor disponible.';
+      return 'En este momento nuestros asesores están ocupados. 😊 Tu solicitud quedó pendiente.';
     }
 
     if (status === 'waiting_no_area') {
