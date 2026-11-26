@@ -2390,6 +2390,7 @@ export default function Home() {
         session?: ConversationSession;
         conversation?: InboxConversation;
         persistenceWarning?: string;
+        providerMessageId?: string | null;
       };
 
       if (!response.ok || !data.ok) {
@@ -2402,6 +2403,15 @@ export default function Home() {
         // The POST response already includes the server's canonical history.
         // Reconcile immediately instead of waiting for polling to erase the
         // optimistic bubble. Never touch another conversation's messages.
+        const serverConfirmedMessage =
+          (data.conversation?.messages ?? []).some((item) =>
+            item.authorType === "advisor" &&
+            ((data.providerMessageId && item.providerMessageId === data.providerMessageId) ||
+              (!data.providerMessageId && item.message === cleanMessage &&
+                (new Date(item.createdAt ?? 0).getTime() >=
+                  new Date(optimisticCreatedAt).getTime() - 10000)));
+        const preservePending = Boolean(data.persistenceWarning) && !serverConfirmedMessage;
+
         if (data.conversation?.session?.id === sessionId) {
           setSelected((current) => {
             if (!current || current.session.id !== sessionId) return current;
@@ -2412,7 +2422,7 @@ export default function Home() {
               session: data.conversation!.session,
               messages: [
                 ...current.messages.filter((item) =>
-                  item.id !== optimisticId &&
+                  (preservePending || item.id !== optimisticId) &&
                   !knownIds.has(item.id) &&
                   !(typeof item.id === "string" && item.id.startsWith("optimistic-") &&
                     !pendingOutgoingRef.current.has(item.id))),
@@ -2422,9 +2432,10 @@ export default function Home() {
             };
           });
         }
-        pendingOutgoingRef.current.delete(optimisticId);
-        // If the response has no canonical history, start an immediate refresh.
-        if (!data.conversation) void openConversation(sessionId, true);
+        if (!preservePending) pendingOutgoingRef.current.delete(optimisticId);
+        // A persistence warning means that Meta accepted the send, but the
+        // local record may be missing. Keep it visible until reconciliation.
+        if (!data.conversation && !preservePending) void openConversation(sessionId, true);
       } else {
         await loadList(false);
         await openConversation(sessionId);
