@@ -1273,6 +1273,8 @@ export default function Home() {
   const pendingSessionsTotalRef = useRef(0);
   const activeSessionIdRef = useRef("");
   const conversationDraftsRef = useRef<Record<string, string>>({});
+  // Keep unsent/awaiting-confirmation bubbles through automatic polling.
+  const pendingOutgoingRef = useRef<Set<string>>(new Set());
   const loadingOlderMessagesRef = useRef(false);
   const preserveScrollOnPrependRef = useRef(false);
   const stickToBottomRef = useRef(true);
@@ -2020,10 +2022,9 @@ export default function Home() {
 
           const confirmedCurrentMessages = current.messages.filter(
             (item) =>
-              !(
-                typeof item.id === "string" &&
-                item.id.startsWith("optimistic-")
-              ),
+              !(typeof item.id === "string" &&
+                item.id.startsWith("optimistic-") &&
+                !pendingOutgoingRef.current.has(item.id)),
           );
 
           // Refreshed server messages must win when the same message has a
@@ -2313,6 +2314,7 @@ export default function Home() {
     const optimisticCreatedAt = new Date().toISOString();
 
     if (action === "message") {
+      pendingOutgoingRef.current.add(optimisticId);
       const optimisticMessage: InboxMessage = {
         id: optimisticId,
         sessionId,
@@ -2386,6 +2388,8 @@ export default function Home() {
         error?: string;
         message?: string;
         session?: ConversationSession;
+        conversation?: InboxConversation;
+        persistenceWarning?: string;
       };
 
       if (!response.ok || !data.ok) {
@@ -2395,12 +2399,32 @@ export default function Home() {
       }
 
       if (action === "message") {
-        /*
-         * El mensaje y la lista ya fueron actualizados localmente.
-         * No bloqueamos la interfaz haciendo dos consultas adicionales.
-         * La actualización normal de la bandeja reconciliará después
-         * el estado confirmado del servidor.
-         */
+        // The POST response already includes the server's canonical history.
+        // Reconcile immediately instead of waiting for polling to erase the
+        // optimistic bubble. Never touch another conversation's messages.
+        if (data.conversation?.session?.id === sessionId) {
+          setSelected((current) => {
+            if (!current || current.session.id !== sessionId) return current;
+            const serverMessages = data.conversation!.messages ?? [];
+            const knownIds = new Set(serverMessages.map((item) => item.id).filter(Boolean));
+            return {
+              ...current,
+              session: data.conversation!.session,
+              messages: [
+                ...current.messages.filter((item) =>
+                  item.id !== optimisticId &&
+                  !knownIds.has(item.id) &&
+                  !(typeof item.id === "string" && item.id.startsWith("optimistic-") &&
+                    !pendingOutgoingRef.current.has(item.id))),
+                ...serverMessages,
+              ].sort((a, b) =>
+                new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()),
+            };
+          });
+        }
+        pendingOutgoingRef.current.delete(optimisticId);
+        // If the response has no canonical history, start an immediate refresh.
+        if (!data.conversation) void openConversation(sessionId, true);
       } else {
         await loadList(false);
         await openConversation(sessionId);
@@ -2411,14 +2435,15 @@ export default function Home() {
         string
       > = {
         take: "Conversación tomada. La IA queda pausada mientras respondes.",
-        message: "Mensaje enviado por WhatsApp.",
+        message: "Mensaje enviado.",
         resume_ai: "Conversación devuelta a la IA.",
         close: "Conversación finalizada.",
       };
 
-      setActionMessage(actionLabels[action]);
+      setActionMessage(data.persistenceWarning ?? actionLabels[action]);
     } catch (caught) {
       if (action === "message") {
+        pendingOutgoingRef.current.delete(optimisticId);
         setSelected((current) => {
           if (!current || current.session.id !== sessionId) {
             return current;
