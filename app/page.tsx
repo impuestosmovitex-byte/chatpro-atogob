@@ -1273,6 +1273,13 @@ export default function Home() {
   const pendingSessionsTotalRef = useRef(0);
   const activeSessionIdRef = useRef("");
   const conversationDraftsRef = useRef<Record<string, string>>({});
+  // Keep unsent/awaiting-confirmation bubbles through automatic polling.
+  const pendingOutgoingRef = useRef<Set<string>>(new Set());
+  const pendingOutgoingSessionsRef = useRef<Map<string, {
+    sessionId: string;
+    message: string;
+    createdAt: string;
+  }>>(new Map());
   const loadingOlderMessagesRef = useRef(false);
   const preserveScrollOnPrependRef = useRef(false);
   const stickToBottomRef = useRef(true);
@@ -1624,7 +1631,20 @@ export default function Home() {
         throw new Error(data.error || "No se pudo cargar la bandeja.");
       }
 
-      const incoming = data.sessions ?? [];
+      const incoming = (data.sessions ?? []).map((incomingSession) => {
+        const optimistic = pendingOutgoingSessionsRef.current;
+        const current = sessions.find((candidate) => candidate.id === incomingSession.id);
+        const active = current?.lastMessage;
+        if (!active?.id || !optimistic.has(active.id) ||
+            optimistic.get(active.id)?.sessionId !== incomingSession.id) {
+          return incomingSession;
+        }
+        return {
+          ...incomingSession,
+          lastMessage: active,
+          lastMessageAt: active.createdAt ?? incomingSession.lastMessageAt,
+        };
+      });
 
       if (append) {
         setSessions((current) => {
@@ -2018,13 +2038,26 @@ export default function Home() {
             return current;
           }
 
-          const confirmedCurrentMessages = current.messages.filter(
-            (item) =>
-              !(
-                typeof item.id === "string" &&
-                item.id.startsWith("optimistic-")
-              ),
-          );
+          // Do not discard an outbound bubble before the server actually
+          // returns a matching saved message. Poll responses can be stale.
+          const returnedMessages = data.messages ?? [];
+          const confirmedCurrentMessages = current.messages.filter((item) => {
+            if (typeof item.id !== "string" || !item.id.startsWith("optimistic-")) {
+              return true;
+            }
+            const pending = pendingOutgoingSessionsRef.current.get(item.id);
+            if (!pending) return false;
+            const confirmed = returnedMessages.some((serverItem) =>
+              serverItem.authorType === "advisor" &&
+              serverItem.message === pending.message &&
+              Math.abs(new Date(serverItem.createdAt ?? 0).getTime() -
+                new Date(pending.createdAt).getTime()) < 120000);
+            if (confirmed) {
+              pendingOutgoingSessionsRef.current.delete(item.id);
+              pendingOutgoingRef.current.delete(item.id);
+            }
+            return !confirmed;
+          });
 
           // Refreshed server messages must win when the same message has a
           // newer Meta delivery status. Preserve older, unreturned history.
@@ -2313,6 +2346,12 @@ export default function Home() {
     const optimisticCreatedAt = new Date().toISOString();
 
     if (action === "message") {
+      pendingOutgoingRef.current.add(optimisticId);
+      pendingOutgoingSessionsRef.current.set(optimisticId, {
+        sessionId,
+        message: cleanMessage,
+        createdAt: optimisticCreatedAt,
+      });
       const optimisticMessage: InboxMessage = {
         id: optimisticId,
         sessionId,
@@ -2386,6 +2425,9 @@ export default function Home() {
         error?: string;
         message?: string;
         session?: ConversationSession;
+        conversation?: InboxConversation;
+        persistenceWarning?: string;
+        providerMessageId?: string | null;
       };
 
       if (!response.ok || !data.ok) {
@@ -2395,12 +2437,45 @@ export default function Home() {
       }
 
       if (action === "message") {
-        /*
-         * El mensaje y la lista ya fueron actualizados localmente.
-         * No bloqueamos la interfaz haciendo dos consultas adicionales.
-         * La actualización normal de la bandeja reconciliará después
-         * el estado confirmado del servidor.
-         */
+        // The POST response already includes the server's canonical history.
+        // Reconcile immediately instead of waiting for polling to erase the
+        // optimistic bubble. Never touch another conversation's messages.
+        const serverConfirmedMessage =
+          (data.conversation?.messages ?? []).some((item) =>
+            item.authorType === "advisor" &&
+            ((data.providerMessageId && item.providerMessageId === data.providerMessageId) ||
+              (!data.providerMessageId && item.message === cleanMessage &&
+                (new Date(item.createdAt ?? 0).getTime() >=
+                  new Date(optimisticCreatedAt).getTime() - 10000)));
+        const preservePending = !serverConfirmedMessage;
+
+        if (data.conversation?.session?.id === sessionId) {
+          setSelected((current) => {
+            if (!current || current.session.id !== sessionId) return current;
+            const serverMessages = data.conversation!.messages ?? [];
+            const knownIds = new Set(serverMessages.map((item) => item.id).filter(Boolean));
+            return {
+              ...current,
+              session: data.conversation!.session,
+              messages: [
+                ...current.messages.filter((item) =>
+                  (preservePending || item.id !== optimisticId) &&
+                  !knownIds.has(item.id) &&
+                  !(typeof item.id === "string" && item.id.startsWith("optimistic-") &&
+                    !pendingOutgoingRef.current.has(item.id))),
+                ...serverMessages,
+              ].sort((a, b) =>
+                new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()),
+            };
+          });
+        }
+        if (serverConfirmedMessage) {
+          pendingOutgoingRef.current.delete(optimisticId);
+          pendingOutgoingSessionsRef.current.delete(optimisticId);
+        }
+        // A successful Meta send without a saved history stays visible while
+        // polling looks for confirmation. Never silently erase it.
+        if (!data.conversation) void openConversation(sessionId, true);
       } else {
         await loadList(false);
         await openConversation(sessionId);
@@ -2411,14 +2486,16 @@ export default function Home() {
         string
       > = {
         take: "Conversación tomada. La IA queda pausada mientras respondes.",
-        message: "Mensaje enviado por WhatsApp.",
+        message: "Mensaje enviado.",
         resume_ai: "Conversación devuelta a la IA.",
         close: "Conversación finalizada.",
       };
 
-      setActionMessage(actionLabels[action]);
+      setActionMessage(data.persistenceWarning ?? actionLabels[action]);
     } catch (caught) {
       if (action === "message") {
+        pendingOutgoingRef.current.delete(optimisticId);
+        pendingOutgoingSessionsRef.current.delete(optimisticId);
         setSelected((current) => {
           if (!current || current.session.id !== sessionId) {
             return current;
@@ -2433,7 +2510,9 @@ export default function Home() {
         });
 
         conversationDraftsRef.current[sessionId] = cleanMessage;
-        setMessage(cleanMessage);
+        if (activeSessionIdRef.current === sessionId) {
+          setMessage(cleanMessage);
+        }
       }
 
       setActionMessage("");
