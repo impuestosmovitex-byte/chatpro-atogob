@@ -2447,7 +2447,7 @@ export default function Home() {
               (!data.providerMessageId && item.message === cleanMessage &&
                 (new Date(item.createdAt ?? 0).getTime() >=
                   new Date(optimisticCreatedAt).getTime() - 10000)));
-        const preservePending = Boolean(data.persistenceWarning) && !serverConfirmedMessage;
+        const preservePending = !serverConfirmedMessage;
 
         if (data.conversation?.session?.id === sessionId) {
           setSelected((current) => {
