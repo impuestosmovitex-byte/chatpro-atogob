@@ -2147,7 +2147,7 @@ export class InboxController {
 
       // Never turn an already accepted Meta send into a client-side
       // "failed send" just because the follow-up history read timed out.
-      let refreshed = null;
+      let refreshed: Awaited<ReturnType<MetaSocialInboxService['getConversation']>> = null;
       let persistenceWarning = sent.persistenceWarning;
       try {
         refreshed = await this.metaSocialInboxService.getConversation(
