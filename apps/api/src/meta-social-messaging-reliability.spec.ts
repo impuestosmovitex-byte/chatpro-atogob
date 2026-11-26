@@ -1,6 +1,6 @@
 import { MetaSocialMessagingService } from './meta-social-messaging.service';
 
-function fixture(options: { saveError?: string; updateError?: string; metaOk?: boolean } = {}) {
+function fixture(options: { saveError?: string; updateError?: string; metaOk?: boolean; expired?: boolean } = {}) {
   const row = (table: string) => {
     if (table === 'social_conversation_sessions') {
       return { id: 'session-a', company_id: 'company-a', channel: 'instagram',
@@ -33,7 +33,7 @@ function fixture(options: { saveError?: string; updateError?: string; metaOk?: b
     ok: options.metaOk !== false,
     status: options.metaOk === false ? 403 : 200,
     text: async () => options.metaOk === false
-      ? JSON.stringify({ error: { message: 'permission denied' } })
+      ? JSON.stringify({ error: { message: options.expired ? 'Error validating access token: Session has expired' : 'permission denied', code: options.expired ? 190 : 10 } })
       : JSON.stringify({ message_id: 'ig-mid-123' }),
   }));
   const oldFetch = global.fetch;
@@ -78,6 +78,14 @@ describe('Instagram outbound: provider acknowledgement vs local persistence', ()
       expect(result.messageId).toBe('ig-mid-123');
       expect(result.persistenceWarning).toContain('Meta aceptó');
     } finally { log.mockRestore(); t.restore(); }
+  });
+
+  it('explains expired Instagram authorization without attempting a resend', async () => {
+    const t = fixture({ metaOk: false, expired: true });
+    try {
+      await expect(t.send()).rejects.toThrow('Reconectar Instagram');
+      expect(t.fetchMock).toHaveBeenCalledTimes(1);
+    } finally { t.restore(); }
   });
 
   it('still rejects when Meta itself rejects the send', async () => {
