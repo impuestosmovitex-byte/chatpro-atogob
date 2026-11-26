@@ -228,6 +228,21 @@ export class MetaSocialMessagingService {
           ? metaError.message
           : `HTTP ${response.status}`;
 
+      const metaCode = Number(metaError.code);
+      const tokenExpired =
+        channel === 'instagram' &&
+        (metaCode === 190 ||
+          /(?:session has expired|access token has expired|token.*expired|invalid oauth access token)/i.test(detail));
+
+      if (tokenExpired) {
+        // Do not retry a rejected message with an invalid OAuth session.
+        // Re-authorization must happen through the company's existing
+        // Instagram OAuth flow, not by exposing or replacing credentials here.
+        throw new Error(
+          'La autorización de Instagram venció. Ve a Configuración > Integraciones > Instagram > Reconectar Instagram, autoriza la cuenta y después prueba la conexión antes de volver a enviar.',
+        );
+      }
+
       throw new Error(
         `Meta ${channel === 'instagram' ? 'Instagram' : 'Messenger'} rechazó el mensaje: ${detail}`,
       );
