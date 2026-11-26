@@ -2519,12 +2519,15 @@ export default function Home() {
         // The POST response already includes the server's canonical history.
         // Reconcile immediately rather than waiting for the next polling cycle.
         const serverConfirmedMessage =
-          (data.conversation?.messages ?? []).some((item) =>
-            item.authorType === "advisor" &&
-            ((data.providerMessageId && item.providerMessageId === data.providerMessageId) ||
-              (!data.providerMessageId && item.message === cleanMessage &&
-                (new Date(item.createdAt ?? 0).getTime() >=
-                  new Date(optimisticCreatedAt).getTime() - 10000)));
+          (data.conversation?.messages ?? []).some((item) => {
+            if (item.authorType !== "advisor") return false;
+            if (data.providerMessageId) {
+              return item.providerMessageId === data.providerMessageId;
+            }
+            return item.message === cleanMessage &&
+              new Date(item.createdAt ?? 0).getTime() >=
+                new Date(optimisticCreatedAt).getTime() - 10000;
+          });
         const preservePending = !serverConfirmedMessage;
         if (data.conversation?.session?.id === sessionId) {
           setSelected((current) => {
