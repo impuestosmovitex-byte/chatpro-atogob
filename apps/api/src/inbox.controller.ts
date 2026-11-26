@@ -2128,8 +2128,9 @@ export class InboxController {
     }
 
     if (socialConversation) {
+      let sent: { messageId: string | null; persistenceWarning?: string };
       try {
-        await this.metaSocialMessagingService.sendAdvisorText({
+        sent = await this.metaSocialMessagingService.sendAdvisorText({
           companyId: conversation.company.id,
           sessionId: conversation.session.id,
           message,
@@ -2141,18 +2142,32 @@ export class InboxController {
             ? error.message
             : 'Meta rechazó el mensaje.';
 
-        throw new BadRequestException(
-          detail.slice(0, 900),
+        throw new BadRequestException(detail.slice(0, 900));
+      }
+
+      // Never turn an already accepted Meta send into a client-side
+      // "failed send" just because the follow-up history read timed out.
+      let refreshed = null;
+      let persistenceWarning = sent.persistenceWarning;
+      try {
+        refreshed = await this.metaSocialInboxService.getConversation(
+          companyInfo,
+          sessionId,
         );
+      } catch (error) {
+        console.error('[ChatPro][social] message accepted; refresh failed', {
+          sessionId,
+          error,
+        });
+        persistenceWarning ??=
+          'Meta aceptó el mensaje, pero no se pudo actualizar la bandeja. Comprueba el chat antes de reenviarlo.';
       }
 
       return {
         ok: true,
-        conversation:
-          await this.metaSocialInboxService.getConversation(
-            companyInfo,
-            sessionId,
-          ),
+        providerMessageId: sent.messageId,
+        persistenceWarning,
+        conversation: refreshed,
       };
     }
 
