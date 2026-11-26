@@ -18,7 +18,7 @@ export class MetaSocialMessagingService {
     sessionId: string;
     message: string;
     advisorName: string;
-  }): Promise<{ messageId: string | null }> {
+  }): Promise<{ messageId: string | null; persistenceWarning?: string }> {
     const client = this.supabaseService.getClient();
 
     const { data: sessionRow, error: sessionError } =
@@ -229,7 +229,7 @@ export class MetaSocialMessagingService {
           : `HTTP ${response.status}`;
 
       throw new Error(
-        `Meta Messenger rechazó el mensaje: ${detail}`,
+        `Meta ${channel === 'instagram' ? 'Instagram' : 'Messenger'} rechazó el mensaje: ${detail}`,
       );
     }
 
@@ -258,9 +258,18 @@ export class MetaSocialMessagingService {
         });
 
     if (saveError) {
-      throw new Error(
-        `El mensaje salió por Messenger, pero no se pudo guardar en ChatPro: ${saveError.message}`,
-      );
+      // Meta has already accepted the outbound message. A retry could send
+      // it twice, so never report this as a failed delivery.
+      console.error(`[ChatPro][${channel}] Meta accepted text but persistence failed`, {
+        sessionId: input.sessionId,
+        providerMessageId: messageId,
+        error: saveError.message,
+      });
+      return {
+        messageId,
+        persistenceWarning:
+          'Meta aceptó el mensaje, pero no se pudo guardar en MW1. Comprueba la conversación en Instagram antes de volver a enviarlo.',
+      };
     }
 
     const { error: updateError } =
@@ -276,9 +285,16 @@ export class MetaSocialMessagingService {
         .eq('company_id', input.companyId);
 
     if (updateError) {
-      throw new Error(
-        `El mensaje se envió, pero no se pudo actualizar la sesión: ${updateError.message}`,
-      );
+      console.error(`[ChatPro][${channel}] Meta accepted text but session update failed`, {
+        sessionId: input.sessionId,
+        providerMessageId: messageId,
+        error: updateError.message,
+      });
+      return {
+        messageId,
+        persistenceWarning:
+          'Meta aceptó el mensaje y quedó registrado, pero no se actualizó el estado del chat.',
+      };
     }
 
     console.log(
