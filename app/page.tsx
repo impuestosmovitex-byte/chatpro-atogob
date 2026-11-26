@@ -1275,6 +1275,11 @@ export default function Home() {
   const conversationDraftsRef = useRef<Record<string, string>>({});
   // Keep unsent/awaiting-confirmation bubbles through automatic polling.
   const pendingOutgoingRef = useRef<Set<string>>(new Set());
+  const pendingOutgoingSessionsRef = useRef<Map<string, {
+    sessionId: string;
+    message: string;
+    createdAt: string;
+  }>>(new Map());
   const loadingOlderMessagesRef = useRef(false);
   const preserveScrollOnPrependRef = useRef(false);
   const stickToBottomRef = useRef(true);
@@ -1626,7 +1631,20 @@ export default function Home() {
         throw new Error(data.error || "No se pudo cargar la bandeja.");
       }
 
-      const incoming = data.sessions ?? [];
+      const incoming = (data.sessions ?? []).map((incomingSession) => {
+        const optimistic = pendingOutgoingSessionsRef.current;
+        const current = sessions.find((candidate) => candidate.id === incomingSession.id);
+        const active = current?.lastMessage;
+        if (!active?.id || !optimistic.has(active.id) ||
+            optimistic.get(active.id)?.sessionId !== incomingSession.id) {
+          return incomingSession;
+        }
+        return {
+          ...incomingSession,
+          lastMessage: active,
+          lastMessageAt: active.createdAt ?? incomingSession.lastMessageAt,
+        };
+      });
 
       if (append) {
         setSessions((current) => {
@@ -2020,12 +2038,26 @@ export default function Home() {
             return current;
           }
 
-          const confirmedCurrentMessages = current.messages.filter(
-            (item) =>
-              !(typeof item.id === "string" &&
-                item.id.startsWith("optimistic-") &&
-                !pendingOutgoingRef.current.has(item.id)),
-          );
+          // Do not discard an outbound bubble before the server actually
+          // returns a matching saved message. Poll responses can be stale.
+          const returnedMessages = data.messages ?? [];
+          const confirmedCurrentMessages = current.messages.filter((item) => {
+            if (typeof item.id !== "string" || !item.id.startsWith("optimistic-")) {
+              return true;
+            }
+            const pending = pendingOutgoingSessionsRef.current.get(item.id);
+            if (!pending) return false;
+            const confirmed = returnedMessages.some((serverItem) =>
+              serverItem.authorType === "advisor" &&
+              serverItem.message === pending.message &&
+              Math.abs(new Date(serverItem.createdAt ?? 0).getTime() -
+                new Date(pending.createdAt).getTime()) < 120000);
+            if (confirmed) {
+              pendingOutgoingSessionsRef.current.delete(item.id);
+              pendingOutgoingRef.current.delete(item.id);
+            }
+            return !confirmed;
+          });
 
           // Refreshed server messages must win when the same message has a
           // newer Meta delivery status. Preserve older, unreturned history.
@@ -2315,6 +2347,11 @@ export default function Home() {
 
     if (action === "message") {
       pendingOutgoingRef.current.add(optimisticId);
+      pendingOutgoingSessionsRef.current.set(optimisticId, {
+        sessionId,
+        message: cleanMessage,
+        createdAt: optimisticCreatedAt,
+      });
       const optimisticMessage: InboxMessage = {
         id: optimisticId,
         sessionId,
@@ -2432,10 +2469,13 @@ export default function Home() {
             };
           });
         }
-        if (!preservePending) pendingOutgoingRef.current.delete(optimisticId);
-        // A persistence warning means that Meta accepted the send, but the
-        // local record may be missing. Keep it visible until reconciliation.
-        if (!data.conversation && !preservePending) void openConversation(sessionId, true);
+        if (serverConfirmedMessage) {
+          pendingOutgoingRef.current.delete(optimisticId);
+          pendingOutgoingSessionsRef.current.delete(optimisticId);
+        }
+        // A successful Meta send without a saved history stays visible while
+        // polling looks for confirmation. Never silently erase it.
+        if (!data.conversation) void openConversation(sessionId, true);
       } else {
         await loadList(false);
         await openConversation(sessionId);
@@ -2455,6 +2495,7 @@ export default function Home() {
     } catch (caught) {
       if (action === "message") {
         pendingOutgoingRef.current.delete(optimisticId);
+        pendingOutgoingSessionsRef.current.delete(optimisticId);
         setSelected((current) => {
           if (!current || current.session.id !== sessionId) {
             return current;
@@ -2469,7 +2510,9 @@ export default function Home() {
         });
 
         conversationDraftsRef.current[sessionId] = cleanMessage;
-        setMessage(cleanMessage);
+        if (activeSessionIdRef.current === sessionId) {
+          setMessage(cleanMessage);
+        }
       }
 
       setActionMessage("");
