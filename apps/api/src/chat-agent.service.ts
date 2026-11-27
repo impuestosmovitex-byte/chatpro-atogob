@@ -356,6 +356,20 @@ export class ChatAgentService {
       return 'sales';
     }
 
+    // Likewise, colloquial "cancelarlo con [payment method]" means paying
+    // for the current cart, not requesting cancellation of an old order.
+    if (this.isPayingWithCancelar(session, message)) return 'sales';
+
+    // A historical refund mentioned during a new payment is context,
+    // not a new post-sale case. Preserve the active cart and buying intent.
+    if (
+      this.isHistoricalRefundContextDuringPayment(message) &&
+      (current === 'sales' || hasCurrentCart) &&
+      !hasValidatedOrder
+    ) {
+      return 'sales';
+    }
+
     if (
       explicitServicePatterns.some((pattern) => pattern.test(normalized))
     ) {
@@ -614,6 +628,8 @@ export class ChatAgentService {
     // Ordinary exchange questions still reach the company-aware assistant.
     if (
       this.companyRequiresEconomicHandoff(profile) &&
+      !this.isPayingWithCancelar(activeSession, customerMessage) &&
+      !this.isHistoricalRefundContextDuringPayment(customerMessage) &&
       this.containsEconomicRequestLanguage(customerMessage) &&
       await this.isExplicitEconomicRequest(customerMessage)
     ) {
@@ -2851,6 +2867,49 @@ export class ChatAgentService {
     return profile.settings?.return_inquiry_handoff_policy === 'required';
   }
 
+  /**
+   * A past refund mentioned while asking how to pay is background context,
+   * not a new request to refund, cancel or reverse a transaction.
+   * Applies equally to every tenant; each company's escalation policy
+   * still governs actual current refund/cancellation requests.
+   */
+  /**
+   * In several Spanish-speaking markets, "cancelarlo con [payment method]"
+   * means paying for the current purchase, not cancelling an existing order.
+   * Do not bypass a genuine cancellation/refund request. Payment methods
+   * remain configured per tenant; this only identifies conversational intent.
+   */
+  private isPayingWithCancelar(
+    session: ConversationSession,
+    message: string,
+  ): boolean {
+    const normalized = this.normalizePolicyText(message);
+    const sale = session.context?.sale_context;
+    const hasActiveCart =
+      (Array.isArray(session.context?.cart) && session.context.cart.length > 0) ||
+      (sale && typeof sale === 'object' && !Array.isArray(sale) &&
+        (Array.isArray((sale as JsonObject).cart) ||
+          Boolean((sale as JsonObject).products_subtotal_cop)));
+    if (!hasActiveCart) return false;
+    const asksPayment =
+      /\b(?:cancelar(?:lo|la)?|cancelo|cancelarlo|cancelarla)\s+con\s+[a-z0-9]/.test(normalized) ||
+      /\b(?:pagar|pagare|pago|pagarlo|pagarla|consignar|transferir)\s+(?:con|por|mediante)\s+[a-z0-9]/.test(normalized);
+    const explicitlyReverses =
+      /\b(?:cancelar|anular)\s+(?:mi|el|este|ese|un)\s+(?:pedido|compra|orden|credito)\b/.test(normalized) ||
+      /\b(?:devolver|reembolsar|reintegrar)\s+(?:el|mi|me|dinero|pago)\b/.test(normalized);
+    return asksPayment && !explicitlyReverses;
+  }
+
+  private isHistoricalRefundContextDuringPayment(message: string): boolean {
+    const text = this.normalizePolicyText(message);
+    const asksToPay = /\b(?:cuenta|cuentas|consign\w*|transfer\w*|pagar|pago|llave|datos bancarios)\b/.test(text);
+    const describesPast = /\b(?:vez pasada|la otra vez|anteriormente|la vez anterior|antes|en otra ocasion|el pedido anterior|me hicieron|me habian|les toco|habia pasado|ya paso)\b/.test(text);
+    const mentionsRefund = /\b(?:devolucion\w*|devolv\w*|reembols\w*|reintegr\w*)\b/.test(text);
+    const requestsRefundNow = /\b(?:quiero|necesito|solicito|pido|exijo|deseo)\s+(?:(?:que|por favor)\s+)?(?:(?:me|nos)\s+)?(?:devuelvan|reembolsen|reintegren|cancelar|anular|un reembolso|una devolucion)\b/.test(text)
+      || /\b(?:devuelvanme|reembolsenme|reintegrenme|cancelen mi pedido|anulen mi credito)\b/.test(text);
+    return asksToPay && describesPast && mentionsRefund && !requestsRefundNow;
+  }
+
   private containsReturnInquiry(message: string): boolean {
     const normalized = this.normalizePolicyText(message).replace(
       /\b(?:no\s+(?:quiero|deseo|necesito|busco|estoy\s+pidiendo)|sin)\s+(?:una?\s+)?(?:devolucion(?:es)?|reembolso(?:s)?|devolver\w*|reintegr\w*)\b/g,
@@ -2875,6 +2934,7 @@ export class ChatAgentService {
   ): Promise<string | null> {
     if (
       !this.companyRequiresReturnInquiryHandoff(profile) ||
+      this.isHistoricalRefundContextDuringPayment(customerMessage) ||
       /^\s*\[(?:EVIDENCIA_SERVICIO|REFERENCIA_VISUAL|COMPROBANTE_PAGO|IMAGEN_)/i.test(customerMessage) ||
       !this.containsReturnInquiry(customerMessage)
     ) {
@@ -3564,7 +3624,7 @@ export class ChatAgentService {
       '- Nunca prometas que tú mismo avisarás, confirmarás, revisarás, consultarás, escribirás o ejecutarás algo más tarde si no existe una herramienta real que complete esa acción en este mismo turno. Responde con lo que puedes resolver ahora o, si corresponde según la configuración, usa request_human_attention.',
       '- CONFIRMACIÓN OPERATIVA: si el cliente pide confirmar un hecho que no está respaldado explícitamente por configuración o herramienta real —por ejemplo precio en una sede física, inventario de una sede, reserva, disponibilidad para recogida o una condición operativa específica— no preguntes “¿quieres que lo confirme?” ni prometas revisarlo después. Comunica primero lo que sí está confirmado y, si ese dato faltante requiere intervención humana, ejecuta request_human_attention una sola vez en ese mismo turno.',
       '- FOTOGRAFÍAS DE OUTFITS: si se ven dos o más prendas distintas, separa primero las opciones de interés (por ejemplo: blusa, pantalón o conjunto completo) si el cliente aún no indicó cuál quiere. No busques ni agregues automáticamente todas las prendas solo por aparecer en la foto. Cuando elija una prenda, busca únicamente esa referencia real; cuando elija el outfit completo, valida las piezas y el producto tipo combo o conjunto real de la empresa, sin duplicar componentes ni inventar descuentos.',
-      '- FOTO AMBIGUA YA CLARIFICADA: si session.context.pending_outfit_visual existe, Sofía YA preguntó qué prenda quiere el cliente. Interpreta su respuesta ("solo la blusa", "pantalón", "todo el conjunto") usando las descripciones y términos visuales conservados; busca únicamente esa selección real y no repitas la pregunta original. Si es un conjunto vendido como un solo producto, valida el combo en el catálogo antes de añadir piezas sueltas.', 
+      '- FOTO AMBIGUA YA CLARIFICADA: si session.context.pending_outfit_visual existe, la asesora YA preguntó qué prenda quiere el cliente. Interpreta su respuesta ("solo la blusa", "pantalón", "todo el conjunto") usando las descripciones y términos visuales conservados; busca únicamente esa selección real y no repitas la pregunta original. Si es un conjunto vendido como un solo producto, valida el combo en el catálogo antes de añadir piezas sueltas.', 
       '- CARRITO CONTINUO: un "sí", "los dos", "también este", "todo junto" o "confirmo" mantiene la selección de esta misma compra. Conserva por producto su referencia, talla, color, precio y cantidad REALMENTE validados. Una talla elegida para falda no debe asignarse por omisión al blazer, vestido ni pantalón. Si la persona añade un producto, conserva las líneas existentes. Cuando corrige talla/color, reemplaza solamente esa línea. Nunca borres otras prendas o reinicies una compra ya iniciada.',
       '- ANTES DE COMPARTIR UN LINK: usa get_cart para leer el carrito persistido. Confronta CADA prenda y cantidad que el cliente confirmó con las líneas reales. Si falta una, usa las referencias comerciales previamente validadas para completar el carrito con sus variantes; si una referencia/variante sigue sin verificar, no presentes un carrito parcial como si fuera el pedido completo. Explica brevemente cuál dato falta o haz una transferencia real cuando la automatización no pueda resolverlo. Nunca crees checkout hasta que los artículos pedidos coincidan con los artículos realmente guardados.',
       '- PLAN DE COMPRA MULTIPRODUCTO: cuando el cliente confirme dos o más referencias concretas, ejecuta record_purchase_plan con las URLs REALES de todos los productos elegidos y luego agrega al carrito sus variantes validadas. No equivale a agregar productos; el plan solo permite comprobar que no falta ninguno. Si más adelante dice "todo junto", conserva el plan completo y añade el producto nuevo cuando también lo confirme. Si elimina un producto o cambia de opinión, actualiza el plan con la selección final. Antes de pagar no ignores un resultado complete_confirmed_cart: repara las líneas faltantes, nunca envíes un carrito parcial.',
@@ -4431,7 +4491,6 @@ export class ChatAgentService {
       return false;
     }
     if (
-      profile.slug.trim().toLowerCase() === 'atogob' &&
       /\b(?:nuestra tienda virtual|tenemos el look perfecto|compr(?:es|en|a) ahora en nuestra tienda)\b/.test(normalized) &&
       /\b(?:navidad|temporada|fiestas|aprovech|promocion|compr)\b/.test(normalized)
     ) {
