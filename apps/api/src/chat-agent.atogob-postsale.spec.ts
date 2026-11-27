@@ -70,6 +70,22 @@ describe('MW1 tenant-configured economic handoffs', () => {
     expect(requestHumanAttention).not.toHaveBeenCalled();
   });
 
+  it('keeps a current cart in Sales when the customer mentions an earlier refund', () => {
+    const { agent } = harness();
+    const activeSale = {
+      id: 'purchase-session',
+      context: {
+        conversation_category: 'sales',
+        cart: [{ product_id: 'product-1', quantity: 1 }],
+      },
+    } as any;
+    expect(agent.classifyConversationCategory(
+      activeSale,
+      'Dame la cuenta para consignar y pagar el envio; la vez pasada me hicieron una devolución.',
+      'other',
+    )).toBe('sales');
+  });
+
   it('still transfers a current explicit refund request under company policy', async () => {
     const { agent, requestHumanAttention } = harness();
     const company = {
