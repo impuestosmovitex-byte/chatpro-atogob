@@ -356,6 +356,10 @@ export class ChatAgentService {
       return 'sales';
     }
 
+    // Likewise, colloquial "cancelarlo con [payment method]" means paying
+    // for the current cart, not requesting cancellation of an old order.
+    if (this.isPayingWithCancelar(session, message)) return 'sales';
+
     // A historical refund mentioned during a new payment is context,
     // not a new post-sale case. Preserve the active cart and buying intent.
     if (
@@ -624,6 +628,7 @@ export class ChatAgentService {
     // Ordinary exchange questions still reach the company-aware assistant.
     if (
       this.companyRequiresEconomicHandoff(profile) &&
+      !this.isPayingWithCancelar(activeSession, customerMessage) &&
       !this.isHistoricalRefundContextDuringPayment(customerMessage) &&
       this.containsEconomicRequestLanguage(customerMessage) &&
       await this.isExplicitEconomicRequest(customerMessage)
@@ -2868,6 +2873,33 @@ export class ChatAgentService {
    * Applies equally to every tenant; each company's escalation policy
    * still governs actual current refund/cancellation requests.
    */
+  /**
+   * In several Spanish-speaking markets, "cancelarlo con [payment method]"
+   * means paying for the current purchase, not cancelling an existing order.
+   * Do not bypass a genuine cancellation/refund request. Payment methods
+   * remain configured per tenant; this only identifies conversational intent.
+   */
+  private isPayingWithCancelar(
+    session: ConversationSession,
+    message: string,
+  ): boolean {
+    const normalized = this.normalizePolicyText(message);
+    const sale = session.context?.sale_context;
+    const hasActiveCart =
+      (Array.isArray(session.context?.cart) && session.context.cart.length > 0) ||
+      (sale && typeof sale === 'object' && !Array.isArray(sale) &&
+        (Array.isArray((sale as JsonObject).cart) ||
+          Boolean((sale as JsonObject).products_subtotal_cop)));
+    if (!hasActiveCart) return false;
+    const asksPayment =
+      /\b(?:cancelar(?:lo|la)?|cancelo|cancelarlo|cancelarla)\s+con\s+[a-z0-9]/.test(normalized) ||
+      /\b(?:pagar|pagare|pago|pagarlo|pagarla|consignar|transferir)\s+(?:con|por|mediante)\s+[a-z0-9]/.test(normalized);
+    const explicitlyReverses =
+      /\b(?:cancelar|anular)\s+(?:mi|el|este|ese|un)\s+(?:pedido|compra|orden|credito)\b/.test(normalized) ||
+      /\b(?:devolver|reembolsar|reintegrar)\s+(?:el|mi|me|dinero|pago)\b/.test(normalized);
+    return asksPayment && !explicitlyReverses;
+  }
+
   private isHistoricalRefundContextDuringPayment(message: string): boolean {
     const text = this.normalizePolicyText(message);
     const asksToPay = /\b(?:cuenta|cuentas|consign\w*|transfer\w*|pagar|pago|llave|datos bancarios)\b/.test(text);
