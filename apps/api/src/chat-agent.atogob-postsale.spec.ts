@@ -86,6 +86,45 @@ describe('MW1 tenant-configured economic handoffs', () => {
     )).toBe('sales');
   });
 
+  it('treats "voy a cancelarlo con Addi" as paying an active cart', async () => {
+    const { agent, requestHumanAttention, create } = harness();
+    const currentSale = {
+      id: 'active-purchase',
+      context: {
+        conversation_category: 'sales',
+        cart: [{ product_id: 'jean', quantity: 1 }],
+      },
+    } as any;
+    agent.prepareSessionForIncomingActivity = jest.fn(async () => currentSale);
+    agent.resolveMessageRouting = jest.fn(async () => {
+      throw new Error('normal sales routing');
+    });
+    const profile = {
+      ...companyWithEconomicHandoff,
+      settings: { economic_handoff_policy: 'required' },
+    };
+    const message = 'Lo podría pedir desde la página?, voy a cancelarlo con Addi';
+    expect(agent.isPayingWithCancelar(currentSale, message)).toBe(true);
+    expect(agent.classifyConversationCategory(currentSale, message, 'other')).toBe('sales');
+    await expect(agent.reply(profile, currentSale, message))
+      .rejects.toThrow('normal sales routing');
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('does not misclassify an explicit existing-order cancellation as payment', () => {
+    const { agent } = harness();
+    const currentSale = {
+      context: { conversation_category: 'sales', cart: [{ product_id: 'a' }] },
+    } as any;
+    expect(agent.isPayingWithCancelar(
+      currentSale, 'Quiero cancelar mi pedido',
+    )).toBe(false);
+    expect(agent.isPayingWithCancelar(
+      currentSale, 'No voy a pagarlo; necesito un reembolso',
+    )).toBe(false);
+  });
+
   it('still transfers a current explicit refund request under company policy', async () => {
     const { agent, requestHumanAttention } = harness();
     const company = {
