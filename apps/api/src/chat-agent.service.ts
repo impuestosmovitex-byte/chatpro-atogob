@@ -614,6 +614,7 @@ export class ChatAgentService {
     // Ordinary exchange questions still reach the company-aware assistant.
     if (
       this.companyRequiresEconomicHandoff(profile) &&
+      !this.isHistoricalRefundContextDuringPayment(customerMessage) &&
       this.containsEconomicRequestLanguage(customerMessage) &&
       await this.isExplicitEconomicRequest(customerMessage)
     ) {
@@ -2851,6 +2852,22 @@ export class ChatAgentService {
     return profile.settings?.return_inquiry_handoff_policy === 'required';
   }
 
+  /**
+   * A past refund mentioned while asking how to pay is background context,
+   * not a new request to refund, cancel or reverse a transaction.
+   * Applies equally to every tenant; each company's escalation policy
+   * still governs actual current refund/cancellation requests.
+   */
+  private isHistoricalRefundContextDuringPayment(message: string): boolean {
+    const text = this.normalizePolicyText(message);
+    const asksToPay = /\b(?:cuenta|cuentas|consign\w*|transfer\w*|pagar|pago|llave|datos bancarios)\b/.test(text);
+    const describesPast = /\b(?:vez pasada|la otra vez|anteriormente|la vez anterior|antes|en otra ocasion|el pedido anterior|me hicieron|me habian|les toco|habia pasado|ya paso)\b/.test(text);
+    const mentionsRefund = /\b(?:devolucion\w*|devolv\w*|reembols\w*|reintegr\w*)\b/.test(text);
+    const requestsRefundNow = /\b(?:quiero|necesito|solicito|pido|exijo|deseo)\s+(?:(?:que|por favor)\s+)?(?:(?:me|nos)\s+)?(?:devuelvan|reembolsen|reintegren|cancelar|anular|un reembolso|una devolucion)\b/.test(text)
+      || /\b(?:devuelvanme|reembolsenme|reintegrenme|cancelen mi pedido|anulen mi credito)\b/.test(text);
+    return asksToPay && describesPast && mentionsRefund && !requestsRefundNow;
+  }
+
   private containsReturnInquiry(message: string): boolean {
     const normalized = this.normalizePolicyText(message).replace(
       /\b(?:no\s+(?:quiero|deseo|necesito|busco|estoy\s+pidiendo)|sin)\s+(?:una?\s+)?(?:devolucion(?:es)?|reembolso(?:s)?|devolver\w*|reintegr\w*)\b/g,
@@ -2875,6 +2892,7 @@ export class ChatAgentService {
   ): Promise<string | null> {
     if (
       !this.companyRequiresReturnInquiryHandoff(profile) ||
+      this.isHistoricalRefundContextDuringPayment(customerMessage) ||
       /^\s*\[(?:EVIDENCIA_SERVICIO|REFERENCIA_VISUAL|COMPROBANTE_PAGO|IMAGEN_)/i.test(customerMessage) ||
       !this.containsReturnInquiry(customerMessage)
     ) {
