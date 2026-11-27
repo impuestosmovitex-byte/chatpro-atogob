@@ -1759,6 +1759,9 @@ export class ConversationMemoryService {
             try {
               const verdict = await this.classifyStaleHumanCase(profile, messages ?? []);
               action = pickStaleReviewAction(verdict.decision, verdict.confidence, last);
+              // Customer-last conversations must never be archived automatically,
+              // including acknowledgements. Keep them visible for human review.
+              if (action === 'closed') action = 'waiting';
               reason = verdict.reason;
             } catch (aiError) {
               // Fail open to human attention, never auto-close or lose the case.
