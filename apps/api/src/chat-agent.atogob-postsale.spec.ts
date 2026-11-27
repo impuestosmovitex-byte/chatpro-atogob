@@ -48,6 +48,51 @@ describe('MW1 tenant-configured economic handoffs', () => {
     })).toBe(true);
   });
 
+  it('keeps a sale active when the customer mentions a past refund while requesting account details', async () => {
+    const { agent, requestHumanAttention } = harness();
+    const company = {
+      ...companyWithEconomicHandoff,
+      settings: {
+        return_inquiry_handoff_policy: 'required',
+        economic_handoff_policy: 'required',
+      },
+    };
+    const message =
+      'Sí, regálame el número de cuenta para hacer la consignación, ' +
+      'incluyendo el envío. La vez pasada me hicieron una devolución porque ' +
+      'hubo un problema con el pago.';
+    expect(agent.isHistoricalRefundContextDuringPayment(message)).toBe(true);
+    agent.resolveMessageRouting = jest.fn(async () => {
+      throw new Error('normal sales routing');
+    });
+    await expect(agent.reply(company, session, message))
+      .rejects.toThrow('normal sales routing');
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
+  it('still transfers a current explicit refund request under company policy', async () => {
+    const { agent, requestHumanAttention } = harness();
+    const company = {
+      ...companyWithEconomicHandoff,
+      settings: { return_inquiry_handoff_policy: 'required' },
+    };
+    const message =
+      'La vez pasada me hicieron una devolución. Ahora necesito que me devuelvan el dinero de este pedido.';
+    expect(agent.isHistoricalRefundContextDuringPayment(message)).toBe(false);
+    expect(await agent.routeReturnInquiryToHuman(company, session, message))
+      .toContain('asesores');
+    expect(requestHumanAttention).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not override a different tenant\'s economic handling policy', async () => {
+    const { agent, requestHumanAttention } = harness();
+    const message = 'Quiero transferir a la cuenta, la vez pasada hubo una devolución.';
+    expect(agent.isHistoricalRefundContextDuringPayment(message)).toBe(true);
+    expect(await agent.routeReturnInquiryToHuman(companyWithoutEconomicHandoff, session, message))
+      .toBeNull();
+    expect(requestHumanAttention).not.toHaveBeenCalled();
+  });
+
   it('transfers an explicit request before any sales routing', async () => {
     const { agent, requestHumanAttention, create } = harness();
     create.mockResolvedValue({ output_text: '{"explicit_request":true}' });
