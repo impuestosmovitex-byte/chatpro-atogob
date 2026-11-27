@@ -40,6 +40,7 @@ import { MetaInstagramController } from './meta-instagram.controller';
 import { MetaInstagramWebhookController } from './meta-instagram-webhook.controller';
 import { MetaInstagramMediaAiService } from './meta-instagram-media-ai.service';
 import { MetaInstagramService } from './meta-instagram.service';
+import { InstagramTokenRefreshService } from './instagram-token-refresh.service';
 import { MetaMessengerWebhookController } from './meta-messenger-webhook.controller';
 import { MetaMessengerService } from './meta-messenger.service';
 import { MetaLeadAdsController } from './meta-lead-ads.controller';
@@ -144,6 +145,7 @@ import { EffixWhatsappDeliveryService } from './effix-whatsapp-delivery.service'
     IntegrationCredentialsService,
     MetaMessengerService,
     MetaInstagramService,
+    InstagramTokenRefreshService,
     MetaInstagramMediaAiService,
     MetaLeadAdsService,
     MetaAdsLeadService,
