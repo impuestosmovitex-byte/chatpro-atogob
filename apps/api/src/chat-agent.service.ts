@@ -356,6 +356,16 @@ export class ChatAgentService {
       return 'sales';
     }
 
+    // A historical refund mentioned during a new payment is context,
+    // not a new post-sale case. Preserve the active cart and buying intent.
+    if (
+      this.isHistoricalRefundContextDuringPayment(message) &&
+      (current === 'sales' || hasCurrentCart) &&
+      !hasValidatedOrder
+    ) {
+      return 'sales';
+    }
+
     if (
       explicitServicePatterns.some((pattern) => pattern.test(normalized))
     ) {
